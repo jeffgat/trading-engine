@@ -28,6 +28,7 @@ nyOrbHighColor = input.color(#18b79c, "NY ORB High Color", group="NY Session")
 nyOrbLowColor  = input.color(#94E3DA, "NY ORB Low Color", group="NY Session")
 nyMaxGapPoints = input.float(100.0, "NY Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="NY Session")
 nyMinGapAtrPct = input.float(1.75, "NY Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
+nyStopAtrPct   = input.float(15.0, "NY Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
 
 // ============================================================================
 // INPUTS - Asia Session
@@ -38,7 +39,8 @@ asiaEntryWindow  = input.session("2015-2315", "Asia Entry window (ny time)", gro
 asiaOrbHighColor = input.color(#2196F3, "Asia ORB High Color", group="Asia Session")
 asiaOrbLowColor  = input.color(#A5DFFA, "Asia ORB Low Color", group="Asia Session")
 asiaMaxGapPoints = input.float(50.0, "Asia Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="Asia Session")
-asiaMinGapAtrPct = input.float(0.25, "Asia Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
+asiaMinGapAtrPct = input.float(0.7, "Asia Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
+asiaStopAtrPct   = input.float(5.0, "Asia Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="Asia Session")
 
 // ============================================================================
 // INPUTS - Trade Levels
@@ -394,7 +396,7 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
     ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     // Draw box + label + trade levels ONCE (only within drawback window)
     ny_longEntry := longFvgTop
-    ny_longStop  := math.min(low[2], longFvgTop - syminfo.mintick)
+    ny_longStop  := ny_longEntry - (nyStopAtrPct / 100) * nz(dailyATR)
     riskPts      = ny_longEntry - ny_longStop
     ny_longTp1   := ny_longEntry + (rr * riskPts * tp1Ratio)
     ny_longTp2   := ny_longEntry + (rr * riskPts)
@@ -427,7 +429,7 @@ if nyCanDetect and not ny_shortFirstFvgFound and nyShortFVG
     fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
     ny_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     ny_shortEntry := shortFvgBottom
-    ny_shortStop  := math.max(high[2], shortFvgBottom + syminfo.mintick)
+    ny_shortStop  := ny_shortEntry + (nyStopAtrPct / 100) * nz(dailyATR)
     riskPts       = ny_shortStop - ny_shortEntry
     ny_shortTp1   := ny_shortEntry - (rr * riskPts * tp1Ratio)
     ny_shortTp2   := ny_shortEntry - (rr * riskPts)
@@ -465,7 +467,7 @@ if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
     fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
     asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     asia_longEntry := longFvgTop
-    asia_longStop  := math.min(low[2], longFvgTop - syminfo.mintick)
+    asia_longStop  := asia_longEntry - (asiaStopAtrPct / 100) * nz(dailyATR)
     riskPts        = asia_longEntry - asia_longStop
     asia_longTp1   := asia_longEntry + (rr * riskPts * tp1Ratio)
     asia_longTp2   := asia_longEntry + (rr * riskPts)
@@ -498,7 +500,7 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
     fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
     asia_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     asia_shortEntry := shortFvgBottom
-    asia_shortStop  := math.max(high[2], shortFvgBottom + syminfo.mintick)
+    asia_shortStop  := asia_shortEntry + (asiaStopAtrPct / 100) * nz(dailyATR)
     riskPts         = asia_shortStop - asia_shortEntry
     asia_shortTp1   := asia_shortEntry - (rr * riskPts * tp1Ratio)
     asia_shortTp2   := asia_shortEntry - (rr * riskPts)

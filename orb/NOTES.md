@@ -3,6 +3,11 @@
 - size gaps in NY as 1.75% of the ATR
 - size gaps in asia as 0.25% of the ATR
 
+- 15% ATR SL NY
+- 5% ATR SL asia
+- 1.75% ATR gap NY
+- 0.7% ATR gap asia
+
 ## ideas
 - can we use ATR to create dynamic stops that scale with price? or is the 2 candle stop the best?
 - can we use ATR to optimize the gap size for which we enter on? - yes
@@ -37,6 +42,8 @@
 - 5% ATR SL asia
 - 1.75% ATR gap NY
 - 0.7% ATR gap asia
+
+- LDN, good candidate for mean reversion. start at 2% ATR gaps and 15% ATR stop losses for this strat.
 
 #### split tests
 

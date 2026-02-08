@@ -1,6 +1,6 @@
 //@version=6
 strategy(
-     title              = "ORB V5 A",
+     title              = "ORB V5 B",
      overlay            = true,
      initial_capital    = 50000,
      pyramiding         = 0,
@@ -19,7 +19,7 @@ strategy(
 // ----------------------------------------------------------------------------------------
 // Inputs - Session Mode
 // ----------------------------------------------------------------------------------------
-sessionMode  = input.string("Both", "Session Mode", options=["NY", "Asia", "LDN", "Both", "All"])
+sessionMode  = input.string("NY", "Session Mode", options=["NY", "Asia", "LDN", "Both", "All"])
 enableNY     = sessionMode == "NY" or sessionMode == "Both" or sessionMode == "All"
 enableAsia   = sessionMode == "Asia" or sessionMode == "Both" or sessionMode == "All"
 enableLDN    = sessionMode == "LDN" or sessionMode == "All"
@@ -49,7 +49,6 @@ nyEntryWindow  = input.session("0945-1300", "NY Entry window (ny time)", group="
 nyFlatWindow   = input.session("1550-1600", "NY Flat window (ny time)", group="NY Session")
 nyMaxGapPoints = input.float(100.0, "NY Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="NY Session")
 nyMinGapAtrPct = input.float(1.75, "NY Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
-nyStopAtrPct   = input.float(15.0, "NY Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
 
 // ----------------------------------------------------------------------------------------
 // Inputs - Asia Session Settings
@@ -59,8 +58,7 @@ asiaOrbSession   = input.session("2000-2015", "Asia ORB window (ny time)", group
 asiaEntryWindow  = input.session("2015-2315", "Asia Entry window (ny time)", group="Asia Session")
 asiaFlatWindow   = input.session("0645-0700", "Asia Flat window (ny time)", group="Asia Session")
 asiaMaxGapPoints = input.float(50.0, "Asia Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="Asia Session")
-asiaMinGapAtrPct = input.float(0.7, "Asia Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
-asiaStopAtrPct   = input.float(5.0, "Asia Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="Asia Session")
+asiaMinGapAtrPct = input.float(0.25, "Asia Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
 
 // ----------------------------------------------------------------------------------------
 // Inputs - LDN Session Settings
@@ -70,8 +68,7 @@ ldnOrbSession   = input.session("0300-0315", "LDN ORB window (ny time)", group="
 ldnEntryWindow  = input.session("0315-0825", "LDN Entry window (ny time)", group="LDN Session")
 ldnFlatWindow   = input.session("0820-0825", "LDN Flat window (ny time)", group="LDN Session")
 ldnMaxGapPoints = input.float(50.0, "LDN Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="LDN Session")
-ldnMinGapAtrPct = input.float(1, "LDN Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
-ldnStopAtrPct   = input.float(10.0, "LDN Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="LDN Session")
+ldnMinGapAtrPct = input.float(0.25, "LDN Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
 
 // ----------------------------------------------------------------------------------------
 // Inputs - NY Half-Day Early Close Dates
@@ -499,9 +496,9 @@ globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead
 // ----------------------------------------------------------------------------------------
 nyMinGap = (nyMinGapAtrPct / 100) * nz(dailyATR)
 asiaMinGap = (asiaMinGapAtrPct / 100) * nz(dailyATR)
+ldnMinGap = (ldnMinGapAtrPct / 100) * nz(dailyATR)
 nyMaxGap = nyMaxGapPoints > 0 ? nyMaxGapPoints : float(na)
 asiaMaxGap = asiaMaxGapPoints > 0 ? asiaMaxGapPoints : float(na)
-ldnMinGap = (ldnMinGapAtrPct / 100) * nz(dailyATR)
 ldnMaxGap = ldnMaxGapPoints > 0 ? ldnMaxGapPoints : float(na)
 
 // ----------------------------------------------------------------------------------------
@@ -538,8 +535,9 @@ ldnShortFVG = low[2] > high and low[2] > low[1] and high[2] > high and shortFvgB
 nyCanArmSetup = enableNY and is5m and barClosed and inNyRTH and inNyEntryWin and ny_orbReady and not ny_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ny_longSetupActive or ny_shortSetupActive)
 
 if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
+    rawStop = low[2]
     entry   = longFvgTop
-    stop    = entry - (nyStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.min(rawStop, entry - syminfo.mintick)
     riskPts = entry - stop
 
     if riskPts > 0
@@ -568,8 +566,9 @@ if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
             ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
 
 if nyCanArmSetup and not ny_shortFirstFvgFound and nyShortFVG
+    rawStop = high[2]
     entry   = shortFvgBottom
-    stop    = entry + (nyStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.max(rawStop, entry + syminfo.mintick)
     riskPts = stop - entry
 
     if riskPts > 0
@@ -603,8 +602,9 @@ if nyCanArmSetup and not ny_shortFirstFvgFound and nyShortFVG
 asiaCanArmSetup = enableAsia and is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (asia_longSetupActive or asia_shortSetupActive)
 
 if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
+    rawStop = low[2]
     entry   = longFvgTop
-    stop    = entry - (asiaStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.min(rawStop, entry - syminfo.mintick)
     riskPts = entry - stop
 
     if riskPts > 0
@@ -633,8 +633,9 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
             asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
 
 if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaShortFVG
+    rawStop = high[2]
     entry   = shortFvgBottom
-    stop    = entry + (asiaStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.max(rawStop, entry + syminfo.mintick)
     riskPts = stop - entry
 
     if riskPts > 0
@@ -668,8 +669,9 @@ if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaShortFVG
 ldnCanArmSetup = enableLDN and is5m and barClosed and inLdnRTH and inLdnEntryWin and ldn_orbReady and not ldn_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ldn_longSetupActive or ldn_shortSetupActive)
 
 if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnLongFVG
+    rawStop = low[2]
     entry   = longFvgTop
-    stop    = entry - (ldnStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.min(rawStop, entry - syminfo.mintick)
     riskPts = entry - stop
 
     if riskPts > 0
@@ -698,8 +700,9 @@ if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnLongFVG
             ldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
 
 if ldnCanArmSetup and not ldn_shortFirstFvgFound and ldnShortFVG
+    rawStop = high[2]
     entry   = shortFvgBottom
-    stop    = entry + (ldnStopAtrPct / 100) * nz(dailyATR)
+    stop    = math.max(rawStop, entry + syminfo.mintick)
     riskPts = stop - entry
 
     if riskPts > 0
