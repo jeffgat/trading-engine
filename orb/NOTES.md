@@ -9,9 +9,9 @@
 - 0.7% ATR gap asia
 
 ## ideas
-- can we use ATR to create dynamic stops that scale with price? or is the 2 candle stop the best?
+- can we use ATR to create dynamic stops that scale with price? or is the 2 candle stop the best? - yes
 - can we use ATR to optimize the gap size for which we enter on? - yes
-- can we use ATR to optimize tp targets?
+- can we use ATR to optimize tp targets? - this becomes the same as the stops
 - only enter if a nearby 5m gap has been "respected"
 - multiple orbs
   - 2 a day?
@@ -44,6 +44,11 @@
 - 0.7% ATR gap asia
 
 - LDN, good candidate for mean reversion. start at 2% ATR gaps and 15% ATR stop losses for this strat.
+
+### feb 7 2026
+
+__testing__
+
 
 #### split tests
 
