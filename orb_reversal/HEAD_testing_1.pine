@@ -29,7 +29,7 @@ enableLDN    = sessionMode == "LDN" or sessionMode == "All"
 // Inputs - Shared Risk Settings
 // ----------------------------------------------------------------------------------------
 riskUsd      = input.float(500, "Risk per trade ($)", step=50, group="Risk Settings")
-rr           = input.float(2.5, "Reward/Risk", step=0.25, group="Risk Settings")
+rr           = input.float(2.0, "Reward/Risk", step=0.25, group="Risk Settings")
 tp1Ratio     = input.float(0.5, "Partial TP & BE Level (0.5 = 50% of target)", step=0.1, minval=0.1, maxval=0.9, group="Risk Settings")
 minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
 qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
@@ -83,7 +83,7 @@ ldnOrbSession   = input.session("0300-0315", "LDN ORB window (ny time)", group="
 ldnEntryWindow  = input.session("0315-0825", "LDN Entry window (ny time)", group="LDN Session")
 ldnFlatWindow   = input.session("0820-0825", "LDN Flat window (ny time)", group="LDN Session")
 ldnMaxGapPoints = input.float(50.0, "LDN Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="LDN Session")
-ldnMinGapAtrPct = input.float(1.75, "LDN Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
+ldnMinGapAtrPct = input.float(2, "LDN Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
 ldnStopAtrPct   = input.float(15.0, "LDN Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="LDN Session")
 
 // ----------------------------------------------------------------------------------------
@@ -1065,27 +1065,27 @@ if strategy.position_size < 0 and activeSession == "ldn"
 // Entry orders - NY
 // ----------------------------------------------------------------------------------------
 if enableNY and is5m and inNyRTH and inNyEntryWin and not ny_hasTradedToday and strategy.position_size == 0
-    if ny_longSetupActive and bar_index > ny_longSetupBar + 2
+    if ny_longSetupActive and bar_index > ny_longSetupBar
         strategy.entry("NL", strategy.long, qty=ny_longQtyStored, stop=ny_longEntryStored)
-    if ny_shortSetupActive and bar_index > ny_shortSetupBar + 2
+    if ny_shortSetupActive and bar_index > ny_shortSetupBar
         strategy.entry("NS", strategy.short, qty=ny_shortQtyStored, stop=ny_shortEntryStored)
 
 // ----------------------------------------------------------------------------------------
 // Entry orders - Asia
 // ----------------------------------------------------------------------------------------
 if enableAsia and is5m and inAsiaRTH and inAsiaEntryWin and not asia_hasTradedToday and strategy.position_size == 0
-    if asia_longSetupActive and bar_index > asia_longSetupBar + 2
+    if asia_longSetupActive and bar_index > asia_longSetupBar
         strategy.entry("AL", strategy.long, qty=asia_longQtyStored, stop=asia_longEntryStored)
-    if asia_shortSetupActive and bar_index > asia_shortSetupBar + 2
+    if asia_shortSetupActive and bar_index > asia_shortSetupBar
         strategy.entry("AS", strategy.short, qty=asia_shortQtyStored, stop=asia_shortEntryStored)
 
 // ----------------------------------------------------------------------------------------
 // Entry orders - LDN
 // ----------------------------------------------------------------------------------------
 if enableLDN and is5m and inLdnRTH and inLdnEntryWin and not ldn_hasTradedToday and strategy.position_size == 0
-    if ldn_longSetupActive and bar_index > ldn_longSetupBar + 2
+    if ldn_longSetupActive and bar_index > ldn_longSetupBar
         strategy.entry("LL", strategy.long, qty=ldn_longQtyStored, stop=ldn_longEntryStored)
-    if ldn_shortSetupActive and bar_index > ldn_shortSetupBar + 2
+    if ldn_shortSetupActive and bar_index > ldn_shortSetupBar
         strategy.entry("LS", strategy.short, qty=ldn_shortQtyStored, stop=ldn_shortEntryStored)
 
 // ----------------------------------------------------------------------------------------
