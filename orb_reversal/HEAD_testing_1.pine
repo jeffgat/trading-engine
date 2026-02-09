@@ -1,0 +1,1340 @@
+//@version=6
+strategy(
+     title              = "ORB-REVERSAL-TESTING-1",
+     overlay            = true,
+     initial_capital    = 50000,
+     pyramiding         = 0,
+     margin_long        = 0,
+     margin_short       = 0,
+     commission_type    = strategy.commission.cash_per_contract,
+     commission_value   = 0.05,
+     calc_on_every_tick = true,
+     process_orders_on_close = true,
+     use_bar_magnifier  = true,
+     fill_orders_on_standard_ohlc = false,
+     max_boxes_count    = 500,
+     max_labels_count   = 500,
+     max_lines_count    = 500
+)
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Session Mode
+// ----------------------------------------------------------------------------------------
+sessionMode  = input.string("LDN", "Session Mode", options=["NY", "Asia", "LDN", "Both", "All"])
+enableNY     = sessionMode == "NY" or sessionMode == "Both" or sessionMode == "All"
+enableAsia   = sessionMode == "Asia" or sessionMode == "Both" or sessionMode == "All"
+enableLDN    = sessionMode == "LDN" or sessionMode == "All"
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Shared Risk Settings
+// ----------------------------------------------------------------------------------------
+riskUsd      = input.float(500, "Risk per trade ($)", step=50, group="Risk Settings")
+rr           = input.float(2.5, "Reward/Risk", step=0.25, group="Risk Settings")
+tp1Ratio     = input.float(0.5, "Partial TP & BE Level (0.5 = 50% of target)", step=0.1, minval=0.1, maxval=0.9, group="Risk Settings")
+minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
+qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
+beOffsetTicks = input.int(4, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission", group="Risk Settings")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Daily ATR (shared)
+// ----------------------------------------------------------------------------------------
+atrLength    = input.int(14, "ATR Length", minval=1, group="Daily ATR")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Trade Level Lines
+// ----------------------------------------------------------------------------------------
+entryColor = input.color(#787b86, "Entry Color", inline="entry", group="Trade Levels")
+entryStyle = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="entry", group="Trade Levels")
+slColor    = input.color(#787b86, "SL Color", inline="sl", group="Trade Levels")
+slStyle    = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="sl", group="Trade Levels")
+tp1Color   = input.color(#787b86, "TP1 Color", inline="tp1", group="Trade Levels")
+tp1Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="tp1", group="Trade Levels")
+tp2Color   = input.color(#787b86, "TP2 Color", inline="tp2", group="Trade Levels")
+tp2Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="tp2", group="Trade Levels")
+
+
+// ----------------------------------------------------------------------------------------
+// Inputs - NY Session Settings
+// ----------------------------------------------------------------------------------------
+nySessionRTH   = input.session("0930-1600", "NY RTH (ny time)", group="NY Session")
+nyOrbSession   = input.session("0930-0945", "NY ORB window (ny time)", group="NY Session")
+nyEntryWindow  = input.session("0945-1300", "NY Entry window (ny time)", group="NY Session")
+nyFlatWindow   = input.session("1550-1600", "NY Flat window (ny time)", group="NY Session")
+nyMaxGapPoints = input.float(100.0, "NY Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="NY Session")
+nyMinGapAtrPct = input.float(1.75, "NY Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
+nyStopAtrPct   = input.float(15.0, "NY Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Asia Session Settings
+// ----------------------------------------------------------------------------------------
+asiaSessionRTH   = input.session("1800-0700", "Asia RTH (ny time)", group="Asia Session")
+asiaOrbSession   = input.session("2000-2015", "Asia ORB window (ny time)", group="Asia Session")
+asiaEntryWindow  = input.session("2015-2315", "Asia Entry window (ny time)", group="Asia Session")
+asiaFlatWindow   = input.session("0645-0700", "Asia Flat window (ny time)", group="Asia Session")
+asiaMaxGapPoints = input.float(50.0, "Asia Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="Asia Session")
+asiaMinGapAtrPct = input.float(0.7, "Asia Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
+asiaStopAtrPct   = input.float(5.0, "Asia Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="Asia Session")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - LDN Session Settings
+// ----------------------------------------------------------------------------------------
+ldnSessionRTH   = input.session("0300-1200", "LDN RTH (ny time)", group="LDN Session")
+ldnOrbSession   = input.session("0300-0315", "LDN ORB window (ny time)", group="LDN Session")
+ldnEntryWindow  = input.session("0315-0825", "LDN Entry window (ny time)", group="LDN Session")
+ldnFlatWindow   = input.session("0820-0825", "LDN Flat window (ny time)", group="LDN Session")
+ldnMaxGapPoints = input.float(50.0, "LDN Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="LDN Session")
+ldnMinGapAtrPct = input.float(1.75, "LDN Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
+ldnStopAtrPct   = input.float(15.0, "LDN Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="LDN Session")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - NY Half-Day Early Close Dates
+// CME equity futures close at 1:00 PM ET on these dates.
+// Update this list annually — check CME holiday calendar.
+// ----------------------------------------------------------------------------------------
+nyHalfDayFlatWindow = input.session("1250-1300", "NY Half-Day Flat window (ny time)", group="NY Half-Day")
+halfDay1 = input.string("20250703", "Half-Day 1 (YYYYMMDD)", tooltip="Day before July 4th", group="NY Half-Day")
+halfDay2 = input.string("20251128", "Half-Day 2 (YYYYMMDD)", tooltip="Day after Thanksgiving", group="NY Half-Day")
+halfDay3 = input.string("20251224", "Half-Day 3 (YYYYMMDD)", tooltip="Christmas Eve", group="NY Half-Day")
+halfDay4 = input.string("20250109", "Half-Day 4 (YYYYMMDD)", tooltip="National Day of Mourning (one-off)", group="NY Half-Day")
+halfDay5 = input.string("20260119", "Half-Day 5 (YYYYMMDD)", tooltip="MLK Day 2026", group="NY Half-Day")
+halfDay6 = input.string("", "Half-Day 6 (YYYYMMDD)", tooltip="Leave blank if unused", group="NY Half-Day")
+
+// ----------------------------------------------------------------------------------------
+// Line Style Lookup
+// ----------------------------------------------------------------------------------------
+styleToLine(s) =>
+    s == "Solid" ? line.style_solid : s == "Dotted" ? line.style_dotted : line.style_dashed
+entryLineStyle = styleToLine(entryStyle)
+slLineStyle    = styleToLine(slStyle)
+tp1LineStyle   = styleToLine(tp1Style)
+tp2LineStyle   = styleToLine(tp2Style)
+
+// ----------------------------------------------------------------------------------------
+// Safety: intended for 5m charts
+// ----------------------------------------------------------------------------------------
+is5m = timeframe.isintraday and timeframe.multiplier == 5
+barClosed = barstate.isconfirmed
+
+// ----------------------------------------------------------------------------------------
+// Session filters - NY
+// ----------------------------------------------------------------------------------------
+inNyRTH      = not na(time(timeframe.period, nySessionRTH, "America/New_York"))
+inNyORB      = not na(time(timeframe.period, nyOrbSession, "America/New_York"))
+inNyEntryWin = not na(time(timeframe.period, nyEntryWindow, "America/New_York"))
+inNyFlatWin  = not na(time(timeframe.period, nyFlatWindow, "America/New_York"))
+inNyHalfDayFlatWin = not na(time(timeframe.period, nyHalfDayFlatWindow, "America/New_York"))
+nyAfterCutoff = inNyRTH and not inNyEntryWin
+
+// ----------------------------------------------------------------------------------------
+// Session filters - Asia
+// ----------------------------------------------------------------------------------------
+inAsiaRTH      = not na(time(timeframe.period, asiaSessionRTH, "America/New_York"))
+inAsiaORB      = not na(time(timeframe.period, asiaOrbSession, "America/New_York"))
+inAsiaEntryWin = not na(time(timeframe.period, asiaEntryWindow, "America/New_York"))
+inAsiaFlatWin  = not na(time(timeframe.period, asiaFlatWindow, "America/New_York"))
+asiaAfterCutoff = inAsiaRTH and not inAsiaEntryWin
+
+// ----------------------------------------------------------------------------------------
+// Session filters - LDN
+// ----------------------------------------------------------------------------------------
+inLdnRTH      = not na(time(timeframe.period, ldnSessionRTH, "America/New_York"))
+inLdnORB      = not na(time(timeframe.period, ldnOrbSession, "America/New_York"))
+inLdnEntryWin = not na(time(timeframe.period, ldnEntryWindow, "America/New_York"))
+inLdnFlatWin  = not na(time(timeframe.period, ldnFlatWindow, "America/New_York"))
+ldnAfterCutoff = inLdnRTH and not inLdnEntryWin
+
+// new trading day
+newDay = ta.change(time("D")) != 0
+
+// ----------------------------------------------------------------------------------------
+// exclude specific problematic dates
+// ----------------------------------------------------------------------------------------
+currentMonth = month(time, "America/New_York")
+currentDay   = dayofmonth(time, "America/New_York")
+currentYear  = year(time, "America/New_York")
+isExcludedDate = currentYear == 2024 and currentMonth == 12 and currentDay == 18
+
+// Half-day detection (NY only)
+todayStr = str.format("{0,number,0000}{1,number,00}{2,number,00}", currentYear, currentMonth, currentDay)
+isNyHalfDay = todayStr == halfDay1 or todayStr == halfDay2 or todayStr == halfDay3 or todayStr == halfDay4 or (halfDay5 != "" and todayStr == halfDay5) or (halfDay6 != "" and todayStr == halfDay6)
+
+// ----------------------------------------------------------------------------------------
+// NY Session State Variables
+// ----------------------------------------------------------------------------------------
+var float ny_orbHigh  = na
+var float ny_orbLow   = na
+var bool  ny_orbReady = false
+var bool  ny_hasTradedToday = false
+var int   ny_closedTradesAtDayStart = 0
+
+var bool  ny_longSetupActive  = false
+var bool  ny_shortSetupActive = false
+var bool  ny_longFirstFvgFound  = false
+var bool  ny_shortFirstFvgFound = false
+
+var float ny_longStopStored   = na
+var float ny_longTargetStored = na
+var float ny_longHalfwayStored = na
+var float ny_longEntryStored  = na
+var float ny_longQtyStored    = na
+var float ny_longHalfQty      = na
+var bool  ny_longBEActive      = false
+var bool  ny_longSingleContract = false
+var float ny_longFilledEntry  = na
+
+var float ny_shortStopStored   = na
+var float ny_shortTargetStored = na
+var float ny_shortHalfwayStored = na
+var float ny_shortEntryStored  = na
+var float ny_shortQtyStored    = na
+var float ny_shortHalfQty      = na
+var bool  ny_shortBEActive      = false
+var bool  ny_shortSingleContract = false
+var float ny_shortFilledEntry = na
+
+var int ny_longSetupBar  = na
+var int ny_shortSetupBar = na
+
+var float ny_longFvgTopStored = na
+var float ny_longFvgBotStored = na
+var int   ny_longFvgStartBar  = na
+var string ny_longFvgText     = na
+var float ny_shortFvgTopStored = na
+var float ny_shortFvgBotStored = na
+var int   ny_shortFvgStartBar  = na
+var string ny_shortFvgText     = na
+
+// ----------------------------------------------------------------------------------------
+// Asia Session State Variables
+// ----------------------------------------------------------------------------------------
+var float asia_orbHigh  = na
+var float asia_orbLow   = na
+var bool  asia_orbReady = false
+var bool  asia_hasTradedToday = false
+var int   asia_closedTradesAtDayStart = 0
+
+var bool  asia_longSetupActive  = false
+var bool  asia_shortSetupActive = false
+var bool  asia_longFirstFvgFound  = false
+var bool  asia_shortFirstFvgFound = false
+
+var float asia_longStopStored   = na
+var float asia_longTargetStored = na
+var float asia_longHalfwayStored = na
+var float asia_longEntryStored  = na
+var float asia_longQtyStored    = na
+var float asia_longHalfQty      = na
+var bool  asia_longBEActive      = false
+var bool  asia_longSingleContract = false
+var float asia_longFilledEntry  = na
+
+var float asia_shortStopStored   = na
+var float asia_shortTargetStored = na
+var float asia_shortHalfwayStored = na
+var float asia_shortEntryStored  = na
+var float asia_shortQtyStored    = na
+var float asia_shortHalfQty      = na
+var bool  asia_shortBEActive      = false
+var bool  asia_shortSingleContract = false
+var float asia_shortFilledEntry = na
+
+var int asia_longSetupBar  = na
+var int asia_shortSetupBar = na
+
+var float asia_longFvgTopStored = na
+var float asia_longFvgBotStored = na
+var int   asia_longFvgStartBar  = na
+var string asia_longFvgText     = na
+var float asia_shortFvgTopStored = na
+var float asia_shortFvgBotStored = na
+var int   asia_shortFvgStartBar  = na
+var string asia_shortFvgText     = na
+
+// ----------------------------------------------------------------------------------------
+// LDN Session State Variables
+// ----------------------------------------------------------------------------------------
+var float ldn_orbHigh  = na
+var float ldn_orbLow   = na
+var bool  ldn_orbReady = false
+var bool  ldn_hasTradedToday = false
+var int   ldn_closedTradesAtDayStart = 0
+
+var bool  ldn_longSetupActive  = false
+var bool  ldn_shortSetupActive = false
+var bool  ldn_longFirstFvgFound  = false
+var bool  ldn_shortFirstFvgFound = false
+
+var float ldn_longStopStored   = na
+var float ldn_longTargetStored = na
+var float ldn_longHalfwayStored = na
+var float ldn_longEntryStored  = na
+var float ldn_longQtyStored    = na
+var float ldn_longHalfQty      = na
+var bool  ldn_longBEActive      = false
+var bool  ldn_longSingleContract = false
+var float ldn_longFilledEntry  = na
+
+var float ldn_shortStopStored   = na
+var float ldn_shortTargetStored = na
+var float ldn_shortHalfwayStored = na
+var float ldn_shortEntryStored  = na
+var float ldn_shortQtyStored    = na
+var float ldn_shortHalfQty      = na
+var bool  ldn_shortBEActive      = false
+var bool  ldn_shortSingleContract = false
+var float ldn_shortFilledEntry = na
+
+var int ldn_longSetupBar  = na
+var int ldn_shortSetupBar = na
+
+var float ldn_longFvgTopStored = na
+var float ldn_longFvgBotStored = na
+var int   ldn_longFvgStartBar  = na
+var string ldn_longFvgText     = na
+var float ldn_shortFvgTopStored = na
+var float ldn_shortFvgBotStored = na
+var int   ldn_shortFvgStartBar  = na
+var string ldn_shortFvgText     = na
+
+// ----------------------------------------------------------------------------------------
+// Trade Level Line/Label Refs
+// ----------------------------------------------------------------------------------------
+// NY
+var line ny_longEntryLine = na
+var line ny_longStopLine  = na
+var line ny_longTp1Line   = na
+var line ny_longTp2Line   = na
+var label ny_longStopLbl  = na
+var label ny_longTp1Lbl   = na
+var label ny_longTp2Lbl   = na
+
+var line ny_shortEntryLine = na
+var line ny_shortStopLine  = na
+var line ny_shortTp1Line   = na
+var line ny_shortTp2Line   = na
+var label ny_shortStopLbl  = na
+var label ny_shortTp1Lbl   = na
+var label ny_shortTp2Lbl   = na
+
+// Asia
+var line asia_longEntryLine = na
+var line asia_longStopLine  = na
+var line asia_longTp1Line   = na
+var line asia_longTp2Line   = na
+var label asia_longStopLbl  = na
+var label asia_longTp1Lbl   = na
+var label asia_longTp2Lbl   = na
+
+var line asia_shortEntryLine = na
+var line asia_shortStopLine  = na
+var line asia_shortTp1Line   = na
+var line asia_shortTp2Line   = na
+var label asia_shortStopLbl  = na
+var label asia_shortTp1Lbl   = na
+var label asia_shortTp2Lbl   = na
+
+// LDN
+var line ldn_longEntryLine = na
+var line ldn_longStopLine  = na
+var line ldn_longTp1Line   = na
+var line ldn_longTp2Line   = na
+var label ldn_longStopLbl  = na
+var label ldn_longTp1Lbl   = na
+var label ldn_longTp2Lbl   = na
+
+var line ldn_shortEntryLine = na
+var line ldn_shortStopLine  = na
+var line ldn_shortTp1Line   = na
+var line ldn_shortTp2Line   = na
+var label ldn_shortStopLbl  = na
+var label ldn_shortTp1Lbl   = na
+var label ldn_shortTp2Lbl   = na
+
+// Track which session owns current position
+var string activeSession = na
+
+// ----------------------------------------------------------------------------------------
+// Reset on new day
+// ----------------------------------------------------------------------------------------
+if newDay
+    // NY reset
+    ny_orbHigh := na
+    ny_orbLow  := na
+    ny_orbReady := false
+    ny_hasTradedToday := false
+    ny_closedTradesAtDayStart := strategy.closedtrades
+    ny_longSetupActive := false
+    ny_shortSetupActive := false
+    ny_longFirstFvgFound := false
+    ny_shortFirstFvgFound := false
+    ny_longStopStored := na
+    ny_longTargetStored := na
+    ny_longHalfwayStored := na
+    ny_longEntryStored := na
+    ny_longQtyStored := na
+    ny_longHalfQty := na
+    ny_longBEActive := false
+    ny_longSingleContract := false
+    ny_longFilledEntry := na
+    ny_shortStopStored := na
+    ny_shortTargetStored := na
+    ny_shortHalfwayStored := na
+    ny_shortEntryStored := na
+    ny_shortQtyStored := na
+    ny_shortHalfQty := na
+    ny_shortBEActive := false
+    ny_shortSingleContract := false
+    ny_shortFilledEntry := na
+    ny_longSetupBar := na
+    ny_shortSetupBar := na
+    ny_longFvgTopStored := na
+    ny_longFvgBotStored := na
+    ny_longFvgStartBar  := na
+    ny_longFvgText      := na
+    ny_shortFvgTopStored := na
+    ny_shortFvgBotStored := na
+    ny_shortFvgStartBar  := na
+    ny_shortFvgText      := na
+    ny_longEntryLine := na
+    ny_longStopLine  := na
+    ny_longTp1Line   := na
+    ny_longTp2Line   := na
+    ny_longStopLbl   := na
+    ny_longTp1Lbl    := na
+    ny_longTp2Lbl    := na
+    ny_shortEntryLine := na
+    ny_shortStopLine  := na
+    ny_shortTp1Line   := na
+    ny_shortTp2Line   := na
+    ny_shortStopLbl   := na
+    ny_shortTp1Lbl    := na
+    ny_shortTp2Lbl    := na
+
+    // Asia reset
+    asia_orbHigh := na
+    asia_orbLow  := na
+    asia_orbReady := false
+    asia_hasTradedToday := false
+    asia_closedTradesAtDayStart := strategy.closedtrades
+    asia_longSetupActive := false
+    asia_shortSetupActive := false
+    asia_longFirstFvgFound := false
+    asia_shortFirstFvgFound := false
+    asia_longStopStored := na
+    asia_longTargetStored := na
+    asia_longHalfwayStored := na
+    asia_longEntryStored := na
+    asia_longQtyStored := na
+    asia_longHalfQty := na
+    asia_longBEActive := false
+    asia_longSingleContract := false
+    asia_longFilledEntry := na
+    asia_shortStopStored := na
+    asia_shortTargetStored := na
+    asia_shortHalfwayStored := na
+    asia_shortEntryStored := na
+    asia_shortQtyStored := na
+    asia_shortHalfQty := na
+    asia_shortBEActive := false
+    asia_shortSingleContract := false
+    asia_shortFilledEntry := na
+    asia_longSetupBar := na
+    asia_shortSetupBar := na
+    asia_longFvgTopStored := na
+    asia_longFvgBotStored := na
+    asia_longFvgStartBar  := na
+    asia_longFvgText      := na
+    asia_shortFvgTopStored := na
+    asia_shortFvgBotStored := na
+    asia_shortFvgStartBar  := na
+    asia_shortFvgText      := na
+    asia_longEntryLine := na
+    asia_longStopLine  := na
+    asia_longTp1Line   := na
+    asia_longTp2Line   := na
+    asia_longStopLbl   := na
+    asia_longTp1Lbl    := na
+    asia_longTp2Lbl    := na
+    asia_shortEntryLine := na
+    asia_shortStopLine  := na
+    asia_shortTp1Line   := na
+    asia_shortTp2Line   := na
+    asia_shortStopLbl   := na
+    asia_shortTp1Lbl    := na
+    asia_shortTp2Lbl    := na
+
+    // LDN reset
+    ldn_orbHigh := na
+    ldn_orbLow  := na
+    ldn_orbReady := false
+    ldn_hasTradedToday := false
+    ldn_closedTradesAtDayStart := strategy.closedtrades
+    ldn_longSetupActive := false
+    ldn_shortSetupActive := false
+    ldn_longFirstFvgFound := false
+    ldn_shortFirstFvgFound := false
+    ldn_longStopStored := na
+    ldn_longTargetStored := na
+    ldn_longHalfwayStored := na
+    ldn_longEntryStored := na
+    ldn_longQtyStored := na
+    ldn_longHalfQty := na
+    ldn_longBEActive := false
+    ldn_longSingleContract := false
+    ldn_longFilledEntry := na
+    ldn_shortStopStored := na
+    ldn_shortTargetStored := na
+    ldn_shortHalfwayStored := na
+    ldn_shortEntryStored := na
+    ldn_shortQtyStored := na
+    ldn_shortHalfQty := na
+    ldn_shortBEActive := false
+    ldn_shortSingleContract := false
+    ldn_shortFilledEntry := na
+    ldn_longSetupBar := na
+    ldn_shortSetupBar := na
+    ldn_longFvgTopStored := na
+    ldn_longFvgBotStored := na
+    ldn_longFvgStartBar  := na
+    ldn_longFvgText      := na
+    ldn_shortFvgTopStored := na
+    ldn_shortFvgBotStored := na
+    ldn_shortFvgStartBar  := na
+    ldn_shortFvgText      := na
+    ldn_longEntryLine := na
+    ldn_longStopLine  := na
+    ldn_longTp1Line   := na
+    ldn_longTp2Line   := na
+    ldn_longStopLbl   := na
+    ldn_longTp1Lbl    := na
+    ldn_longTp2Lbl    := na
+    ldn_shortEntryLine := na
+    ldn_shortStopLine  := na
+    ldn_shortTp1Line   := na
+    ldn_shortTp2Line   := na
+    ldn_shortStopLbl   := na
+    ldn_shortTp1Lbl    := na
+    ldn_shortTp2Lbl    := na
+
+    activeSession := na
+
+    strategy.cancel("NL")
+    strategy.cancel("NS")
+    strategy.cancel("AL")
+    strategy.cancel("AS")
+    strategy.cancel("LL")
+    strategy.cancel("LS")
+
+// ----------------------------------------------------------------------------------------
+// Detect trade occurred for each session
+// ----------------------------------------------------------------------------------------
+nyTradeHappened = (strategy.opentrades > 0 and activeSession == "ny") or (strategy.closedtrades > ny_closedTradesAtDayStart and activeSession == "ny")
+
+if nyTradeHappened and not ny_hasTradedToday
+    ny_hasTradedToday := true
+    ny_longSetupActive := false
+    ny_shortSetupActive := false
+    ny_longFirstFvgFound := true
+    ny_shortFirstFvgFound := true
+    ny_longEntryStored := na
+    ny_shortEntryStored := na
+    strategy.cancel("NL")
+    strategy.cancel("NS")
+
+asiaTradeHappened = (strategy.opentrades > 0 and activeSession == "asia") or (strategy.closedtrades > asia_closedTradesAtDayStart and activeSession == "asia")
+
+if asiaTradeHappened and not asia_hasTradedToday
+    asia_hasTradedToday := true
+    asia_longSetupActive := false
+    asia_shortSetupActive := false
+    asia_longFirstFvgFound := true
+    asia_shortFirstFvgFound := true
+    asia_longEntryStored := na
+    asia_shortEntryStored := na
+    strategy.cancel("AL")
+    strategy.cancel("AS")
+
+ldnTradeHappened = (strategy.opentrades > 0 and activeSession == "ldn") or (strategy.closedtrades > ldn_closedTradesAtDayStart and activeSession == "ldn")
+
+if ldnTradeHappened and not ldn_hasTradedToday
+    ldn_hasTradedToday := true
+    ldn_longSetupActive := false
+    ldn_shortSetupActive := false
+    ldn_longFirstFvgFound := true
+    ldn_shortFirstFvgFound := true
+    ldn_longEntryStored := na
+    ldn_shortEntryStored := na
+    strategy.cancel("LL")
+    strategy.cancel("LS")
+
+// ----------------------------------------------------------------------------------------
+// Build ORB - NY (09:30-09:45)
+// ----------------------------------------------------------------------------------------
+if enableNY and inNyORB and inNyRTH and is5m
+    ny_orbHigh := na(ny_orbHigh) ? high : math.max(ny_orbHigh, high)
+    ny_orbLow  := na(ny_orbLow)  ? low  : math.min(ny_orbLow, low)
+
+if enableNY and not inNyORB and inNyRTH and is5m and not ny_orbReady and not na(ny_orbHigh) and not na(ny_orbLow)
+    ny_orbReady := true
+
+// ----------------------------------------------------------------------------------------
+// Build ORB - Asia (20:00-20:15)
+// ----------------------------------------------------------------------------------------
+if enableAsia and inAsiaORB and inAsiaRTH and is5m
+    asia_orbHigh := na(asia_orbHigh) ? high : math.max(asia_orbHigh, high)
+    asia_orbLow  := na(asia_orbLow)  ? low  : math.min(asia_orbLow, low)
+
+if enableAsia and not inAsiaORB and inAsiaRTH and is5m and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
+    asia_orbReady := true
+
+// ----------------------------------------------------------------------------------------
+// Build ORB - LDN (03:00-03:15)
+// ----------------------------------------------------------------------------------------
+if enableLDN and inLdnORB and inLdnRTH and is5m
+    ldn_orbHigh := na(ldn_orbHigh) ? high : math.max(ldn_orbHigh, high)
+    ldn_orbLow  := na(ldn_orbLow)  ? low  : math.min(ldn_orbLow, low)
+
+if enableLDN and not inLdnORB and inLdnRTH and is5m and not ldn_orbReady and not na(ldn_orbHigh) and not na(ldn_orbLow)
+    ldn_orbReady := true
+
+// BE offset calculation
+beOffset = beOffsetTicks * syminfo.mintick
+
+// ----------------------------------------------------------------------------------------
+// qty rounding helpers
+// ----------------------------------------------------------------------------------------
+floorToStep(x, step) =>
+    step <= 0 ? x : math.floor(x / step) * step
+
+// ----------------------------------------------------------------------------------------
+// Daily ATR + Globex/NY Open
+// ----------------------------------------------------------------------------------------
+dailyATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength)[1], lookahead=barmerge.lookahead_on)
+extTicker  = ticker.new(syminfo.prefix, syminfo.ticker, session.extended)
+globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead_on)
+
+// ----------------------------------------------------------------------------------------
+// FVG size requirements (uses dailyATR)
+// ----------------------------------------------------------------------------------------
+nyMinGap = (nyMinGapAtrPct / 100) * nz(dailyATR)
+asiaMinGap = (asiaMinGapAtrPct / 100) * nz(dailyATR)
+nyMaxGap = nyMaxGapPoints > 0 ? nyMaxGapPoints : float(na)
+asiaMaxGap = asiaMaxGapPoints > 0 ? asiaMaxGapPoints : float(na)
+ldnMinGap = (ldnMinGapAtrPct / 100) * nz(dailyATR)
+ldnMaxGap = ldnMaxGapPoints > 0 ? ldnMaxGapPoints : float(na)
+
+// ----------------------------------------------------------------------------------------
+// FVG detection (shared calculation, session-specific validation)
+// ----------------------------------------------------------------------------------------
+longFvgTop    = low
+longFvgBottom = high[2]
+shortFvgTop   = low[2]
+shortFvgBottom = high
+longGapSize  = longFvgTop - longFvgBottom
+shortGapSize = shortFvgTop - shortFvgBottom
+
+// NY FVG validation
+nyLongGapValid  = longGapSize >= nyMinGap and (na(nyMaxGap) or longGapSize <= nyMaxGap)
+nyShortGapValid = shortGapSize >= nyMinGap and (na(nyMaxGap) or shortGapSize <= nyMaxGap)
+nyLongFVG  = high[2] < low and high[2] < high[1] and low[2] < low and longFvgTop > ny_orbHigh and nyLongGapValid
+nyShortFVG = low[2] > high and low[2] > low[1] and high[2] > high and shortFvgBottom < ny_orbLow and nyShortGapValid
+
+// Asia FVG validation
+asiaLongGapValid  = longGapSize >= asiaMinGap and (na(asiaMaxGap) or longGapSize <= asiaMaxGap)
+asiaShortGapValid = shortGapSize >= asiaMinGap and (na(asiaMaxGap) or shortGapSize <= asiaMaxGap)
+asiaLongFVG  = high[2] < low and high[2] < high[1] and low[2] < low and longFvgTop > asia_orbHigh and asiaLongGapValid
+asiaShortFVG = low[2] > high and low[2] > low[1] and high[2] > high and shortFvgBottom < asia_orbLow and asiaShortGapValid
+
+// LDN FVG validation
+ldnLongGapValid  = longGapSize >= ldnMinGap and (na(ldnMaxGap) or longGapSize <= ldnMaxGap)
+ldnShortGapValid = shortGapSize >= ldnMinGap and (na(ldnMaxGap) or shortGapSize <= ldnMaxGap)
+ldnLongFVG  = high[2] < low and high[2] < high[1] and low[2] < low and longFvgTop > ldn_orbHigh and ldnLongGapValid
+ldnShortFVG = low[2] > high and low[2] > low[1] and high[2] > high and shortFvgBottom < ldn_orbLow and ldnShortGapValid
+
+// ----------------------------------------------------------------------------------------
+// Activate setup - NY Session (REVERSAL: bullish FVG → short, bearish FVG → long)
+// ----------------------------------------------------------------------------------------
+nyCanArmSetup = enableNY and is5m and barClosed and inNyRTH and inNyEntryWin and ny_orbReady and not ny_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ny_longSetupActive or ny_shortSetupActive)
+
+// Bullish FVG detected → SHORT entry (reversal: fade the breakout)
+// Entry at top of bullish FVG (low) — wait for price to retrace up into gap
+if nyCanArmSetup and not ny_shortFirstFvgFound and nyLongFVG
+    entry   = longFvgTop
+    stop    = entry + (nyStopAtrPct / 100) * nz(dailyATR)
+    riskPts = stop - entry
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            ny_shortStopStored   := stop
+            ny_shortTargetStored := entry - rr * riskPts
+            ny_shortHalfwayStored := entry - (rr * riskPts * tp1Ratio)
+            ny_shortEntryStored  := entry
+            ny_shortQtyStored    := qty
+            ny_shortHalfQty      := halfQty
+            ny_shortSingleContract := isSingleContract
+            ny_shortSetupActive  := true
+            ny_shortFirstFvgFound := true
+            ny_shortSetupBar     := bar_index
+            ny_shortFvgTopStored := longFvgTop
+            ny_shortFvgBotStored := longFvgBottom
+            ny_shortFvgStartBar  := bar_index - 2
+            fvgPts = longGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            ny_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ny_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ny_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ny_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ny_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ny_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ny_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ny_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// Bearish FVG detected → LONG entry (reversal: fade the breakdown)
+// Entry at bottom of bearish FVG (high) — wait for price to retrace down into gap
+if nyCanArmSetup and not ny_longFirstFvgFound and nyShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (nyStopAtrPct / 100) * nz(dailyATR)
+    riskPts = entry - stop
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            ny_longStopStored   := stop
+            ny_longTargetStored := entry + rr * riskPts
+            ny_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            ny_longEntryStored  := entry
+            ny_longQtyStored    := qty
+            ny_longHalfQty      := halfQty
+            ny_longSingleContract := isSingleContract
+            ny_longSetupActive  := true
+            ny_longFirstFvgFound := true
+            ny_longSetupBar     := bar_index
+            ny_longFvgTopStored := shortFvgTop
+            ny_longFvgBotStored := shortFvgBottom
+            ny_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ny_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ny_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ny_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ny_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ny_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ny_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ny_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// ----------------------------------------------------------------------------------------
+// Activate setup - Asia Session (REVERSAL: bullish FVG → short, bearish FVG → long)
+// ----------------------------------------------------------------------------------------
+asiaCanArmSetup = enableAsia and is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (asia_longSetupActive or asia_shortSetupActive)
+
+// Bullish FVG detected → SHORT entry (reversal)
+// Entry at top of bullish FVG (low) — wait for price to retrace up into gap
+if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaLongFVG
+    entry   = longFvgTop
+    stop    = entry + (asiaStopAtrPct / 100) * nz(dailyATR)
+    riskPts = stop - entry
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            asia_shortStopStored   := stop
+            asia_shortTargetStored := entry - rr * riskPts
+            asia_shortHalfwayStored := entry - (rr * riskPts * tp1Ratio)
+            asia_shortEntryStored  := entry
+            asia_shortQtyStored    := qty
+            asia_shortHalfQty      := halfQty
+            asia_shortSingleContract := isSingleContract
+            asia_shortSetupActive  := true
+            asia_shortFirstFvgFound := true
+            asia_shortSetupBar     := bar_index
+            asia_shortFvgTopStored := longFvgTop
+            asia_shortFvgBotStored := longFvgBottom
+            asia_shortFvgStartBar  := bar_index - 2
+            fvgPts = longGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            asia_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            asia_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            asia_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            asia_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            asia_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            asia_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            asia_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            asia_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// Bearish FVG detected → LONG entry (reversal)
+// Entry at bottom of bearish FVG (high) — wait for price to retrace down into gap
+if asiaCanArmSetup and not asia_longFirstFvgFound and asiaShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (asiaStopAtrPct / 100) * nz(dailyATR)
+    riskPts = entry - stop
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            asia_longStopStored   := stop
+            asia_longTargetStored := entry + rr * riskPts
+            asia_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            asia_longEntryStored  := entry
+            asia_longQtyStored    := qty
+            asia_longHalfQty      := halfQty
+            asia_longSingleContract := isSingleContract
+            asia_longSetupActive  := true
+            asia_longFirstFvgFound := true
+            asia_longSetupBar     := bar_index
+            asia_longFvgTopStored := shortFvgTop
+            asia_longFvgBotStored := shortFvgBottom
+            asia_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            asia_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            asia_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            asia_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            asia_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            asia_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            asia_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            asia_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// ----------------------------------------------------------------------------------------
+// Activate setup - LDN Session (REVERSAL: bullish FVG → short, bearish FVG → long)
+// ----------------------------------------------------------------------------------------
+ldnCanArmSetup = enableLDN and is5m and barClosed and inLdnRTH and inLdnEntryWin and ldn_orbReady and not ldn_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ldn_longSetupActive or ldn_shortSetupActive)
+
+// Bullish FVG detected → SHORT entry (reversal)
+// Entry at top of bullish FVG (low) — wait for price to retrace up into gap
+if ldnCanArmSetup and not ldn_shortFirstFvgFound and ldnLongFVG
+    entry   = longFvgTop
+    stop    = entry + (ldnStopAtrPct / 100) * nz(dailyATR)
+    riskPts = stop - entry
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            ldn_shortStopStored   := stop
+            ldn_shortTargetStored := entry - rr * riskPts
+            ldn_shortHalfwayStored := entry - (rr * riskPts * tp1Ratio)
+            ldn_shortEntryStored  := entry
+            ldn_shortQtyStored    := qty
+            ldn_shortHalfQty      := halfQty
+            ldn_shortSingleContract := isSingleContract
+            ldn_shortSetupActive  := true
+            ldn_shortFirstFvgFound := true
+            ldn_shortSetupBar     := bar_index
+            ldn_shortFvgTopStored := longFvgTop
+            ldn_shortFvgBotStored := longFvgBottom
+            ldn_shortFvgStartBar  := bar_index - 2
+            fvgPts = longGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            ldn_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ldn_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ldn_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ldn_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ldn_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ldn_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ldn_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ldn_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// Bearish FVG detected → LONG entry (reversal)
+// Entry at bottom of bearish FVG (high) — wait for price to retrace down into gap
+if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (ldnStopAtrPct / 100) * nz(dailyATR)
+    riskPts = entry - stop
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            ldn_longStopStored   := stop
+            ldn_longTargetStored := entry + rr * riskPts
+            ldn_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            ldn_longEntryStored  := entry
+            ldn_longQtyStored    := qty
+            ldn_longHalfQty      := halfQty
+            ldn_longSingleContract := isSingleContract
+            ldn_longSetupActive  := true
+            ldn_longFirstFvgFound := true
+            ldn_longSetupBar     := bar_index
+            ldn_longFvgTopStored := shortFvgTop
+            ldn_longFvgBotStored := shortFvgBottom
+            ldn_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            ldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ldn_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ldn_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ldn_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ldn_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ldn_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ldn_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ldn_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// ----------------------------------------------------------------------------------------
+// Track actual entry fill price and active session
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and na(ny_longFilledEntry) and ny_longSetupActive
+    ny_longFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "ny"
+if strategy.position_size < 0 and na(ny_shortFilledEntry) and ny_shortSetupActive
+    ny_shortFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "ny"
+if strategy.position_size > 0 and na(asia_longFilledEntry) and asia_longSetupActive
+    asia_longFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "asia"
+if strategy.position_size < 0 and na(asia_shortFilledEntry) and asia_shortSetupActive
+    asia_shortFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "asia"
+if strategy.position_size > 0 and na(ldn_longFilledEntry) and ldn_longSetupActive
+    ldn_longFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "ldn"
+if strategy.position_size < 0 and na(ldn_shortFilledEntry) and ldn_shortSetupActive
+    ldn_shortFilledEntry := strategy.opentrades.entry_price(0)
+    activeSession := "ldn"
+
+// Reset active session when flat
+if strategy.position_size == 0
+    activeSession := na
+
+// ----------------------------------------------------------------------------------------
+// Update breakeven state - NY
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "ny"
+    if ny_longSingleContract
+        if not na(ny_longHalfwayStored) and high >= ny_longHalfwayStored
+            ny_longBEActive := true
+    else
+        positionReduced = strategy.position_size < ny_longQtyStored and ny_longQtyStored > 0 and not na(ny_longFilledEntry)
+        if positionReduced
+            ny_longBEActive := true
+
+if strategy.position_size < 0 and activeSession == "ny"
+    if ny_shortSingleContract
+        if not na(ny_shortHalfwayStored) and low <= ny_shortHalfwayStored
+            ny_shortBEActive := true
+    else
+        positionReduced = math.abs(strategy.position_size) < ny_shortQtyStored and ny_shortQtyStored > 0 and not na(ny_shortFilledEntry)
+        if positionReduced
+            ny_shortBEActive := true
+
+// ----------------------------------------------------------------------------------------
+// Update breakeven state - Asia
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "asia"
+    if asia_longSingleContract
+        if not na(asia_longHalfwayStored) and high >= asia_longHalfwayStored
+            asia_longBEActive := true
+    else
+        positionReduced = strategy.position_size < asia_longQtyStored and asia_longQtyStored > 0 and not na(asia_longFilledEntry)
+        if positionReduced
+            asia_longBEActive := true
+
+if strategy.position_size < 0 and activeSession == "asia"
+    if asia_shortSingleContract
+        if not na(asia_shortHalfwayStored) and low <= asia_shortHalfwayStored
+            asia_shortBEActive := true
+    else
+        positionReduced = math.abs(strategy.position_size) < asia_shortQtyStored and asia_shortQtyStored > 0 and not na(asia_shortFilledEntry)
+        if positionReduced
+            asia_shortBEActive := true
+
+// ----------------------------------------------------------------------------------------
+// Update breakeven state - LDN
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "ldn"
+    if ldn_longSingleContract
+        if not na(ldn_longHalfwayStored) and high >= ldn_longHalfwayStored
+            ldn_longBEActive := true
+    else
+        positionReduced = strategy.position_size < ldn_longQtyStored and ldn_longQtyStored > 0 and not na(ldn_longFilledEntry)
+        if positionReduced
+            ldn_longBEActive := true
+
+if strategy.position_size < 0 and activeSession == "ldn"
+    if ldn_shortSingleContract
+        if not na(ldn_shortHalfwayStored) and low <= ldn_shortHalfwayStored
+            ldn_shortBEActive := true
+    else
+        positionReduced = math.abs(strategy.position_size) < ldn_shortQtyStored and ldn_shortQtyStored > 0 and not na(ldn_shortFilledEntry)
+        if positionReduced
+            ldn_shortBEActive := true
+
+// ----------------------------------------------------------------------------------------
+// Entry orders - NY
+// ----------------------------------------------------------------------------------------
+if enableNY and is5m and inNyRTH and inNyEntryWin and not ny_hasTradedToday and strategy.position_size == 0
+    if ny_longSetupActive and bar_index > ny_longSetupBar + 2
+        strategy.entry("NL", strategy.long, qty=ny_longQtyStored, stop=ny_longEntryStored)
+    if ny_shortSetupActive and bar_index > ny_shortSetupBar + 2
+        strategy.entry("NS", strategy.short, qty=ny_shortQtyStored, stop=ny_shortEntryStored)
+
+// ----------------------------------------------------------------------------------------
+// Entry orders - Asia
+// ----------------------------------------------------------------------------------------
+if enableAsia and is5m and inAsiaRTH and inAsiaEntryWin and not asia_hasTradedToday and strategy.position_size == 0
+    if asia_longSetupActive and bar_index > asia_longSetupBar + 2
+        strategy.entry("AL", strategy.long, qty=asia_longQtyStored, stop=asia_longEntryStored)
+    if asia_shortSetupActive and bar_index > asia_shortSetupBar + 2
+        strategy.entry("AS", strategy.short, qty=asia_shortQtyStored, stop=asia_shortEntryStored)
+
+// ----------------------------------------------------------------------------------------
+// Entry orders - LDN
+// ----------------------------------------------------------------------------------------
+if enableLDN and is5m and inLdnRTH and inLdnEntryWin and not ldn_hasTradedToday and strategy.position_size == 0
+    if ldn_longSetupActive and bar_index > ldn_longSetupBar + 2
+        strategy.entry("LL", strategy.long, qty=ldn_longQtyStored, stop=ldn_longEntryStored)
+    if ldn_shortSetupActive and bar_index > ldn_shortSetupBar + 2
+        strategy.entry("LS", strategy.short, qty=ldn_shortQtyStored, stop=ldn_shortEntryStored)
+
+// ----------------------------------------------------------------------------------------
+// Exit orders - NY
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "ny"
+    beStopPrice = (not na(ny_longFilledEntry) ? ny_longFilledEntry : ny_longEntryStored) + beOffset
+    finalStop = ny_longBEActive ? beStopPrice : ny_longStopStored
+
+    if ny_longSingleContract
+        strategy.exit("NL-F", from_entry="NL", stop=finalStop, limit=ny_longTargetStored, comment_loss=ny_longBEActive ? "n-l-be" : "n-l-sl", comment_profit="n-l-tp2")
+    else
+        strategy.exit("NL-P", from_entry="NL", qty=ny_longHalfQty, stop=finalStop, limit=ny_longHalfwayStored, comment_loss=ny_longBEActive ? "n-l-be" : "n-l-sl", comment_profit="n-l-tp1")
+        strategy.exit("NL-F", from_entry="NL", stop=finalStop, limit=ny_longTargetStored, comment_loss=ny_longBEActive ? "n-l-be" : "n-l-sl", comment_profit="n-l-tp2")
+
+if strategy.position_size < 0 and activeSession == "ny"
+    beStopPrice = (not na(ny_shortFilledEntry) ? ny_shortFilledEntry : ny_shortEntryStored) - beOffset
+    finalStop = ny_shortBEActive ? beStopPrice : ny_shortStopStored
+
+    if ny_shortSingleContract
+        strategy.exit("NS-F", from_entry="NS", stop=finalStop, limit=ny_shortTargetStored, comment_loss=ny_shortBEActive ? "n-s-be" : "n-s-sl", comment_profit="n-s-tp2")
+    else
+        strategy.exit("NS-P", from_entry="NS", qty=ny_shortHalfQty, stop=finalStop, limit=ny_shortHalfwayStored, comment_loss=ny_shortBEActive ? "n-s-be" : "n-s-sl", comment_profit="n-s-tp1")
+        strategy.exit("NS-F", from_entry="NS", stop=finalStop, limit=ny_shortTargetStored, comment_loss=ny_shortBEActive ? "n-s-be" : "n-s-sl", comment_profit="n-s-tp2")
+
+// ----------------------------------------------------------------------------------------
+// Exit orders - Asia
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "asia"
+    beStopPrice = (not na(asia_longFilledEntry) ? asia_longFilledEntry : asia_longEntryStored) + beOffset
+    finalStop = asia_longBEActive ? beStopPrice : asia_longStopStored
+
+    if asia_longSingleContract
+        strategy.exit("AL-F", from_entry="AL", stop=finalStop, limit=asia_longTargetStored, comment_loss=asia_longBEActive ? "a-l-be" : "a-l-sl", comment_profit="a-l-tp2")
+    else
+        strategy.exit("AL-P", from_entry="AL", qty=asia_longHalfQty, stop=finalStop, limit=asia_longHalfwayStored, comment_loss=asia_longBEActive ? "a-l-be" : "a-l-sl", comment_profit="a-l-tp1")
+        strategy.exit("AL-F", from_entry="AL", stop=finalStop, limit=asia_longTargetStored, comment_loss=asia_longBEActive ? "a-l-be" : "a-l-sl", comment_profit="a-l-tp2")
+
+if strategy.position_size < 0 and activeSession == "asia"
+    beStopPrice = (not na(asia_shortFilledEntry) ? asia_shortFilledEntry : asia_shortEntryStored) - beOffset
+    finalStop = asia_shortBEActive ? beStopPrice : asia_shortStopStored
+
+    if asia_shortSingleContract
+        strategy.exit("AS-F", from_entry="AS", stop=finalStop, limit=asia_shortTargetStored, comment_loss=asia_shortBEActive ? "a-s-be" : "a-s-sl", comment_profit="a-s-tp2")
+    else
+        strategy.exit("AS-P", from_entry="AS", qty=asia_shortHalfQty, stop=finalStop, limit=asia_shortHalfwayStored, comment_loss=asia_shortBEActive ? "a-s-be" : "a-s-sl", comment_profit="a-s-tp1")
+        strategy.exit("AS-F", from_entry="AS", stop=finalStop, limit=asia_shortTargetStored, comment_loss=asia_shortBEActive ? "a-s-be" : "a-s-sl", comment_profit="a-s-tp2")
+
+// ----------------------------------------------------------------------------------------
+// Exit orders - LDN
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and activeSession == "ldn"
+    beStopPrice = (not na(ldn_longFilledEntry) ? ldn_longFilledEntry : ldn_longEntryStored) + beOffset
+    finalStop = ldn_longBEActive ? beStopPrice : ldn_longStopStored
+
+    if ldn_longSingleContract
+        strategy.exit("LL-F", from_entry="LL", stop=finalStop, limit=ldn_longTargetStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp2")
+    else
+        strategy.exit("LL-P", from_entry="LL", qty=ldn_longHalfQty, stop=finalStop, limit=ldn_longHalfwayStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp1")
+        strategy.exit("LL-F", from_entry="LL", stop=finalStop, limit=ldn_longTargetStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp2")
+
+if strategy.position_size < 0 and activeSession == "ldn"
+    beStopPrice = (not na(ldn_shortFilledEntry) ? ldn_shortFilledEntry : ldn_shortEntryStored) - beOffset
+    finalStop = ldn_shortBEActive ? beStopPrice : ldn_shortStopStored
+
+    if ldn_shortSingleContract
+        strategy.exit("LS-F", from_entry="LS", stop=finalStop, limit=ldn_shortTargetStored, comment_loss=ldn_shortBEActive ? "l-s-be" : "l-s-sl", comment_profit="l-s-tp2")
+    else
+        strategy.exit("LS-P", from_entry="LS", qty=ldn_shortHalfQty, stop=finalStop, limit=ldn_shortHalfwayStored, comment_loss=ldn_shortBEActive ? "l-s-be" : "l-s-sl", comment_profit="l-s-tp1")
+        strategy.exit("LS-F", from_entry="LS", stop=finalStop, limit=ldn_shortTargetStored, comment_loss=ldn_shortBEActive ? "l-s-be" : "l-s-sl", comment_profit="l-s-tp2")
+
+// ----------------------------------------------------------------------------------------
+// Cancel pending orders after cutoff - NY
+// ----------------------------------------------------------------------------------------
+if nyAfterCutoff
+    strategy.cancel("NL")
+    strategy.cancel("NS")
+    ny_longSetupActive := false
+    ny_shortSetupActive := false
+    ny_longEntryStored := na
+    ny_shortEntryStored := na
+    ny_longSetupBar := na
+    ny_shortSetupBar := na
+
+if not inNyRTH
+    strategy.cancel("NL")
+    strategy.cancel("NS")
+    ny_longSetupActive := false
+    ny_shortSetupActive := false
+    ny_longEntryStored := na
+    ny_shortEntryStored := na
+    ny_longSetupBar := na
+    ny_shortSetupBar := na
+
+// ----------------------------------------------------------------------------------------
+// Cancel pending orders after cutoff - Asia
+// ----------------------------------------------------------------------------------------
+if asiaAfterCutoff
+    strategy.cancel("AL")
+    strategy.cancel("AS")
+    asia_longSetupActive := false
+    asia_shortSetupActive := false
+    asia_longEntryStored := na
+    asia_shortEntryStored := na
+    asia_longSetupBar := na
+    asia_shortSetupBar := na
+
+if not inAsiaRTH
+    strategy.cancel("AL")
+    strategy.cancel("AS")
+    asia_longSetupActive := false
+    asia_shortSetupActive := false
+    asia_longEntryStored := na
+    asia_shortEntryStored := na
+    asia_longSetupBar := na
+    asia_shortSetupBar := na
+
+// ----------------------------------------------------------------------------------------
+// Cancel pending orders after cutoff - LDN
+// ----------------------------------------------------------------------------------------
+if ldnAfterCutoff
+    strategy.cancel("LL")
+    strategy.cancel("LS")
+    ldn_longSetupActive := false
+    ldn_shortSetupActive := false
+    ldn_longEntryStored := na
+    ldn_shortEntryStored := na
+    ldn_longSetupBar := na
+    ldn_shortSetupBar := na
+
+if not inLdnRTH
+    strategy.cancel("LL")
+    strategy.cancel("LS")
+    ldn_longSetupActive := false
+    ldn_shortSetupActive := false
+    ldn_longEntryStored := na
+    ldn_shortEntryStored := na
+    ldn_longSetupBar := na
+    ldn_shortSetupBar := na
+
+// ----------------------------------------------------------------------------------------
+// Flat at end of session
+// ----------------------------------------------------------------------------------------
+// NY flat (with half-day support)
+nyFlatNow = isNyHalfDay ? inNyHalfDayFlatWin : inNyFlatWin
+if nyFlatNow and strategy.position_size != 0 and activeSession == "ny"
+    if strategy.position_size > 0
+        strategy.close("NL", comment="ny-eod-flat")
+    if strategy.position_size < 0
+        strategy.close("NS", comment="ny-eod-flat")
+
+// Asia flat
+if inAsiaFlatWin and strategy.position_size != 0 and activeSession == "asia"
+    if strategy.position_size > 0
+        strategy.close("AL", comment="asia-eod-flat")
+    if strategy.position_size < 0
+        strategy.close("AS", comment="asia-eod-flat")
+
+// LDN flat
+if inLdnFlatWin and strategy.position_size != 0 and activeSession == "ldn"
+    if strategy.position_size > 0
+        strategy.close("LL", comment="ldn-eod-flat")
+    if strategy.position_size < 0
+        strategy.close("LS", comment="ldn-eod-flat")
+
+// ----------------------------------------------------------------------------------------
+// Extend Trade Level Lines + Labels
+// ----------------------------------------------------------------------------------------
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
+    line.set_x2(ny_longEntryLine, bar_index)
+    line.set_x2(ny_longStopLine, bar_index)
+    line.set_x2(ny_longTp1Line, bar_index)
+    line.set_x2(ny_longTp2Line, bar_index)
+    label.set_x(ny_longStopLbl, bar_index)
+    label.set_x(ny_longTp1Lbl, bar_index)
+    label.set_x(ny_longTp2Lbl, bar_index)
+
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
+    line.set_x2(ny_shortEntryLine, bar_index)
+    line.set_x2(ny_shortStopLine, bar_index)
+    line.set_x2(ny_shortTp1Line, bar_index)
+    line.set_x2(ny_shortTp2Line, bar_index)
+    label.set_x(ny_shortStopLbl, bar_index)
+    label.set_x(ny_shortTp1Lbl, bar_index)
+    label.set_x(ny_shortTp2Lbl, bar_index)
+
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
+    line.set_x2(asia_longEntryLine, bar_index)
+    line.set_x2(asia_longStopLine, bar_index)
+    line.set_x2(asia_longTp1Line, bar_index)
+    line.set_x2(asia_longTp2Line, bar_index)
+    label.set_x(asia_longStopLbl, bar_index)
+    label.set_x(asia_longTp1Lbl, bar_index)
+    label.set_x(asia_longTp2Lbl, bar_index)
+
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
+    line.set_x2(asia_shortEntryLine, bar_index)
+    line.set_x2(asia_shortStopLine, bar_index)
+    line.set_x2(asia_shortTp1Line, bar_index)
+    line.set_x2(asia_shortTp2Line, bar_index)
+    label.set_x(asia_shortStopLbl, bar_index)
+    label.set_x(asia_shortTp1Lbl, bar_index)
+    label.set_x(asia_shortTp2Lbl, bar_index)
+
+if enableLDN and inLdnRTH and inLdnEntryWin and not na(ldn_longEntryLine)
+    line.set_x2(ldn_longEntryLine, bar_index)
+    line.set_x2(ldn_longStopLine, bar_index)
+    line.set_x2(ldn_longTp1Line, bar_index)
+    line.set_x2(ldn_longTp2Line, bar_index)
+    label.set_x(ldn_longStopLbl, bar_index)
+    label.set_x(ldn_longTp1Lbl, bar_index)
+    label.set_x(ldn_longTp2Lbl, bar_index)
+
+if enableLDN and inLdnRTH and inLdnEntryWin and not na(ldn_shortEntryLine)
+    line.set_x2(ldn_shortEntryLine, bar_index)
+    line.set_x2(ldn_shortStopLine, bar_index)
+    line.set_x2(ldn_shortTp1Line, bar_index)
+    line.set_x2(ldn_shortTp2Line, bar_index)
+    label.set_x(ldn_shortStopLbl, bar_index)
+    label.set_x(ldn_shortTp1Lbl, bar_index)
+    label.set_x(ldn_shortTp2Lbl, bar_index)
+
+// ----------------------------------------------------------------------------------------
+// ATR Distance Display
+// ----------------------------------------------------------------------------------------
+globexDist = close - globexOpen
+globexPct = dailyATR > 0 ? (globexDist / dailyATR) * 100 : 0.0
+globexSign  = globexDist >= 0 ? "+" : ""
+globexColor = globexDist >= 0 ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
+
+var table atrTable = table.new(position.top_right, 1, 2, bgcolor=color.new(#1e222d, 10), border_width=1, border_color=color.new(#363a45, 0))
+if barstate.islast
+    table.cell(atrTable, 0, 0, "ATR(" + str.tostring(atrLength) + "): " + str.tostring(dailyATR, format.mintick), text_color=color.white, text_size=size.small)
+    table.cell(atrTable, 0, 1, "GlobEx: " + globexSign + str.tostring(globexDist, format.mintick) + " (" + globexSign + str.tostring(globexPct, "#.0") + "% ATR)", text_color=globexColor, text_size=size.small)
+
+// ----------------------------------------------------------------------------------------
+// Visuals - ORB Lines
+// ----------------------------------------------------------------------------------------
+// NY ORB lines (green)
+plotNyORB = enableNY and inNyRTH and inNyEntryWin
+plot(plotNyORB ? ny_orbHigh : na, "NY ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#18b79c, 0))
+plot(plotNyORB ? ny_orbLow  : na, "NY ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#94E3DA, 0))
+
+// Asia ORB lines (blue)
+plotAsiaORB = enableAsia and inAsiaRTH and inAsiaEntryWin
+plot(plotAsiaORB ? asia_orbHigh : na, "Asia ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#2196F3, 0))
+plot(plotAsiaORB ? asia_orbLow  : na, "Asia ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#A5DFFA, 0))
+
+// LDN ORB lines (orange)
+plotLdnORB = enableLDN and inLdnRTH and inLdnEntryWin
+plot(plotLdnORB ? ldn_orbHigh : na, "LDN ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#FF9800, 0))
+plot(plotLdnORB ? ldn_orbLow  : na, "LDN ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#FFD54F, 0))

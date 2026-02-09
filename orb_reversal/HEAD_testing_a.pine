@@ -1,6 +1,6 @@
 //@version=6
 strategy(
-     title              = "ORB V5 A",
+     title              = "ORB V5 Reversal A",
      overlay            = true,
      initial_capital    = 50000,
      pyramiding         = 0,
@@ -13,13 +13,14 @@ strategy(
      use_bar_magnifier  = true,
      fill_orders_on_standard_ohlc = false,
      max_boxes_count    = 500,
-     max_labels_count   = 500
+     max_labels_count   = 500,
+     max_lines_count    = 500
 )
 
 // ----------------------------------------------------------------------------------------
 // Inputs - Session Mode
 // ----------------------------------------------------------------------------------------
-sessionMode  = input.string("Both", "Session Mode", options=["NY", "Asia", "LDN", "Both", "All"])
+sessionMode  = input.string("NY", "Session Mode", options=["NY", "Asia", "LDN", "Both", "All"])
 enableNY     = sessionMode == "NY" or sessionMode == "Both" or sessionMode == "All"
 enableAsia   = sessionMode == "Asia" or sessionMode == "Both" or sessionMode == "All"
 enableLDN    = sessionMode == "LDN" or sessionMode == "All"
@@ -38,6 +39,18 @@ beOffsetTicks = input.int(4, "BE Offset (ticks)", step=1, tooltip="Ticks above e
 // Inputs - Daily ATR (shared)
 // ----------------------------------------------------------------------------------------
 atrLength    = input.int(14, "ATR Length", minval=1, group="Daily ATR")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Trade Level Lines
+// ----------------------------------------------------------------------------------------
+entryColor = input.color(#787b86, "Entry Color", inline="entry", group="Trade Levels")
+entryStyle = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="entry", group="Trade Levels")
+slColor    = input.color(#787b86, "SL Color", inline="sl", group="Trade Levels")
+slStyle    = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="sl", group="Trade Levels")
+tp1Color   = input.color(#787b86, "TP1 Color", inline="tp1", group="Trade Levels")
+tp1Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="tp1", group="Trade Levels")
+tp2Color   = input.color(#787b86, "TP2 Color", inline="tp2", group="Trade Levels")
+tp2Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="tp2", group="Trade Levels")
 
 
 // ----------------------------------------------------------------------------------------
@@ -85,6 +98,16 @@ halfDay3 = input.string("20251224", "Half-Day 3 (YYYYMMDD)", tooltip="Christmas 
 halfDay4 = input.string("20250109", "Half-Day 4 (YYYYMMDD)", tooltip="National Day of Mourning (one-off)", group="NY Half-Day")
 halfDay5 = input.string("20260119", "Half-Day 5 (YYYYMMDD)", tooltip="MLK Day 2026", group="NY Half-Day")
 halfDay6 = input.string("", "Half-Day 6 (YYYYMMDD)", tooltip="Leave blank if unused", group="NY Half-Day")
+
+// ----------------------------------------------------------------------------------------
+// Line Style Lookup
+// ----------------------------------------------------------------------------------------
+styleToLine(s) =>
+    s == "Solid" ? line.style_solid : s == "Dotted" ? line.style_dotted : line.style_dashed
+entryLineStyle = styleToLine(entryStyle)
+slLineStyle    = styleToLine(slStyle)
+tp1LineStyle   = styleToLine(tp1Style)
+tp2LineStyle   = styleToLine(tp2Style)
 
 // ----------------------------------------------------------------------------------------
 // Safety: intended for 5m charts
@@ -273,6 +296,60 @@ var float ldn_shortFvgBotStored = na
 var int   ldn_shortFvgStartBar  = na
 var string ldn_shortFvgText     = na
 
+// ----------------------------------------------------------------------------------------
+// Trade Level Line/Label Refs
+// ----------------------------------------------------------------------------------------
+// NY
+var line ny_longEntryLine = na
+var line ny_longStopLine  = na
+var line ny_longTp1Line   = na
+var line ny_longTp2Line   = na
+var label ny_longStopLbl  = na
+var label ny_longTp1Lbl   = na
+var label ny_longTp2Lbl   = na
+
+var line ny_shortEntryLine = na
+var line ny_shortStopLine  = na
+var line ny_shortTp1Line   = na
+var line ny_shortTp2Line   = na
+var label ny_shortStopLbl  = na
+var label ny_shortTp1Lbl   = na
+var label ny_shortTp2Lbl   = na
+
+// Asia
+var line asia_longEntryLine = na
+var line asia_longStopLine  = na
+var line asia_longTp1Line   = na
+var line asia_longTp2Line   = na
+var label asia_longStopLbl  = na
+var label asia_longTp1Lbl   = na
+var label asia_longTp2Lbl   = na
+
+var line asia_shortEntryLine = na
+var line asia_shortStopLine  = na
+var line asia_shortTp1Line   = na
+var line asia_shortTp2Line   = na
+var label asia_shortStopLbl  = na
+var label asia_shortTp1Lbl   = na
+var label asia_shortTp2Lbl   = na
+
+// LDN
+var line ldn_longEntryLine = na
+var line ldn_longStopLine  = na
+var line ldn_longTp1Line   = na
+var line ldn_longTp2Line   = na
+var label ldn_longStopLbl  = na
+var label ldn_longTp1Lbl   = na
+var label ldn_longTp2Lbl   = na
+
+var line ldn_shortEntryLine = na
+var line ldn_shortStopLine  = na
+var line ldn_shortTp1Line   = na
+var line ldn_shortTp2Line   = na
+var label ldn_shortStopLbl  = na
+var label ldn_shortTp1Lbl   = na
+var label ldn_shortTp2Lbl   = na
+
 // Track which session owns current position
 var string activeSession = na
 
@@ -318,6 +395,20 @@ if newDay
     ny_shortFvgBotStored := na
     ny_shortFvgStartBar  := na
     ny_shortFvgText      := na
+    ny_longEntryLine := na
+    ny_longStopLine  := na
+    ny_longTp1Line   := na
+    ny_longTp2Line   := na
+    ny_longStopLbl   := na
+    ny_longTp1Lbl    := na
+    ny_longTp2Lbl    := na
+    ny_shortEntryLine := na
+    ny_shortStopLine  := na
+    ny_shortTp1Line   := na
+    ny_shortTp2Line   := na
+    ny_shortStopLbl   := na
+    ny_shortTp1Lbl    := na
+    ny_shortTp2Lbl    := na
 
     // Asia reset
     asia_orbHigh := na
@@ -357,6 +448,20 @@ if newDay
     asia_shortFvgBotStored := na
     asia_shortFvgStartBar  := na
     asia_shortFvgText      := na
+    asia_longEntryLine := na
+    asia_longStopLine  := na
+    asia_longTp1Line   := na
+    asia_longTp2Line   := na
+    asia_longStopLbl   := na
+    asia_longTp1Lbl    := na
+    asia_longTp2Lbl    := na
+    asia_shortEntryLine := na
+    asia_shortStopLine  := na
+    asia_shortTp1Line   := na
+    asia_shortTp2Line   := na
+    asia_shortStopLbl   := na
+    asia_shortTp1Lbl    := na
+    asia_shortTp2Lbl    := na
 
     // LDN reset
     ldn_orbHigh := na
@@ -396,6 +501,20 @@ if newDay
     ldn_shortFvgBotStored := na
     ldn_shortFvgStartBar  := na
     ldn_shortFvgText      := na
+    ldn_longEntryLine := na
+    ldn_longStopLine  := na
+    ldn_longTp1Line   := na
+    ldn_longTp2Line   := na
+    ldn_longStopLbl   := na
+    ldn_longTp1Lbl    := na
+    ldn_longTp2Lbl    := na
+    ldn_shortEntryLine := na
+    ldn_shortStopLine  := na
+    ldn_shortTp1Line   := na
+    ldn_shortTp2Line   := na
+    ldn_shortStopLbl   := na
+    ldn_shortTp1Lbl    := na
+    ldn_shortTp2Lbl    := na
 
     activeSession := na
 
@@ -533,42 +652,13 @@ ldnLongFVG  = high[2] < low and high[2] < high[1] and low[2] < low and longFvgTo
 ldnShortFVG = low[2] > high and low[2] > low[1] and high[2] > high and shortFvgBottom < ldn_orbLow and ldnShortGapValid
 
 // ----------------------------------------------------------------------------------------
-// Activate setup - NY Session
+// Activate setup - NY Session (REVERSAL: bullish FVG → short, bearish FVG → long)
 // ----------------------------------------------------------------------------------------
 nyCanArmSetup = enableNY and is5m and barClosed and inNyRTH and inNyEntryWin and ny_orbReady and not ny_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ny_longSetupActive or ny_shortSetupActive)
 
-if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
+// Bullish FVG detected → SHORT entry (reversal)
+if nyCanArmSetup and not ny_shortFirstFvgFound and nyLongFVG
     entry   = longFvgTop
-    stop    = entry - (nyStopAtrPct / 100) * nz(dailyATR)
-    riskPts = entry - stop
-
-    if riskPts > 0
-        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
-        qty    = floorToStep(qtyRaw, qtyStep)
-        isSingleContract = qty <= minQty
-        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
-        halfQty := math.max(halfQty, minQty)
-
-        if qty >= minQty
-            ny_longStopStored   := stop
-            ny_longTargetStored := entry + rr * riskPts
-            ny_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
-            ny_longEntryStored  := entry
-            ny_longQtyStored    := qty
-            ny_longHalfQty      := halfQty
-            ny_longSingleContract := isSingleContract
-            ny_longSetupActive  := true
-            ny_longFirstFvgFound := true
-            ny_longSetupBar     := bar_index
-            ny_longFvgTopStored := longFvgTop
-            ny_longFvgBotStored := longFvgBottom
-            ny_longFvgStartBar  := bar_index - 2
-            fvgPts = longGapSize
-            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
-            ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-
-if nyCanArmSetup and not ny_shortFirstFvgFound and nyShortFVG
-    entry   = shortFvgBottom
     stop    = entry + (nyStopAtrPct / 100) * nz(dailyATR)
     riskPts = stop - entry
 
@@ -590,21 +680,36 @@ if nyCanArmSetup and not ny_shortFirstFvgFound and nyShortFVG
             ny_shortSetupActive  := true
             ny_shortFirstFvgFound := true
             ny_shortSetupBar     := bar_index
-            ny_shortFvgTopStored := shortFvgTop
-            ny_shortFvgBotStored := shortFvgBottom
+            ny_shortFvgTopStored := longFvgTop
+            ny_shortFvgBotStored := longFvgBottom
             ny_shortFvgStartBar  := bar_index - 2
-            fvgPts = shortGapSize
+            fvgPts = longGapSize
             fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
             ny_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ny_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ny_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ny_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ny_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ny_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ny_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ny_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-// ----------------------------------------------------------------------------------------
-// Activate setup - Asia Session
-// ----------------------------------------------------------------------------------------
-asiaCanArmSetup = enableAsia and is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (asia_longSetupActive or asia_shortSetupActive)
-
-if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
-    entry   = longFvgTop
-    stop    = entry - (asiaStopAtrPct / 100) * nz(dailyATR)
+// Bearish FVG detected → LONG entry (reversal)
+if nyCanArmSetup and not ny_longFirstFvgFound and nyShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (nyStopAtrPct / 100) * nz(dailyATR)
     riskPts = entry - stop
 
     if riskPts > 0
@@ -615,25 +720,50 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
         halfQty := math.max(halfQty, minQty)
 
         if qty >= minQty
-            asia_longStopStored   := stop
-            asia_longTargetStored := entry + rr * riskPts
-            asia_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
-            asia_longEntryStored  := entry
-            asia_longQtyStored    := qty
-            asia_longHalfQty      := halfQty
-            asia_longSingleContract := isSingleContract
-            asia_longSetupActive  := true
-            asia_longFirstFvgFound := true
-            asia_longSetupBar     := bar_index
-            asia_longFvgTopStored := longFvgTop
-            asia_longFvgBotStored := longFvgBottom
-            asia_longFvgStartBar  := bar_index - 2
-            fvgPts = longGapSize
+            ny_longStopStored   := stop
+            ny_longTargetStored := entry + rr * riskPts
+            ny_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            ny_longEntryStored  := entry
+            ny_longQtyStored    := qty
+            ny_longHalfQty      := halfQty
+            ny_longSingleContract := isSingleContract
+            ny_longSetupActive  := true
+            ny_longFirstFvgFound := true
+            ny_longSetupBar     := bar_index
+            ny_longFvgTopStored := shortFvgTop
+            ny_longFvgBotStored := shortFvgBottom
+            ny_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
             fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
-            asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ny_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ny_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ny_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ny_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ny_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ny_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ny_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaShortFVG
-    entry   = shortFvgBottom
+// ----------------------------------------------------------------------------------------
+// Activate setup - Asia Session (REVERSAL: bullish FVG → short, bearish FVG → long)
+// ----------------------------------------------------------------------------------------
+asiaCanArmSetup = enableAsia and is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (asia_longSetupActive or asia_shortSetupActive)
+
+// Bullish FVG detected → SHORT entry (reversal)
+if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaLongFVG
+    entry   = longFvgTop
     stop    = entry + (asiaStopAtrPct / 100) * nz(dailyATR)
     riskPts = stop - entry
 
@@ -655,21 +785,36 @@ if asiaCanArmSetup and not asia_shortFirstFvgFound and asiaShortFVG
             asia_shortSetupActive  := true
             asia_shortFirstFvgFound := true
             asia_shortSetupBar     := bar_index
-            asia_shortFvgTopStored := shortFvgTop
-            asia_shortFvgBotStored := shortFvgBottom
+            asia_shortFvgTopStored := longFvgTop
+            asia_shortFvgBotStored := longFvgBottom
             asia_shortFvgStartBar  := bar_index - 2
-            fvgPts = shortGapSize
+            fvgPts = longGapSize
             fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
             asia_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            asia_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            asia_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            asia_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            asia_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            asia_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            asia_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            asia_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-// ----------------------------------------------------------------------------------------
-// Activate setup - LDN Session
-// ----------------------------------------------------------------------------------------
-ldnCanArmSetup = enableLDN and is5m and barClosed and inLdnRTH and inLdnEntryWin and ldn_orbReady and not ldn_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ldn_longSetupActive or ldn_shortSetupActive)
-
-if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnLongFVG
-    entry   = longFvgTop
-    stop    = entry - (ldnStopAtrPct / 100) * nz(dailyATR)
+// Bearish FVG detected → LONG entry (reversal)
+if asiaCanArmSetup and not asia_longFirstFvgFound and asiaShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (asiaStopAtrPct / 100) * nz(dailyATR)
     riskPts = entry - stop
 
     if riskPts > 0
@@ -680,25 +825,50 @@ if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnLongFVG
         halfQty := math.max(halfQty, minQty)
 
         if qty >= minQty
-            ldn_longStopStored   := stop
-            ldn_longTargetStored := entry + rr * riskPts
-            ldn_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
-            ldn_longEntryStored  := entry
-            ldn_longQtyStored    := qty
-            ldn_longHalfQty      := halfQty
-            ldn_longSingleContract := isSingleContract
-            ldn_longSetupActive  := true
-            ldn_longFirstFvgFound := true
-            ldn_longSetupBar     := bar_index
-            ldn_longFvgTopStored := longFvgTop
-            ldn_longFvgBotStored := longFvgBottom
-            ldn_longFvgStartBar  := bar_index - 2
-            fvgPts = longGapSize
+            asia_longStopStored   := stop
+            asia_longTargetStored := entry + rr * riskPts
+            asia_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            asia_longEntryStored  := entry
+            asia_longQtyStored    := qty
+            asia_longHalfQty      := halfQty
+            asia_longSingleContract := isSingleContract
+            asia_longSetupActive  := true
+            asia_longFirstFvgFound := true
+            asia_longSetupBar     := bar_index
+            asia_longFvgTopStored := shortFvgTop
+            asia_longFvgBotStored := shortFvgBottom
+            asia_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
             fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
-            ldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            asia_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            asia_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            asia_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            asia_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            asia_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            asia_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            asia_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-if ldnCanArmSetup and not ldn_shortFirstFvgFound and ldnShortFVG
-    entry   = shortFvgBottom
+// ----------------------------------------------------------------------------------------
+// Activate setup - LDN Session (REVERSAL: bullish FVG → short, bearish FVG → long)
+// ----------------------------------------------------------------------------------------
+ldnCanArmSetup = enableLDN and is5m and barClosed and inLdnRTH and inLdnEntryWin and ldn_orbReady and not ldn_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not (ldn_longSetupActive or ldn_shortSetupActive)
+
+// Bullish FVG detected → SHORT entry (reversal)
+if ldnCanArmSetup and not ldn_shortFirstFvgFound and ldnLongFVG
+    entry   = longFvgTop
     stop    = entry + (ldnStopAtrPct / 100) * nz(dailyATR)
     riskPts = stop - entry
 
@@ -720,12 +890,81 @@ if ldnCanArmSetup and not ldn_shortFirstFvgFound and ldnShortFVG
             ldn_shortSetupActive  := true
             ldn_shortFirstFvgFound := true
             ldn_shortSetupBar     := bar_index
-            ldn_shortFvgTopStored := shortFvgTop
-            ldn_shortFvgBotStored := shortFvgBottom
+            ldn_shortFvgTopStored := longFvgTop
+            ldn_shortFvgBotStored := longFvgBottom
             ldn_shortFvgStartBar  := bar_index - 2
-            fvgPts = shortGapSize
+            fvgPts = longGapSize
             fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
             ldn_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry - (rr * riskPts * tp1Ratio)
+            tp2Val = entry - rr * riskPts
+            tp1Pts = entry - tp1Val
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = entry - tp2Val
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ldn_shortEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ldn_shortStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ldn_shortTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ldn_shortTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ldn_shortStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ldn_shortTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ldn_shortTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// Bearish FVG detected → LONG entry (reversal)
+if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnShortFVG
+    entry   = shortFvgBottom
+    stop    = entry - (ldnStopAtrPct / 100) * nz(dailyATR)
+    riskPts = entry - stop
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            ldn_longStopStored   := stop
+            ldn_longTargetStored := entry + rr * riskPts
+            ldn_longHalfwayStored := entry + (rr * riskPts * tp1Ratio)
+            ldn_longEntryStored  := entry
+            ldn_longQtyStored    := qty
+            ldn_longHalfQty      := halfQty
+            ldn_longSingleContract := isSingleContract
+            ldn_longSetupActive  := true
+            ldn_longFirstFvgFound := true
+            ldn_longSetupBar     := bar_index
+            ldn_longFvgTopStored := shortFvgTop
+            ldn_longFvgBotStored := shortFvgBottom
+            ldn_longFvgStartBar  := bar_index - 2
+            fvgPts = shortGapSize
+            fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+            ldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+            // Draw trade level lines + labels
+            slPts  = riskPts
+            slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+            tp1Val = entry + (rr * riskPts * tp1Ratio)
+            tp2Val = entry + rr * riskPts
+            tp1Pts = tp1Val - entry
+            tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+            tp2Pts = tp2Val - entry
+            tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+            ldn_longEntryLine := line.new(bar_index, entry, bar_index, entry, color=entryColor, style=entryLineStyle, width=1)
+            ldn_longStopLine  := line.new(bar_index, stop, bar_index, stop, color=slColor, style=slLineStyle, width=1)
+            ldn_longTp1Line   := line.new(bar_index, tp1Val, bar_index, tp1Val, color=tp1Color, style=tp1LineStyle, width=1)
+            ldn_longTp2Line   := line.new(bar_index, tp2Val, bar_index, tp2Val, color=tp2Color, style=tp2LineStyle, width=1)
+            slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+            tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+            tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+            ldn_longStopLbl := label.new(bar_index, stop, slTxt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+            ldn_longTp1Lbl  := label.new(bar_index, tp1Val, tp1Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+            ldn_longTp2Lbl  := label.new(bar_index, tp2Val, tp2Txt, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ----------------------------------------------------------------------------------------
 // Track actual entry fill price and active session
@@ -1005,6 +1244,63 @@ if inLdnFlatWin and strategy.position_size != 0 and activeSession == "ldn"
         strategy.close("LL", comment="ldn-eod-flat")
     if strategy.position_size < 0
         strategy.close("LS", comment="ldn-eod-flat")
+
+// ----------------------------------------------------------------------------------------
+// Extend Trade Level Lines + Labels
+// ----------------------------------------------------------------------------------------
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
+    line.set_x2(ny_longEntryLine, bar_index)
+    line.set_x2(ny_longStopLine, bar_index)
+    line.set_x2(ny_longTp1Line, bar_index)
+    line.set_x2(ny_longTp2Line, bar_index)
+    label.set_x(ny_longStopLbl, bar_index)
+    label.set_x(ny_longTp1Lbl, bar_index)
+    label.set_x(ny_longTp2Lbl, bar_index)
+
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
+    line.set_x2(ny_shortEntryLine, bar_index)
+    line.set_x2(ny_shortStopLine, bar_index)
+    line.set_x2(ny_shortTp1Line, bar_index)
+    line.set_x2(ny_shortTp2Line, bar_index)
+    label.set_x(ny_shortStopLbl, bar_index)
+    label.set_x(ny_shortTp1Lbl, bar_index)
+    label.set_x(ny_shortTp2Lbl, bar_index)
+
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
+    line.set_x2(asia_longEntryLine, bar_index)
+    line.set_x2(asia_longStopLine, bar_index)
+    line.set_x2(asia_longTp1Line, bar_index)
+    line.set_x2(asia_longTp2Line, bar_index)
+    label.set_x(asia_longStopLbl, bar_index)
+    label.set_x(asia_longTp1Lbl, bar_index)
+    label.set_x(asia_longTp2Lbl, bar_index)
+
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
+    line.set_x2(asia_shortEntryLine, bar_index)
+    line.set_x2(asia_shortStopLine, bar_index)
+    line.set_x2(asia_shortTp1Line, bar_index)
+    line.set_x2(asia_shortTp2Line, bar_index)
+    label.set_x(asia_shortStopLbl, bar_index)
+    label.set_x(asia_shortTp1Lbl, bar_index)
+    label.set_x(asia_shortTp2Lbl, bar_index)
+
+if enableLDN and inLdnRTH and inLdnEntryWin and not na(ldn_longEntryLine)
+    line.set_x2(ldn_longEntryLine, bar_index)
+    line.set_x2(ldn_longStopLine, bar_index)
+    line.set_x2(ldn_longTp1Line, bar_index)
+    line.set_x2(ldn_longTp2Line, bar_index)
+    label.set_x(ldn_longStopLbl, bar_index)
+    label.set_x(ldn_longTp1Lbl, bar_index)
+    label.set_x(ldn_longTp2Lbl, bar_index)
+
+if enableLDN and inLdnRTH and inLdnEntryWin and not na(ldn_shortEntryLine)
+    line.set_x2(ldn_shortEntryLine, bar_index)
+    line.set_x2(ldn_shortStopLine, bar_index)
+    line.set_x2(ldn_shortTp1Line, bar_index)
+    line.set_x2(ldn_shortTp2Line, bar_index)
+    label.set_x(ldn_shortStopLbl, bar_index)
+    label.set_x(ldn_shortTp1Lbl, bar_index)
+    label.set_x(ldn_shortTp2Lbl, bar_index)
 
 // ----------------------------------------------------------------------------------------
 // ATR Distance Display

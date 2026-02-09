@@ -9,13 +9,11 @@
 - 0.7% ATR gap asia
 
 ## ideas
-- can we use ATR to create dynamic stops that scale with price? or is the 2 candle stop the best? - yes
-- can we use ATR to optimize the gap size for which we enter on? - yes
-- can we use ATR to optimize tp targets? - this becomes the same as the stops
-- only enter if a nearby 5m gap has been "respected"
-- multiple orbs
-  - 2 a day?
-  - one more attempt only if first one failed?
+- 5m orb?
+- candle closing outside of range instead of gap
+- orb reversal
+- other atr values than 14
+- revisit "classic" orb?
 
 ### ATR, feb 5 2026
 - for orb as a continuation model, we see most of the winning orbs occur when price is past 100% of its ATR
@@ -48,6 +46,8 @@
 ### feb 7 2026
 
 __testing__
+only enter if a nearby 5m gap has been "respected" - not much here
+multiple orbs - promising, jk not that good. slightly better in NY when going in the same direction/after a win
 
 
 #### split tests
