@@ -72,6 +72,8 @@ export interface EquityCurvePoint {
 
 export interface BacktestResult {
   id?: string;
+  name?: string;
+  notes?: string;
   config: BacktestConfig;
   summary: BacktestSummary;
   trades: Trade[];
@@ -88,4 +90,27 @@ export interface BacktestHistoryItem {
   win_rate: number;
   date_start: string;
   date_end: string;
+  name?: string;
+  notes?: string;
+}
+
+export interface OptimizationResult {
+  id?: string;
+  total_combinations: number;
+  swept_params: Record<string, number[]>;
+  best_by_sharpe: { config: BacktestConfig; summary: BacktestSummary } | null;
+  best_by_pnl: { config: BacktestConfig; summary: BacktestSummary } | null;
+  best_by_profit_factor: { config: BacktestConfig; summary: BacktestSummary } | null;
+  all_results: { config: BacktestConfig; summary: BacktestSummary }[];
+}
+
+export interface OptimizationHistoryItem {
+  id: string;
+  timestamp: string;
+  instrument: string;
+  sessions: string[];
+  swept_params: string[];
+  total_combinations: number;
+  best_sharpe: number;
+  best_pnl_usd: number;
 }

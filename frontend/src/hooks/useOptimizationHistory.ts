@@ -1,20 +1,20 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { BacktestHistoryItem, BacktestResult } from "../lib/types";
+import type { OptimizationHistoryItem, OptimizationResult } from "../lib/types";
 
 const POLL_INTERVAL_MS = 5000;
 
-interface UseHistoryReturn {
-  history: BacktestHistoryItem[];
+interface UseOptimizationHistoryReturn {
+  history: OptimizationHistoryItem[];
   loading: boolean;
   activeId: string | null;
   refreshHistory: () => Promise<void>;
-  loadBacktest: (id: string) => Promise<BacktestResult | null>;
-  deleteBacktest: (id: string) => Promise<void>;
+  loadOptimization: (id: string) => Promise<OptimizationResult | null>;
+  deleteOptimization: (id: string) => Promise<void>;
   setActiveId: (id: string | null) => void;
 }
 
-export function useHistory(): UseHistoryReturn {
-  const [history, setHistory] = useState<BacktestHistoryItem[]>([]);
+export function useOptimizationHistory(): UseOptimizationHistoryReturn {
+  const [history, setHistory] = useState<OptimizationHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const initialLoad = useRef(true);
@@ -25,22 +25,22 @@ export function useHistory(): UseHistoryReturn {
       initialLoad.current = false;
     }
     try {
-      const res = await fetch("/api/backtests");
+      const res = await fetch("/api/optimizations");
       if (res.ok) {
         setHistory(await res.json());
       }
     } catch {
-      // API unavailable — leave history empty
+      // API unavailable
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadBacktest = useCallback(async (id: string): Promise<BacktestResult | null> => {
+  const loadOptimization = useCallback(async (id: string): Promise<OptimizationResult | null> => {
     try {
-      const res = await fetch(`/api/backtests/${id}`);
+      const res = await fetch(`/api/optimizations/${id}`);
       if (!res.ok) return null;
-      const data: BacktestResult = await res.json();
+      const data: OptimizationResult = await res.json();
       setActiveId(id);
       return data;
     } catch {
@@ -48,9 +48,9 @@ export function useHistory(): UseHistoryReturn {
     }
   }, []);
 
-  const deleteBacktest = useCallback(async (id: string) => {
+  const deleteOptimization = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/backtests/${id}`, { method: "DELETE" });
+      await fetch(`/api/optimizations/${id}`, { method: "DELETE" });
       if (activeId === id) setActiveId(null);
       await refreshHistory();
     } catch {
@@ -64,5 +64,5 @@ export function useHistory(): UseHistoryReturn {
     return () => clearInterval(id);
   }, [refreshHistory]);
 
-  return { history, loading, activeId, refreshHistory, loadBacktest, deleteBacktest, setActiveId };
+  return { history, loading, activeId, refreshHistory, loadOptimization, deleteOptimization, setActiveId };
 }

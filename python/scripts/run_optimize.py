@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Run grid sweep optimization across parameter combinations.
 
+Results are auto-saved to data/optimizations/ and viewable in the frontend dashboard.
+
 Usage:
     # Sweep stop ATR% and min gap ATR%
     python scripts/run_optimize.py --data NQ_5m.csv \
@@ -12,29 +14,26 @@ Usage:
         --sweep rr=1.5:4.0:0.5 \
         --sweep tp1_ratio=0.3:0.7:0.1
 
-    # With date range and custom output
+    # With date range
     python scripts/run_optimize.py --data NQ_5m.csv \
         --start 2018-01-01 --end 2025-01-01 \
-        --sweep ny_stop_atr_pct=8:20:2 \
-        --output sweep_results.json \
-        --heatmap
+        --sweep ny_stop_atr_pct=8:20:2
 """
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from orb_backtest.config import default_config, NY_SESSION
+from orb_backtest.config import default_config, NY_SESSION, StrategyConfig
 from orb_backtest.data.loader import load_5m_data
 from orb_backtest.data.instruments import get_instrument
 from orb_backtest.optimize.grid import generate_param_grid, linspace_range, describe_grid
 from orb_backtest.optimize.parallel import run_sweep
 from orb_backtest.results.metrics import compute_metrics
-from orb_backtest.results.export import grid_results_to_dict
+from orb_backtest.results.export import grid_results_to_dict, save_optimization_result
 
 
 def parse_sweep(spec: str) -> tuple[str, list[float]]:
@@ -57,11 +56,7 @@ def main():
     parser.add_argument("--instrument", default="NQ", help="Instrument symbol")
     parser.add_argument("--sweep", action="append", required=True,
                         help="Parameter sweep spec: name=start:stop:step or name=v1,v2,v3")
-    parser.add_argument("--output", default=None, help="Output JSON file path")
-    parser.add_argument("--heatmap", action="store_true", help="Generate heatmap visualization")
     parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers")
-    parser.add_argument("--metric", default="sharpe_ratio",
-                        help="Metric for heatmap coloring (default: sharpe_ratio)")
 
     args = parser.parse_args()
 
@@ -127,28 +122,11 @@ def main():
     else:
         print("No trades filled across any configuration!")
 
-    # Save results
-    if args.output:
-        grid_dict = grid_results_to_dict(results)
-        with open(args.output, "w") as f:
-            json.dump(grid_dict, f, indent=2, default=str)
-        print(f"\nResults saved to: {args.output}")
-
-    # Generate heatmap
-    if args.heatmap and len(param_ranges) >= 2:
-        keys = list(param_ranges.keys())
-        try:
-            from orb_backtest.viz.heatmap import plot_sweep_heatmap
-            plot_sweep_heatmap(
-                results=[(c, compute_metrics(t)) for c, t in results],
-                x_param=keys[0],
-                y_param=keys[1],
-                metric=args.metric,
-                param_ranges=param_ranges,
-            )
-            print(f"\nHeatmap saved.")
-        except ImportError:
-            print("\nHeatmap visualization not available (missing matplotlib/seaborn).")
+    # Auto-save to data/optimizations/ (viewable in frontend dashboard)
+    grid_dict = grid_results_to_dict(results, swept_params=param_ranges)
+    result_id = save_optimization_result(grid_dict)
+    print(f"Results saved: {result_id}")
+    print("View in dashboard → Optimizations tab")
 
 
 def _print_best(title: str, config: StrategyConfig, metrics: dict, sweep_keys) -> None:

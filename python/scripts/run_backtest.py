@@ -46,6 +46,10 @@ def main():
     # Session selection
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
 
+    # Experiment labeling
+    parser.add_argument("--name", default=None, help="Label for this run (e.g. 'atr_stops_baseline')")
+    parser.add_argument("--notes", default=None, help="Free-text notes (e.g. 'testing wider stops')")
+
     # Output control
     parser.add_argument("--no-trades", action="store_true", help="Exclude trade list from output")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
@@ -80,6 +84,10 @@ def main():
         overrides["ny_min_gap_atr_pct"] = args.ny_min_gap_atr_pct
     if args.ny_max_gap_points is not None:
         overrides["ny_max_gap_points"] = args.ny_max_gap_points
+    if args.name is not None:
+        overrides["name"] = args.name
+    if args.notes is not None:
+        overrides["notes"] = args.notes
 
     if overrides:
         config = with_overrides(config, **overrides)

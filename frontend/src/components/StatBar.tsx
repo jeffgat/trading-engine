@@ -42,11 +42,11 @@ interface StatBarProps {
 }
 
 export function StatBar({ summary, trades }: StatBarProps) {
-  const totalPnlColor = pnlColor(summary.total_pnl_usd);
   const ddColor = "var(--color-loss)";
 
   const netR = summary.total_pnl_usd / R_VALUE;
   const ddR = summary.max_drawdown_usd / R_VALUE;
+  const avgR = summary.avg_pnl_usd / R_VALUE;
 
   const { maxWinStreakR, maxLossStreakR } = useMemo(() => computeStreakR(trades), [trades]);
 
@@ -55,17 +55,17 @@ export function StatBar({ summary, trades }: StatBarProps) {
       {/* Row 1 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
-          label="Net Profit"
-          value={formatCurrency(summary.total_pnl_usd)}
-          subValue={`Avg ${formatCurrency(summary.avg_pnl_usd)}/trade`}
-          tooltip="Total P&L after commissions"
-          color={totalPnlColor}
+          label="Net R"
+          value={formatR(netR)}
+          subValue={`Avg ${formatR(avgR)}/trade`}
+          tooltip={`Total P&L in risk units (1R = ${formatCurrency(R_VALUE)})`}
+          color={pnlColor(netR)}
         />
         <StatCard
-          label="Max Drawdown"
-          value={formatCurrency(summary.max_drawdown_usd)}
+          label="Max DD (R)"
+          value={formatR(ddR)}
           subValue={`${formatNumber(summary.max_drawdown_pct)}%`}
-          tooltip="Largest peak-to-trough equity decline"
+          tooltip="Max drawdown in risk units"
           color={ddColor}
         />
         <StatCard
@@ -84,7 +84,7 @@ export function StatBar({ summary, trades }: StatBarProps) {
         <StatCard
           label="Profit Factor"
           value={formatNumber(summary.profit_factor)}
-          subValue={`Avg ${formatR(summary.avg_r)}/trade`}
+          subValue={`Sharpe ${formatNumber(summary.sharpe_ratio, 3)}`}
           tooltip="Gross profit / gross loss"
           color={summary.profit_factor >= 1 ? "var(--color-profit)" : "var(--color-loss)"}
         />
@@ -92,26 +92,6 @@ export function StatBar({ summary, trades }: StatBarProps) {
 
       {/* Row 2 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard
-          label="Net R"
-          value={formatR(netR)}
-          subValue={`1R = ${formatCurrency(R_VALUE)}`}
-          tooltip="Total P&L expressed in risk units"
-          color={pnlColor(netR)}
-        />
-        <StatCard
-          label="Max DD (R)"
-          value={formatR(ddR)}
-          subValue={`${formatNumber(summary.max_drawdown_pct)}%`}
-          tooltip="Max drawdown in risk units"
-          color={ddColor}
-        />
-        <StatCard
-          label="Sharpe / Sortino"
-          value={formatNumber(summary.sharpe_ratio, 3)}
-          subValue={`Sortino ${formatNumber(summary.sortino_ratio, 3)}`}
-          tooltip="Risk-adjusted return ratios"
-        />
         <StatCard
           label="Best Streak (R)"
           value={formatR(maxWinStreakR)}
@@ -125,6 +105,12 @@ export function StatBar({ summary, trades }: StatBarProps) {
           subValue={`${summary.max_consecutive_losses} consecutive losses`}
           tooltip="Total R lost during longest losing streak"
           color="var(--color-loss)"
+        />
+        <StatCard
+          label="Sharpe / Sortino"
+          value={formatNumber(summary.sharpe_ratio, 3)}
+          subValue={`Sortino ${formatNumber(summary.sortino_ratio, 3)}`}
+          tooltip="Risk-adjusted return ratios"
         />
       </div>
     </div>

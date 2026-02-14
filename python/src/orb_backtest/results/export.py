@@ -13,6 +13,7 @@ from ..engine.simulator import TradeResult, EXIT_NAMES, EXIT_NO_FILL
 from .metrics import compute_metrics
 
 RESULTS_DIR = Path(__file__).resolve().parents[3] / "data" / "results"
+OPTIMIZATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "optimizations"
 
 
 def _build_equity_curve(trades: list[TradeResult]) -> list[dict]:
@@ -84,6 +85,11 @@ def results_to_dict(
         "summary": metrics,
     }
 
+    if config.name:
+        result["name"] = config.name
+    if config.notes:
+        result["notes"] = config.notes
+
     if include_equity_curve:
         result["equity_curve"] = _build_equity_curve(trades)
 
@@ -149,7 +155,11 @@ def save_backtest_result(result: dict) -> str:
             sessions.append(key.split("_")[0].upper())
     session_str = "+".join(sorted(sessions)) or "UNK"
 
+    name = result.get("name", "")
+    name_slug = name.replace(" ", "_")[:40] if name else ""
     result_id = f"{ts}_{instrument}_{session_str}"
+    if name_slug:
+        result_id += f"_{name_slug}"
     filepath = RESULTS_DIR / f"{result_id}.json"
     filepath.write_text(json.dumps(result, indent=2, default=str))
     return result_id
@@ -164,6 +174,9 @@ def list_backtest_results() -> list[dict]:
             data = json.loads(fp.read_text())
         except (json.JSONDecodeError, OSError):
             continue
+        # Skip files that aren't backtest results (e.g. optimization sweeps)
+        if "config" not in data or "summary" not in data:
+            continue
         config = data.get("config", {})
         summary = data.get("summary", {})
         sessions = []
@@ -177,7 +190,7 @@ def list_backtest_results() -> list[dict]:
         date_start = dates_source[0]["date"] if dates_source else ""
         date_end = dates_source[-1]["date"] if dates_source else ""
 
-        items.append({
+        item = {
             "id": fp.stem,
             "timestamp": fp.stem[:17].replace("_", " ", 1),  # "2026-02-14 153045"
             "instrument": config.get("instrument", ""),
@@ -187,7 +200,12 @@ def list_backtest_results() -> list[dict]:
             "win_rate": summary.get("win_rate", 0),
             "date_start": date_start,
             "date_end": date_end,
-        })
+        }
+        if data.get("name"):
+            item["name"] = data["name"]
+        if data.get("notes"):
+            item["notes"] = data["notes"]
+        items.append(item)
     return items
 
 
@@ -210,11 +228,13 @@ def delete_backtest_result(result_id: str) -> bool:
 
 def grid_results_to_dict(
     all_results: list[tuple[StrategyConfig, list[TradeResult]]],
+    swept_params: dict[str, list] | None = None,
 ) -> dict:
     """Convert grid sweep results to a summary dict.
 
     Args:
         all_results: List of (config, trades) tuples from grid sweep.
+        swept_params: Optional dict mapping param names to swept values.
 
     Returns:
         Dict with best results and all combination summaries.
@@ -231,10 +251,98 @@ def grid_results_to_dict(
     best_by_pnl = max(filled_summaries, key=lambda s: s["summary"]["total_pnl_usd"]) if filled_summaries else None
     best_by_pf = max(filled_summaries, key=lambda s: s["summary"]["profit_factor"]) if filled_summaries else None
 
-    return {
+    result = {
         "total_combinations": len(summaries),
         "best_by_sharpe": best_by_sharpe,
         "best_by_pnl": best_by_pnl,
         "best_by_profit_factor": best_by_pf,
         "all_results": summaries,
     }
+
+    if swept_params is not None:
+        result["swept_params"] = {k: [float(v) for v in vs] for k, vs in swept_params.items()}
+
+    return result
+
+
+def save_optimization_result(result: dict) -> str:
+    """Save an optimization result dict to disk and return its ID."""
+    OPTIMIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    # Extract instrument from best result config or first result
+    instrument = "UNK"
+    sessions = set()
+    all_results = result.get("all_results", [])
+    if all_results:
+        config = all_results[0].get("config", {})
+        instrument = config.get("instrument", "UNK")
+        for key in config:
+            if key.endswith("_orb_window"):
+                sessions.add(key.split("_")[0].upper())
+
+    session_str = "+".join(sorted(sessions)) or "UNK"
+    result_id = f"{ts}_{instrument}_{session_str}"
+    filepath = OPTIMIZATIONS_DIR / f"{result_id}.json"
+    filepath.write_text(json.dumps(result, indent=2, default=str))
+    return result_id
+
+
+def list_optimization_results() -> list[dict]:
+    """List all saved optimization results as metadata dicts, newest first."""
+    OPTIMIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for fp in sorted(OPTIMIZATIONS_DIR.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(fp.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+
+        # Extract metadata from first result's config
+        all_results = data.get("all_results", [])
+        instrument = ""
+        sessions = []
+        if all_results:
+            config = all_results[0].get("config", {})
+            instrument = config.get("instrument", "")
+            for key in config:
+                if key.endswith("_orb_window"):
+                    sessions.append(key.split("_")[0].upper())
+
+        swept_params = list(data.get("swept_params", {}).keys())
+
+        best_sharpe = 0.0
+        best_pnl_usd = 0.0
+        if data.get("best_by_sharpe"):
+            best_sharpe = data["best_by_sharpe"].get("summary", {}).get("sharpe_ratio", 0)
+        if data.get("best_by_pnl"):
+            best_pnl_usd = data["best_by_pnl"].get("summary", {}).get("total_pnl_usd", 0)
+
+        items.append({
+            "id": fp.stem,
+            "timestamp": fp.stem[:17].replace("_", " ", 1),
+            "instrument": instrument,
+            "sessions": sorted(sessions),
+            "swept_params": swept_params,
+            "total_combinations": data.get("total_combinations", 0),
+            "best_sharpe": best_sharpe,
+            "best_pnl_usd": best_pnl_usd,
+        })
+    return items
+
+
+def load_optimization_result(result_id: str) -> dict | None:
+    """Load a full optimization result by ID."""
+    fp = OPTIMIZATIONS_DIR / f"{result_id}.json"
+    if not fp.exists():
+        return None
+    return json.loads(fp.read_text())
+
+
+def delete_optimization_result(result_id: str) -> bool:
+    """Delete a saved optimization result. Returns True if deleted."""
+    fp = OPTIMIZATIONS_DIR / f"{result_id}.json"
+    if not fp.exists():
+        return False
+    fp.unlink()
+    return True

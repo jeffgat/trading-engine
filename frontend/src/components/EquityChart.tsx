@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -11,24 +12,36 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { EquityCurvePoint } from "../lib/types";
-import { formatCurrency } from "../lib/utils";
+
+const R_VALUE = 50000;
 
 interface EquityChartProps {
   data: EquityCurvePoint[];
 }
 
+interface RPoint {
+  date: string;
+  r_cumulative: number;
+  r_per_trade: number;
+}
+
+function formatR(v: number): string {
+  const sign = v >= 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}R`;
+}
+
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
 
-  const equity = payload.find((p: any) => p.dataKey === "pnl_cumulative");
-  const trade = payload.find((p: any) => p.dataKey === "pnl_per_trade");
+  const equity = payload.find((p: any) => p.dataKey === "r_cumulative");
+  const trade = payload.find((p: any) => p.dataKey === "r_per_trade");
 
   return (
     <div className="rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-xl">
       <p className="text-xs text-text-muted">{label}</p>
       {equity && (
         <p className="font-mono text-sm font-semibold" style={{ color: "var(--color-profit)" }}>
-          Equity: {formatCurrency(equity.value)}
+          Equity: {formatR(equity.value)}
         </p>
       )}
       {trade && (
@@ -36,7 +49,7 @@ function CustomTooltip({ active, payload, label }: any) {
           className="font-mono text-xs"
           style={{ color: trade.value >= 0 ? "var(--color-profit)" : "var(--color-loss)" }}
         >
-          Trade: {formatCurrency(trade.value)}
+          Trade: {formatR(trade.value)}
         </p>
       )}
     </div>
@@ -44,6 +57,16 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export function EquityChart({ data }: EquityChartProps) {
+  const rData: RPoint[] = useMemo(
+    () =>
+      data.map((d) => ({
+        date: d.date,
+        r_cumulative: d.pnl_cumulative / R_VALUE,
+        r_per_trade: d.pnl_per_trade / R_VALUE,
+      })),
+    [data],
+  );
+
   if (!data.length) {
     return (
       <div className="flex h-[400px] items-center justify-center text-text-muted">
@@ -52,23 +75,23 @@ export function EquityChart({ data }: EquityChartProps) {
     );
   }
 
-  const finalValue = data[data.length - 1].pnl_cumulative;
-  const isPositive = finalValue >= 0;
+  const finalR = rData[rData.length - 1].r_cumulative;
+  const isPositive = finalR >= 0;
 
   // Scale trade axis to ~10% of chart height
-  const maxAbsTrade = data.reduce((m, d) => Math.max(m, Math.abs(d.pnl_per_trade)), 0) || 1;
+  const maxAbsTrade = rData.reduce((m, d) => Math.max(m, Math.abs(d.r_per_trade)), 0) || 0.01;
   const tradeDomain = [-maxAbsTrade * 10, maxAbsTrade * 10];
 
   // Thin the data for rendering if too many points (>300)
   const displayData =
-    data.length > 300
-      ? data.filter((_, i) => i % Math.ceil(data.length / 300) === 0 || i === data.length - 1)
-      : data;
+    rData.length > 300
+      ? rData.filter((_, i) => i % Math.ceil(rData.length / 300) === 0 || i === rData.length - 1)
+      : rData;
 
   return (
     <div className="rounded-lg border border-border bg-bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-text-secondary">Equity Curve</h2>
+        <h2 className="text-sm font-medium text-text-secondary">Equity Curve (R)</h2>
         <span
           className="rounded-md px-2.5 py-1 font-mono text-sm font-semibold"
           style={{
@@ -76,7 +99,7 @@ export function EquityChart({ data }: EquityChartProps) {
             background: isPositive ? "rgba(61, 214, 140, 0.12)" : "rgba(240, 97, 94, 0.12)",
           }}
         >
-          {formatCurrency(finalValue)}
+          {formatR(finalR)}
         </span>
       </div>
 
@@ -110,8 +133,8 @@ export function EquityChart({ data }: EquityChartProps) {
             tick={{ fill: "var(--color-text-muted)", fontSize: 11 }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-            width={55}
+            tickFormatter={(v: number) => `${v.toFixed(0)}R`}
+            width={45}
           />
 
           <YAxis
@@ -127,7 +150,7 @@ export function EquityChart({ data }: EquityChartProps) {
 
           <Bar
             yAxisId="trade"
-            dataKey="pnl_per_trade"
+            dataKey="r_per_trade"
             opacity={0.35}
             maxBarSize={2}
             barSize={1}
@@ -136,7 +159,7 @@ export function EquityChart({ data }: EquityChartProps) {
             {displayData.map((entry, index) => (
               <Cell
                 key={index}
-                fill={entry.pnl_per_trade >= 0 ? "var(--color-profit)" : "var(--color-loss)"}
+                fill={entry.r_per_trade >= 0 ? "var(--color-profit)" : "var(--color-loss)"}
               />
             ))}
           </Bar>
@@ -144,7 +167,7 @@ export function EquityChart({ data }: EquityChartProps) {
           <Area
             yAxisId="equity"
             type="monotone"
-            dataKey="pnl_cumulative"
+            dataKey="r_cumulative"
             stroke="var(--color-profit)"
             strokeWidth={2}
             fill="url(#equityGradient)"

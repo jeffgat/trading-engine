@@ -1,6 +1,16 @@
+import { useState } from "react";
 import type { BacktestHistoryItem } from "../lib/types";
-import { formatCurrency, formatPct } from "../lib/utils";
+import { formatPct } from "../lib/utils";
 import { ScrollArea } from "./ui/scroll-area";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
+import { SessionTag } from "./SessionTag";
+
+const R_VALUE = 50000;
+
+function formatR(r: number): string {
+  const sign = r >= 0 ? "+" : "";
+  return `${sign}${r.toFixed(2)}R`;
+}
 
 interface HistoryPanelProps {
   history: BacktestHistoryItem[];
@@ -50,6 +60,8 @@ function RefreshButton({ onClick }: { onClick: () => void }) {
 }
 
 export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }: HistoryPanelProps) {
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+
   if (history.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-bg-card p-4">
@@ -74,11 +86,12 @@ export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }:
         </div>
       </div>
 
-      <ScrollArea className="max-h-[480px]">
+      <ScrollArea className="h-[480px]">
         <div className="space-y-1.5">
         {history.map((item) => {
           const isActive = item.id === activeId;
-          const pnlPositive = item.total_pnl_usd >= 0;
+          const netR = item.total_pnl_usd / R_VALUE;
+          const pnlPositive = netR >= 0;
 
           return (
             <button
@@ -95,7 +108,7 @@ export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }:
                 role="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDelete(item.id);
+                  setDeleteId(item.id);
                 }}
                 className="absolute right-2 top-2 hidden rounded p-0.5 text-text-muted hover:bg-bg-secondary hover:text-text-primary group-hover:block"
               >
@@ -104,18 +117,20 @@ export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }:
                 </svg>
               </span>
 
+              {/* Name label */}
+              {item.name && (
+                <div className="mb-0.5 text-xs font-medium text-accent">
+                  {item.name}
+                </div>
+              )}
+
               {/* Top line: instrument + sessions */}
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-text-secondary">
                   {item.instrument}
                 </span>
                 {item.sessions.map((s) => (
-                  <span
-                    key={s}
-                    className="rounded bg-bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-text-muted"
-                  >
-                    {s}
-                  </span>
+                  <SessionTag key={s} session={s} />
                 ))}
               </div>
 
@@ -132,7 +147,7 @@ export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }:
                   className="font-mono text-sm font-semibold"
                   style={{ color: pnlPositive ? "var(--color-profit)" : "var(--color-loss)" }}
                 >
-                  {formatCurrency(item.total_pnl_usd)}
+                  {formatR(netR)}
                 </span>
                 <span className="text-xs text-text-muted">
                   {item.total_trades} trades
@@ -141,11 +156,24 @@ export function HistoryPanel({ history, activeId, onLoad, onDelete, onRefresh }:
                   {formatPct(item.win_rate)} win
                 </span>
               </div>
+
+              {/* Timestamp */}
+              <div className="mt-0.5 text-[10px] text-text-muted">
+                {formatTimestamp(item.timestamp)}
+              </div>
             </button>
           );
         })}
         </div>
       </ScrollArea>
+
+      <ConfirmDeleteDialog
+        open={deleteId !== null}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        onConfirm={() => { if (deleteId) onDelete(deleteId); }}
+        title="Delete this backtest?"
+        description="The saved backtest result will be permanently removed."
+      />
     </div>
   );
 }

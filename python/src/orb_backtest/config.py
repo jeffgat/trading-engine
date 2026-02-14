@@ -64,6 +64,10 @@ class StrategyConfig:
     # Excluded dates (YYYYMMDD strings)
     excluded_dates: tuple[str, ...] = field(default_factory=tuple)
 
+    # Experiment metadata (not used in simulation, just for labeling results)
+    name: str = ""
+    notes: str = ""
+
     @property
     def be_offset(self) -> float:
         """Breakeven offset in price units."""

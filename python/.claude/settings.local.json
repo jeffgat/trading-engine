@@ -14,7 +14,10 @@
       "Bash(python:*)",
       "Bash(curl:*)",
       "Bash(python3:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs:*)",
+      "Bash(uv run:*)"
     ]
   }
 }

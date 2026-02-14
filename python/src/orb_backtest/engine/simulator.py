@@ -17,6 +17,8 @@ import numpy as np
 import numba as nb
 import pandas as pd
 
+from collections import defaultdict
+
 from ..config import StrategyConfig, SessionConfig
 from ..signals.session import compute_session_masks, compute_trading_days, compute_session_days, compute_date_strings
 from ..signals.daily_atr import compute_daily_atr
@@ -239,6 +241,54 @@ def _simulate_single_trade(
     else:
         pnl_points = entry_price - close[last_bar]
     return fill_bar, EXIT_EOD, last_bar, pnl_points, 0.0, 0.0
+
+
+@nb.njit(cache=True)
+def _scan_fill_bar(
+    high: np.ndarray,
+    low: np.ndarray,
+    entry_bar_start: int,
+    entry_bar_end: int,
+    last_bar: int,
+    direction: int,
+    entry_price: float,
+) -> int:
+    """Scan for limit fill without simulating the exit.
+
+    Returns the bar index where the limit order fills, or -1 if no fill.
+    Used to determine which candidate fills first on dual-signal session-days.
+    """
+    for i in range(entry_bar_start, min(entry_bar_end + 1, last_bar + 1)):
+        if direction == 1:
+            if low[i] <= entry_price:
+                return i
+        else:
+            if high[i] >= entry_price:
+                return i
+    return -1
+
+
+@dataclass
+class _PreparedCandidate:
+    """Candidate with all trade params computed, ready for simulation."""
+
+    cand: "_SetupCandidate"
+    sd: int  # session_day_id
+    direction: int
+    entry_price: float
+    stop_price: float
+    tp1_price: float
+    tp2_price: float
+    be_price: float
+    risk_pts: float
+    qty: float
+    half_qty: float
+    is_single: bool
+    gap_size: float
+    entry_bar_start: int
+    entry_bar_end: int
+    flat_bar_start: int
+    last_bar: int
 
 
 # ---------------------------------------------------------------------------
@@ -484,10 +534,8 @@ def run_backtest(
             timestamps, masks, half_day_set, date_strs, session_day_id
         )
 
-        # Build signal_bar -> session_day_id lookup for candidates
-        # (candidates store date_str but we need session_day_id for boundary lookup)
-
-        # Simulate each candidate
+        # Phase 1: Prepare all candidates (compute trade params + bar boundaries)
+        prepared: list[_PreparedCandidate] = []
         for cand in candidates:
             atr = cand.daily_atr
             if np.isnan(atr) or atr <= 0:
@@ -556,49 +604,100 @@ def run_backtest(
             # Last bar for scanning (end of RTH or end of data)
             last_bar = min(flat_bar_start + 20, n - 1)  # buffer past flat window
 
-            # Run numba-compiled simulation
-            fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade(
-                high, low, close,
-                entry_bar_start, entry_bar_end,
-                flat_bar_start, last_bar,
-                direction,
-                entry, stop, tp1, tp2, be,
-                is_single, qty, half_qty,
-                config.point_value,
-                config.commission_per_contract,
-            )
-
-            # Calculate USD PnL
-            pnl_usd = pnl_pts * qty * config.point_value
-
-            # Subtract commission (round-trip: entry + exit, per contract)
-            if exit_type != EXIT_NO_FILL:
-                commission_total = 2 * qty * config.commission_per_contract
-                pnl_usd -= commission_total
-
-            # R-multiple
-            r_multiple = pnl_pts / risk_pts if risk_pts > 0 else 0.0
-
-            all_results.append(TradeResult(
-                date=cand.date_str,
-                session=session.name,
+            prepared.append(_PreparedCandidate(
+                cand=cand,
+                sd=sd,
                 direction=direction,
-                signal_bar=cand.signal_bar,
-                fill_bar=fill_bar,
                 entry_price=entry,
                 stop_price=stop,
                 tp1_price=tp1,
                 tp2_price=tp2,
-                exit_type=exit_type,
-                exit_bar=exit_bar,
-                pnl_points=pnl_pts,
-                pnl_usd=pnl_usd,
-                r_multiple=r_multiple,
+                be_price=be,
+                risk_pts=risk_pts,
                 qty=qty,
                 half_qty=half_qty,
+                is_single=is_single,
                 gap_size=cand.gap_size,
-                risk_points=risk_pts,
+                entry_bar_start=entry_bar_start,
+                entry_bar_end=entry_bar_end,
+                flat_bar_start=flat_bar_start,
+                last_bar=last_bar,
             ))
+
+        # Phase 2: Group by session-day and enforce one-trade-per-day.
+        # Pine Script allows both long and short setups to arm, but once
+        # any limit order fills (position_size != 0), the other is blocked.
+        # We replicate this by scanning fill bars for all candidates in a
+        # session-day, then only simulating the one that fills first.
+        sd_groups: dict[int, list[_PreparedCandidate]] = defaultdict(list)
+        for pc in prepared:
+            sd_groups[pc.sd].append(pc)
+
+        def _simulate_and_append(pc: _PreparedCandidate) -> None:
+            fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade(
+                high, low, close,
+                pc.entry_bar_start, pc.entry_bar_end,
+                pc.flat_bar_start, pc.last_bar,
+                pc.direction,
+                pc.entry_price, pc.stop_price, pc.tp1_price, pc.tp2_price, pc.be_price,
+                pc.is_single, pc.qty, pc.half_qty,
+                config.point_value,
+                config.commission_per_contract,
+            )
+            pnl_usd = pnl_pts * pc.qty * config.point_value
+            if exit_type != EXIT_NO_FILL:
+                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+            r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+            all_results.append(TradeResult(
+                date=pc.cand.date_str, session=session.name,
+                direction=pc.direction, signal_bar=pc.cand.signal_bar,
+                fill_bar=fill_bar, entry_price=pc.entry_price,
+                stop_price=pc.stop_price, tp1_price=pc.tp1_price,
+                tp2_price=pc.tp2_price, exit_type=exit_type,
+                exit_bar=exit_bar, pnl_points=pnl_pts, pnl_usd=pnl_usd,
+                r_multiple=r_multiple, qty=pc.qty, half_qty=pc.half_qty,
+                gap_size=pc.gap_size, risk_points=pc.risk_pts,
+            ))
+
+        def _append_no_fill(pc: _PreparedCandidate) -> None:
+            all_results.append(TradeResult(
+                date=pc.cand.date_str, session=session.name,
+                direction=pc.direction, signal_bar=pc.cand.signal_bar,
+                fill_bar=-1, entry_price=pc.entry_price,
+                stop_price=pc.stop_price, tp1_price=pc.tp1_price,
+                tp2_price=pc.tp2_price, exit_type=EXIT_NO_FILL,
+                exit_bar=-1, pnl_points=0.0, pnl_usd=0.0,
+                r_multiple=0.0, qty=pc.qty, half_qty=pc.half_qty,
+                gap_size=pc.gap_size, risk_points=pc.risk_pts,
+            ))
+
+        for sd in sorted(sd_groups):
+            group = sd_groups[sd]
+            if len(group) == 1:
+                _simulate_and_append(group[0])
+            else:
+                # Multiple candidates (long + short) on same session-day.
+                # Determine which limit order fills first.
+                fill_bars = []
+                for pc in group:
+                    fb = _scan_fill_bar(
+                        high, low,
+                        pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
+                        pc.direction, pc.entry_price,
+                    )
+                    fill_bars.append((pc, fb))
+
+                filled = [(pc, fb) for pc, fb in fill_bars if fb >= 0]
+                if not filled:
+                    for pc, _ in fill_bars:
+                        _append_no_fill(pc)
+                else:
+                    # Winner = earliest fill bar (ties: earlier signal_bar wins)
+                    winner_pc, _ = min(filled, key=lambda x: (x[1], x[0].cand.signal_bar))
+                    _simulate_and_append(winner_pc)
+                    for pc, _ in fill_bars:
+                        if pc is not winner_pc:
+                            _append_no_fill(pc)
 
     # Sort by date
     all_results.sort(key=lambda t: t.date)

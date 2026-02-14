@@ -20,7 +20,12 @@
       "Bash(~/.zshrc)",
       "Bash(source:*)",
       "Bash(uv run python:*)",
-      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab uv run python:*)"
+      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab uv run python:*)",
+      "Bash(while ps:*)",
+      "Bash(do sleep 5)",
+      "Bash(done)",
+      "Bash(kill:*)",
+      "Bash(uv run python3:*)"
     ]
   }
 }
