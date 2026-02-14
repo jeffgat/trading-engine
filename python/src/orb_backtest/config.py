@@ -140,8 +140,8 @@ NY_SESSION = SessionConfig(
     entry_end="13:00",
     flat_start="15:50",
     flat_end="16:00",
-    stop_atr_pct=15.0,
-    min_gap_atr_pct=1.75,
+    stop_atr_pct=7.5,
+    min_gap_atr_pct=2.25,
     max_gap_points=100.0,
 )
 
@@ -153,8 +153,8 @@ ASIA_SESSION = SessionConfig(
     entry_end="23:15",
     flat_start="06:45",
     flat_end="07:00",
-    stop_atr_pct=5.0,
-    min_gap_atr_pct=0.7,
+    stop_atr_pct=5.25,
+    min_gap_atr_pct=0.9,
     max_gap_points=50.0,
 )
 
