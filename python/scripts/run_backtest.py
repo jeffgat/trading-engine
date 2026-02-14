@@ -49,6 +49,7 @@ def main():
     # Output control
     parser.add_argument("--no-trades", action="store_true", help="Exclude trade list from output")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
+    parser.add_argument("--plot", action="store_true", help="Show equity curve and monthly returns")
 
     args = parser.parse_args()
 
@@ -97,7 +98,7 @@ def main():
     if not args.quiet:
         print(f"Running backtest...")
     t0 = time.time()
-    trades = run_backtest(df, config)
+    trades = run_backtest(df, config, start_date=args.start)
     t_sim = time.time() - t0
 
     # Compute metrics
@@ -114,6 +115,12 @@ def main():
         save_results(trades, config, args.output, include_trades=not args.no_trades)
         if not args.quiet:
             print(f"\nResults saved to: {args.output}")
+
+    # Plot equity curve and monthly returns
+    if args.plot:
+        from orb_backtest.viz.equity import plot_equity_curve, plot_monthly_returns
+        plot_equity_curve(trades, title=f"ORB+FVG — {args.instrument} ({args.start or 'all'} to {args.end or 'now'})")
+        plot_monthly_returns(trades, title=f"Monthly Returns — {args.instrument}")
 
 
 def _print_summary(m: dict) -> None:

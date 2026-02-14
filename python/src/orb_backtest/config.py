@@ -42,7 +42,7 @@ class StrategyConfig:
     """Complete strategy configuration. All optimizable params live here."""
 
     # Risk parameters
-    risk_usd: float = 500.0
+    risk_usd: float = 5000.0
     rr: float = 2.5
     tp1_ratio: float = 0.5
     min_qty: float = 1.0
@@ -169,18 +169,11 @@ LDN_SESSION = SessionConfig(
 
 
 def default_config(instrument: Instrument | None = None) -> StrategyConfig:
-    """Create default config matching HEAD_testing_a.pine NY-only defaults."""
+    """Create default config with NY session. Uses dataclass defaults for all params."""
     from .data.instruments import NQ
 
     inst = instrument or NQ
     return StrategyConfig(
-        risk_usd=500.0,
-        rr=2.5,
-        tp1_ratio=0.5,
-        min_qty=1.0,
-        qty_step=1.0,
-        be_offset_ticks=4,
-        atr_length=14,
         sessions=(NY_SESSION,),
         instrument=inst,
         half_days=("20250703", "20251128", "20251224", "20250109", "20260119"),

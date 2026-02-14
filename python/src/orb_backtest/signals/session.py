@@ -98,4 +98,74 @@ def compute_trading_days(timestamps: pd.DatetimeIndex) -> np.ndarray:
 
 def compute_date_strings(timestamps: pd.DatetimeIndex) -> np.ndarray:
     """Convert timestamps to YYYYMMDD strings for half-day/excluded date matching."""
-    return np.array([ts.strftime("%Y%m%d") for ts in timestamps])
+    return timestamps.strftime("%Y%m%d").values
+
+
+def compute_session_days(
+    timestamps: pd.DatetimeIndex,
+    session: SessionConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute session-aware day boundaries.
+
+    For sessions that cross midnight (e.g. Asia RTH 18:00-07:00), the "session day"
+    starts at the RTH open, not at calendar midnight. This prevents the ORB state
+    from being reset mid-session.
+
+    For sessions within a single calendar day (e.g. NY 09:30-16:00), this is
+    equivalent to compute_trading_days().
+
+    Args:
+        timestamps: DatetimeIndex in America/New_York timezone.
+        session: Session configuration with time windows.
+
+    Returns:
+        new_session_day: Boolean array where True = first bar of a new session day.
+            For cross-midnight sessions, fires at RTH start (e.g. 18:00).
+            For same-day sessions, fires at calendar midnight.
+        session_day_id: Integer array assigning each bar to a session day index.
+            Bars within the same session day share the same index.
+    """
+    orb_sh, orb_sm = _parse_time(session.orb_start)
+    flat_eh, flat_em = _parse_time(session.flat_end)
+
+    orb_start_minutes = orb_sh * 60 + orb_sm
+    flat_end_minutes = flat_eh * 60 + flat_em
+
+    # Detect if this is a cross-midnight session
+    crosses_midnight = orb_start_minutes > flat_end_minutes
+
+    if not crosses_midnight:
+        # Same-day session (e.g. NY): calendar day boundaries are fine
+        new_day = compute_trading_days(timestamps)
+        day_id = np.cumsum(new_day) - 1
+        return new_day, day_id
+
+    # Cross-midnight session: new session day starts at ORB start time
+    # We shift timestamps back by (24h - orb_start) so that the session
+    # start aligns with the beginning of a calendar day, then use date changes.
+    # E.g., Asia ORB at 18:00 → shift back 6h so 18:00 becomes 12:00 same day,
+    # and 07:00 next day becomes 01:00 same day.
+    #
+    # Shift amount = orb_start_minutes (minutes from midnight)
+    # A bar at 18:00 has bar_minutes=1080. Subtracting 1080 → 0 (start of day).
+    # A bar at 07:00 has bar_minutes=420. Subtracting 1080 → -660 → wraps to
+    # previous day, which is correct (it's the same session day as 18:00).
+
+    hour = timestamps.hour.values
+    minute = timestamps.minute.values
+    bar_minutes = hour * 60 + minute
+
+    # Shift bars so that orb_start maps to minute 0
+    shifted = bar_minutes - orb_start_minutes
+    # Bars before orb_start (negative shift) belong to the previous session day
+    # We can detect session day changes by looking at the shifted date
+    shifted_ts = timestamps - pd.Timedelta(minutes=orb_start_minutes)
+    shifted_dates = shifted_ts.date
+
+    new_session_day = np.empty(len(timestamps), dtype=bool)
+    new_session_day[0] = True
+    new_session_day[1:] = shifted_dates[1:] != shifted_dates[:-1]
+
+    day_id = np.cumsum(new_session_day) - 1
+
+    return new_session_day, day_id

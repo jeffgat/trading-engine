@@ -1,0 +1,132 @@
+import { useMemo } from "react";
+import type { BacktestSummary, Trade } from "../lib/types";
+import { formatCurrency, formatPct, formatNumber, pnlColor } from "../lib/utils";
+import { StatCard } from "./StatCard";
+
+const R_VALUE = 50000;
+
+function formatR(r: number): string {
+  const sign = r >= 0 ? "+" : "";
+  return `${sign}${r.toFixed(2)}R`;
+}
+
+function computeStreakR(trades: Trade[]) {
+  const filled = trades.filter((t) => t.exit_type !== "no_fill");
+  let maxWinR = 0;
+  let maxLossR = 0;
+  let curWinR = 0;
+  let curLossR = 0;
+
+  for (const t of filled) {
+    const r = t.pnl_usd / R_VALUE;
+    if (t.pnl_usd > 0) {
+      curWinR += r;
+      curLossR = 0;
+    } else if (t.pnl_usd < 0) {
+      curLossR += r;
+      curWinR = 0;
+    } else {
+      curWinR = 0;
+      curLossR = 0;
+    }
+    if (curWinR > maxWinR) maxWinR = curWinR;
+    if (curLossR < maxLossR) maxLossR = curLossR;
+  }
+
+  return { maxWinStreakR: maxWinR, maxLossStreakR: maxLossR };
+}
+
+interface StatBarProps {
+  summary: BacktestSummary;
+  trades: Trade[];
+}
+
+export function StatBar({ summary, trades }: StatBarProps) {
+  const totalPnlColor = pnlColor(summary.total_pnl_usd);
+  const ddColor = "var(--color-loss)";
+
+  const netR = summary.total_pnl_usd / R_VALUE;
+  const ddR = summary.max_drawdown_usd / R_VALUE;
+
+  const { maxWinStreakR, maxLossStreakR } = useMemo(() => computeStreakR(trades), [trades]);
+
+  return (
+    <div className="space-y-3">
+      {/* Row 1 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          label="Net Profit"
+          value={formatCurrency(summary.total_pnl_usd)}
+          subValue={`Avg ${formatCurrency(summary.avg_pnl_usd)}/trade`}
+          tooltip="Total P&L after commissions"
+          color={totalPnlColor}
+        />
+        <StatCard
+          label="Max Drawdown"
+          value={formatCurrency(summary.max_drawdown_usd)}
+          subValue={`${formatNumber(summary.max_drawdown_pct)}%`}
+          tooltip="Largest peak-to-trough equity decline"
+          color={ddColor}
+        />
+        <StatCard
+          label="Total Trades"
+          value={summary.total_trades.toString()}
+          subValue={`${summary.total_signals} signals, ${summary.no_fills} no-fills`}
+          tooltip="Filled trades (excludes no-fill signals)"
+        />
+        <StatCard
+          label="Win Rate"
+          value={formatPct(summary.win_rate)}
+          subValue={`${summary.win_count}/${summary.total_trades}`}
+          tooltip="Winning trades / total filled trades"
+          color="var(--color-text-primary)"
+        />
+        <StatCard
+          label="Profit Factor"
+          value={formatNumber(summary.profit_factor)}
+          subValue={`Avg ${formatR(summary.avg_r)}/trade`}
+          tooltip="Gross profit / gross loss"
+          color={summary.profit_factor >= 1 ? "var(--color-profit)" : "var(--color-loss)"}
+        />
+      </div>
+
+      {/* Row 2 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCard
+          label="Net R"
+          value={formatR(netR)}
+          subValue={`1R = ${formatCurrency(R_VALUE)}`}
+          tooltip="Total P&L expressed in risk units"
+          color={pnlColor(netR)}
+        />
+        <StatCard
+          label="Max DD (R)"
+          value={formatR(ddR)}
+          subValue={`${formatNumber(summary.max_drawdown_pct)}%`}
+          tooltip="Max drawdown in risk units"
+          color={ddColor}
+        />
+        <StatCard
+          label="Sharpe / Sortino"
+          value={formatNumber(summary.sharpe_ratio, 3)}
+          subValue={`Sortino ${formatNumber(summary.sortino_ratio, 3)}`}
+          tooltip="Risk-adjusted return ratios"
+        />
+        <StatCard
+          label="Best Streak (R)"
+          value={formatR(maxWinStreakR)}
+          subValue={`${summary.max_consecutive_wins} consecutive wins`}
+          tooltip="Total R earned during longest winning streak"
+          color="var(--color-profit)"
+        />
+        <StatCard
+          label="Worst Streak (R)"
+          value={formatR(maxLossStreakR)}
+          subValue={`${summary.max_consecutive_losses} consecutive losses`}
+          tooltip="Total R lost during longest losing streak"
+          color="var(--color-loss)"
+        />
+      </div>
+    </div>
+  );
+}

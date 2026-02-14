@@ -99,7 +99,7 @@ def main():
         eta = (total - done) / rate if rate > 0 else 0
         print(f"\r  [{done}/{total}] {pct:.0f}% | {rate:.1f} runs/s | ETA: {eta:.0f}s", end="", flush=True)
 
-    results = run_sweep(df, configs, n_workers=args.workers, progress_fn=progress)
+    results = run_sweep(df, configs, n_workers=args.workers, progress_fn=progress, start_date=args.start)
     t_sweep = time.time() - t0
     print(f"\n  Completed in {t_sweep:.1f}s ({len(configs) / t_sweep:.1f} runs/s)")
     print()

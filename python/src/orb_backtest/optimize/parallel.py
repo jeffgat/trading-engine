@@ -13,11 +13,11 @@ from ..engine.simulator import run_backtest, TradeResult
 
 
 def _run_single(args: tuple) -> tuple[dict, list[TradeResult]]:
-    """Worker function for multiprocessing. Takes (config_dict, df_bytes) tuple."""
+    """Worker function for multiprocessing. Takes (config_dict, df_bytes, start_date) tuple."""
     import pickle
-    config, df_bytes = args
+    config, df_bytes, start_date = args
     df = pickle.loads(df_bytes)
-    trades = run_backtest(df, config)
+    trades = run_backtest(df, config, start_date=start_date)
     return config, trades
 
 
@@ -26,14 +26,16 @@ def run_sweep(
     configs: list[StrategyConfig],
     n_workers: int | None = None,
     progress_fn: Callable[[int, int], None] | None = None,
+    start_date: str | None = None,
 ) -> list[tuple[StrategyConfig, list[TradeResult]]]:
     """Run backtests for all configs, optionally in parallel.
 
     Args:
-        df: 5-minute OHLCV DataFrame.
+        df: 5-minute OHLCV DataFrame (should include warmup data).
         configs: List of strategy configurations to test.
         n_workers: Number of parallel workers (None = cpu_count).
         progress_fn: Optional callback(completed, total) for progress reporting.
+        start_date: Only return trades on or after this date (YYYY-MM-DD).
 
     Returns:
         List of (config, trades) tuples in the same order as configs.
@@ -45,7 +47,7 @@ def run_sweep(
         # Sequential execution (simpler, no overhead)
         results = []
         for i, config in enumerate(configs):
-            trades = run_backtest(df, config)
+            trades = run_backtest(df, config, start_date=start_date)
             results.append((config, trades))
             if progress_fn:
                 progress_fn(i + 1, len(configs))
@@ -55,7 +57,7 @@ def run_sweep(
     import pickle
     df_bytes = pickle.dumps(df)
 
-    args_list = [(config, df_bytes) for config in configs]
+    args_list = [(config, df_bytes, start_date) for config in configs]
 
     results = []
     with Pool(n_workers) as pool:
@@ -71,11 +73,12 @@ def run_sweep_sequential(
     df: pd.DataFrame,
     configs: list[StrategyConfig],
     progress_fn: Callable[[int, int], None] | None = None,
+    start_date: str | None = None,
 ) -> list[tuple[StrategyConfig, list[TradeResult]]]:
     """Run backtests sequentially (useful for debugging or when numba cache is cold)."""
     results = []
     for i, config in enumerate(configs):
-        trades = run_backtest(df, config)
+        trades = run_backtest(df, config, start_date=start_date)
         results.append((config, trades))
         if progress_fn:
             progress_fn(i + 1, len(configs))

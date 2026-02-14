@@ -3,17 +3,44 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
 
 from ..config import StrategyConfig
 from ..engine.simulator import TradeResult, EXIT_NAMES, EXIT_NO_FILL
 from .metrics import compute_metrics
+
+RESULTS_DIR = Path(__file__).resolve().parents[3] / "data" / "results"
+
+
+def _build_equity_curve(trades: list[TradeResult]) -> list[dict]:
+    """Build cumulative equity curve from filled trades.
+
+    Returns list of {date, pnl_cumulative, pnl_per_trade} dicts.
+    """
+    filled = [t for t in trades if t.exit_type != EXIT_NO_FILL]
+    if not filled:
+        return []
+
+    cumulative = 0.0
+    curve = []
+    for t in filled:
+        cumulative += t.pnl_usd
+        curve.append({
+            "date": t.date,
+            "pnl_cumulative": round(cumulative, 2),
+            "pnl_per_trade": round(t.pnl_usd, 2),
+        })
+    return curve
 
 
 def results_to_dict(
     trades: list[TradeResult],
     config: StrategyConfig,
     include_trades: bool = True,
+    include_equity_curve: bool = False,
 ) -> dict:
     """Convert backtest results to a structured dict.
 
@@ -56,6 +83,9 @@ def results_to_dict(
         "config": config_dict,
         "summary": metrics,
     }
+
+    if include_equity_curve:
+        result["equity_curve"] = _build_equity_curve(trades)
 
     if include_trades:
         result["trades"] = [
@@ -102,6 +132,80 @@ def save_results(
     text = results_to_json(trades, config, include_trades)
     with open(filepath, "w") as f:
         f.write(text)
+
+
+def save_backtest_result(result: dict) -> str:
+    """Save a backtest result dict to disk and return its ID.
+
+    ID format: {timestamp}_{instrument}_{sessions}
+    """
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    instrument = result.get("config", {}).get("instrument", "UNK")
+    sessions = []
+    for key in result.get("config", {}):
+        if key.endswith("_orb_window"):
+            sessions.append(key.split("_")[0].upper())
+    session_str = "+".join(sorted(sessions)) or "UNK"
+
+    result_id = f"{ts}_{instrument}_{session_str}"
+    filepath = RESULTS_DIR / f"{result_id}.json"
+    filepath.write_text(json.dumps(result, indent=2, default=str))
+    return result_id
+
+
+def list_backtest_results() -> list[dict]:
+    """List all saved backtest results as metadata dicts, newest first."""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for fp in sorted(RESULTS_DIR.glob("*.json"), reverse=True):
+        try:
+            data = json.loads(fp.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        config = data.get("config", {})
+        summary = data.get("summary", {})
+        sessions = []
+        for key in config:
+            if key.endswith("_orb_window"):
+                sessions.append(key.split("_")[0].upper())
+        # Extract date range from equity curve or trades
+        equity = data.get("equity_curve", [])
+        trades_list = data.get("trades", [])
+        dates_source = equity or trades_list
+        date_start = dates_source[0]["date"] if dates_source else ""
+        date_end = dates_source[-1]["date"] if dates_source else ""
+
+        items.append({
+            "id": fp.stem,
+            "timestamp": fp.stem[:17].replace("_", " ", 1),  # "2026-02-14 153045"
+            "instrument": config.get("instrument", ""),
+            "sessions": sorted(sessions),
+            "total_pnl_usd": summary.get("total_pnl_usd", 0),
+            "total_trades": summary.get("total_trades", 0),
+            "win_rate": summary.get("win_rate", 0),
+            "date_start": date_start,
+            "date_end": date_end,
+        })
+    return items
+
+
+def load_backtest_result(result_id: str) -> dict | None:
+    """Load a full backtest result by ID (filename without .json)."""
+    fp = RESULTS_DIR / f"{result_id}.json"
+    if not fp.exists():
+        return None
+    return json.loads(fp.read_text())
+
+
+def delete_backtest_result(result_id: str) -> bool:
+    """Delete a saved backtest result. Returns True if deleted."""
+    fp = RESULTS_DIR / f"{result_id}.json"
+    if not fp.exists():
+        return False
+    fp.unlink()
+    return True
 
 
 def grid_results_to_dict(

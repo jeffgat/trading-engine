@@ -63,13 +63,19 @@ def compute_daily_atr(
     atr_shifted = np.roll(atr, 1)
     atr_shifted[0] = np.nan
 
-    # Build a series indexed by date for mapping
-    daily_atr_series = pd.Series(atr_shifted, index=daily.index.date)
+    # Map to 5m bars by date using vectorized merge
+    daily_dates = daily.index.normalize()
+    bar_dates = df.index.normalize()
 
-    # Map to 5m bars by date
-    bar_dates = df.index.date
-    result = np.array([
-        daily_atr_series.get(d, np.nan) for d in bar_dates
-    ], dtype=np.float64)
+    # Use searchsorted for O(n log m) mapping instead of O(n) dict lookups
+    daily_dates_arr = daily_dates.values
+    bar_dates_arr = bar_dates.values
+    indices = np.searchsorted(daily_dates_arr, bar_dates_arr, side="right") - 1
+
+    result = np.full(len(df), np.nan, dtype=np.float64)
+    valid = (indices >= 0) & (indices < len(atr_shifted))
+    # Only map when the daily date matches exactly
+    matching = valid & (daily_dates_arr[np.clip(indices, 0, len(daily_dates_arr) - 1)] == bar_dates_arr)
+    result[matching] = atr_shifted[indices[matching]]
 
     return result

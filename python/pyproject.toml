@@ -13,6 +13,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+data = [
+    "databento>=0.70",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",

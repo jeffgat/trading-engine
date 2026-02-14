@@ -18,7 +18,7 @@ import numba as nb
 import pandas as pd
 
 from ..config import StrategyConfig, SessionConfig
-from ..signals.session import compute_session_masks, compute_trading_days, compute_date_strings
+from ..signals.session import compute_session_masks, compute_trading_days, compute_session_days, compute_date_strings
 from ..signals.daily_atr import compute_daily_atr
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
@@ -272,14 +272,16 @@ def _extract_setup_candidates(
 
     # Session masks
     masks = compute_session_masks(timestamps, session)
-    new_day = compute_trading_days(timestamps)
+
+    # Session-aware day boundaries (handles cross-midnight sessions like Asia)
+    new_session_day, session_day_id = compute_session_days(timestamps, session)
 
     # Daily ATR
     daily_atr = compute_daily_atr(df, config.atr_length)
 
-    # ORB levels
+    # ORB levels — use session day boundaries so ORB isn't reset at midnight
     orb_high, orb_low, orb_ready = compute_orb_levels(
-        df, masks["in_orb"], masks["in_rth"], new_day
+        df, masks["in_orb"], masks["in_rth"], new_session_day
     )
 
     # FVG detection
@@ -314,27 +316,30 @@ def _extract_setup_candidates(
         & orb_ready
     )
 
-    # Exclude specific dates
+    # Exclude specific dates (vectorized via numpy isin)
     if excluded:
-        exclude_mask = np.array([d in excluded for d in date_strs])
+        exclude_arr = np.array(list(excluded))
+        exclude_mask = np.isin(date_strs, exclude_arr)
         valid_long &= ~exclude_mask
         valid_short &= ~exclude_mask
 
-    # Group by trading day, take first FVG per direction
+    # Group by session day, take first FVG per direction.
+    # Use session_day_id (not calendar date) so cross-midnight sessions
+    # like Asia (20:00-07:00) are treated as one session day.
     candidates: list[_SetupCandidate] = []
     dates = timestamps.date
 
-    # Track which days already have a signal
+    # Track which session days already have a signal
     seen_long_days: set = set()
     seen_short_days: set = set()
 
     for i in range(len(df)):
-        d = dates[i]
+        sd = session_day_id[i]
 
-        if valid_long[i] and d not in seen_long_days:
-            seen_long_days.add(d)
+        if valid_long[i] and sd not in seen_long_days:
+            seen_long_days.add(sd)
             candidates.append(_SetupCandidate(
-                date_str=str(d),
+                date_str=str(dates[i]),
                 session=session.name,
                 direction=1,
                 signal_bar=i,
@@ -343,10 +348,10 @@ def _extract_setup_candidates(
                 daily_atr=daily_atr[i],
             ))
 
-        if valid_short[i] and d not in seen_short_days:
-            seen_short_days.add(d)
+        if valid_short[i] and sd not in seen_short_days:
+            seen_short_days.add(sd)
             candidates.append(_SetupCandidate(
-                date_str=str(d),
+                date_str=str(dates[i]),
                 session=session.name,
                 direction=-1,
                 signal_bar=i,
@@ -368,6 +373,69 @@ def _find_bar_index(timestamps: pd.DatetimeIndex, in_mask: np.ndarray, date, fin
     return int(indices[-1]) if find_last else int(indices[0])
 
 
+def _precompute_day_boundaries(
+    timestamps: pd.DatetimeIndex,
+    masks: dict[str, np.ndarray],
+    half_day_set: set[str],
+    date_strs: np.ndarray,
+    session_day_id: np.ndarray,
+) -> dict:
+    """Precompute per-session-day entry/flat bar boundaries in a single pass.
+
+    Uses session_day_id (from compute_session_days) so cross-midnight sessions
+    are grouped correctly.
+
+    Returns dict mapping session_day_id (int) -> {
+        'entry_last': int,  last bar index in entry window
+        'flat_first': int,  first bar index in flat window
+        'date': datetime.date,  calendar date of first bar in this session day
+    }
+    """
+    in_entry = masks["in_entry"]
+    in_flat = masks["in_flat"]
+    dates = timestamps.date
+    n = len(timestamps)
+    hours = timestamps.hour.values
+    minutes = timestamps.minute.values
+
+    result: dict = {}
+    current_sd = -1
+    entry_last = -1
+    flat_first = -1
+    is_half = False
+    sd_date = None
+
+    for i in range(n):
+        sd = session_day_id[i]
+        if sd != current_sd:
+            # Save previous session day
+            if current_sd >= 0:
+                result[current_sd] = {"entry_last": entry_last, "flat_first": flat_first, "date": sd_date}
+            current_sd = sd
+            entry_last = -1
+            flat_first = -1
+            sd_date = dates[i]
+            is_half = date_strs[i] in half_day_set if half_day_set else False
+
+        if in_entry[i]:
+            entry_last = i
+
+        if flat_first == -1:
+            if is_half:
+                # Half-day: flat at 12:50
+                if (hours[i] == 12 and minutes[i] >= 50) or hours[i] > 12:
+                    flat_first = i
+            else:
+                if in_flat[i]:
+                    flat_first = i
+
+    # Save last session day
+    if current_sd >= 0:
+        result[current_sd] = {"entry_last": entry_last, "flat_first": flat_first, "date": sd_date}
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Main simulation orchestrator
 # ---------------------------------------------------------------------------
@@ -375,12 +443,16 @@ def _find_bar_index(timestamps: pd.DatetimeIndex, in_mask: np.ndarray, date, fin
 def run_backtest(
     df: pd.DataFrame,
     config: StrategyConfig,
+    start_date: str | None = None,
 ) -> list[TradeResult]:
     """Run the full backtest pipeline.
 
     Args:
-        df: 5-minute OHLCV DataFrame.
+        df: 5-minute OHLCV DataFrame (should include warmup data before start_date).
         config: Strategy configuration.
+        start_date: Only return trades on or after this date (YYYY-MM-DD).
+            Data before this date is used for indicator warmup (ATR, etc.)
+            but trades are excluded from results.
 
     Returns:
         List of TradeResult for each setup candidate (including no-fills).
@@ -400,9 +472,20 @@ def run_backtest(
         # Compute session masks for entry/flat window boundaries
         masks = compute_session_masks(timestamps, session)
 
+        # Session-aware day boundaries for precomputing bar lookups
+        _, session_day_id = compute_session_days(timestamps, session)
+
         # Pre-compute half-day flat mask for NY
         half_day_set = set(config.half_days) if session.name == "NY" else set()
         date_strs = compute_date_strings(timestamps)
+
+        # Precompute per-session-day bar boundaries (single pass over all bars)
+        day_bounds = _precompute_day_boundaries(
+            timestamps, masks, half_day_set, date_strs, session_day_id
+        )
+
+        # Build signal_bar -> session_day_id lookup for candidates
+        # (candidates store date_str but we need session_day_id for boundary lookup)
 
         # Simulate each candidate
         for cand in candidates:
@@ -447,49 +530,28 @@ def run_backtest(
                 tp2 = entry - config.rr * risk_pts
                 be = entry - config.be_offset
 
-            # Find entry window and flat window boundaries for this day
-            cand_date = pd.Timestamp(cand.date_str).date()
+            # Look up precomputed boundaries using the signal bar's session day
+            sd = session_day_id[cand.signal_bar]
 
             # Entry starts on bar AFTER the signal bar (matching bar_index > setupBar)
             entry_bar_start = cand.signal_bar + 1
 
-            # Find last bar in entry window for this day
-            entry_bar_end = _find_bar_index(timestamps, masks["in_entry"], cand_date, find_last=True)
+            bounds = day_bounds.get(sd)
+            if bounds is None:
+                continue
+
+            entry_bar_end = bounds["entry_last"]
             if entry_bar_end < 0 or entry_bar_end < entry_bar_start:
                 continue
 
-            # Find flat window start bar
-            # For half-days (NY only), use earlier flat time
-            is_half_day = False
-            if half_day_set:
-                cand_date_str = cand_date.strftime("%Y%m%d")
-                is_half_day = cand_date_str in half_day_set
-
-            if is_half_day:
-                # Half-day flat: 12:50-13:00 — find first bar with time >= 12:50
-                flat_bar_start = -1
-                for fb in range(entry_bar_start, min(n, entry_bar_end + 100)):
-                    if timestamps[fb].date() != cand_date:
-                        break
-                    if timestamps[fb].hour == 12 and timestamps[fb].minute >= 50:
-                        flat_bar_start = fb
-                        break
-                    if timestamps[fb].hour > 12:
-                        flat_bar_start = fb
-                        break
+            flat_bar_start = bounds["flat_first"]
+            if flat_bar_start < 0:
+                # No flat window found in this session day — check next session day
+                next_sd_bounds = day_bounds.get(sd + 1)
+                if next_sd_bounds is not None:
+                    flat_bar_start = next_sd_bounds["flat_first"]
                 if flat_bar_start < 0:
-                    flat_bar_start = entry_bar_end
-            else:
-                flat_bar_start = _find_bar_index(timestamps, masks["in_flat"], cand_date)
-                if flat_bar_start < 0:
-                    # No flat window found — use a bar far in the future
-                    # This can happen for cross-midnight sessions
-                    # Look for flat window on the NEXT calendar day
-                    import datetime
-                    next_date = cand_date + datetime.timedelta(days=1)
-                    flat_bar_start = _find_bar_index(timestamps, masks["in_flat"], next_date)
-                    if flat_bar_start < 0:
-                        flat_bar_start = min(entry_bar_end + 200, n - 1)
+                    flat_bar_start = min(entry_bar_end + 200, n - 1)
 
             # Last bar for scanning (end of RTH or end of data)
             last_bar = min(flat_bar_start + 20, n - 1)  # buffer past flat window
@@ -540,4 +602,9 @@ def run_backtest(
 
     # Sort by date
     all_results.sort(key=lambda t: t.date)
+
+    # Filter out warmup-period trades
+    if start_date is not None:
+        all_results = [t for t in all_results if t.date >= start_date]
+
     return all_results

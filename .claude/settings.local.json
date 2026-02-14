@@ -13,7 +13,14 @@
       "WebFetch(domain:firstratedata.com)",
       "Bash(uv sync:*)",
       "Bash(pip3:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebFetch(domain:massive.com)",
+      "WebFetch(domain:databento.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(~/.zshrc)",
+      "Bash(source:*)",
+      "Bash(uv run python:*)",
+      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab uv run python:*)"
     ]
   }
 }
