@@ -18,7 +18,9 @@
       "Bash(lsof:*)",
       "Bash(xargs:*)",
       "Bash(uv run:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(ls:*)",
+      "Bash(kill:*)"
     ]
   }
 }

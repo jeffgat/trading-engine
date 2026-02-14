@@ -10,7 +10,6 @@
       "Bash(wc:*)",
       "Bash(grep:*)",
       "Bash(xargs:*)",
-
       "Bash(uv sync:*)",
       "Bash(pip3:*)",
       "Bash(python3:*)",
@@ -25,7 +24,9 @@
       "Bash(do sleep 5)",
       "Bash(done)",
       "Bash(kill:*)",
-      "Bash(uv run python3:*)"
+      "Bash(uv run python3:*)",
+      "Bash(python scripts/download_data.py:*)",
+      "Bash(env)"
     ]
   }
 }

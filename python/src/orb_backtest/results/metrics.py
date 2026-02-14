@@ -52,16 +52,15 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
     max_consec_wins = _max_consecutive(pnl_usd > 0)
     max_consec_losses = _max_consecutive(pnl_usd < 0)
 
-    # Sharpe ratio (daily returns approximation)
-    # Since we have ~1 trade/day, use trade-level returns
+    # Annualized Sharpe & Sortino
+    # ~1 trade/day, so annualize with sqrt(252)
     avg_r = float(np.mean(r_multiples))
     std_r = float(np.std(r_multiples, ddof=1)) if len(r_multiples) > 1 else 1.0
-    sharpe = avg_r / std_r if std_r > 0 else 0.0
+    sharpe = (avg_r / std_r * np.sqrt(252)) if std_r > 0 else 0.0
 
-    # Sortino (downside deviation only)
-    downside = r_multiples[r_multiples < 0]
-    downside_std = float(np.std(downside, ddof=1)) if len(downside) > 1 else 1.0
-    sortino = avg_r / downside_std if downside_std > 0 else 0.0
+    downside_returns = np.minimum(r_multiples, 0.0)
+    downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
+    sortino = (avg_r / downside_std * np.sqrt(252)) if downside_std > 0 else 0.0
 
     # Exit type breakdown
     exit_counts = defaultdict(int)
