@@ -364,6 +364,21 @@ asia_longSetupAlert  = false
 asia_shortSetupAlert = false
 
 // ============================================================================
+// helper: compute bar time at session end time
+// ============================================================================
+calcEndBarTime(sessionStr, tz) =>
+    // parse end time (hhmm after the hyphen) from session string e.g. "0945-1300"
+    endPart  = str.substring(sessionStr, 5, 9)
+    endHour  = int(str.tonumber(str.substring(endPart, 0, 2)))
+    endMin   = int(str.tonumber(str.substring(endPart, 2, 4)))
+    // get current bar's time in the session timezone
+    barTime   = time
+    barMoment = timestamp(tz, year(barTime, tz), month(barTime, tz), dayofmonth(barTime, tz), endHour, endMin, 0)
+    // if the end time is earlier than the current bar, push to next day
+    barMoment := barMoment < barTime ? barMoment + 24 * 60 * 60 * 1000 : barMoment
+    barMoment
+
+// ============================================================================
 // FVG SIZE REQUIREMENTS
 // ============================================================================
 nyMinGap   = (nyMinGapAtrPct / 100) * nz(dailyATR)
@@ -422,16 +437,17 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
         tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
         tp2Pts = ny_longTp2 - ny_longEntry
         tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        ny_longEntryLine := line.new(time, ny_longEntry, time, ny_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        ny_longStopLine  := line.new(time, ny_longStop, time, ny_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        ny_longTp1Line   := line.new(time, ny_longTp1, time, ny_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        ny_longTp2Line   := line.new(time, ny_longTp2, time, ny_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        nyEndBar = calcEndBarTime(nyEntryWindow, "America/New_York")
+        ny_longEntryLine := line.new(time, ny_longEntry, nyEndBar, ny_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        ny_longStopLine  := line.new(time, ny_longStop, nyEndBar, ny_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        ny_longTp1Line   := line.new(time, ny_longTp1, nyEndBar, ny_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        ny_longTp2Line   := line.new(time, ny_longTp2, nyEndBar, ny_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
         slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        ny_longStopLbl := label.new(time, ny_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        ny_longTp1Lbl  := label.new(time, ny_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        ny_longTp2Lbl  := label.new(time, ny_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        ny_longStopLbl := label.new(nyEndBar, ny_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        ny_longTp1Lbl  := label.new(nyEndBar, ny_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        ny_longTp2Lbl  := label.new(nyEndBar, ny_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 if nyCanDetect and not ny_shortFirstFvgFound and nyShortFVG
     ny_shortFirstFvgFound := true
@@ -456,16 +472,17 @@ if nyCanDetect and not ny_shortFirstFvgFound and nyShortFVG
         tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
         tp2Pts = ny_shortEntry - ny_shortTp2
         tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        ny_shortEntryLine := line.new(time, ny_shortEntry, time, ny_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        ny_shortStopLine  := line.new(time, ny_shortStop, time, ny_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        ny_shortTp1Line   := line.new(time, ny_shortTp1, time, ny_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        ny_shortTp2Line   := line.new(time, ny_shortTp2, time, ny_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        nyEndBar = calcEndBarTime(nyEntryWindow, "America/New_York")
+        ny_shortEntryLine := line.new(time, ny_shortEntry, nyEndBar, ny_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        ny_shortStopLine  := line.new(time, ny_shortStop, nyEndBar, ny_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        ny_shortTp1Line   := line.new(time, ny_shortTp1, nyEndBar, ny_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        ny_shortTp2Line   := line.new(time, ny_shortTp2, nyEndBar, ny_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
         slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        ny_shortStopLbl := label.new(time, ny_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        ny_shortTp1Lbl  := label.new(time, ny_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        ny_shortTp2Lbl  := label.new(time, ny_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        ny_shortStopLbl := label.new(nyEndBar, ny_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        ny_shortTp1Lbl  := label.new(nyEndBar, ny_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        ny_shortTp2Lbl  := label.new(nyEndBar, ny_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
 // DETECT FIRST FVG - Asia
@@ -495,16 +512,17 @@ if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
         tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
         tp2Pts = asia_longTp2 - asia_longEntry
         tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        asia_longEntryLine := line.new(time, asia_longEntry, time, asia_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        asia_longStopLine  := line.new(time, asia_longStop, time, asia_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        asia_longTp1Line   := line.new(time, asia_longTp1, time, asia_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        asia_longTp2Line   := line.new(time, asia_longTp2, time, asia_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        asiaEndBar = calcEndBarTime(asiaEntryWindow, "America/New_York")
+        asia_longEntryLine := line.new(time, asia_longEntry, asiaEndBar, asia_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        asia_longStopLine  := line.new(time, asia_longStop, asiaEndBar, asia_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        asia_longTp1Line   := line.new(time, asia_longTp1, asiaEndBar, asia_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        asia_longTp2Line   := line.new(time, asia_longTp2, asiaEndBar, asia_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
         slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        asia_longStopLbl := label.new(time, asia_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        asia_longTp1Lbl  := label.new(time, asia_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        asia_longTp2Lbl  := label.new(time, asia_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        asia_longStopLbl := label.new(asiaEndBar, asia_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        asia_longTp1Lbl  := label.new(asiaEndBar, asia_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        asia_longTp2Lbl  := label.new(asiaEndBar, asia_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
     asia_shortFirstFvgFound := true
@@ -529,16 +547,17 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
         tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
         tp2Pts = asia_shortEntry - asia_shortTp2
         tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        asia_shortEntryLine := line.new(time, asia_shortEntry, time, asia_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        asia_shortStopLine  := line.new(time, asia_shortStop, time, asia_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        asia_shortTp1Line   := line.new(time, asia_shortTp1, time, asia_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        asia_shortTp2Line   := line.new(time, asia_shortTp2, time, asia_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        asiaEndBar = calcEndBarTime(asiaEntryWindow, "America/New_York")
+        asia_shortEntryLine := line.new(time, asia_shortEntry, asiaEndBar, asia_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        asia_shortStopLine  := line.new(time, asia_shortStop, asiaEndBar, asia_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        asia_shortTp1Line   := line.new(time, asia_shortTp1, asiaEndBar, asia_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        asia_shortTp2Line   := line.new(time, asia_shortTp2, asiaEndBar, asia_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
         slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        asia_shortStopLbl := label.new(time, asia_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        asia_shortTp1Lbl  := label.new(time, asia_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        asia_shortTp2Lbl  := label.new(time, asia_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        asia_shortStopLbl := label.new(asiaEndBar, asia_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        asia_shortTp1Lbl  := label.new(asiaEndBar, asia_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        asia_shortTp2Lbl  := label.new(asiaEndBar, asia_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
 // EXTEND FVG BOXES + LABELS (update right edge, not delete+redraw)
@@ -563,55 +582,40 @@ if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortFvgBox)
 // EXTEND TRADE LEVEL LINES + LABELS
 // ============================================================================
 if enableNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
-    line.set_x2(ny_longEntryLine, time)
-    line.set_x2(ny_longStopLine, time)
-    line.set_x2(ny_longTp1Line, time)
-    line.set_x2(ny_longTp2Line, time)
-    label.set_x(ny_longStopLbl, time)
-    label.set_x(ny_longTp1Lbl, time)
-    label.set_x(ny_longTp2Lbl, time)
+    line.set_x2(ny_longEntryLine, math.max(time, line.get_x2(ny_longEntryLine)))
+    line.set_x2(ny_longStopLine, math.max(time, line.get_x2(ny_longStopLine)))
+    line.set_x2(ny_longTp1Line, math.max(time, line.get_x2(ny_longTp1Line)))
+    line.set_x2(ny_longTp2Line, math.max(time, line.get_x2(ny_longTp2Line)))
+    label.set_x(ny_longStopLbl, math.max(time, label.get_x(ny_longStopLbl)))
+    label.set_x(ny_longTp1Lbl, math.max(time, label.get_x(ny_longTp1Lbl)))
+    label.set_x(ny_longTp2Lbl, math.max(time, label.get_x(ny_longTp2Lbl)))
 
 if enableNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
-    line.set_x2(ny_shortEntryLine, time)
-    line.set_x2(ny_shortStopLine, time)
-    line.set_x2(ny_shortTp1Line, time)
-    line.set_x2(ny_shortTp2Line, time)
-    label.set_x(ny_shortStopLbl, time)
-    label.set_x(ny_shortTp1Lbl, time)
-    label.set_x(ny_shortTp2Lbl, time)
+    line.set_x2(ny_shortEntryLine, math.max(time, line.get_x2(ny_shortEntryLine)))
+    line.set_x2(ny_shortStopLine, math.max(time, line.get_x2(ny_shortStopLine)))
+    line.set_x2(ny_shortTp1Line, math.max(time, line.get_x2(ny_shortTp1Line)))
+    line.set_x2(ny_shortTp2Line, math.max(time, line.get_x2(ny_shortTp2Line)))
+    label.set_x(ny_shortStopLbl, math.max(time, label.get_x(ny_shortStopLbl)))
+    label.set_x(ny_shortTp1Lbl, math.max(time, label.get_x(ny_shortTp1Lbl)))
+    label.set_x(ny_shortTp2Lbl, math.max(time, label.get_x(ny_shortTp2Lbl)))
 
 if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
-    line.set_x2(asia_longEntryLine, time)
-    line.set_x2(asia_longStopLine, time)
-    line.set_x2(asia_longTp1Line, time)
-    line.set_x2(asia_longTp2Line, time)
-    label.set_x(asia_longStopLbl, time)
-    label.set_x(asia_longTp1Lbl, time)
-    label.set_x(asia_longTp2Lbl, time)
+    line.set_x2(asia_longEntryLine, math.max(time, line.get_x2(asia_longEntryLine)))
+    line.set_x2(asia_longStopLine, math.max(time, line.get_x2(asia_longStopLine)))
+    line.set_x2(asia_longTp1Line, math.max(time, line.get_x2(asia_longTp1Line)))
+    line.set_x2(asia_longTp2Line, math.max(time, line.get_x2(asia_longTp2Line)))
+    label.set_x(asia_longStopLbl, math.max(time, label.get_x(asia_longStopLbl)))
+    label.set_x(asia_longTp1Lbl, math.max(time, label.get_x(asia_longTp1Lbl)))
+    label.set_x(asia_longTp2Lbl, math.max(time, label.get_x(asia_longTp2Lbl)))
 
 if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
-    line.set_x2(asia_shortEntryLine, time)
-    line.set_x2(asia_shortStopLine, time)
-    line.set_x2(asia_shortTp1Line, time)
-    line.set_x2(asia_shortTp2Line, time)
-    label.set_x(asia_shortStopLbl, time)
-    label.set_x(asia_shortTp1Lbl, time)
-    label.set_x(asia_shortTp2Lbl, time)
-
-// ============================================================================
-// helper: compute bar time at session end time
-// ============================================================================
-calcEndBarTime(sessionStr, tz) =>
-    // parse end time (hhmm after the hyphen) from session string e.g. "0945-1300"
-    endPart  = str.substring(sessionStr, 5, 9)
-    endHour  = int(str.tonumber(str.substring(endPart, 0, 2)))
-    endMin   = int(str.tonumber(str.substring(endPart, 2, 4)))
-    // get current bar's time in the session timezone
-    barTime   = time
-    barMoment = timestamp(tz, year(barTime, tz), month(barTime, tz), dayofmonth(barTime, tz), endHour, endMin, 0)
-    // if the end time is earlier than the current bar, push to next day
-    barMoment := barMoment < barTime ? barMoment + 24 * 60 * 60 * 1000 : barMoment
-    barMoment
+    line.set_x2(asia_shortEntryLine, math.max(time, line.get_x2(asia_shortEntryLine)))
+    line.set_x2(asia_shortStopLine, math.max(time, line.get_x2(asia_shortStopLine)))
+    line.set_x2(asia_shortTp1Line, math.max(time, line.get_x2(asia_shortTp1Line)))
+    line.set_x2(asia_shortTp2Line, math.max(time, line.get_x2(asia_shortTp2Line)))
+    label.set_x(asia_shortStopLbl, math.max(time, label.get_x(asia_shortStopLbl)))
+    label.set_x(asia_shortTp1Lbl, math.max(time, label.get_x(asia_shortTp1Lbl)))
+    label.set_x(asia_shortTp2Lbl, math.max(time, label.get_x(asia_shortTp2Lbl)))
 
 // ============================================================================
 // VISUALS - ORB LINES (draw once per session, project to entry window end)

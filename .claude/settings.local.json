@@ -5,7 +5,15 @@
       "Skill(pine-debugger:*)",
       "WebFetch(domain:www.cmegroup.com)",
       "WebFetch(domain:docs.traderspost.io)",
-      "WebFetch(domain:traderspost.io)"
+      "WebFetch(domain:traderspost.io)",
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(xargs:*)",
+      "WebFetch(domain:firstratedata.com)",
+      "Bash(uv sync:*)",
+      "Bash(pip3:*)",
+      "Bash(python3:*)"
     ]
   }
 }

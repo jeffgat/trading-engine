@@ -747,25 +747,25 @@ if shortEntrySignal
         alert('{"ticker": "MNQ", "action": "sell", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
 if tp1HitLong
     // Partial exit at market - close TP1 tranche
-    alert('{"ticker": "MNQ", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
     // Cancel old bracket stop + place BE stop for runner (default cancel=true clears old orders)
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
     // Place TP2 limit for runner (cancel=false to preserve BE stop)
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
     tp1Alerted := true
 if tp1HitShort
     // Partial exit at market - close TP1 tranche
-    alert('{"ticker": "MNQ", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
     // Cancel old bracket stop + place BE stop for runner (default cancel=true clears old orders)
-    alert('{"ticker": "MNQ", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
     // Place TP2 limit for runner (cancel=false to preserve BE stop)
-    alert('{"ticker": "MNQ", "action": "buy", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "buy", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
     tp1Alerted := true
 if tp1HitSingleLong
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
     tp1Alerted := true
 if tp1HitSingleShort
-    alert('{"ticker": "MNQ", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MNQ", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
     tp1Alerted := true
 
 // ----------------------------------------------------------------------------------------

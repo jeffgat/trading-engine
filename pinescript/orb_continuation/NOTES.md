@@ -1,12 +1,5 @@
 # NOT YET, BUT SHOULD BE IMPLEMENTED. CHANGES TO PROD
-- implement ATR
-- size gaps in NY as 1.75% of the ATR
-- size gaps in asia as 0.25% of the ATR
-
-- 15% ATR SL NY
-- 5% ATR SL asia
-- 1.75% ATR gap NY
-- 0.7% ATR gap asia
+- we need to use NQ to enter on MNQ. the spread is actually a big deal during asia session.
 
 ## ideas
 - 5m orb?
@@ -14,6 +7,7 @@
 - orb reversal
 - other atr values than 14
 - revisit "classic" orb?
+- rerun atr gaps and stops sizes on NQ. large discrepancy with MNQ
 
 ### ATR, feb 5 2026
 - for orb as a continuation model, we see most of the winning orbs occur when price is past 100% of its ATR
