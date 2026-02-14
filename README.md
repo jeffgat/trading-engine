@@ -145,7 +145,7 @@ python scripts/compare_tv.py \
 
 - **Hybrid approach**: Vectorized signal generation (numpy/pandas) + Numba-compiled trade simulation
 - **Config**: Frozen dataclasses (hashable for caching)
-- **Data pipeline**: FirstRate Data or Databento CSVs, cached as Parquet for fast reloads
+- **Data pipeline**: Databento CSVs, cached as Parquet for fast reloads
 - Primary instrument: NQ ($20/pt, 0.25 tick size)
 
 ## Frontend Dashboard

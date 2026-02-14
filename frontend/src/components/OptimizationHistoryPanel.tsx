@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { OptimizationHistoryItem } from "../lib/types";
-import { formatCurrency, formatNumber } from "../lib/utils";
-import { ScrollArea } from "./ui/scroll-area";
+import { formatNumber, pnlColor } from "../lib/utils";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SessionTag } from "./SessionTag";
+import { ScrollArea } from "./ui/scroll-area";
 
 interface OptimizationHistoryPanelProps {
   history: OptimizationHistoryItem[];
@@ -106,7 +106,7 @@ export function OptimizationHistoryPanel({
 
                 {/* Top: instrument + sessions */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-text-secondary">
+                  <span className="text-xs font-bold text-text-primary">
                     {item.instrument}
                   </span>
                   {item.sessions.map((s) => (
@@ -115,7 +115,7 @@ export function OptimizationHistoryPanel({
                 </div>
 
                 {/* Swept params */}
-                <div className="mt-0.5 text-[10px] text-text-muted">
+                <div className="mt-2 text-[10px] text-text-muted">
                   {item.swept_params.join(", ")} ({item.total_combinations} combos)
                 </div>
 
@@ -124,8 +124,11 @@ export function OptimizationHistoryPanel({
                   <span className="font-mono text-sm font-semibold text-accent">
                     Sharpe {formatNumber(item.best_sharpe, 3)}
                   </span>
-                  <span className="text-xs text-text-muted">
-                    {formatCurrency(item.best_pnl_usd)}
+                  <span
+                    className="font-mono text-xs font-medium"
+                    style={{ color: pnlColor(item.best_pnl_usd) }}
+                  >
+                    {item.best_pnl_usd >= 0 ? "+" : ""}{(item.best_pnl_usd / (item.risk_usd || 50000)).toFixed(2)}R
                   </span>
                 </div>
 

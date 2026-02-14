@@ -3,14 +3,12 @@ import type { BacktestSummary, Trade } from "../lib/types";
 import { formatCurrency, formatPct, formatNumber, pnlColor } from "../lib/utils";
 import { StatCard } from "./StatCard";
 
-const R_VALUE = 50000;
-
 function formatR(r: number): string {
   const sign = r >= 0 ? "+" : "";
   return `${sign}${r.toFixed(2)}R`;
 }
 
-function computeStreakR(trades: Trade[]) {
+function computeStreakR(trades: Trade[], riskUsd: number) {
   const filled = trades.filter((t) => t.exit_type !== "no_fill");
   let maxWinR = 0;
   let maxLossR = 0;
@@ -18,7 +16,7 @@ function computeStreakR(trades: Trade[]) {
   let curLossR = 0;
 
   for (const t of filled) {
-    const r = t.pnl_usd / R_VALUE;
+    const r = t.pnl_usd / riskUsd;
     if (t.pnl_usd > 0) {
       curWinR += r;
       curLossR = 0;
@@ -39,16 +37,17 @@ function computeStreakR(trades: Trade[]) {
 interface StatBarProps {
   summary: BacktestSummary;
   trades: Trade[];
+  riskUsd: number;
 }
 
-export function StatBar({ summary, trades }: StatBarProps) {
+export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
   const ddColor = "var(--color-loss)";
 
-  const netR = summary.total_pnl_usd / R_VALUE;
-  const ddR = summary.max_drawdown_usd / R_VALUE;
-  const avgR = summary.avg_pnl_usd / R_VALUE;
+  const netR = summary.total_pnl_usd / riskUsd;
+  const ddR = summary.max_drawdown_usd / riskUsd;
+  const avgR = summary.avg_pnl_usd / riskUsd;
 
-  const { maxWinStreakR, maxLossStreakR } = useMemo(() => computeStreakR(trades), [trades]);
+  const { maxWinStreakR, maxLossStreakR } = useMemo(() => computeStreakR(trades, riskUsd), [trades, riskUsd]);
 
   return (
     <div className="space-y-3">
@@ -58,7 +57,7 @@ export function StatBar({ summary, trades }: StatBarProps) {
           label="Net R"
           value={formatR(netR)}
           subValue={`Avg ${formatR(avgR)}/trade`}
-          tooltip={`Total P&L in risk units (1R = ${formatCurrency(R_VALUE)})`}
+          tooltip={`Total P&L in risk units (1R = ${formatCurrency(riskUsd)})`}
           color={pnlColor(netR)}
         />
         <StatCard

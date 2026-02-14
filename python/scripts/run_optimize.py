@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from orb_backtest.config import default_config, NY_SESSION, StrategyConfig
+from orb_backtest.config import default_config, NY_SESSION, ASIA_SESSION, LDN_SESSION, StrategyConfig, with_overrides
 from orb_backtest.data.loader import load_5m_data
 from orb_backtest.data.instruments import get_instrument
 from orb_backtest.optimize.grid import generate_param_grid, linspace_range, describe_grid
@@ -54,6 +54,7 @@ def main():
     parser.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD)")
     parser.add_argument("--instrument", default="NQ", help="Instrument symbol")
+    parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
     parser.add_argument("--sweep", action="append", required=True,
                         help="Parameter sweep spec: name=start:stop:step or name=v1,v2,v3")
     parser.add_argument("--workers", type=int, default=None, help="Number of parallel workers")
@@ -68,7 +69,10 @@ def main():
 
     # Build base config
     instrument = get_instrument(args.instrument)
+    session_map = {"NY": NY_SESSION, "Asia": ASIA_SESSION, "LDN": LDN_SESSION}
+    sessions = tuple(session_map[s.strip()] for s in args.sessions.split(","))
     base_config = default_config(instrument)
+    base_config = with_overrides(base_config, sessions=sessions)
 
     # Generate grid
     configs = generate_param_grid(base_config, param_ranges)

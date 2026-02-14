@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { useHistory } from '../hooks/useHistory';
+import { useBacktestHistory } from '../hooks/useBacktestHistory';
 import type { BacktestResult } from '../lib/types';
 import { EquityChart } from './EquityChart';
-import { HistoryPanel } from './HistoryPanel';
+import { BacktestHistoryPanel } from './BacktestHistoryPanel';
 import { Skeleton } from './Skeleton';
+import { ConfigBar } from './ConfigBar';
 import { StatBar } from './StatBar';
 import { TradesTable } from './TradesTable';
 
-export function Dashboard() {
+export function BacktestDashboard() {
     const { history, activeId, refreshHistory, loadBacktest, deleteBacktest } =
-        useHistory();
+        useBacktestHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -43,13 +44,14 @@ export function Dashboard() {
             <div className="flex gap-4">
                 {/* History panel */}
                 <div className="w-72 shrink-0">
-                    <HistoryPanel
+                    <BacktestHistoryPanel
                         history={history}
                         activeId={activeId}
                         onLoad={handleLoad}
                         onDelete={deleteBacktest}
                         onRefresh={refreshHistory}
                     />
+
                 </div>
 
                 {/* Stats + Chart + Trades */}
@@ -58,9 +60,10 @@ export function Dashboard() {
 
                     {!loading && data && (
                         <div className="space-y-4">
-                            <StatBar summary={data.summary} trades={data.trades} />
-                            <EquityChart data={data.equity_curve} />
-                            <TradesTable trades={data.trades} />
+                            <ConfigBar config={data.config} />
+                            <StatBar summary={data.summary} trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
+                            <EquityChart data={data.equity_curve} riskUsd={data.config.risk_usd ?? 50000} />
+                            <TradesTable trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
                         </div>
                     )}
 

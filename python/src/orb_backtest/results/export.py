@@ -195,6 +195,7 @@ def list_backtest_results() -> list[dict]:
             "timestamp": fp.stem[:17].replace("_", " ", 1),  # "2026-02-14 153045"
             "instrument": config.get("instrument", ""),
             "sessions": sorted(sessions),
+            "risk_usd": config.get("risk_usd", 50000),
             "total_pnl_usd": summary.get("total_pnl_usd", 0),
             "total_trades": summary.get("total_trades", 0),
             "win_rate": summary.get("win_rate", 0),
@@ -302,9 +303,11 @@ def list_optimization_results() -> list[dict]:
         all_results = data.get("all_results", [])
         instrument = ""
         sessions = []
+        risk_usd = 50000
         if all_results:
             config = all_results[0].get("config", {})
             instrument = config.get("instrument", "")
+            risk_usd = config.get("risk_usd", 50000)
             for key in config:
                 if key.endswith("_orb_window"):
                     sessions.append(key.split("_")[0].upper())
@@ -323,6 +326,7 @@ def list_optimization_results() -> list[dict]:
             "timestamp": fp.stem[:17].replace("_", " ", 1),
             "instrument": instrument,
             "sessions": sorted(sessions),
+            "risk_usd": risk_usd,
             "swept_params": swept_params,
             "total_combinations": data.get("total_combinations", 0),
             "best_sharpe": best_sharpe,

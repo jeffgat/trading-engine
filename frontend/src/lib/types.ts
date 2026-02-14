@@ -85,6 +85,7 @@ export interface BacktestHistoryItem {
   timestamp: string;
   instrument: string;
   sessions: string[];
+  risk_usd: number;
   total_pnl_usd: number;
   total_trades: number;
   win_rate: number;
@@ -109,6 +110,7 @@ export interface OptimizationHistoryItem {
   timestamp: string;
   instrument: string;
   sessions: string[];
+  risk_usd: number;
   swept_params: string[];
   total_combinations: number;
   best_sharpe: number;

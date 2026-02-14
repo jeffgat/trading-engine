@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dashboard } from "./components/Dashboard";
+import { BacktestDashboard } from "./components/BacktestDashboard";
 import { OptimizeDashboard } from "./components/OptimizeDashboard";
 
 type Tab = "backtests" | "optimizations";
@@ -31,7 +31,7 @@ function App() {
         </div>
       </div>
 
-      {activeTab === "backtests" ? <Dashboard /> : <OptimizeDashboard />}
+      {activeTab === "backtests" ? <BacktestDashboard /> : <OptimizeDashboard />}
     </div>
   );
 }

@@ -13,7 +13,7 @@ interface UseHistoryReturn {
   setActiveId: (id: string | null) => void;
 }
 
-export function useHistory(): UseHistoryReturn {
+export function useBacktestHistory(): UseHistoryReturn {
   const [history, setHistory] = useState<BacktestHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);

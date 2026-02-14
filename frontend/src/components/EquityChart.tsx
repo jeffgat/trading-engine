@@ -13,10 +13,9 @@ import {
 } from "recharts";
 import type { EquityCurvePoint } from "../lib/types";
 
-const R_VALUE = 50000;
-
 interface EquityChartProps {
   data: EquityCurvePoint[];
+  riskUsd: number;
 }
 
 interface RPoint {
@@ -56,15 +55,15 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export function EquityChart({ data }: EquityChartProps) {
+export function EquityChart({ data, riskUsd }: EquityChartProps) {
   const rData: RPoint[] = useMemo(
     () =>
       data.map((d) => ({
         date: d.date,
-        r_cumulative: d.pnl_cumulative / R_VALUE,
-        r_per_trade: d.pnl_per_trade / R_VALUE,
+        r_cumulative: d.pnl_cumulative / riskUsd,
+        r_per_trade: d.pnl_per_trade / riskUsd,
       })),
-    [data],
+    [data, riskUsd],
   );
 
   if (!data.length) {

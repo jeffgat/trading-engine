@@ -1,5 +1,5 @@
 import type { BacktestConfig, BacktestSummary } from "../lib/types";
-import { formatCurrency, formatNumber, formatPct, pnlColor } from "../lib/utils";
+import { formatNumber, formatPct, pnlColor } from "../lib/utils";
 
 interface BestEntry {
   config: BacktestConfig;
@@ -11,6 +11,15 @@ interface BestResultsProps {
   bestByPnl: BestEntry | null;
   bestByPf: BestEntry | null;
   sweptParams: string[];
+}
+
+function formatR(r: number): string {
+  const sign = r >= 0 ? "+" : "";
+  return `${sign}${r.toFixed(2)}R`;
+}
+
+function getRiskUsd(entry: BestEntry): number {
+  return entry.config.risk_usd ?? 50000;
 }
 
 function getSweptValues(config: BacktestConfig, params: string[]): string {
@@ -28,14 +37,12 @@ function getSweptValues(config: BacktestConfig, params: string[]): string {
 function BestCard({
   label,
   entry,
-  metric,
   metricLabel,
   metricColor,
   sweptParams,
 }: {
   label: string;
   entry: BestEntry | null;
-  metric: number;
   metricLabel: string;
   metricColor: string;
   sweptParams: string[];
@@ -50,6 +57,8 @@ function BestCard({
   }
 
   const s = entry.summary;
+  const riskUsd = getRiskUsd(entry);
+  const netR = s.total_pnl_usd / riskUsd;
 
   return (
     <div className="rounded-lg border border-border bg-bg-card px-4 py-3 transition-colors hover:bg-bg-card-hover">
@@ -63,41 +72,38 @@ function BestCard({
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-text-muted">
         <span>{s.total_trades} trades</span>
         <span>{formatPct(s.win_rate)} win</span>
-        <span style={{ color: pnlColor(s.total_pnl_usd) }}>
-          {formatCurrency(s.total_pnl_usd)}
+        <span style={{ color: pnlColor(netR) }}>
+          {formatR(netR)}
         </span>
         <span>PF {formatNumber(s.profit_factor)}</span>
-        {entry.config.risk_usd != null && (
-          <span>Risk {formatCurrency(entry.config.risk_usd)}/trade</span>
-        )}
       </div>
     </div>
   );
 }
 
 export function BestResults({ bestBySharpe, bestByPnl, bestByPf, sweptParams }: BestResultsProps) {
+  const pnlRiskUsd = bestByPnl ? getRiskUsd(bestByPnl) : 50000;
+  const pnlNetR = (bestByPnl?.summary.total_pnl_usd ?? 0) / pnlRiskUsd;
+
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <BestCard
         label="Best by Sharpe"
         entry={bestBySharpe}
-        metric={bestBySharpe?.summary.sharpe_ratio ?? 0}
         metricLabel={formatNumber(bestBySharpe?.summary.sharpe_ratio ?? 0, 3)}
         metricColor="var(--color-accent)"
         sweptParams={sweptParams}
       />
       <BestCard
-        label="Best by P&L"
+        label="Best by R"
         entry={bestByPnl}
-        metric={bestByPnl?.summary.total_pnl_usd ?? 0}
-        metricLabel={formatCurrency(bestByPnl?.summary.total_pnl_usd ?? 0)}
-        metricColor={pnlColor(bestByPnl?.summary.total_pnl_usd ?? 0)}
+        metricLabel={formatR(pnlNetR)}
+        metricColor={pnlColor(pnlNetR)}
         sweptParams={sweptParams}
       />
       <BestCard
         label="Best by Profit Factor"
         entry={bestByPf}
-        metric={bestByPf?.summary.profit_factor ?? 0}
         metricLabel={formatNumber(bestByPf?.summary.profit_factor ?? 0)}
         metricColor="var(--color-accent)"
         sweptParams={sweptParams}

@@ -3,8 +3,6 @@ import type { Trade } from "../lib/types";
 import { formatCurrency } from "../lib/utils";
 import { ScrollArea } from "./ui/scroll-area";
 
-const R_VALUE = 50000;
-
 function formatR(r: number): string {
   const sign = r >= 0 ? "+" : "";
   return `${sign}${r.toFixed(2)}R`;
@@ -12,6 +10,7 @@ function formatR(r: number): string {
 
 interface TradesTableProps {
   trades: Trade[];
+  riskUsd: number;
 }
 
 const EXIT_LABELS: Record<string, string> = {
@@ -23,7 +22,7 @@ const EXIT_LABELS: Record<string, string> = {
   no_fill: "no fill",
 };
 
-export function TradesTable({ trades }: TradesTableProps) {
+export function TradesTable({ trades, riskUsd }: TradesTableProps) {
   const filled = useMemo(
     () =>
       trades
@@ -128,7 +127,7 @@ export function TradesTable({ trades }: TradesTableProps) {
                       className="whitespace-nowrap px-4 py-1.5 text-right font-mono"
                       style={{ color: pnlColor }}
                     >
-                      {formatR(t.pnl_usd / R_VALUE)}
+                      {formatR(t.pnl_usd / riskUsd)}
                     </td>
                   </tr>
                 );

@@ -3,8 +3,6 @@ import type { BacktestConfig, BacktestSummary } from "../lib/types";
 import { formatCurrency, formatNumber, formatPct, pnlColor } from "../lib/utils";
 import { ScrollArea } from "./ui/scroll-area";
 
-const R_VALUE = 50000;
-
 type SortKey = string;
 
 interface OptimizationTableProps {
@@ -13,6 +11,8 @@ interface OptimizationTableProps {
 }
 
 export function OptimizationTable({ results, sweptParams }: OptimizationTableProps) {
+  // Derive riskUsd from the first result's config
+  const riskUsd = results[0]?.config.risk_usd ?? 50000;
   const [sortKey, setSortKey] = useState<SortKey>("sharpe_ratio");
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -91,8 +91,8 @@ export function OptimizationTable({ results, sweptParams }: OptimizationTablePro
             <tbody>
               {sorted.map((r, i) => {
                 const s = r.summary;
-                const netR = s.total_pnl_usd / R_VALUE;
-                const ddR = s.max_drawdown_usd / R_VALUE;
+                const netR = s.total_pnl_usd / riskUsd;
+                const ddR = s.max_drawdown_usd / riskUsd;
 
                 return (
                   <tr

@@ -17,7 +17,8 @@
       "Bash(npm run dev:*)",
       "Bash(lsof:*)",
       "Bash(xargs:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

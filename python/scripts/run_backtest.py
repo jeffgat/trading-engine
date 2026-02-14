@@ -22,7 +22,7 @@ from orb_backtest.data.loader import load_5m_data
 from orb_backtest.data.instruments import get_instrument, NQ
 from orb_backtest.engine.simulator import run_backtest, EXIT_NAMES, EXIT_NO_FILL
 from orb_backtest.results.metrics import compute_metrics
-from orb_backtest.results.export import results_to_json, save_results
+from orb_backtest.results.export import results_to_json, results_to_dict, save_results, save_backtest_result
 
 
 def main():
@@ -42,6 +42,12 @@ def main():
     parser.add_argument("--ny-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ny-min-gap-atr-pct", type=float, default=None)
     parser.add_argument("--ny-max-gap-points", type=float, default=None)
+    parser.add_argument("--asia-stop-atr-pct", type=float, default=None)
+    parser.add_argument("--asia-min-gap-atr-pct", type=float, default=None)
+    parser.add_argument("--asia-max-gap-points", type=float, default=None)
+    parser.add_argument("--ldn-stop-atr-pct", type=float, default=None)
+    parser.add_argument("--ldn-min-gap-atr-pct", type=float, default=None)
+    parser.add_argument("--ldn-max-gap-points", type=float, default=None)
 
     # Session selection
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
@@ -84,6 +90,18 @@ def main():
         overrides["ny_min_gap_atr_pct"] = args.ny_min_gap_atr_pct
     if args.ny_max_gap_points is not None:
         overrides["ny_max_gap_points"] = args.ny_max_gap_points
+    if args.asia_stop_atr_pct is not None:
+        overrides["asia_stop_atr_pct"] = args.asia_stop_atr_pct
+    if args.asia_min_gap_atr_pct is not None:
+        overrides["asia_min_gap_atr_pct"] = args.asia_min_gap_atr_pct
+    if args.asia_max_gap_points is not None:
+        overrides["asia_max_gap_points"] = args.asia_max_gap_points
+    if args.ldn_stop_atr_pct is not None:
+        overrides["ldn_stop_atr_pct"] = args.ldn_stop_atr_pct
+    if args.ldn_min_gap_atr_pct is not None:
+        overrides["ldn_min_gap_atr_pct"] = args.ldn_min_gap_atr_pct
+    if args.ldn_max_gap_points is not None:
+        overrides["ldn_max_gap_points"] = args.ldn_max_gap_points
     if args.name is not None:
         overrides["name"] = args.name
     if args.notes is not None:
@@ -118,11 +136,18 @@ def main():
         print()
         _print_summary(metrics)
 
-    # Save output
+    # Auto-save to data/results/ (viewable in frontend dashboard)
+    result = results_to_dict(trades, config, include_trades=True, include_equity_curve=True)
+    result_id = save_backtest_result(result)
+    if not args.quiet:
+        print(f"Results saved: {result_id}")
+        print("View in dashboard → Backtests tab")
+
+    # Optional explicit output path
     if args.output:
         save_results(trades, config, args.output, include_trades=not args.no_trades)
         if not args.quiet:
-            print(f"\nResults saved to: {args.output}")
+            print(f"Also saved to: {args.output}")
 
     # Plot equity curve and monthly returns
     if args.plot:
