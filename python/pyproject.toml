@@ -16,6 +16,10 @@ dependencies = [
 data = [
     "databento>=0.70",
 ]
+storage = [
+    "boto3>=1.35",
+    "watchdog>=4.0",
+]
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",

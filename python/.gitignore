@@ -7,3 +7,4 @@ __pycache__/
 dist/
 build/
 .numba_cache/
+.env
