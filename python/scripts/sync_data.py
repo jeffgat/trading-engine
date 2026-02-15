@@ -175,6 +175,19 @@ def watch(poll_interval: int = 30):
         def on_modified(self, event):
             self._handle(event)
 
+        def on_moved(self, event):
+            # For moves, upload the destination file
+            if not event.is_directory:
+                filepath = Path(event.dest_path)
+                try:
+                    key = filepath.relative_to(DATA_DIR).as_posix()
+                except ValueError:
+                    return
+                if not any(key.startswith(f"{s}/") for s in SUBDIRS):
+                    return
+                if filepath.exists():
+                    upload_file(client, bucket, filepath)
+
     # Start local file watcher
     observer = Observer()
     observer.schedule(UploadHandler(), str(DATA_DIR), recursive=True)
