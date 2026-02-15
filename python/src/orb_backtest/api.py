@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .config import (
@@ -15,9 +16,21 @@ from .config import (
     ASIA_SESSION,
     LDN_SESSION,
 )
-from .data.instruments import get_instrument
+from .data.instruments import get_instrument, list_instruments
 from .data.loader import load_5m_data
 from .engine.simulator import run_backtest, EXIT_NO_FILL
+from .errors import (
+    BacktestError,
+    unknown_instrument,
+    unknown_session,
+    data_not_found,
+    invalid_sweep_spec,
+    no_sweep_params,
+    backtest_not_found,
+    optimization_not_found,
+    experiment_not_found,
+    invalid_experiment_ids,
+)
 from .results.export import (
     results_to_dict,
     grid_results_to_dict,
@@ -33,6 +46,7 @@ from .results.export import (
 from .results.metrics import compute_metrics
 from .optimize.grid import generate_param_grid, linspace_range
 from .optimize.parallel import run_sweep
+from .experiments import log_sweep_runs, query_runs, compare_runs as compare_experiment_runs
 
 app = FastAPI(title="ORB+FVG Backtester API")
 
@@ -44,6 +58,25 @@ app.add_middleware(
 )
 
 SESSION_MAP = {"NY": NY_SESSION, "Asia": ASIA_SESSION, "LDN": LDN_SESSION}
+
+
+# ── Response helpers ─────────────────────────────────────────────────
+
+
+def ok(result: Any) -> dict:
+    """Wrap a successful result in the standard envelope."""
+    return {"success": True, "result": result}
+
+
+@app.exception_handler(BacktestError)
+async def backtest_error_handler(request: Request, exc: BacktestError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"success": False, "error": exc.to_dict()},
+    )
+
+
+# ── Request models ───────────────────────────────────────────────────
 
 
 class BacktestRequest(BaseModel):
@@ -69,17 +102,58 @@ class BacktestRequest(BaseModel):
     ldn_max_gap_points: Optional[float] = None
 
 
+# ── Discovery endpoints ─────────────────────────────────────────────
+
+
+@app.get("/api/instruments")
+def get_instruments():
+    instruments = list_instruments()
+    return ok([
+        {
+            "symbol": inst.symbol,
+            "point_value": inst.point_value,
+            "min_tick": inst.min_tick,
+            "commission": inst.commission,
+            "data_file": inst.data_file,
+            "exchange_tz": inst.exchange_tz,
+        }
+        for inst in instruments.values()
+    ])
+
+
+@app.get("/api/sessions")
+def get_sessions():
+    return ok([
+        {
+            "name": sess.name,
+            "orb_start": sess.orb_start,
+            "orb_end": sess.orb_end,
+            "entry_start": sess.entry_start,
+            "entry_end": sess.entry_end,
+            "flat_start": sess.flat_start,
+            "flat_end": sess.flat_end,
+            "stop_atr_pct": sess.stop_atr_pct,
+            "min_gap_atr_pct": sess.min_gap_atr_pct,
+            "max_gap_points": sess.max_gap_points,
+        }
+        for sess in SESSION_MAP.values()
+    ])
+
+
+# ── Backtest endpoints ──────────────────────────────────────────────
+
+
 @app.post("/api/backtest")
 def run_backtest_endpoint(req: BacktestRequest):
     try:
         instrument = get_instrument(req.instrument)
     except KeyError:
-        raise HTTPException(status_code=400, detail=f"Unknown instrument: {req.instrument}")
+        raise unknown_instrument(req.instrument)
 
     sessions = []
     for s in req.sessions:
         if s not in SESSION_MAP:
-            raise HTTPException(status_code=400, detail=f"Unknown session: {s}")
+            raise unknown_session(s)
         sessions.append(SESSION_MAP[s])
 
     config = default_config(instrument)
@@ -102,11 +176,10 @@ def run_backtest_endpoint(req: BacktestRequest):
         config = with_overrides(config, **overrides)
 
     # Load data
-    data_file = instrument.data_file
     try:
-        df = load_5m_data(data_file, start=req.start, end=req.end)
+        df = load_5m_data(instrument.data_file, start=req.start, end=req.end)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise data_not_found(str(e))
 
     # Run backtest
     trades = run_backtest(df, config, start_date=req.start)
@@ -122,28 +195,28 @@ def run_backtest_endpoint(req: BacktestRequest):
     result_id = save_backtest_result(result)
     result["id"] = result_id
 
-    return result
+    return ok(result)
 
 
 @app.get("/api/backtests")
 def list_backtests():
-    return list_backtest_results()
+    return ok(list_backtest_results())
 
 
 @app.get("/api/backtests/{result_id}")
 def get_backtest(result_id: str):
     data = load_backtest_result(result_id)
     if data is None:
-        raise HTTPException(status_code=404, detail="Backtest not found")
+        raise backtest_not_found(result_id)
     data["id"] = result_id
-    return data
+    return ok(data)
 
 
 @app.delete("/api/backtests/{result_id}")
 def delete_backtest(result_id: str):
     if not delete_backtest_result(result_id):
-        raise HTTPException(status_code=404, detail="Backtest not found")
-    return {"ok": True}
+        raise backtest_not_found(result_id)
+    return ok({"deleted": result_id})
 
 
 # ── Optimization endpoints ──────────────────────────────────────────
@@ -170,17 +243,17 @@ def _parse_sweep_spec(spec: str) -> list[float]:
 @app.post("/api/optimize")
 def run_optimize_endpoint(req: OptimizeRequest):
     if not req.sweeps:
-        raise HTTPException(status_code=400, detail="No sweep parameters provided")
+        raise no_sweep_params()
 
     try:
         instrument = get_instrument(req.instrument)
     except KeyError:
-        raise HTTPException(status_code=400, detail=f"Unknown instrument: {req.instrument}")
+        raise unknown_instrument(req.instrument)
 
     sessions = []
     for s in req.sessions:
         if s not in SESSION_MAP:
-            raise HTTPException(status_code=400, detail=f"Unknown session: {s}")
+            raise unknown_session(s)
         sessions.append(SESSION_MAP[s])
 
     config = default_config(instrument)
@@ -192,7 +265,7 @@ def run_optimize_endpoint(req: OptimizeRequest):
         try:
             param_ranges[param_name] = _parse_sweep_spec(spec)
         except (ValueError, IndexError):
-            raise HTTPException(status_code=400, detail=f"Invalid sweep spec for {param_name}: {spec}")
+            raise invalid_sweep_spec(param_name, spec)
 
     # Generate grid
     configs = generate_param_grid(config, param_ranges)
@@ -201,7 +274,7 @@ def run_optimize_endpoint(req: OptimizeRequest):
     try:
         df = load_5m_data(instrument.data_file, start=req.start, end=req.end)
     except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise data_not_found(str(e))
 
     # Run sweep
     results = run_sweep(df, configs, start_date=req.start)
@@ -211,27 +284,84 @@ def run_optimize_endpoint(req: OptimizeRequest):
 
     # Auto-save
     result_id = save_optimization_result(result)
+    # Log individual sweep runs to experiment DB
+    try:
+        log_sweep_runs(results, result_id)
+    except Exception:
+        pass
     result["id"] = result_id
 
-    return result
+    return ok(result)
 
 
 @app.get("/api/optimizations")
 def list_optimizations():
-    return list_optimization_results()
+    return ok(list_optimization_results())
 
 
 @app.get("/api/optimizations/{result_id}")
 def get_optimization(result_id: str):
     data = load_optimization_result(result_id)
     if data is None:
-        raise HTTPException(status_code=404, detail="Optimization not found")
+        raise optimization_not_found(result_id)
     data["id"] = result_id
-    return data
+    return ok(data)
 
 
 @app.delete("/api/optimizations/{result_id}")
 def delete_optimization(result_id: str):
     if not delete_optimization_result(result_id):
-        raise HTTPException(status_code=404, detail="Optimization not found")
-    return {"ok": True}
+        raise optimization_not_found(result_id)
+    return ok({"deleted": result_id})
+
+
+# ── Experiment tracking endpoints ────────────────────────────────────
+
+
+@app.get("/api/experiments")
+def list_experiments(
+    instrument: Optional[str] = None,
+    sessions: Optional[str] = None,
+    min_pf: Optional[float] = None,
+    min_sharpe: Optional[float] = None,
+    name: Optional[str] = None,
+    run_type: Optional[str] = None,
+    after: Optional[str] = None,
+    before: Optional[str] = None,
+    limit: int = 50,
+):
+    filters = {}
+    if instrument:
+        filters["instrument"] = instrument
+    if sessions:
+        filters["sessions"] = sessions
+    if min_pf is not None:
+        filters["min_profit_factor"] = min_pf
+    if min_sharpe is not None:
+        filters["min_sharpe"] = min_sharpe
+    if name:
+        filters["experiment_name"] = name
+    if run_type:
+        filters["run_type"] = run_type
+    if after:
+        filters["date_from"] = after
+    if before:
+        filters["date_to"] = before
+    return ok(query_runs(limit=limit, **filters))
+
+
+@app.get("/api/experiments/compare")
+def compare_experiments(ids: str):
+    try:
+        run_ids = [int(x.strip()) for x in ids.split(",")]
+    except ValueError:
+        raise invalid_experiment_ids()
+    return ok(compare_experiment_runs(run_ids))
+
+
+@app.get("/api/experiments/{run_id}")
+def get_experiment(run_id: int):
+    rows = compare_experiment_runs([run_id])
+    if not rows:
+        raise experiment_not_found(run_id)
+    return ok(rows[0])

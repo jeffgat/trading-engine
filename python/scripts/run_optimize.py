@@ -34,6 +34,7 @@ from orb_backtest.optimize.grid import generate_param_grid, linspace_range, desc
 from orb_backtest.optimize.parallel import run_sweep
 from orb_backtest.results.metrics import compute_metrics
 from orb_backtest.results.export import grid_results_to_dict, save_optimization_result
+from orb_backtest.experiments import log_sweep_runs
 
 
 def parse_sweep(spec: str) -> tuple[str, list[float]]:
@@ -129,6 +130,14 @@ def main():
     # Auto-save to data/optimizations/ (viewable in frontend dashboard)
     grid_dict = grid_results_to_dict(results, swept_params=param_ranges)
     result_id = save_optimization_result(grid_dict)
+
+    # Log individual sweep runs to experiment DB
+    try:
+        n_logged = log_sweep_runs(results, result_id)
+        print(f"  Logged {n_logged} experiment rows to DB")
+    except Exception as e:
+        print(f"  Warning: experiment logging failed: {e}")
+
     print(f"Results saved: {result_id}")
     print("View in dashboard → Optimizations tab")
 

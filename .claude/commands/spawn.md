@@ -1,0 +1,1 @@
+Spawn a team of agents to do the implementation. Add a critic agent to review each agent's work and find gaps.

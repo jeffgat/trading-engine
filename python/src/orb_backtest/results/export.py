@@ -11,6 +11,7 @@ import numpy as np
 from ..config import StrategyConfig
 from ..engine.simulator import TradeResult, EXIT_NAMES, EXIT_NO_FILL
 from .metrics import compute_metrics
+from ..experiments import log_run
 
 RESULTS_DIR = Path(__file__).resolve().parents[3] / "data" / "results"
 OPTIMIZATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "optimizations"
@@ -162,6 +163,13 @@ def save_backtest_result(result: dict) -> str:
         result_id += f"_{name_slug}"
     filepath = RESULTS_DIR / f"{result_id}.json"
     filepath.write_text(json.dumps(result, indent=2, default=str))
+
+    # Log to experiment DB (non-blocking — never break backtest flow)
+    try:
+        log_run(result, result_id)
+    except Exception:
+        pass
+
     return result_id
 
 
@@ -350,3 +358,12 @@ def delete_optimization_result(result_id: str) -> bool:
         return False
     fp.unlink()
     return True
+
+
+def get_experiment_history(limit: int = 50, **filters) -> list[dict]:
+    """Query experiment history from the SQLite DB.
+
+    Convenience wrapper for API/dashboard use.
+    """
+    from ..experiments import query_runs
+    return query_runs(limit=limit, **filters)

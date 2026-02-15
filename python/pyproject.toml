@@ -10,6 +10,7 @@ dependencies = [
     "matplotlib>=3.8",
     "seaborn>=0.13",
     "pyarrow>=14.0",
+    "tabulate>=0.9",
 ]
 
 [project.optional-dependencies]
@@ -18,6 +19,7 @@ data = [
 ]
 storage = [
     "boto3>=1.35",
+    "watchdog>=4.0",
 ]
 api = [
     "fastapi>=0.115",

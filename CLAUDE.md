@@ -42,6 +42,43 @@ This repository contains TradingView Pine Script strategies for backtesting Open
 2. Adverse executions causing >1R losses (stop execution issues, overnight holds)
 3. Max wins capped at 1.1-1.2R instead of expected 1.5R
 
+## Python Backtesting Engine
+
+The `python/` directory contains a standalone backtesting engine that replicates the Pine Script logic with full programmatic control.
+
+### Architecture (Hybrid Vectorized + Numba)
+- **Signal generation** (vectorized): Session masks, ORB levels, FVG detection via NumPy/Pandas
+- **Trade simulation** (Numba-compiled): `_simulate_single_trade()` handles fill scanning, partial TP, breakeven stops
+- **One trade per session-day**: When both long and short setups exist, the first-to-fill wins (matching Pine behavior)
+
+### Key Modules
+- `engine/simulator.py` — Core backtest loop, `run_backtest()` entry point, `TradeResult` schema
+- `signals/` — `fvg.py` (FVG detection), `orb.py` (ORB levels), `session.py` (time windows), `daily_atr.py`
+- `results/metrics.py` — Sharpe, Sortino, drawdown, profit factor, win rate, exit breakdown
+- `optimize/grid.py` — Parameter grid generation for sweep optimization
+- `optimize/parallel.py` — Parallel execution of grid sweeps
+- `config.py` — `StrategyConfig` and `SessionConfig` dataclasses
+- `data/loader.py` — OHLCV data loading, `instruments.py` — instrument definitions
+- `api.py` — FastAPI endpoints for running backtests
+- `experiments.py` — Experiment tracking and comparison
+
+### Backtesting Best Practices
+
+When building or modifying the backtesting engine, guard against these biases:
+
+| Bias | Description | Mitigation |
+|------|-------------|------------|
+| **Look-ahead** | Using future data in signals | Point-in-time data only; signals shift by 1 bar before acting |
+| **Overfitting** | Curve-fitting params to history | Walk-forward analysis; out-of-sample holdout |
+| **Transaction costs** | Ignoring slippage/commissions | Realistic cost model (commission already implemented) |
+| **Selection bias** | Cherry-picking best param set | Pre-register hypotheses; test on unseen data |
+
+**Optimization discipline:**
+- Split data into **train / validation / test** sets — never optimize on the test set
+- Prefer **walk-forward optimization** (rolling train→test windows) over single in-sample optimization
+- Use **Monte Carlo bootstrap** (resample trade returns) to estimate drawdown confidence intervals
+- Limit free parameters to reduce overfitting risk — simpler models generalize better
+
 ## Pine Script Conventions Used
 
 - Uses `barstate.isconfirmed` for confirmed bar signals (V2)

@@ -26,7 +26,26 @@
       "Bash(kill:*)",
       "Bash(uv run python3:*)",
       "Bash(python scripts/download_data.py:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(du:*)",
+      "Bash(launchctl load:*)",
+      "Bash(launchctl list:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(uv pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(git show:*)",
+      "Bash(uv lock:*)",
+      "Bash(python:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(git -C /Users/cgatbonton/Documents/orb_backtests status)",
+      "Bash(git -C /Users/cgatbonton/Documents/orb_backtests diff)",
+      "Bash(git -C /Users/cgatbonton/Documents/orb_backtests log --oneline -5)",
+      "Bash(git -C /Users/cgatbonton/Documents/orb_backtests add .claude/settings.local.json CLAUDE.md python/README.md python/pyproject.toml python/scripts/run_optimize.py python/scripts/sync_data.py python/src/orb_backtest/api.py python/src/orb_backtest/results/export.py python/uv.lock .claude/agents/ .claude/commands/ .claude/skills/agent-first/ .claude/skills/skill-creator/ python/scripts/query_experiments.py python/src/orb_backtest/errors.py python/src/orb_backtest/experiments.py python/src/orb_backtest/data/)",
+      "Bash(git -C /Users/cgatbonton/Documents/orb_backtests add python/.gitignore .claude/settings.local.json CLAUDE.md python/README.md python/pyproject.toml python/scripts/run_optimize.py python/scripts/sync_data.py python/src/orb_backtest/api.py python/src/orb_backtest/results/export.py python/uv.lock .claude/agents/ .claude/commands/ .claude/skills/agent-first/ .claude/skills/skill-creator/ python/scripts/query_experiments.py python/src/orb_backtest/errors.py python/src/orb_backtest/experiments.py python/src/orb_backtest/data/)"
     ]
   }
 }
