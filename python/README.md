@@ -103,73 +103,12 @@ Market data and results in `data/` are stored in Cloudflare R2 so all collaborat
    # Edit .env with your R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
    ```
 
-2. Manual sync:
+2. Sync:
    ```bash
    uv run --extra storage python scripts/sync_data.py upload          # push local → R2
    uv run --extra storage python scripts/sync_data.py download        # pull R2 → local
    uv run --extra storage python scripts/sync_data.py upload raw      # sync only raw/
    ```
-
-3. Auto-sync (watches for local changes + polls R2 every 30s):
-   ```bash
-   uv run --extra storage python scripts/sync_data.py watch
-   uv run --extra storage python scripts/sync_data.py watch --poll 60  # custom interval
-   ```
-
-### Auto-Start on Login (macOS Launch Agent)
-
-To run the watcher automatically on login, create a Launch Agent:
-
-```bash
-cat > ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.orb-backtests.r2-sync</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/YOUR_USERNAME/.local/bin/uv</string>
-        <string>run</string>
-        <string>--extra</string>
-        <string>storage</string>
-        <string>python</string>
-        <string>scripts/sync_data.py</string>
-        <string>watch</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>/Users/YOUR_USERNAME/Documents/orb_backtests/python</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/orb-r2-sync.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/orb-r2-sync.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/Users/YOUR_USERNAME/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
-</dict>
-</plist>
-EOF
-```
-
-Replace `YOUR_USERNAME` with your macOS username, then:
-
-```bash
-# Find your uv path: which uv
-# Start the agent
-launchctl load ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist
-
-# Useful commands
-launchctl list | grep orb-backtests          # check status
-tail -f ~/Library/Logs/orb-r2-sync.log       # view logs
-launchctl unload ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist  # stop
-```
 
 ## Project Structure
 
