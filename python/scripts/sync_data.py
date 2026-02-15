@@ -28,6 +28,8 @@ import boto3
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SUBDIRS = ["raw", "cache", "results", "optimizations"]
+# Standalone files in data/ to sync (not inside a subdir)
+STANDALONE_FILES = ["experiments.db"]
 
 
 def get_client():
@@ -104,6 +106,22 @@ def upload(subdirs: list[str] | None = None):
             client.upload_file(str(filepath), bucket, key)
             uploaded += 1
 
+    # Sync standalone files (only during full sync, not subfolder-specific)
+    if subdirs is None:
+        for fname in STANDALONE_FILES:
+            filepath = DATA_DIR / fname
+            if not filepath.exists():
+                continue
+            key = fname
+            local_size = filepath.stat().st_size
+            remote_objects.update(list_remote_objects(client, bucket, prefix=key))
+            if key in remote_objects and remote_objects[key] == local_size:
+                skipped += 1
+                continue
+            print(f"  uploading {key} ({local_size:,} bytes)")
+            client.upload_file(str(filepath), bucket, key)
+            uploaded += 1
+
     print(f"\nDone: {uploaded} uploaded, {skipped} unchanged")
 
 
@@ -126,6 +144,22 @@ def download(subdirs: list[str] | None = None):
             print(f"  downloading {key} ({remote_size:,} bytes)")
             client.download_file(bucket, key, str(local_path))
             downloaded += 1
+
+    # Sync standalone files (only during full sync)
+    if subdirs is None:
+        for fname in STANDALONE_FILES:
+            remote_objects = list_remote_objects(client, bucket, prefix=fname)
+            for key, remote_size in remote_objects.items():
+                if key != fname:
+                    continue
+                local_path = DATA_DIR / key
+                if local_path.exists() and local_path.stat().st_size == remote_size:
+                    skipped += 1
+                    continue
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+                print(f"  downloading {key} ({remote_size:,} bytes)")
+                client.download_file(bucket, key, str(local_path))
+                downloaded += 1
 
     print(f"\nDone: {downloaded} downloaded, {skipped} unchanged")
 
@@ -160,7 +194,7 @@ def watch(poll_interval: int = 30):
                 key = filepath.relative_to(DATA_DIR).as_posix()
             except ValueError:
                 return
-            if not any(key.startswith(f"{s}/") for s in SUBDIRS):
+            if not any(key.startswith(f"{s}/") for s in SUBDIRS) and key not in STANDALONE_FILES:
                 return
             with sync_lock:
                 if key in recently_synced:
