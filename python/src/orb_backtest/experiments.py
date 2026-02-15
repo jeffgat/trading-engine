@@ -9,7 +9,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "experiments.db"
+DB_PATH = Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db"
 
 _SCHEMA = """\
 CREATE TABLE IF NOT EXISTS runs (
