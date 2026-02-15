@@ -47,7 +47,16 @@
       "Bash(git -C /Users/cgatbonton/Documents/orb_backtests add .claude/settings.local.json CLAUDE.md python/README.md python/pyproject.toml python/scripts/run_optimize.py python/scripts/sync_data.py python/src/orb_backtest/api.py python/src/orb_backtest/results/export.py python/uv.lock .claude/agents/ .claude/commands/ .claude/skills/agent-first/ .claude/skills/skill-creator/ python/scripts/query_experiments.py python/src/orb_backtest/errors.py python/src/orb_backtest/experiments.py python/src/orb_backtest/data/)",
       "Bash(git -C /Users/cgatbonton/Documents/orb_backtests add python/.gitignore .claude/settings.local.json CLAUDE.md python/README.md python/pyproject.toml python/scripts/run_optimize.py python/scripts/sync_data.py python/src/orb_backtest/api.py python/src/orb_backtest/results/export.py python/uv.lock .claude/agents/ .claude/commands/ .claude/skills/agent-first/ .claude/skills/skill-creator/ python/scripts/query_experiments.py python/src/orb_backtest/errors.py python/src/orb_backtest/experiments.py python/src/orb_backtest/data/)",
       "Bash(git -C:*)",
-      "Bash(PYTHONPATH=python/src python:*)"
+      "Bash(PYTHONPATH=python/src python:*)",
+      "Bash(python/.venv/bin/python -m pip install:*)",
+      "Bash(python/.venv/bin/python:*)",
+      "Bash(sqlite3:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(while read f)",
+      "Bash(do basename \"$f\" .json)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)"
     ]
   }
 }

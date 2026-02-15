@@ -89,6 +89,10 @@ export interface BacktestHistoryItem {
   total_pnl_usd: number;
   total_trades: number;
   win_rate: number;
+  sharpe_ratio: number;
+  max_drawdown_usd: number;
+  profit_factor: number;
+  sortino_ratio: number;
   date_start: string;
   date_end: string;
   name?: string;

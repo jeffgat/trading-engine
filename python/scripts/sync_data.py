@@ -22,6 +22,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
@@ -60,14 +61,22 @@ def get_bucket() -> str:
     return os.environ.get("R2_BUCKET_NAME", "orb-backtests-data")
 
 
-def list_remote_objects(client, bucket: str, prefix: str = "") -> dict[str, int]:
-    """Return {key: size} for all objects under prefix."""
-    objects = {}
+def _local_mtime(filepath: Path) -> datetime:
+    """Return the local file's mtime as an aware UTC datetime."""
+    return datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+
+
+def list_remote_objects(client, bucket: str, prefix: str = "") -> dict[str, dict]:
+    """Return {key: {size, last_modified}} for all objects under prefix."""
+    objects: dict[str, dict] = {}
     kwargs = {"Bucket": bucket, "Prefix": prefix}
     while True:
         resp = client.list_objects_v2(**kwargs)
         for obj in resp.get("Contents", []):
-            objects[obj["Key"]] = obj["Size"]
+            objects[obj["Key"]] = {
+                "size": obj["Size"],
+                "last_modified": obj["LastModified"],
+            }
         if not resp.get("IsTruncated"):
             break
         kwargs["ContinuationToken"] = resp["NextContinuationToken"]
@@ -81,7 +90,7 @@ def upload(subdirs: list[str] | None = None):
     uploaded = 0
     skipped = 0
 
-    remote_objects = {}
+    remote_objects: dict[str, dict] = {}
     for subdir in targets:
         remote_objects.update(list_remote_objects(client, bucket, prefix=f"{subdir}/"))
 
@@ -96,7 +105,7 @@ def upload(subdirs: list[str] | None = None):
             key = filepath.relative_to(DATA_DIR).as_posix()
             local_size = filepath.stat().st_size
 
-            if key in remote_objects and remote_objects[key] == local_size:
+            if key in remote_objects and remote_objects[key]["size"] == local_size:
                 skipped += 1
                 continue
 
@@ -116,14 +125,20 @@ def download(subdirs: list[str] | None = None):
 
     for subdir in targets:
         remote_objects = list_remote_objects(client, bucket, prefix=f"{subdir}/")
-        for key, remote_size in sorted(remote_objects.items()):
+        for key, info in sorted(remote_objects.items()):
             local_path = DATA_DIR / key
-            if local_path.exists() and local_path.stat().st_size == remote_size:
-                skipped += 1
-                continue
+
+            if local_path.exists():
+                if local_path.stat().st_size == info["size"]:
+                    skipped += 1
+                    continue
+                # Size differs — only download if remote is newer
+                if _local_mtime(local_path) >= info["last_modified"]:
+                    skipped += 1
+                    continue
 
             local_path.parent.mkdir(parents=True, exist_ok=True)
-            print(f"  downloading {key} ({remote_size:,} bytes)")
+            print(f"  downloading {key} ({info['size']:,} bytes)")
             client.download_file(bucket, key, str(local_path))
             downloaded += 1
 
@@ -218,12 +233,18 @@ def watch(poll_interval: int = 30):
             break
         for subdir in SUBDIRS:
             remote_objects = list_remote_objects(client, bucket, prefix=f"{subdir}/")
-            for key, remote_size in remote_objects.items():
+            for key, info in remote_objects.items():
                 local_path = DATA_DIR / key
-                if local_path.exists() and local_path.stat().st_size == remote_size:
-                    continue
+
+                if local_path.exists():
+                    if local_path.stat().st_size == info["size"]:
+                        continue
+                    # Size differs — only download if remote is newer
+                    if _local_mtime(local_path) >= info["last_modified"]:
+                        continue
+
                 local_path.parent.mkdir(parents=True, exist_ok=True)
-                print(f"  [download] {key} ({remote_size:,} bytes)")
+                print(f"  [download] {key} ({info['size']:,} bytes)")
                 client.download_file(bucket, key, str(local_path))
                 with sync_lock:
                     recently_synced.add(key)

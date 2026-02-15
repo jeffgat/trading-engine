@@ -27,7 +27,8 @@ export function useBacktestHistory(): UseHistoryReturn {
     try {
       const res = await fetch("/api/backtests");
       if (res.ok) {
-        setHistory(await res.json());
+        const data = await res.json();
+        setHistory(data.result ?? data);
       }
     } catch {
       // API unavailable — leave history empty
@@ -40,7 +41,8 @@ export function useBacktestHistory(): UseHistoryReturn {
     try {
       const res = await fetch(`/api/backtests/${id}`);
       if (!res.ok) return null;
-      const data: BacktestResult = await res.json();
+      const json = await res.json();
+      const data: BacktestResult = json.result ?? json;
       setActiveId(id);
       return data;
     } catch {

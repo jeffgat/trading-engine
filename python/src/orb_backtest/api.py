@@ -35,7 +35,6 @@ from .results.export import (
     results_to_dict,
     grid_results_to_dict,
     save_backtest_result,
-    list_backtest_results,
     load_backtest_result,
     delete_backtest_result,
     save_optimization_result,
@@ -46,7 +45,7 @@ from .results.export import (
 from .results.metrics import compute_metrics
 from .optimize.grid import generate_param_grid, linspace_range
 from .optimize.parallel import run_sweep
-from .experiments import log_sweep_runs, query_runs, compare_runs as compare_experiment_runs
+from .experiments import log_sweep_runs, query_runs, compare_runs as compare_experiment_runs, list_backtest_history
 
 app = FastAPI(title="ORB+FVG Backtester API")
 
@@ -200,7 +199,7 @@ def run_backtest_endpoint(req: BacktestRequest):
 
 @app.get("/api/backtests")
 def list_backtests():
-    return ok(list_backtest_results())
+    return ok(list_backtest_history())
 
 
 @app.get("/api/backtests/{result_id}")

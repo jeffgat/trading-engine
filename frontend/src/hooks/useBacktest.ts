@@ -35,10 +35,11 @@ export function useBacktest(): UseBacktestReturn {
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP ${res.status}`);
+        throw new Error(body.error?.message || body.detail || `HTTP ${res.status}`);
       }
 
-      const result: BacktestResult = await res.json();
+      const json = await res.json();
+      const result: BacktestResult = json.result ?? json;
       setData(result);
       return result.id ?? null;
     } catch (err) {

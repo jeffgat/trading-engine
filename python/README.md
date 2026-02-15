@@ -23,11 +23,9 @@ uv run python scripts/run_server.py
 
 ## Development Flow
 
-The Pine Script workflow of creating `v5_atr.pine`, `v5_sweeps.pine`, etc. for each experiment doesn't translate well to Python. Here's how to approach it instead:
-
 ### Parameter experiments → use config overrides
 
-Don't copy files. The config system parameterizes everything — session times, ATR percentages, gap filters, R:R. What would be `v5_atr.pine` vs `v5_fixed_gaps.pine` in Pine is just different `--ny-stop-atr-pct` values here.
+Don't copy files. The config system parameterizes everything — session times, ATR percentages, gap filters, R:R. Different experiments are just different `--ny-stop-atr-pct` values.
 
 ```bash
 # Testing wider stops
@@ -51,9 +49,9 @@ uv run python scripts/run_optimize.py --data NQ_5m.csv \
 New entry logic, exit types, or simulation mechanics belong in git branches — not duplicated scripts.
 
 ```
-main                      ← production-equivalent config
-feat/reentry-on-sl        ← what would be v6_x_reentry_on_sl.pine
-feat/respected-gaps       ← what would be v6_x_respected_gaps.pine
+main                      ← production config
+feat/reentry-on-sl        ← re-entry after stop loss
+feat/respected-gaps       ← respected gap filter
 ```
 
 The code diff is the documentation. When a branch proves out, merge it.
@@ -80,16 +78,6 @@ The dashboard history panel shows the name label on each run for quick identific
 - **Dashboard**: Run backtests and browse history in the sidebar. Named runs show their label.
 - **CLI**: Results print a formatted summary to stdout after each run.
 - **JSON**: Load any saved result from `data/results/` for programmatic comparison.
-
-### Summary
-
-| Pine Script approach | Python equivalent |
-|---|---|
-| New file per variant (`v5_atr.pine`) | Different config params via `--flags` |
-| HEAD files for canonical versions | `main` branch + default config |
-| Visual comparison in TradingView | Dashboard history / saved JSON |
-| New entry model (`v6_x_*.pine`) | Git branch (`feat/...`) |
-| Keeping old versions around | Git history + saved result JSON |
 
 ## Data Sync (Cloudflare R2)
 

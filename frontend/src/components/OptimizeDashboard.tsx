@@ -39,52 +39,45 @@ export function OptimizeDashboard() {
                 {loading && <Skeleton className="mt-1.5 h-4 w-48 rounded" />}
             </div>
 
-            {/* Main content */}
-            <div className="flex gap-4">
-                {/* History panel */}
-                <div className="w-72 shrink-0">
-                    <OptimizationHistoryPanel
-                        history={history}
-                        activeId={activeId}
-                        onLoad={handleLoad}
-                        onDelete={deleteOptimization}
-                        onRefresh={refreshHistory}
+            {/* History table — full width */}
+            <OptimizationHistoryPanel
+                history={history}
+                activeId={activeId}
+                onLoad={handleLoad}
+                onDelete={deleteOptimization}
+                onRefresh={refreshHistory}
+            />
+
+            {/* Results area */}
+            {loading && <OptimizeLoadingSkeleton />}
+
+            {!loading && data && (
+                <div className="mt-4 space-y-4">
+                    <BestResults
+                        bestBySharpe={data.best_by_sharpe}
+                        bestByPnl={data.best_by_pnl}
+                        bestByPf={data.best_by_profit_factor}
+                        sweptParams={sweptParamKeys}
+                    />
+                    {data.swept_params &&
+                        Object.keys(data.swept_params).length >= 1 && (
+                            <Heatmap
+                                results={data.all_results}
+                                sweptParams={data.swept_params}
+                            />
+                        )}
+                    <OptimizationTable
+                        results={data.all_results}
+                        sweptParams={sweptParamKeys}
                     />
                 </div>
+            )}
 
-                {/* Results area */}
-                <div className="min-w-0 flex-1">
-                    {loading && <OptimizeLoadingSkeleton />}
-
-                    {!loading && data && (
-                        <div className="space-y-4">
-                            <BestResults
-                                bestBySharpe={data.best_by_sharpe}
-                                bestByPnl={data.best_by_pnl}
-                                bestByPf={data.best_by_profit_factor}
-                                sweptParams={sweptParamKeys}
-                            />
-                            {data.swept_params &&
-                                Object.keys(data.swept_params).length >= 1 && (
-                                    <Heatmap
-                                        results={data.all_results}
-                                        sweptParams={data.swept_params}
-                                    />
-                                )}
-                            <OptimizationTable
-                                results={data.all_results}
-                                sweptParams={sweptParamKeys}
-                            />
-                        </div>
-                    )}
-
-                    {!loading && !data && (
-                        <div className="flex h-[400px] items-center justify-center text-text-muted">
-                            Select an optimization to view
-                        </div>
-                    )}
+            {!loading && !data && (
+                <div className="flex h-[400px] items-center justify-center text-text-muted">
+                    Select an optimization to view
                 </div>
-            </div>
+            )}
         </div>
     );
 }

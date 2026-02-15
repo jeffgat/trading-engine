@@ -40,40 +40,32 @@ export function BacktestDashboard() {
                 )}
             </div>
 
-            {/* Main content: History sidebar + Stats/Chart */}
-            <div className="flex gap-4">
-                {/* History panel */}
-                <div className="w-72 shrink-0">
-                    <BacktestHistoryPanel
-                        history={history}
-                        activeId={activeId}
-                        onLoad={handleLoad}
-                        onDelete={deleteBacktest}
-                        onRefresh={refreshHistory}
-                    />
+            {/* History table — full width */}
+            <BacktestHistoryPanel
+                history={history}
+                activeId={activeId}
+                onLoad={handleLoad}
+                onDelete={deleteBacktest}
+                onRefresh={refreshHistory}
+            />
 
+            {/* Stats + Chart + Trades */}
+            {loading && <LoadingSkeleton />}
+
+            {!loading && data && (
+                <div className="mt-4 space-y-4">
+                    <ConfigBar config={data.config} />
+                    <StatBar summary={data.summary} trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
+                    <EquityChart data={data.equity_curve} riskUsd={data.config.risk_usd ?? 50000} />
+                    <TradesTable trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
                 </div>
+            )}
 
-                {/* Stats + Chart + Trades */}
-                <div className="min-w-0 flex-1">
-                    {loading && <LoadingSkeleton />}
-
-                    {!loading && data && (
-                        <div className="space-y-4">
-                            <ConfigBar config={data.config} />
-                            <StatBar summary={data.summary} trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
-                            <EquityChart data={data.equity_curve} riskUsd={data.config.risk_usd ?? 50000} />
-                            <TradesTable trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
-                        </div>
-                    )}
-
-                    {!loading && !data && (
-                        <div className="flex h-[400px] items-center justify-center text-text-muted">
-                            Select a backtest to view
-                        </div>
-                    )}
+            {!loading && !data && (
+                <div className="flex h-[400px] items-center justify-center text-text-muted">
+                    Select a backtest to view
                 </div>
-            </div>
+            )}
         </div>
     );
 }

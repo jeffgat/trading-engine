@@ -27,7 +27,8 @@ export function useOptimizationHistory(): UseOptimizationHistoryReturn {
     try {
       const res = await fetch("/api/optimizations");
       if (res.ok) {
-        setHistory(await res.json());
+        const data = await res.json();
+        setHistory(data.result ?? data);
       }
     } catch {
       // API unavailable
@@ -40,7 +41,8 @@ export function useOptimizationHistory(): UseOptimizationHistoryReturn {
     try {
       const res = await fetch(`/api/optimizations/${id}`);
       if (!res.ok) return null;
-      const data: OptimizationResult = await res.json();
+      const json = await res.json();
+      const data: OptimizationResult = json.result ?? json;
       setActiveId(id);
       return data;
     } catch {

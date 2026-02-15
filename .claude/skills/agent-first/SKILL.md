@@ -31,7 +31,6 @@ Activate this skill when:
 
 - Fixing a trivial typo or single-line bug
 - Updating styling/CSS-only changes with no logic
-- Writing Pine Script (Pine Script has its own conventions)
 - The task is purely about UI polish with no state or action changes
 - Quick exploratory data analysis or one-off scripts
 

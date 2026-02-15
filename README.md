@@ -1,53 +1,18 @@
 # ORB+FVG Trading System
 
-Opening Range Breakout strategies with Fair Value Gap entries for futures markets. Includes Pine Script strategies for TradingView, a Python backtesting engine, and a React dashboard for visualizing results.
+Opening Range Breakout strategies with Fair Value Gap entries for futures markets. Includes a Python backtesting engine and a React dashboard for visualizing results.
 
 ## Project Structure
 
 ```
-├── pinescript/            # TradingView Pine Script strategies & indicators
-│   ├── orb_continuation/  # ORB continuation strategies (main model)
-│   ├── orb_reversal/      # ORB reversal strategies
-│   ├── ilm/               # ILM (internal liquidity model) strategies
-│   ├── indicators/        # Standalone indicators (EMA, FVG, ICT killzones, etc.)
-│   └── atlas_indicators/  # Custom ATR and ORB indicators
 ├── python/                # Python backtesting engine
 │   ├── scripts/           # CLI scripts (backtest, optimize, compare, download)
 │   ├── src/orb_backtest/  # Core backtester package
 │   ├── data/raw/          # Raw 5m OHLCV CSVs
 │   └── data/cache/        # Parquet cache for faster loads
 ├── frontend/              # React + TypeScript dashboard (Vite + Tailwind)
-├── tradingview_reports/   # Exported trade reports from TradingView
-└── test.pine              # FVG visualization indicator for debugging
+└── pinescript/            # Legacy Pine Script strategies (archived)
 ```
-
-## Pine Script Strategies
-
-Located in [`pinescript/`](pinescript/). All strategies run on **5-minute charts** in TradingView.
-
-### ORB Continuation (`pinescript/orb_continuation/`)
-
-The main model. Detects opening range breakouts and enters on FVG retests with partial take-profits and breakeven stops.
-
-- **[HEAD_testing_a.pine](pinescript/orb_continuation/HEAD_testing_a.pine)** — Canonical testing version with 3 sessions (NY, Asia, London)
-- **[HEAD_prod_v5.pine](pinescript/orb_continuation/HEAD_prod_v5.pine)** — Production version with TradersPost alerts (NY + Asia)
-- **HEAD_testing_b/c.pine** — A/B test variants
-- **v1–v7** — Historical iterations exploring different entry types, stop methods, and filters
-
-### Other Models
-
-- **[`orb_reversal/`](pinescript/orb_reversal/)** — Mean reversion after ORB breakouts (early stage)
-- **[`ilm/`](pinescript/ilm/)** — Internal liquidity model strategies
-- **[`indicators/`](pinescript/indicators/)** — Standalone indicators (EMA, FVG/orderblocks, ICT killzones, swing highs/lows)
-
-### Key Trading Logic
-
-- **FVG detection**: 3-candle pattern where bar[2] high < bar[0] low (bullish) or bar[2] low > bar[0] high (bearish)
-- **Entry**: Limit order at FVG retest level
-- **Stop**: Low/high of the "before" candle (bar[2]), sized as a % of daily ATR
-- **TP1**: 50% position at R:R midpoint, then move stop to breakeven
-- **TP2**: Remaining position at full R:R target
-- **Sessions**: NY (09:30–09:45 ORB), Asia (09:00–09:30 JST), London
 
 ## Python Backtester
 
@@ -175,7 +140,7 @@ cd frontend
 npm run build    # outputs to frontend/dist/
 ```
 
-## Current Strategy Parameters (Pine Defaults)
+## Default Strategy Parameters
 
 | Parameter | NY | Asia | London |
 |---|---|---|---|
@@ -186,9 +151,3 @@ npm run build    # outputs to frontend/dist/
 | TP1 ratio | 0.5 | 0.5 | 0.5 |
 | ATR length | 14 | 14 | 14 |
 | BE offset (ticks) | 4 | 4 | 4 |
-
-## Execution Pipeline
-
-TradingView (Pine Script alerts) → TradersPost → Broker
-
-Optimal strategies are prefixed with `HEAD_`. Notes and ideas specific to each model are in `NOTES.md` within the respective directory.

@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 
 from ..config import StrategyConfig
 from ..engine.simulator import TradeResult, EXIT_NAMES, EXIT_NO_FILL
 from .metrics import compute_metrics
-from ..experiments import log_run
-
-RESULTS_DIR = Path(__file__).resolve().parents[3] / "data" / "results"
-OPTIMIZATIONS_DIR = Path(__file__).resolve().parents[3] / "data" / "optimizations"
+from ..experiments import (
+    log_run,
+    log_optimization,
+    get_backtest_result,
+    delete_backtest_run,
+    list_optimization_history,
+    get_optimization_result,
+    delete_optimization_run,
+)
 
 
 def _build_equity_curve(trades: list[TradeResult]) -> list[dict]:
@@ -135,19 +139,17 @@ def save_results(
     filepath: str,
     include_trades: bool = True,
 ) -> None:
-    """Save backtest results to a JSON file."""
+    """Save backtest results to a JSON file (used by --output flag)."""
     text = results_to_json(trades, config, include_trades)
     with open(filepath, "w") as f:
         f.write(text)
 
 
 def save_backtest_result(result: dict) -> str:
-    """Save a backtest result dict to disk and return its ID.
+    """Save a backtest result to the DB and return its ID.
 
     ID format: {timestamp}_{instrument}_{sessions}
     """
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     instrument = result.get("config", {}).get("instrument", "UNK")
     sessions = []
@@ -161,78 +163,19 @@ def save_backtest_result(result: dict) -> str:
     result_id = f"{ts}_{instrument}_{session_str}"
     if name_slug:
         result_id += f"_{name_slug}"
-    filepath = RESULTS_DIR / f"{result_id}.json"
-    filepath.write_text(json.dumps(result, indent=2, default=str))
 
-    # Log to experiment DB (non-blocking — never break backtest flow)
-    try:
-        log_run(result, result_id)
-    except Exception:
-        pass
-
+    log_run(result, result_id)
     return result_id
 
 
-def list_backtest_results() -> list[dict]:
-    """List all saved backtest results as metadata dicts, newest first."""
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    items = []
-    for fp in sorted(RESULTS_DIR.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(fp.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        # Skip files that aren't backtest results (e.g. optimization sweeps)
-        if "config" not in data or "summary" not in data:
-            continue
-        config = data.get("config", {})
-        summary = data.get("summary", {})
-        sessions = []
-        for key in config:
-            if key.endswith("_orb_window"):
-                sessions.append(key.split("_")[0].upper())
-        # Extract date range from equity curve or trades
-        equity = data.get("equity_curve", [])
-        trades_list = data.get("trades", [])
-        dates_source = equity or trades_list
-        date_start = dates_source[0]["date"] if dates_source else ""
-        date_end = dates_source[-1]["date"] if dates_source else ""
-
-        item = {
-            "id": fp.stem,
-            "timestamp": fp.stem[:17].replace("_", " ", 1),  # "2026-02-14 153045"
-            "instrument": config.get("instrument", ""),
-            "sessions": sorted(sessions),
-            "risk_usd": config.get("risk_usd", 50000),
-            "total_pnl_usd": summary.get("total_pnl_usd", 0),
-            "total_trades": summary.get("total_trades", 0),
-            "win_rate": summary.get("win_rate", 0),
-            "date_start": date_start,
-            "date_end": date_end,
-        }
-        if data.get("name"):
-            item["name"] = data["name"]
-        if data.get("notes"):
-            item["notes"] = data["notes"]
-        items.append(item)
-    return items
-
-
 def load_backtest_result(result_id: str) -> dict | None:
-    """Load a full backtest result by ID (filename without .json)."""
-    fp = RESULTS_DIR / f"{result_id}.json"
-    if not fp.exists():
-        return None
-    return json.loads(fp.read_text())
+    """Load a full backtest result by ID from the DB."""
+    return get_backtest_result(result_id)
 
 
 def delete_backtest_result(result_id: str) -> bool:
-    """Delete a saved backtest result. Returns True if deleted."""
-    fp = RESULTS_DIR / f"{result_id}.json"
-    if not fp.exists():
-        return False
-    fp.unlink()
-    return True
+    """Delete a saved backtest result from the DB."""
+    return delete_backtest_run(result_id)
 
 
 def grid_results_to_dict(
@@ -275,9 +218,7 @@ def grid_results_to_dict(
 
 
 def save_optimization_result(result: dict) -> str:
-    """Save an optimization result dict to disk and return its ID."""
-    OPTIMIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
-
+    """Save an optimization result to the DB and return its ID."""
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     # Extract instrument from best result config or first result
     instrument = "UNK"
@@ -292,72 +233,24 @@ def save_optimization_result(result: dict) -> str:
 
     session_str = "+".join(sorted(sessions)) or "UNK"
     result_id = f"{ts}_{instrument}_{session_str}"
-    filepath = OPTIMIZATIONS_DIR / f"{result_id}.json"
-    filepath.write_text(json.dumps(result, indent=2, default=str))
+
+    log_optimization(result, result_id)
     return result_id
 
 
 def list_optimization_results() -> list[dict]:
     """List all saved optimization results as metadata dicts, newest first."""
-    OPTIMIZATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    items = []
-    for fp in sorted(OPTIMIZATIONS_DIR.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(fp.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-
-        # Extract metadata from first result's config
-        all_results = data.get("all_results", [])
-        instrument = ""
-        sessions = []
-        risk_usd = 50000
-        if all_results:
-            config = all_results[0].get("config", {})
-            instrument = config.get("instrument", "")
-            risk_usd = config.get("risk_usd", 50000)
-            for key in config:
-                if key.endswith("_orb_window"):
-                    sessions.append(key.split("_")[0].upper())
-
-        swept_params = list(data.get("swept_params", {}).keys())
-
-        best_sharpe = 0.0
-        best_pnl_usd = 0.0
-        if data.get("best_by_sharpe"):
-            best_sharpe = data["best_by_sharpe"].get("summary", {}).get("sharpe_ratio", 0)
-        if data.get("best_by_pnl"):
-            best_pnl_usd = data["best_by_pnl"].get("summary", {}).get("total_pnl_usd", 0)
-
-        items.append({
-            "id": fp.stem,
-            "timestamp": fp.stem[:17].replace("_", " ", 1),
-            "instrument": instrument,
-            "sessions": sorted(sessions),
-            "risk_usd": risk_usd,
-            "swept_params": swept_params,
-            "total_combinations": data.get("total_combinations", 0),
-            "best_sharpe": best_sharpe,
-            "best_pnl_usd": best_pnl_usd,
-        })
-    return items
+    return list_optimization_history()
 
 
 def load_optimization_result(result_id: str) -> dict | None:
-    """Load a full optimization result by ID."""
-    fp = OPTIMIZATIONS_DIR / f"{result_id}.json"
-    if not fp.exists():
-        return None
-    return json.loads(fp.read_text())
+    """Load a full optimization result by ID from the DB."""
+    return get_optimization_result(result_id)
 
 
 def delete_optimization_result(result_id: str) -> bool:
-    """Delete a saved optimization result. Returns True if deleted."""
-    fp = OPTIMIZATIONS_DIR / f"{result_id}.json"
-    if not fp.exists():
-        return False
-    fp.unlink()
-    return True
+    """Delete a saved optimization result from the DB."""
+    return delete_optimization_run(result_id)
 
 
 def get_experiment_history(limit: int = 50, **filters) -> list[dict]:
