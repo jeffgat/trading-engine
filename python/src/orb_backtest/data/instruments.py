@@ -31,10 +31,30 @@ ES = Instrument(
     exchange_tz="America/New_York",
 )
 
+CL = Instrument(
+    symbol="CL",
+    point_value=1000.0,
+    min_tick=0.01,
+    commission=0.05,
+    data_file="CL_5m.csv",
+    exchange_tz="America/New_York",
+)
+
+YM = Instrument(
+    symbol="YM",
+    point_value=5.0,
+    min_tick=1.0,
+    commission=0.05,
+    data_file="YM_5m.csv",
+    exchange_tz="America/New_York",
+)
+
 _INSTRUMENTS: dict[str, Instrument] = {
     "NQ": NQ,
     "MNQ": MNQ,
     "ES": ES,
+    "CL": CL,
+    "YM": YM,
 }
 
 

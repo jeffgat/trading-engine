@@ -69,6 +69,8 @@ class TradeResult(NamedTuple):
     half_qty: float
     gap_size: float
     risk_points: float
+    fill_time: str  # ISO timestamp of fill bar ("" if no fill)
+    exit_time: str  # ISO timestamp of exit bar ("" if no fill)
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +659,8 @@ def run_backtest(
                 exit_bar=exit_bar, pnl_points=pnl_pts, pnl_usd=pnl_usd,
                 r_multiple=r_multiple, qty=pc.qty, half_qty=pc.half_qty,
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
+                fill_time=timestamps[fill_bar].isoformat() if fill_bar >= 0 else "",
+                exit_time=timestamps[exit_bar].isoformat() if exit_bar >= 0 else "",
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:
@@ -669,6 +673,7 @@ def run_backtest(
                 exit_bar=-1, pnl_points=0.0, pnl_usd=0.0,
                 r_multiple=0.0, qty=pc.qty, half_qty=pc.half_qty,
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
+                fill_time="", exit_time="",
             ))
 
         for sd in sorted(sd_groups):

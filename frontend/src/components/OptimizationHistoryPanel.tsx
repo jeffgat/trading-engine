@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { OptimizationHistoryItem } from "../lib/types";
 import { formatNumber, pnlColor } from "../lib/utils";
+import { CopyIdButton } from "./CopyIdButton";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SessionTag } from "./SessionTag";
 import { ScrollArea } from "./ui/scroll-area";
@@ -137,7 +138,7 @@ export function OptimizationHistoryPanel({
         </div>
       </div>
 
-      <ScrollArea className="h-[184px]">
+      <ScrollArea className="h-[288px]">
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-10 bg-bg-card">
             <tr className="border-b border-border text-text-muted">
@@ -165,8 +166,18 @@ export function OptimizationHistoryPanel({
                       : "border-l-transparent hover:bg-bg-card-hover"
                   }`}
                 >
-                  <td className="px-3 py-2 text-left font-bold text-text-primary">
-                    {item.instrument}
+                  <td className="px-3 py-2 text-left">
+                    <div className="flex items-start gap-1">
+                      <div className="flex flex-col">
+                        {item.name && (
+                          <span className="text-[10px] font-medium text-accent leading-tight">
+                            {item.name}
+                          </span>
+                        )}
+                        <span className="font-bold text-text-primary">{item.instrument}</span>
+                      </div>
+                      <CopyIdButton value={item.name || item.id} />
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-left">
                     <div className="flex gap-1">

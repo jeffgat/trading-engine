@@ -62,6 +62,14 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
     downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
     sortino = (avg_r / downside_std * np.sqrt(252)) if downside_std > 0 else 0.0
 
+    # Calmar Ratio: Net R / |Max Drawdown in R|
+    r_equity = np.cumsum(r_multiples)
+    r_peak = np.maximum.accumulate(r_equity)
+    r_drawdown = r_equity - r_peak
+    max_dd_r = abs(float(np.min(r_drawdown))) if len(r_drawdown) > 0 else 0.0
+    net_r_total = float(r_equity[-1]) if len(r_equity) > 0 else 0.0
+    calmar = (net_r_total / max_dd_r) if max_dd_r > 0 else 0.0
+
     # Exit type breakdown
     exit_counts = defaultdict(int)
     for t in all_trades:
@@ -90,7 +98,7 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "avg_loss_usd": float(np.mean(pnl_usd[losses])) if losses.any() else 0.0,
         "largest_win_usd": float(np.max(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
         "largest_loss_usd": float(np.min(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
-        "profit_factor": abs(total_wins / total_losses) if total_losses != 0 else float("inf"),
+        "profit_factor": abs(total_wins / total_losses) if total_losses != 0 else 0.0,
         "avg_r": avg_r,
         "avg_win_r": float(np.mean(r_multiples[wins])) if wins.any() else 0.0,
         "avg_loss_r": float(np.mean(r_multiples[losses])) if losses.any() else 0.0,
@@ -98,6 +106,7 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "max_drawdown_pct": max_dd_pct,
         "sharpe_ratio": sharpe,
         "sortino_ratio": sortino,
+        "calmar_ratio": calmar,
         "max_consecutive_wins": max_consec_wins,
         "max_consecutive_losses": max_consec_losses,
         "exit_breakdown": dict(exit_counts),
@@ -137,6 +146,7 @@ def _empty_metrics(total_signals: int) -> dict:
         "max_drawdown_pct": 0.0,
         "sharpe_ratio": 0.0,
         "sortino_ratio": 0.0,
+        "calmar_ratio": 0.0,
         "max_consecutive_wins": 0,
         "max_consecutive_losses": 0,
         "exit_breakdown": {"no_fill": total_signals},
@@ -192,3 +202,135 @@ def _group_pnl_dow(trades: list[TradeResult]) -> dict[str, float]:
         name = dow_names[d.weekday()]
         groups[name] = groups.get(name, 0.0) + t.pnl_usd
     return groups
+
+
+# ---------------------------------------------------------------------------
+# Recompute from serialized trade dicts (for date-range filtering)
+# ---------------------------------------------------------------------------
+
+
+def recompute_summary(trade_dicts: list[dict]) -> dict:
+    """Recompute metrics from serialized trade dicts (as stored in DB).
+
+    Unlike compute_metrics() which operates on TradeResult NamedTuples,
+    this works on plain dicts with string exit_type/direction fields.
+    """
+    import datetime
+
+    all_trades = trade_dicts
+    filled = [t for t in all_trades if t["exit_type"] != "no_fill"]
+
+    if not filled:
+        no_fills = sum(1 for t in all_trades if t["exit_type"] == "no_fill")
+        return _empty_metrics(len(all_trades))
+
+    pnl_usd = np.array([t["pnl_usd"] for t in filled])
+    pnl_pts = np.array([t["pnl_points"] for t in filled])
+    r_multiples = np.array([t["r_multiple"] for t in filled])
+
+    wins = pnl_usd > 0
+    losses = pnl_usd < 0
+    breakevens = pnl_usd == 0
+
+    total_wins = float(np.sum(pnl_usd[wins]))
+    total_losses = float(np.sum(pnl_usd[losses]))
+
+    # Equity curve for drawdown
+    equity = np.cumsum(pnl_usd)
+    peak = np.maximum.accumulate(equity)
+    drawdown = equity - peak
+    max_dd = float(np.min(drawdown)) if len(drawdown) > 0 else 0.0
+
+    max_dd_pct = 0.0
+    if len(peak) > 0 and np.max(peak) > 0:
+        dd_pct = drawdown / np.where(peak > 0, peak, 1.0) * 100
+        max_dd_pct = float(np.min(dd_pct))
+
+    max_consec_wins = _max_consecutive(pnl_usd > 0)
+    max_consec_losses = _max_consecutive(pnl_usd < 0)
+
+    avg_r = float(np.mean(r_multiples))
+    std_r = float(np.std(r_multiples, ddof=1)) if len(r_multiples) > 1 else 1.0
+    sharpe = (avg_r / std_r * np.sqrt(252)) if std_r > 0 else 0.0
+
+    downside_returns = np.minimum(r_multiples, 0.0)
+    downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
+    sortino = (avg_r / downside_std * np.sqrt(252)) if downside_std > 0 else 0.0
+
+    r_equity = np.cumsum(r_multiples)
+    r_peak = np.maximum.accumulate(r_equity)
+    r_drawdown = r_equity - r_peak
+    max_dd_r = abs(float(np.min(r_drawdown))) if len(r_drawdown) > 0 else 0.0
+    net_r_total = float(r_equity[-1]) if len(r_equity) > 0 else 0.0
+    calmar = (net_r_total / max_dd_r) if max_dd_r > 0 else 0.0
+
+    # Profit factor — use 0.0 instead of inf to stay JSON-safe
+    profit_factor = abs(total_wins / total_losses) if total_losses != 0 else 0.0
+
+    # Exit type breakdown
+    exit_counts: dict[str, int] = defaultdict(int)
+    for t in all_trades:
+        exit_counts[t["exit_type"]] += 1
+
+    # PnL by year, month, day-of-week
+    dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    pnl_by_year: dict[str, float] = {}
+    pnl_by_month: dict[str, float] = {}
+    pnl_by_dow: dict[str, float] = {}
+    for t in filled:
+        date_str = t["date"]
+        pnl = t["pnl_usd"]
+        pnl_by_year[date_str[:4]] = pnl_by_year.get(date_str[:4], 0.0) + pnl
+        pnl_by_month[date_str[:7]] = pnl_by_month.get(date_str[:7], 0.0) + pnl
+        d = datetime.date.fromisoformat(date_str)
+        dow = dow_names[d.weekday()]
+        pnl_by_dow[dow] = pnl_by_dow.get(dow, 0.0) + pnl
+
+    pnl_by_year = dict(sorted(pnl_by_year.items()))
+    pnl_by_month = dict(sorted(pnl_by_month.items()))
+
+    # Direction breakdown
+    long_trades = [t for t in filled if t["direction"] == "long"]
+    short_trades = [t for t in filled if t["direction"] == "short"]
+
+    def _dict_win_rate(trades_list: list[dict]) -> float:
+        if not trades_list:
+            return 0.0
+        return sum(1 for t in trades_list if t["pnl_usd"] > 0) / len(trades_list)
+
+    return {
+        "total_signals": len(all_trades),
+        "total_trades": len(filled),
+        "no_fills": exit_counts.get("no_fill", 0),
+        "win_count": int(np.sum(wins)),
+        "loss_count": int(np.sum(losses)),
+        "be_count": int(np.sum(breakevens)),
+        "win_rate": float(np.mean(wins)) if len(filled) > 0 else 0.0,
+        "total_pnl_usd": float(np.sum(pnl_usd)),
+        "avg_pnl_usd": float(np.mean(pnl_usd)),
+        "avg_win_usd": float(np.mean(pnl_usd[wins])) if wins.any() else 0.0,
+        "avg_loss_usd": float(np.mean(pnl_usd[losses])) if losses.any() else 0.0,
+        "largest_win_usd": float(np.max(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
+        "largest_loss_usd": float(np.min(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
+        "profit_factor": profit_factor,
+        "avg_r": avg_r,
+        "avg_win_r": float(np.mean(r_multiples[wins])) if wins.any() else 0.0,
+        "avg_loss_r": float(np.mean(r_multiples[losses])) if losses.any() else 0.0,
+        "max_drawdown_usd": max_dd,
+        "max_drawdown_pct": max_dd_pct,
+        "sharpe_ratio": sharpe,
+        "sortino_ratio": sortino,
+        "calmar_ratio": calmar,
+        "max_consecutive_wins": max_consec_wins,
+        "max_consecutive_losses": max_consec_losses,
+        "exit_breakdown": dict(exit_counts),
+        "pnl_by_year": pnl_by_year,
+        "pnl_by_month": pnl_by_month,
+        "pnl_by_dow": pnl_by_dow,
+        "long_trades": len(long_trades),
+        "short_trades": len(short_trades),
+        "long_win_rate": _dict_win_rate(long_trades),
+        "short_win_rate": _dict_win_rate(short_trades),
+        "long_pnl_usd": sum(t["pnl_usd"] for t in long_trades),
+        "short_pnl_usd": sum(t["pnl_usd"] for t in short_trades),
+    }

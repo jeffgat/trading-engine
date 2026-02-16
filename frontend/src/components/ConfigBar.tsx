@@ -23,10 +23,23 @@ interface ParamDisplayProps {
   config: BacktestConfig;
   paramKey: string;
   format: (v: number) => string;
+  topLevel?: unknown;
 }
 
 /** Displays a param — single value if all sessions match, per-session badges otherwise. */
-function ParamDisplay({ label, sessions, config, paramKey, format }: ParamDisplayProps) {
+function ParamDisplay({ label, sessions, config, paramKey, format, topLevel }: ParamDisplayProps) {
+  // If a top-level value exists, show it directly
+  if (typeof topLevel === "number") {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
+          {label}
+        </span>
+        <span className="font-mono text-sm text-text-primary">{format(topLevel)}</span>
+      </div>
+    );
+  }
+
   const values = sessions.map((s) => ({
     session: s,
     value: getSessionParam(config, s, paramKey),
@@ -94,25 +107,25 @@ export function ConfigBar({ config }: ConfigBarProps) {
           Risk
         </span>
         <span className="font-mono text-sm text-text-primary">
-          {fmtUsd(config.risk_usd)}
+          {config.risk_usd != null ? fmtUsd(config.risk_usd) : "—"}
         </span>
       </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
-          R:R
-        </span>
-        <span className="font-mono text-sm text-text-primary">
-          {fmtNum(config.rr)}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
-          TP1 Ratio
-        </span>
-        <span className="font-mono text-sm text-text-primary">
-          {fmtNum(config.tp1_ratio)}
-        </span>
-      </div>
+      <ParamDisplay
+        label="R:R"
+        sessions={sessions}
+        config={config}
+        paramKey="rr"
+        format={fmtNum}
+        topLevel={config.rr}
+      />
+      <ParamDisplay
+        label="TP1 Ratio"
+        sessions={sessions}
+        config={config}
+        paramKey="tp1_ratio"
+        format={fmtNum}
+        topLevel={config.tp1_ratio}
+      />
     </div>
   );
 }

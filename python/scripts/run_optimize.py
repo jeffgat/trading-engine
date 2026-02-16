@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run grid sweep optimization across parameter combinations.
 
-Results are auto-saved to data/optimizations/ and viewable in the frontend dashboard.
+Results are auto-saved to the experiment DB and viewable in the frontend dashboard.
 
 Usage:
     # Sweep stop ATR% and min gap ATR%
@@ -127,7 +127,7 @@ def main():
     else:
         print("No trades filled across any configuration!")
 
-    # Auto-save to data/optimizations/ (viewable in frontend dashboard)
+    # Auto-save to experiment DB (viewable in frontend dashboard)
     grid_dict = grid_results_to_dict(results, swept_params=param_ranges)
     result_id = save_optimization_result(grid_dict)
 

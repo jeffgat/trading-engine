@@ -23,9 +23,11 @@ uv run python scripts/run_server.py
 
 ## Development Flow
 
+The Pine Script workflow of creating `v5_atr.pine`, `v5_sweeps.pine`, etc. for each experiment doesn't translate well to Python. Here's how to approach it instead:
+
 ### Parameter experiments → use config overrides
 
-Don't copy files. The config system parameterizes everything — session times, ATR percentages, gap filters, R:R. Different experiments are just different `--ny-stop-atr-pct` values.
+Don't copy files. The config system parameterizes everything — session times, ATR percentages, gap filters, R:R. What would be `v5_atr.pine` vs `v5_fixed_gaps.pine` in Pine is just different `--ny-stop-atr-pct` values here.
 
 ```bash
 # Testing wider stops
@@ -49,16 +51,16 @@ uv run python scripts/run_optimize.py --data NQ_5m.csv \
 New entry logic, exit types, or simulation mechanics belong in git branches — not duplicated scripts.
 
 ```
-main                      ← production config
-feat/reentry-on-sl        ← re-entry after stop loss
-feat/respected-gaps       ← respected gap filter
+main                      ← production-equivalent config
+feat/reentry-on-sl        ← what would be v6_x_reentry_on_sl.pine
+feat/respected-gaps       ← what would be v6_x_respected_gaps.pine
 ```
 
 The code diff is the documentation. When a branch proves out, merge it.
 
-### Tracking results → use saved JSON + labels
+### Tracking results → experiment DB
 
-Every backtest auto-saves to `data/results/` with full config, metrics, and trade list. Use `--name` and `--notes` to tag what you were testing:
+Every backtest auto-saves to `experiments.db` (SQLite in `data/results/`) with full config, metrics, and trade list. Use `--name` and `--notes` to tag what you were testing:
 
 ```bash
 # CLI
@@ -69,15 +71,25 @@ uv run python scripts/run_backtest.py --data NQ_5m.csv \
 {"instrument": "NQ", "sessions": ["NY", "Asia"], "name": "multi_session_v1"}
 ```
 
-Result files are named: `{timestamp}_{instrument}_{sessions}_{name}.json`
+Results are assigned a unique ID (e.g. `bt-nq-ny-rr3-a1b2c3`) and stored in the DB.
 
 The dashboard history panel shows the name label on each run for quick identification.
 
-### Comparing runs → use the dashboard or JSON
+### Comparing runs → use the dashboard or experiment DB
 
 - **Dashboard**: Run backtests and browse history in the sidebar. Named runs show their label.
-- **CLI**: Results print a formatted summary to stdout after each run.
-- **JSON**: Load any saved result from `data/results/` for programmatic comparison.
+- **CLI**: Results print a formatted summary to stdout after each run. Query the DB with `scripts/query_experiments.py`.
+- **API**: `GET /api/experiments` with filters for programmatic comparison.
+
+### Summary
+
+| Pine Script approach | Python equivalent |
+|---|---|
+| New file per variant (`v5_atr.pine`) | Different config params via `--flags` |
+| HEAD files for canonical versions | `main` branch + default config |
+| Visual comparison in TradingView | Dashboard history / experiment DB |
+| New entry model (`v6_x_*.pine`) | Git branch (`feat/...`) |
+| Keeping old versions around | Git history + experiment DB |
 
 ## Data Sync (Cloudflare R2)
 
@@ -163,38 +175,44 @@ launchctl unload ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist  # stop
 
 ```
 python/
-├── src/orb_backtest/
-│   ├── config.py              # Strategy config (frozen dataclasses)
-│   ├── api.py                 # FastAPI server
-│   ├── data/
-│   │   ├── instruments.py     # Instrument specs (NQ, ES, YM, etc.)
-│   │   └── loader.py          # CSV → Parquet caching
-│   ├── engine/
-│   │   └── simulator.py       # Numba-compiled trade simulation
-│   ├── signals/
-│   │   ├── fvg.py             # FVG detection (vectorized)
-│   │   ├── orb.py             # ORB high/low per session
-│   │   ├── daily_atr.py       # Daily ATR calculation
-│   │   └── session.py         # Session time masking
-│   ├── optimize/
-│   │   ├── grid.py            # Parameter grid generation
-│   │   └── parallel.py        # Multiprocessing sweep runner
-│   ├── results/
-│   │   ├── export.py          # JSON serialization
-│   │   └── metrics.py         # Trade metrics (Sharpe, PF, etc.)
-│   └── viz/
-│       ├── equity.py          # Equity curve plotting
-│       └── heatmap.py         # Parameter sweep heatmaps
+├── src/
+│   ├── core/                      # Shared engine (all strategies)
+│   │   ├── config.py              # Frozen dataclass configs
+│   │   ├── data/
+│   │   │   ├── instruments.py     # Instrument specs (NQ, ES, YM, etc.)
+│   │   │   └── loader.py          # CSV → Parquet caching
+│   │   ├── engine/
+│   │   │   └── simulator.py       # Numba-compiled trade simulation
+│   │   ├── signals/
+│   │   │   ├── fvg.py             # FVG detection (vectorized)
+│   │   │   ├── orb.py             # ORB high/low per session
+│   │   │   ├── daily_atr.py       # Daily ATR, SMA, EMA, ROC, ADX, Donchian
+│   │   │   └── session.py         # Session time masking
+│   │   ├── optimize/
+│   │   │   ├── grid.py            # Parameter grid generation
+│   │   │   └── parallel.py        # Multiprocessing sweep runner
+│   │   ├── analysis/
+│   │   │   └── pre_trade_gates.py # Gate simulation functions
+│   │   ├── results/
+│   │   │   ├── export.py          # Result serialization + DB persistence
+│   │   │   └── metrics.py         # Trade metrics (Sharpe, PF, etc.)
+│   │   └── viz/
+│   │       └── equity.py          # Equity curve plotting
+│   ├── orb_continuation/          # Continuation strategy
+│   │   ├── config.py              # Session defaults + production_config()
+│   │   └── api.py                 # FastAPI server for frontend
+│   └── orb_reversal/              # Reversal strategy
+│       └── config.py              # Session defaults (strategy="reversal")
 ├── scripts/
-│   ├── run_backtest.py        # Single backtest CLI
-│   ├── run_optimize.py        # Grid sweep CLI
-│   ├── run_server.py          # FastAPI launcher
-│   ├── compare_tv.py          # TradingView report comparison
-│   └── download_data.py       # Databento data fetcher
+│   ├── run_backtest.py            # Single backtest CLI
+│   ├── run_optimize.py            # Grid sweep CLI
+│   ├── run_server.py              # FastAPI launcher
+│   ├── compare_tv.py              # TradingView report comparison
+│   └── download_data.py           # Databento data fetcher
 ├── data/
-│   ├── raw/                   # 5-min OHLCV CSVs
-│   ├── cache/                 # Parquet caches
-│   └── results/               # Saved backtest JSON
+│   ├── raw/                       # 5-min OHLCV CSVs
+│   ├── cache/                     # Parquet caches
+│   └── results/                   # experiments.db (SQLite)
 └── tests/
 ```
 

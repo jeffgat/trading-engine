@@ -93,3 +93,12 @@ def invalid_experiment_ids() -> BacktestError:
         reason="ids must be comma-separated integers",
         fix="Example: /api/experiments/compare?ids=1,2,3",
     )
+
+
+def testing_plan_item_not_found(item_id: int) -> BacktestError:
+    return BacktestError(
+        code="TESTING_PLAN_ITEM_NOT_FOUND",
+        reason=f"Testing plan item {item_id} not found",
+        fix="Use GET /api/testing-plan to list available items",
+        status_code=404,
+    )

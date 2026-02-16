@@ -111,6 +111,13 @@ export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
           subValue={`Sortino ${formatNumber(summary.sortino_ratio, 3)}`}
           tooltip="Risk-adjusted return ratios"
         />
+        <StatCard
+          label="Calmar Ratio"
+          value={formatNumber(summary.calmar_ratio ?? 0, 3)}
+          subValue={`Net ${formatR(netR)} / DD ${formatR(ddR)}`}
+          tooltip="Net R / Max Drawdown R — higher is better"
+          color={(summary.calmar_ratio ?? 0) >= 1 ? "var(--color-profit)" : "var(--color-text-primary)"}
+        />
       </div>
     </div>
   );

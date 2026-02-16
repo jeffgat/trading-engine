@@ -231,23 +231,21 @@ INSTRUMENTS = {
 Every backtest and optimization result must be saved with enough context to enable meaningful comparison across runs.
 
 ```python
-# Save with full context
-def save_result(result: dict, directory: Path) -> Path:
-    """Save result with unique ID and full config for comparison."""
-    result_id = f"bt_{datetime.now():%Y%m%d_%H%M%S}_{uuid4().hex[:6]}"
-    result["id"] = result_id
-    path = directory / f"{result_id}.json"
-    path.write_text(json.dumps(result, indent=2, default=str))
-    return path
+# Save with full context to DB
+def save_result(result: dict) -> str:
+    """Save result to experiments.db with unique ID and full config."""
+    result_id = generate_backtest_id(result)
+    log_run(result, result_id)
+    return result_id
 
 # Compare across runs
 def compare_results(result_ids: list[str]) -> dict:
-    """Load multiple results and compare key metrics side by side."""
-    results = [load_result(rid) for rid in result_ids]
+    """Load multiple results from DB and compare key metrics side by side."""
+    results = [get_backtest_result(rid) for rid in result_ids]
     return {
         "configs_diff": diff_configs([r["config"] for r in results]),
         "metrics_comparison": tabulate_metrics([r["metrics"] for r in results]),
     }
 ```
 
-**Why**: An agent can query history to find the best-performing config, detect parameter drift, or identify which changes improved/degraded performance. Optimization results feed into the next round of experimentation.
+**Why**: An agent can query the experiment DB to find the best-performing config, detect parameter drift, or identify which changes improved/degraded performance. Optimization results feed into the next round of experimentation.

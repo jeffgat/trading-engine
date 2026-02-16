@@ -30,7 +30,7 @@ Key CLI flags:
 - `--name` / `--notes`: Experiment metadata
 - `--no-save`: Skip saving to disk
 
-Results auto-save to `data/results/` and log to `experiments.db`.
+Results auto-save to `experiments.db` (SQLite in `data/results/`).
 
 ### Via API
 

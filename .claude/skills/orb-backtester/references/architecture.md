@@ -38,8 +38,7 @@ python/
   data/
     raw/                   # NQ_5m.csv, MNQ_5m.csv, ES_5m.csv
     cache/                 # Parquet cached data
-    results/               # Saved backtest JSONs + experiments.db
-    optimizations/         # Saved optimization sweep JSONs
+    results/               # experiments.db (SQLite — all backtests + optimizations)
 ```
 
 ## Execution Model

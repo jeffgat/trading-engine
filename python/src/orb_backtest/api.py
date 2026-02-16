@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from fastapi import FastAPI, Request
+import pandas as pd
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -30,6 +32,7 @@ from .errors import (
     optimization_not_found,
     experiment_not_found,
     invalid_experiment_ids,
+    testing_plan_item_not_found,
 )
 from .results.export import (
     results_to_dict,
@@ -42,10 +45,25 @@ from .results.export import (
     load_optimization_result,
     delete_optimization_result,
 )
-from .results.metrics import compute_metrics
+from .results.metrics import compute_metrics, recompute_summary
 from .optimize.grid import generate_param_grid, linspace_range
 from .optimize.parallel import run_sweep
-from .experiments import log_sweep_runs, query_runs, compare_runs as compare_experiment_runs, list_backtest_history
+from .experiments import (
+    log_sweep_runs,
+    query_runs,
+    compare_runs as compare_experiment_runs,
+    list_backtest_history,
+    toggle_star,
+    list_starred,
+    toggle_hidden,
+    get_instrument_coverage,
+    get_param_coverage,
+    list_testing_plan,
+    create_testing_plan_item,
+    update_testing_plan_item,
+    delete_testing_plan_item,
+    reorder_testing_plan,
+)
 
 app = FastAPI(title="ORB+FVG Backtester API")
 
@@ -139,6 +157,92 @@ def get_sessions():
     ])
 
 
+# ── Candle data endpoint ────────────────────────────────────────────
+
+
+@app.get("/api/candles")
+def get_candles(
+    instrument: str = Query(...),
+    date: str = Query(..., description="Trade date YYYY-MM-DD"),
+    session: str = Query(..., description="Session name: NY, Asia, LDN"),
+):
+    """Return 5-min OHLCV bars for a single session-day.
+
+    Used by the TradeChartModal to render a candlestick chart for a specific trade.
+    Includes 30 min padding before ORB start and 15 min after flat end.
+    """
+    try:
+        inst = get_instrument(instrument)
+    except KeyError:
+        raise unknown_instrument(instrument)
+
+    if session not in SESSION_MAP:
+        raise unknown_session(session)
+
+    sess = SESSION_MAP[session]
+
+    # Parse the trade date
+    try:
+        trade_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise data_not_found(f"Invalid date format: {date}. Use YYYY-MM-DD.")
+
+    # Compute time window with padding
+    orb_h, orb_m = (int(x) for x in sess.orb_start.split(":"))
+    flat_h, flat_m = (int(x) for x in sess.flat_end.split(":"))
+
+    orb_start_min = orb_h * 60 + orb_m
+    flat_end_min = flat_h * 60 + flat_m
+    crosses_midnight = orb_start_min > flat_end_min
+
+    # Build start/end timestamps with padding
+    padding_before = timedelta(minutes=30)
+    padding_after = timedelta(minutes=15)
+
+    window_start_time = datetime.combine(trade_date, datetime.min.time().replace(hour=orb_h, minute=orb_m)) - padding_before
+    if crosses_midnight:
+        window_end_time = datetime.combine(trade_date + timedelta(days=1), datetime.min.time().replace(hour=flat_h, minute=flat_m)) + padding_after
+    else:
+        window_end_time = datetime.combine(trade_date, datetime.min.time().replace(hour=flat_h, minute=flat_m)) + padding_after
+
+    # Load data with a date range that covers the window
+    load_start = (window_start_time - timedelta(days=1)).strftime("%Y-%m-%d")
+    load_end = (window_end_time + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    try:
+        df = load_5m_data(inst.data_file, start=load_start, end=load_end)
+    except FileNotFoundError as e:
+        raise data_not_found(str(e))
+
+    # Localize window boundaries to match the dataframe timezone
+    tz = df.index.tz
+    if tz is not None:
+        window_start = pd.Timestamp(window_start_time, tz=tz)
+        window_end = pd.Timestamp(window_end_time, tz=tz)
+    else:
+        window_start = pd.Timestamp(window_start_time)
+        window_end = pd.Timestamp(window_end_time)
+
+    mask = (df.index >= window_start) & (df.index <= window_end)
+    bars = df.loc[mask]
+
+    if bars.empty:
+        return []
+
+    # Return as list of {time, open, high, low, close}
+    result = []
+    for ts, row in bars.iterrows():
+        result.append({
+            "time": ts.isoformat(),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+        })
+
+    return result
+
+
 # ── Backtest endpoints ──────────────────────────────────────────────
 
 
@@ -203,11 +307,36 @@ def list_backtests():
 
 
 @app.get("/api/backtests/{result_id}")
-def get_backtest(result_id: str):
+def get_backtest(result_id: str, start: Optional[str] = None, end: Optional[str] = None):
     data = load_backtest_result(result_id)
     if data is None:
         raise backtest_not_found(result_id)
     data["id"] = result_id
+
+    # Date-range filtering: recompute summary and equity curve for the window
+    if (start or end) and "trades" in data:
+        trades = data["trades"]
+        if start:
+            trades = [t for t in trades if t["date"] >= start]
+        if end:
+            trades = [t for t in trades if t["date"] <= end]
+
+        data["trades"] = trades
+        data["summary"] = recompute_summary(trades)
+
+        # Rebuild equity curve from filtered filled trades
+        filled = [t for t in trades if t["exit_type"] != "no_fill"]
+        cumulative = 0.0
+        curve = []
+        for t in filled:
+            cumulative += t["pnl_usd"]
+            curve.append({
+                "date": t["date"],
+                "pnl_cumulative": round(cumulative, 2),
+                "pnl_per_trade": round(t["pnl_usd"], 2),
+            })
+        data["equity_curve"] = curve
+
     return ok(data)
 
 
@@ -216,6 +345,27 @@ def delete_backtest(result_id: str):
     if not delete_backtest_result(result_id):
         raise backtest_not_found(result_id)
     return ok({"deleted": result_id})
+
+
+@app.post("/api/backtests/{result_id}/star")
+def star_backtest(result_id: str):
+    new_state = toggle_star(result_id)
+    if new_state is None:
+        raise backtest_not_found(result_id)
+    return ok({"starred": new_state})
+
+
+@app.post("/api/backtests/{result_id}/hide")
+def hide_backtest(result_id: str):
+    new_state = toggle_hidden(result_id)
+    if new_state is None:
+        raise backtest_not_found(result_id)
+    return ok({"hidden": new_state})
+
+
+@app.get("/api/starred")
+def get_starred():
+    return ok(list_starred())
 
 
 # ── Optimization endpoints ──────────────────────────────────────────
@@ -364,3 +514,69 @@ def get_experiment(run_id: int):
     if not rows:
         raise experiment_not_found(run_id)
     return ok(rows[0])
+
+
+# ── Coverage endpoints ───────────────────────────────────────────────
+
+
+@app.get("/api/coverage")
+def get_coverage():
+    return ok(get_instrument_coverage())
+
+
+@app.get("/api/coverage/{instrument}/params")
+def get_coverage_params(instrument: str):
+    return ok(get_param_coverage(instrument))
+
+
+# ── Testing plan endpoints ───────────────────────────────────────────
+
+
+class TestingPlanCreateRequest(BaseModel):
+    instrument: str
+    title: str
+    notes: Optional[str] = None
+
+
+class TestingPlanUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+
+class TestingPlanReorderRequest(BaseModel):
+    instrument: str
+    item_ids: list[int]
+
+
+@app.get("/api/testing-plan")
+def get_testing_plan(instrument: Optional[str] = None):
+    return ok(list_testing_plan(instrument))
+
+
+@app.post("/api/testing-plan")
+def create_plan_item(req: TestingPlanCreateRequest):
+    item = create_testing_plan_item(req.instrument, req.title, req.notes)
+    return ok(item)
+
+
+@app.put("/api/testing-plan/{item_id}")
+def update_plan_item(item_id: int, req: TestingPlanUpdateRequest):
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    result = update_testing_plan_item(item_id, **updates)
+    if result is None:
+        raise testing_plan_item_not_found(item_id)
+    return ok(result)
+
+
+@app.delete("/api/testing-plan/{item_id}")
+def delete_plan_item(item_id: int):
+    if not delete_testing_plan_item(item_id):
+        raise testing_plan_item_not_found(item_id)
+    return ok({"deleted": item_id})
+
+
+@app.post("/api/testing-plan/reorder")
+def reorder_plan(req: TestingPlanReorderRequest):
+    reorder_testing_plan(req.instrument, req.item_ids)
+    return ok({"reordered": True})

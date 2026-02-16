@@ -79,3 +79,60 @@ def compute_daily_atr(
     result[matching] = atr_shifted[indices[matching]]
 
     return result
+
+
+def compute_daily_sma(
+    df: pd.DataFrame,
+    length: int = 20,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute daily SMA and previous close, mapped to 5-minute bars.
+
+    Uses the PREVIOUS completed day's values (no lookahead),
+    matching Pine Script's ``[1]`` offset with ``lookahead_on``.
+
+    Args:
+        df: DataFrame with columns [open, high, low, close] and DatetimeIndex.
+        length: SMA period (default 20).
+
+    Returns:
+        Tuple of (prev_close_5m, sma_5m) arrays aligned to the 5m bar index.
+        NaN for bars where insufficient daily history exists.
+    """
+    # Resample to daily close
+    daily_close = df["close"].resample("1D").last().dropna()
+    daily_dates = daily_close.index.normalize()
+
+    close_vals = daily_close.values
+
+    # SMA of daily closes
+    sma = np.full_like(close_vals, np.nan)
+    if len(close_vals) >= length:
+        # Rolling mean
+        cumsum = np.cumsum(close_vals)
+        sma[length - 1] = cumsum[length - 1] / length
+        for i in range(length, len(close_vals)):
+            sma[i] = (cumsum[i] - cumsum[i - length]) / length
+
+    # Shift by 1 day: use previous day's values (no lookahead)
+    prev_close = np.roll(close_vals, 1)
+    prev_close[0] = np.nan
+    sma_shifted = np.roll(sma, 1)
+    sma_shifted[0] = np.nan
+
+    # Map to 5m bars using searchsorted
+    daily_dates_arr = daily_dates.values
+    bar_dates_arr = df.index.normalize().values
+    indices = np.searchsorted(daily_dates_arr, bar_dates_arr, side="right") - 1
+
+    prev_close_5m = np.full(len(df), np.nan, dtype=np.float64)
+    sma_5m = np.full(len(df), np.nan, dtype=np.float64)
+
+    valid = (indices >= 0) & (indices < len(daily_dates_arr))
+    matching = valid & (
+        daily_dates_arr[np.clip(indices, 0, len(daily_dates_arr) - 1)]
+        == bar_dates_arr
+    )
+    prev_close_5m[matching] = prev_close[indices[matching]]
+    sma_5m[matching] = sma_shifted[indices[matching]]
+
+    return prev_close_5m, sma_5m

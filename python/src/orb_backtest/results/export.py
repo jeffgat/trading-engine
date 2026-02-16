@@ -1,8 +1,9 @@
-"""Export backtest results as structured JSON for LLM consumption."""
+"""Export backtest results as structured dicts for DB storage and LLM consumption."""
 
 from __future__ import annotations
 
-import json
+import re
+import time
 from datetime import datetime
 
 import numpy as np
@@ -19,6 +20,89 @@ from ..experiments import (
     get_optimization_result,
     delete_optimization_run,
 )
+
+
+# ---------------------------------------------------------------------------
+# ID generation helpers
+# ---------------------------------------------------------------------------
+
+# Abbreviations for swept param names in optimization IDs
+_PARAM_ABBREV: dict[str, str] = {
+    "rr": "rr",
+    "tp1_ratio": "tp1",
+    "be_offset_ticks": "be",
+    "atr_length": "atr",
+    "risk_usd": "risk",
+    "ny_stop_atr_pct": "ny.stop",
+    "ny_min_gap_atr_pct": "ny.gap",
+    "ny_max_gap_points": "ny.maxgap",
+    "asia_stop_atr_pct": "asia.stop",
+    "asia_min_gap_atr_pct": "asia.gap",
+    "asia_max_gap_points": "asia.maxgap",
+    "ldn_stop_atr_pct": "ldn.stop",
+    "ldn_min_gap_atr_pct": "ldn.gap",
+    "ldn_max_gap_points": "ldn.maxgap",
+}
+
+
+def _short_hash() -> str:
+    """6-char hex from timestamp nanos (16.7M possibilities)."""
+    return format(time.time_ns() % (16**6), "06x")
+
+
+def _slugify(text: str, max_len: int = 40) -> str:
+    """Convert text to a lowercase, hyphen-separated ID slug."""
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:max_len].rstrip("-")
+
+
+def _sessions_from_config(config: dict) -> list[str]:
+    """Extract sorted session names from a config dict."""
+    return sorted(
+        key.split("_")[0].upper()
+        for key in config
+        if key.endswith("_orb_window")
+    )
+
+
+def generate_backtest_id(result: dict) -> str:
+    """Generate a backtest ID: ``bt-{descriptor}-{hash6}``."""
+    config = result.get("config", {})
+    name = result.get("name", "")
+
+    if name:
+        descriptor = _slugify(name)
+    else:
+        instrument = config.get("instrument", "unk").lower()
+        sessions = _sessions_from_config(config)
+        sess_str = ".".join(s.lower() for s in sessions) or "unk"
+        rr = config.get("rr", "")
+        rr_str = f"{rr:g}" if isinstance(rr, (int, float)) else str(rr)
+        descriptor = f"{instrument}-{sess_str}-rr{rr_str}"
+
+    return f"bt-{descriptor}-{_short_hash()}"
+
+
+def generate_optimization_id(result: dict) -> str:
+    """Generate an optimization ID: ``opt-{descriptor}-{hash6}``."""
+    all_results = result.get("all_results", [])
+    swept_params = result.get("swept_params", {})
+
+    instrument = "unk"
+    if all_results:
+        instrument = all_results[0].get("config", {}).get("instrument", "unk").lower()
+
+    abbrevs = [
+        _PARAM_ABBREV.get(p, _slugify(p, max_len=10))
+        for p in sorted(swept_params.keys())
+    ]
+
+    n_combos = result.get("total_combinations", len(all_results))
+
+    parts = [instrument] + abbrevs + [f"{n_combos}c"]
+    descriptor = "-".join(parts)[:40]
+
+    return f"opt-{descriptor}-{_short_hash()}"
 
 
 def _build_equity_curve(trades: list[TradeResult]) -> list[dict]:
@@ -115,6 +199,8 @@ def results_to_dict(
                 "qty": t.qty,
                 "gap_size": round(t.gap_size, 4),
                 "risk_points": round(t.risk_points, 4),
+                "entry_time": t.fill_time,
+                "exit_time": t.exit_time,
             }
             for t in trades
         ]
@@ -122,48 +208,12 @@ def results_to_dict(
     return result
 
 
-def results_to_json(
-    trades: list[TradeResult],
-    config: StrategyConfig,
-    include_trades: bool = True,
-    indent: int = 2,
-) -> str:
-    """Serialize backtest results to a JSON string."""
-    d = results_to_dict(trades, config, include_trades)
-    return json.dumps(d, indent=indent, default=str)
-
-
-def save_results(
-    trades: list[TradeResult],
-    config: StrategyConfig,
-    filepath: str,
-    include_trades: bool = True,
-) -> None:
-    """Save backtest results to a JSON file (used by --output flag)."""
-    text = results_to_json(trades, config, include_trades)
-    with open(filepath, "w") as f:
-        f.write(text)
-
-
 def save_backtest_result(result: dict) -> str:
     """Save a backtest result to the DB and return its ID.
 
-    ID format: {timestamp}_{instrument}_{sessions}
+    ID format: ``bt-{descriptor}-{hash6}``
     """
-    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    instrument = result.get("config", {}).get("instrument", "UNK")
-    sessions = []
-    for key in result.get("config", {}):
-        if key.endswith("_orb_window"):
-            sessions.append(key.split("_")[0].upper())
-    session_str = "+".join(sorted(sessions)) or "UNK"
-
-    name = result.get("name", "")
-    name_slug = name.replace(" ", "_")[:40] if name else ""
-    result_id = f"{ts}_{instrument}_{session_str}"
-    if name_slug:
-        result_id += f"_{name_slug}"
-
+    result_id = generate_backtest_id(result)
     log_run(result, result_id)
     return result_id
 
@@ -202,12 +252,14 @@ def grid_results_to_dict(
     best_by_sharpe = max(filled_summaries, key=lambda s: s["summary"]["sharpe_ratio"]) if filled_summaries else None
     best_by_pnl = max(filled_summaries, key=lambda s: s["summary"]["total_pnl_usd"]) if filled_summaries else None
     best_by_pf = max(filled_summaries, key=lambda s: s["summary"]["profit_factor"]) if filled_summaries else None
+    best_by_calmar = max(filled_summaries, key=lambda s: s["summary"].get("calmar_ratio", 0)) if filled_summaries else None
 
     result = {
         "total_combinations": len(summaries),
         "best_by_sharpe": best_by_sharpe,
         "best_by_pnl": best_by_pnl,
         "best_by_profit_factor": best_by_pf,
+        "best_by_calmar": best_by_calmar,
         "all_results": summaries,
     }
 
@@ -218,22 +270,11 @@ def grid_results_to_dict(
 
 
 def save_optimization_result(result: dict) -> str:
-    """Save an optimization result to the DB and return its ID."""
-    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    # Extract instrument from best result config or first result
-    instrument = "UNK"
-    sessions = set()
-    all_results = result.get("all_results", [])
-    if all_results:
-        config = all_results[0].get("config", {})
-        instrument = config.get("instrument", "UNK")
-        for key in config:
-            if key.endswith("_orb_window"):
-                sessions.add(key.split("_")[0].upper())
+    """Save an optimization result to the DB and return its ID.
 
-    session_str = "+".join(sorted(sessions)) or "UNK"
-    result_id = f"{ts}_{instrument}_{session_str}"
-
+    ID format: ``opt-{descriptor}-{hash6}``
+    """
+    result_id = generate_optimization_id(result)
     log_optimization(result, result_id)
     return result_id
 
@@ -251,6 +292,22 @@ def load_optimization_result(result_id: str) -> dict | None:
 def delete_optimization_result(result_id: str) -> bool:
     """Delete a saved optimization result from the DB."""
     return delete_optimization_run(result_id)
+
+
+def _trades_to_minimal(trades: list[TradeResult]) -> list[dict]:
+    """Convert trades to minimal dicts (for compact storage in optimization results)."""
+    return [
+        {
+            "date": t.date,
+            "session": t.session,
+            "direction": "long" if t.direction == 1 else "short",
+            "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
+            "pnl_usd": round(t.pnl_usd, 2),
+            "r_multiple": round(t.r_multiple, 3),
+        }
+        for t in trades
+        if t.exit_type != EXIT_NO_FILL
+    ]
 
 
 def get_experiment_history(limit: int = 50, **filters) -> list[dict]:

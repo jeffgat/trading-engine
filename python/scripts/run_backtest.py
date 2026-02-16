@@ -5,7 +5,7 @@ Usage:
     python scripts/run_backtest.py --data NQ_5m.csv
     python scripts/run_backtest.py --data NQ_5m.csv --start 2020-01-01 --end 2025-01-01
     python scripts/run_backtest.py --data NQ_5m.csv --rr 3.0 --ny-stop-atr-pct 12.0
-    python scripts/run_backtest.py --data NQ_5m.csv --instrument ES --output results.json
+    python scripts/run_backtest.py --data NQ_5m.csv --instrument ES
 """
 
 import argparse
@@ -22,7 +22,7 @@ from orb_backtest.data.loader import load_5m_data
 from orb_backtest.data.instruments import get_instrument, NQ
 from orb_backtest.engine.simulator import run_backtest, EXIT_NAMES, EXIT_NO_FILL
 from orb_backtest.results.metrics import compute_metrics
-from orb_backtest.results.export import results_to_json, results_to_dict, save_results, save_backtest_result
+from orb_backtest.results.export import results_to_dict, save_backtest_result
 
 
 def main():
@@ -31,8 +31,6 @@ def main():
     parser.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=None, help="End date (YYYY-MM-DD)")
     parser.add_argument("--instrument", default="NQ", help="Instrument symbol (NQ, ES, YM, MNQ)")
-    parser.add_argument("--output", default=None, help="Output JSON file path")
-
     # Overridable strategy params
     parser.add_argument("--rr", type=float, default=None)
     parser.add_argument("--tp1-ratio", type=float, default=None)
@@ -136,18 +134,12 @@ def main():
         print()
         _print_summary(metrics)
 
-    # Auto-save to data/results/ (viewable in frontend dashboard)
+    # Auto-save to experiment DB (viewable in frontend dashboard)
     result = results_to_dict(trades, config, include_trades=True, include_equity_curve=True)
     result_id = save_backtest_result(result)
     if not args.quiet:
         print(f"Results saved: {result_id}")
         print("View in dashboard → Backtests tab")
-
-    # Optional explicit output path
-    if args.output:
-        save_results(trades, config, args.output, include_trades=not args.no_trades)
-        if not args.quiet:
-            print(f"Also saved to: {args.output}")
 
     # Plot equity curve and monthly returns
     if args.plot:

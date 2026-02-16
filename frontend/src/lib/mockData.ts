@@ -72,6 +72,7 @@ export const MOCK_DATA: BacktestResult = {
     max_drawdown_pct: -18.5,
     sharpe_ratio: 0.42,
     sortino_ratio: 0.68,
+    calmar_ratio: 0.85,
     max_consecutive_wins: 8,
     max_consecutive_losses: 6,
     exit_breakdown: {

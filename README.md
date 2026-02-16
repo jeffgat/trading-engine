@@ -1,18 +1,88 @@
-# ORB+FVG Trading System
+# Trading Backtests
 
-Opening Range Breakout strategies with Fair Value Gap entries for futures markets. Includes a Python backtesting engine and a React dashboard for visualizing results.
+Multi-model backtesting engine for futures trading strategies. Includes Pine Script strategies for TradingView, a Python backtesting engine with shared infrastructure, and a React dashboard.
 
 ## Project Structure
 
 ```
-├── python/                # Python backtesting engine
-│   ├── scripts/           # CLI scripts (backtest, optimize, compare, download)
-│   ├── src/orb_backtest/  # Core backtester package
-│   ├── data/raw/          # Raw 5m OHLCV CSVs
-│   └── data/cache/        # Parquet cache for faster loads
-├── frontend/              # React + TypeScript dashboard (Vite + Tailwind)
-└── pinescript/            # Legacy Pine Script strategies (archived)
+├── pinescript/                  # TradingView Pine Script strategies & indicators
+│   ├── orb_continuation/        # ORB continuation strategies (main model)
+│   ├── orb_reversal/            # ORB reversal strategies
+│   ├── ilm/                     # Gap inversion / internal liquidity model
+│   ├── indicators/              # Standalone indicators (EMA, FVG, ICT killzones, etc.)
+│   └── atlas_indicators/        # Custom ATR and ORB indicators
+├── python/                      # Python backtesting engine
+│   ├── src/
+│   │   ├── core/                # Shared infrastructure (data, engine, signals, etc.)
+│   │   ├── orb_continuation/    # ORB continuation model configs + API
+│   │   ├── orb_reversal/        # ORB reversal model configs (stub)
+│   │   └── orb_backtest/        # Backward-compat shims (deprecated)
+│   ├── scripts/                 # CLI scripts (backtest, optimize, compare, download)
+│   ├── data/raw/                # Raw 5m OHLCV CSVs
+│   └── data/cache/              # Parquet cache for faster loads
+├── frontend/                    # React + TypeScript dashboard (Vite + Tailwind)
+└── tradingview_reports/         # Exported trade reports from TradingView
 ```
+
+### Python Package Layout
+
+```
+python/src/
+├── core/                        # Shared backtesting infrastructure
+│   ├── config.py                # Instrument, SessionConfig, StrategyConfig, with_overrides
+│   ├── data/                    # instruments.py, loader.py
+│   ├── signals/                 # session.py, daily_atr.py, orb.py, fvg.py
+│   ├── engine/                  # simulator.py (Numba-compiled trade simulation)
+│   ├── results/                 # metrics.py, export.py
+│   ├── optimize/                # grid.py, parallel.py, bayesian.py, walkforward.py
+│   ├── analysis/                # rolling.py, performance_gate.py, volatility.py
+│   ├── simulate/                # monte_carlo.py
+│   └── viz/                     # equity.py
+├── orb_continuation/            # ORB continuation model
+│   ├── config.py                # Session defaults, production configs
+│   └── api.py                   # FastAPI server
+├── orb_reversal/                # ORB reversal model (stub)
+│   └── config.py                # strategy="reversal" defaults
+└── orb_backtest/                # Deprecated — use core.* and orb_continuation.*
+```
+
+Each model is a thin package with its own config defaults and (optionally) API server. Shared infrastructure — data loading, Numba simulation, optimization, analysis — lives in `core/`.
+
+**Import examples:**
+```python
+from core.config import StrategyConfig, with_overrides
+from core.engine.simulator import run_backtest, TradeResult
+from core.data.instruments import NQ, get_instrument
+from orb_continuation.config import default_config, production_config
+```
+
+## Pine Script Strategies
+
+Located in [`pinescript/`](pinescript/). All strategies run on **5-minute charts** in TradingView.
+
+### ORB Continuation (`pinescript/orb_continuation/`)
+
+The main model. Detects opening range breakouts and enters on FVG retests with partial take-profits and breakeven stops.
+
+- **[HEAD_testing_a.pine](pinescript/orb_continuation/HEAD_testing_a.pine)** — Canonical testing version with 3 sessions (NY, Asia, London)
+- **[HEAD_prod_v5.pine](pinescript/orb_continuation/HEAD_prod_v5.pine)** — Production version with TradersPost alerts (NY + Asia)
+- **HEAD_testing_b/c.pine** — A/B test variants
+- **v1–v7** — Historical iterations exploring different entry types, stop methods, and filters
+
+### Other Models
+
+- **[`orb_reversal/`](pinescript/orb_reversal/)** — Mean reversion after ORB breakouts (early stage)
+- **[`ilm/`](pinescript/ilm/)** — Gap inversion model: sweep killzone/PDH/PDL levels, detect FVG, enter on gap inversion
+- **[`indicators/`](pinescript/indicators/)** — Standalone indicators (EMA, FVG/orderblocks, ICT killzones, swing highs/lows)
+
+### Key Trading Logic (ORB Models)
+
+- **FVG detection**: 3-candle pattern where bar[2] high < bar[0] low (bullish) or bar[2] low > bar[0] high (bearish)
+- **Entry**: Limit order at FVG retest level
+- **Stop**: ATR-based distance from entry
+- **TP1**: Partial position at R:R midpoint, then move stop to breakeven
+- **TP2**: Remaining position at full R:R target
+- **Sessions**: NY (09:30–09:45 ORB), Asia (20:00–20:15 ORB), London (03:00–03:15 ORB)
 
 ## Python Backtester
 
@@ -70,8 +140,8 @@ python scripts/run_backtest.py --data NQ_5m.csv --sessions NY,Asia
 # With equity curve plot
 python scripts/run_backtest.py --data NQ_5m.csv --plot
 
-# Save results as JSON
-python scripts/run_backtest.py --data NQ_5m.csv --output results.json
+# Results auto-save to experiments.db
+python scripts/run_backtest.py --data NQ_5m.csv --name "my run"
 ```
 
 ### Run Parameter Optimization
@@ -111,7 +181,25 @@ python scripts/compare_tv.py \
 - **Hybrid approach**: Vectorized signal generation (numpy/pandas) + Numba-compiled trade simulation
 - **Config**: Frozen dataclasses (hashable for caching)
 - **Data pipeline**: Databento CSVs, cached as Parquet for fast reloads
+- **Multi-model**: Shared `core/` infrastructure with thin per-model config packages
 - Primary instrument: NQ ($20/pt, 0.25 tick size)
+
+### Adding a New Model
+
+Create a new package under `python/src/` with a `config.py`:
+
+```python
+# python/src/my_model/config.py
+from core.config import Instrument, SessionConfig, StrategyConfig
+
+MY_SESSION = SessionConfig(name="NY", orb_start="09:30", ...)
+
+def default_config(instrument: Instrument | None = None) -> StrategyConfig:
+    from core.data.instruments import NQ
+    return StrategyConfig(sessions=(MY_SESSION,), instrument=instrument or NQ)
+```
+
+Then add `"src/my_model"` to the `packages` list in `pyproject.toml`.
 
 ## Frontend Dashboard
 
@@ -140,14 +228,20 @@ cd frontend
 npm run build    # outputs to frontend/dist/
 ```
 
-## Default Strategy Parameters
+## Optimized Parameters (2024–2025 NQ)
 
 | Parameter | NY | Asia | London |
 |---|---|---|---|
-| Stop (ATR %) | 15% | 5% | 10% |
-| Min gap (ATR %) | 1.75% | 0.7% | 1% |
-| Max gap (points) | 100 | 50 | 50 |
-| R:R | 2.5 | 2.5 | 2.5 |
-| TP1 ratio | 0.5 | 0.5 | 0.5 |
+| Stop (ATR %) | 6.75% | 4.75% | 10% |
+| Min gap (ATR %) | 2.5% | 3.0% | 1% |
+| Max gap (ATR %) | 25% | 8% | 18% |
+| R:R | 3.25 | 2.0 | 2.5 |
+| TP1 ratio | 0.55 | 0.4 | 0.5 |
 | ATR length | 14 | 14 | 14 |
 | BE offset (ticks) | 4 | 4 | 4 |
+
+## Execution Pipeline
+
+TradingView (Pine Script alerts) → TradersPost → Broker
+
+Optimal strategies are prefixed with `HEAD_`. Notes and ideas specific to each model are in `NOTES.md` within the respective directory.

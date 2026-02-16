@@ -10,6 +10,7 @@ interface BestResultsProps {
   bestBySharpe: BestEntry | null;
   bestByPnl: BestEntry | null;
   bestByPf: BestEntry | null;
+  bestByCalmar: BestEntry | null;
   sweptParams: string[];
 }
 
@@ -81,12 +82,12 @@ function BestCard({
   );
 }
 
-export function BestResults({ bestBySharpe, bestByPnl, bestByPf, sweptParams }: BestResultsProps) {
+export function BestResults({ bestBySharpe, bestByPnl, bestByPf, bestByCalmar, sweptParams }: BestResultsProps) {
   const pnlRiskUsd = bestByPnl ? getRiskUsd(bestByPnl) : 50000;
   const pnlNetR = (bestByPnl?.summary.total_pnl_usd ?? 0) / pnlRiskUsd;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-4">
       <BestCard
         label="Best by Sharpe"
         entry={bestBySharpe}
@@ -105,6 +106,13 @@ export function BestResults({ bestBySharpe, bestByPnl, bestByPf, sweptParams }: 
         label="Best by Profit Factor"
         entry={bestByPf}
         metricLabel={formatNumber(bestByPf?.summary.profit_factor ?? 0)}
+        metricColor="var(--color-accent)"
+        sweptParams={sweptParams}
+      />
+      <BestCard
+        label="Best by Calmar"
+        entry={bestByCalmar}
+        metricLabel={formatNumber(bestByCalmar?.summary.calmar_ratio ?? 0, 3)}
         metricColor="var(--color-accent)"
         sweptParams={sweptParams}
       />

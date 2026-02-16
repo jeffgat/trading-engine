@@ -9,6 +9,7 @@ interface UseOptimizationHistoryReturn {
   activeId: string | null;
   refreshHistory: () => Promise<void>;
   loadOptimization: (id: string) => Promise<OptimizationResult | null>;
+  refilterOptimization: (id: string, start?: string, end?: string) => Promise<OptimizationResult | null>;
   deleteOptimization: (id: string) => Promise<void>;
   setActiveId: (id: string | null) => void;
 }
@@ -50,6 +51,22 @@ export function useOptimizationHistory(): UseOptimizationHistoryReturn {
     }
   }, []);
 
+  const refilterOptimization = useCallback(async (id: string, start?: string, end?: string): Promise<OptimizationResult | null> => {
+    try {
+      const params = new URLSearchParams();
+      if (start) params.set("start", start);
+      if (end) params.set("end", end);
+      const qs = params.toString();
+      const url = `/api/optimizations/${id}${qs ? `?${qs}` : ""}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.result ?? json;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const deleteOptimization = useCallback(async (id: string) => {
     try {
       await fetch(`/api/optimizations/${id}`, { method: "DELETE" });
@@ -66,5 +83,5 @@ export function useOptimizationHistory(): UseOptimizationHistoryReturn {
     return () => clearInterval(id);
   }, [refreshHistory]);
 
-  return { history, loading, activeId, refreshHistory, loadOptimization, deleteOptimization, setActiveId };
+  return { history, loading, activeId, refreshHistory, loadOptimization, refilterOptimization, deleteOptimization, setActiveId };
 }

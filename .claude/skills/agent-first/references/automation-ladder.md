@@ -143,4 +143,4 @@ Capture these signals now (even if not analyzed yet):
 - How often does the user override optimization suggestions?
 - Which parameter ranges does the user explore most?
 
-**Store it structured in result JSON, make it queryable. The automation ladder climbs itself when the data is there.**
+**Store it structured in the experiment DB, make it queryable. The automation ladder climbs itself when the data is there.**

@@ -38,8 +38,8 @@ Check every item before marking a feature complete. These patterns cost little t
 - [ ] Every backtest result includes the complete config that produced it
 - [ ] Results have unique IDs and timestamps
 - [ ] Results include full trade list, metrics, and equity curve
-- [ ] Results are JSON-serializable and self-contained
-- [ ] A result file alone is sufficient to understand and reproduce the backtest
+- [ ] Results are serializable and persisted to the experiment DB
+- [ ] A DB record alone is sufficient to understand and reproduce the backtest
 
 ### Composable Pipeline
 - [ ] Pipeline stages (data → signals → simulate → metrics → export) are independent

@@ -3,10 +3,11 @@ import type { BacktestConfig, BacktestSummary } from "../lib/types";
 import { formatNumber } from "../lib/utils";
 import { ScrollArea } from "./ui/scroll-area";
 
-type MetricKey = "sharpe_ratio" | "total_pnl_usd" | "profit_factor" | "win_rate" | "avg_r" | "max_drawdown_usd";
+type MetricKey = "sharpe_ratio" | "calmar_ratio" | "total_pnl_usd" | "profit_factor" | "win_rate" | "avg_r" | "max_drawdown_usd";
 
 const METRIC_OPTIONS: { key: MetricKey; label: string }[] = [
   { key: "sharpe_ratio", label: "Sharpe Ratio" },
+  { key: "calmar_ratio", label: "Calmar Ratio" },
   { key: "total_pnl_usd", label: "Net R" },
   { key: "profit_factor", label: "Profit Factor" },
   { key: "win_rate", label: "Win Rate" },
@@ -43,6 +44,7 @@ function formatMetricValue(key: MetricKey, value: number, riskUsd: number): stri
     case "win_rate":
       return `${(value * 100).toFixed(1)}%`;
     case "sharpe_ratio":
+    case "calmar_ratio":
     case "avg_r":
       return formatNumber(value, 3);
     default:
@@ -57,7 +59,7 @@ const ZOOM_LEVELS = [
   { cellMin: 72, cellH: 40, font: 12, label: 11, labelCol: 40 },
   { cellMin: 92, cellH: 50, font: 14, label: 12, labelCol: 48 },
 ];
-const DEFAULT_ZOOM = 1;
+const DEFAULT_ZOOM = 0;
 
 export function Heatmap({ results, sweptParams }: HeatmapProps) {
   const riskUsd = results[0]?.config.risk_usd ?? 50000;
@@ -70,7 +72,9 @@ export function Heatmap({ results, sweptParams }: HeatmapProps) {
     summary: BacktestSummary;
   } | null>(null);
 
-  const paramKeys = Object.keys(sweptParams);
+  const paramKeys = Object.keys(sweptParams).filter(
+    (k) => sweptParams[k].length > 1
+  );
 
   const { grid, xValues, yValues, minVal, maxVal } = useMemo(() => {
     if (paramKeys.length < 2) {
@@ -282,6 +286,9 @@ export function Heatmap({ results, sweptParams }: HeatmapProps) {
             </div>
             <div className="text-text-muted">
               PF: <span className="font-mono text-text-primary">{formatNumber(tooltip.summary.profit_factor)}</span>
+            </div>
+            <div className="text-text-muted">
+              Calmar: <span className="font-mono text-text-primary">{formatNumber(tooltip.summary.calmar_ratio ?? 0, 3)}</span>
             </div>
           </div>
         </div>
