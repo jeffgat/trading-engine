@@ -10,7 +10,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from ..config import StrategyConfig, with_overrides
-from ..engine.simulator import run_backtest, TradeResult
+from ..engine.simulator import run_backtest, build_maps, build_signal_cache, TradeResult
 from ..results.metrics import compute_metrics
 from .grid import generate_param_grid
 from .objectives import OBJECTIVE_MAP, get_objective_value
@@ -128,6 +128,10 @@ def run_walkforward(
     progress_fn: Callable | None = None,
     gate_fn: Callable[[list[TradeResult]], list[TradeResult]] | None = None,
     gate_factory: Callable[[pd.DataFrame], Callable[[list[TradeResult]], list[TradeResult]]] | None = None,
+    df_1m: pd.DataFrame | None = None,
+    df_30s: pd.DataFrame | None = None,
+    df_1s: pd.DataFrame | None = None,
+    max_dd_r: float | None = None,
 ) -> WalkForwardResult:
     """Run walk-forward optimization.
 
@@ -161,6 +165,10 @@ def run_walkforward(
             Use this instead of gate_fn when the gate depends on signal_bar indices
             (e.g., SMA gate), since each fold uses a different df slice.
             Signature: (df: DataFrame) -> (trades: list[TradeResult]) -> list[TradeResult].
+        max_dd_r: Maximum allowed drawdown in R-multiples for IS config selection.
+            Configs with max_drawdown_r worse (more negative) than this threshold
+            are rejected before comparing objectives. E.g., -10.0 rejects any
+            IS config with drawdown exceeding 10R.
 
     Returns:
         WalkForwardResult with per-fold and combined OOS metrics.
@@ -196,8 +204,12 @@ def run_walkforward(
         is_df = df.loc[warmup_start:window.is_end]
 
         # 2. Run grid sweep on IS slice
+        is_df_1m = df_1m.loc[warmup_start:window.is_end] if df_1m is not None else None
+        is_df_30s = df_30s.loc[warmup_start:window.is_end] if df_30s is not None else None
+        is_df_1s = df_1s.loc[warmup_start:window.is_end] if df_1s is not None else None
         is_results = run_sweep(
-            is_df, configs, n_workers=n_workers, start_date=window.is_start
+            is_df, configs, n_workers=n_workers, start_date=window.is_start,
+            df_1m=is_df_1m, df_30s=is_df_30s, df_1s=is_df_1s,
         )
 
         # Build per-fold gate from factory (indices are relative to is_df)
@@ -223,6 +235,9 @@ def run_walkforward(
                 is_trades = is_gate(is_trades)
 
             m = compute_metrics(is_trades)
+            # DD hard gate: reject configs exceeding max drawdown threshold
+            if max_dd_r is not None and m.get("max_drawdown_r", 0) < max_dd_r:
+                continue
             val = get_objective_value(m, objective, base_config.risk_usd)
             if val > best_is_val and m["total_trades"] > 0:
                 best_is_val = val
@@ -244,7 +259,16 @@ def run_walkforward(
         ).strftime("%Y-%m-%d")
         oos_df = df.loc[oos_warmup_start:window.oos_end]
 
-        oos_trades_all = run_backtest(oos_df, best_config, start_date=window.oos_start)
+        oos_df_1m = df_1m.loc[oos_warmup_start:window.oos_end] if df_1m is not None else None
+        oos_df_30s = df_30s.loc[oos_warmup_start:window.oos_end] if df_30s is not None else None
+        oos_df_1s = df_1s.loc[oos_warmup_start:window.oos_end] if df_1s is not None else None
+        oos_maps = build_maps(oos_df, oos_df_1m, oos_df_30s, oos_df_1s)
+        oos_sig = build_signal_cache(oos_df, [best_config])
+        oos_trades_all = run_backtest(
+            oos_df, best_config, start_date=window.oos_start,
+            df_1m=oos_df_1m, df_30s=oos_df_30s, df_1s=oos_df_1s,
+            _maps=oos_maps, _signal_cache=oos_sig,
+        )
         oos_trades = [
             t for t in oos_trades_all
             if window.oos_start <= t.date < window.oos_end
@@ -305,6 +329,76 @@ def run_walkforward(
         anchored=anchored,
         objective=objective,
     )
+
+
+def recency_analysis(
+    wf_result: WalkForwardResult,
+    recent_folds: int = 8,
+) -> dict:
+    """Compare recent OOS performance vs historical average.
+
+    Splits the WF folds into recent (last N) and historical (everything else),
+    computes metrics on each subset, and checks for param stability and
+    performance degradation.
+
+    Args:
+        wf_result: Completed walk-forward result.
+        recent_folds: Number of most-recent folds to treat as "recent".
+
+    Returns:
+        Dict with:
+        - recent_metrics: compute_metrics() on recent OOS trades
+        - historical_metrics: compute_metrics() on older OOS trades
+        - param_stability: std dev of each swept param across recent folds
+        - degradation_flag: True if recent Calmar < 50% of historical
+        - recent_folds_used: actual number of recent folds used
+        - historical_folds_used: actual number of historical folds used
+    """
+    import numpy as np
+
+    folds = wf_result.folds
+    n = min(recent_folds, len(folds))
+
+    historical = folds[:-n] if n < len(folds) else []
+    recent = folds[-n:]
+
+    # Collect OOS trades for each group
+    recent_trades = []
+    for f in recent:
+        recent_trades.extend(f.oos_trades)
+    recent_trades.sort(key=lambda t: t.date)
+
+    historical_trades = []
+    for f in historical:
+        historical_trades.extend(f.oos_trades)
+    historical_trades.sort(key=lambda t: t.date)
+
+    recent_m = compute_metrics(recent_trades)
+    historical_m = compute_metrics(historical_trades) if historical_trades else None
+
+    # Param stability across recent folds
+    param_stability = {}
+    if recent:
+        param_names = list(recent[0].best_params.keys())
+        for p in param_names:
+            vals = [f.best_params.get(p, 0.0) for f in recent]
+            param_stability[p] = float(np.std(vals, ddof=1)) if len(vals) > 1 else 0.0
+
+    # Degradation flag: recent Calmar < 50% of historical
+    degradation_flag = False
+    if historical_m and historical_m.get("calmar_ratio", 0) > 0:
+        recent_calmar = recent_m.get("calmar_ratio", 0)
+        hist_calmar = historical_m["calmar_ratio"]
+        degradation_flag = recent_calmar < hist_calmar * 0.5
+
+    return {
+        "recent_metrics": recent_m,
+        "historical_metrics": historical_m,
+        "param_stability": param_stability,
+        "degradation_flag": degradation_flag,
+        "recent_folds_used": len(recent),
+        "historical_folds_used": len(historical),
+    }
 
 
 def _extract_swept_params(config: StrategyConfig, param_names) -> dict[str, float]:
