@@ -69,7 +69,7 @@ python/
 │   ├── compare_tv.py              # Compare Python vs TradingView results
 │   └── sync_data.py               # Cloudflare R2 data sync
 └── data/                          # git-ignored
-    ├── raw/                       # 5-min OHLCV CSVs
+    ├── raw/                       # 5m + 1m OHLCV CSVs ({SYMBOL}_5m.csv, {SYMBOL}_1m.csv)
     ├── cache/                     # Parquet caches (keyed by file hash)
     └── results/                   # experiments.db (SQLite) + synced to R2
 ```
@@ -77,7 +77,11 @@ python/
 ## Architecture
 
 ### Data Pipeline
-1. **Source**: Databento CSVs (5-min OHLCV), stored in `data/raw/`
+1. **Source**: Databento 1-min OHLCV bars, resampled to 5m and stored in `data/raw/`
+   - Both `{SYMBOL}_5m.csv` and `{SYMBOL}_1m.csv` are saved (use `--save-1m` flag)
+   - Index futures (NQ, ES, YM, etc.) use `.c.0` calendar roll
+   - Commodity futures (GC, MGC) use `.v.0` volume-based roll (liquidity concentrates in specific months)
+   - Gaps during market hours are forward-filled with last close (volume=0) so the engine sees continuous bars
 2. **Caching**: Parquet files keyed by MD5 hash of source CSV, stored in `data/cache/`
 3. **Warmup**: Loads 30 days before `start_date` for ATR initialization
 4. **Timezone**: All timestamps in America/New_York (Eastern)
@@ -108,7 +112,7 @@ One-trade-per-day enforced: when multiple signals exist on same session-day, onl
 Frozen dataclasses (hashable for caching):
 - `Instrument`: symbol, point_value, min_tick, commission, data_file
 - `SessionConfig`: name, time windows, ATR-based stop/gap params
-- `StrategyConfig`: rr, tp1_ratio, risk_usd, atr_length, be_offset_ticks, sessions, instrument
+- `StrategyConfig`: rr, tp1_ratio, risk_usd, atr_length, sessions, instrument
 
 `with_overrides()` supports session-prefixed params: `ny_stop_atr_pct=12`, `asia_min_gap_atr_pct=1.5`
 
@@ -127,7 +131,7 @@ The **production strategy** is the current best no-gate NY+Asia combined config,
 | max_gap_atr_pct | 25.0 | 8.0 |
 | rr | 3.25 | 2.0 |
 | tp1_ratio | 0.55 | 0.4 |
-| be_offset_ticks | 4 | 4 |
+
 
 **Baseline performance** (NQ, Jan 2016 — Dec 2025):
 
@@ -168,23 +172,64 @@ from orb_continuation.config import (
 NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Primary: NQ ($20/pt, 0.25 tick).
 
 ### Optimization
+
+#### Variable Sweep Discipline — CRITICAL RULE
+**Every time the anchor config changes, all variable sweeps must be rerun from scratch.**
+
+Parameter sensitivities interact. A dimension that appeared insensitive at anchor A may be highly sensitive at anchor B, and vice versa. Skipping re-sweeps after an anchor change leads to a suboptimal or mischaracterized final config.
+
+The full sweep-and-grid loop:
+1. **Set anchor** — initial config from structural exploration or previous iteration
+2. **Variable sweeps** — sweep each dimension independently (ORB window, ATR length, entry_end, flat_start, direction, DOW exclusion, max_gap_points, etc.), holding all others at anchor
+3. **Update anchor** — adopt the best value from each sweep
+4. **If anchor changed significantly** → return to step 2 (re-sweep everything on the new anchor)
+5. **Fine-tune winners** — sweep the most impactful dimensions at higher resolution around their winning values
+6. **Grid sweep** — sweep all continuous params (stop × rr × min_gap × tp1) together in the winning structural config region
+7. **Anchor changed again?** → return to step 2
+8. **Robust pipeline** — only run WF + prop constraints + holdout + MC when the anchor has stabilized
+
+This applies even if sweeps previously showed a dimension was "insensitive" — that result was anchor-specific. Common examples:
+- ATR length: appeared optimal at 50 with old config, then 14 with new ORB, then possibly 12 or 16 after stop changes
+- DOW exclusion: Mon+Fri showed +3.5 Calmar on one anchor; magnitude can shift on another
+- Entry end: borderline between 11:00 and 12:00 can flip with different stop/rr profiles
+
+Scripts follow naming convention `run_{asset}_variable_sweeps_{N}.py` where N increments with each anchor change.
+
 - Grid search: `param=start:stop:step` or `param=v1,v2,v3`
 - Parallel via multiprocessing.Pool
 - Results saved to `experiments.db` in `data/results/`
 
 ### Risk Context
-Traded on prop firm accounts. Risk unit = R. Accounts breach at ~8-10R drawdown. Acceptable to breach 1-2x/year if payout collection and ROI multiple justify it. Optimize Sharpe/max drawdown with 8-10R as the hard ceiling; lower is better.
+Traded on prop firm accounts. Risk unit = R.
+
+**Primary optimization objective: Calmar ratio (Avg Annual R ÷ |Max DD R|).**
+
+Absolute drawdown in R is NOT a hard constraint. Position sizing can always be scaled down to bring dollar drawdown within prop firm limits. A strategy with -15R DD and 15 R/yr (Calmar 1.0) is identical in practice to -10R DD and 10 R/yr — just trade at 2/3 the position size. What cannot be fixed by sizing is a low Calmar.
+
+Optimization priority order:
+1. **Calmar** — primary objective, always
+2. **0 negative full years** — consistency across all full calendar years
+3. **Sharpe** — secondary, useful for walk-forward objective
+4. **Net R / Avg Annual R** — only meaningful relative to DD (i.e., as Calmar)
+
+Do NOT use a fixed DD threshold (e.g., "must be < 10R") as a hard filter during optimization. Report DD alongside Calmar so the user can set position size accordingly.
 
 ### Results & Metrics
-Metrics include: win rate, profit factor, Sharpe, Sortino, max drawdown (USD, %, R), avg R, streaks, exit type breakdown, PnL by year/month/weekday. Results persisted to SQLite (`experiments.db`) with config, summary, equity curve, and trade list.
+All CLI output and reporting uses **R (risk units)** — never raw USD PnL. Metrics include: win rate, profit factor, Sharpe, Sortino, Calmar, Net R, Max DD (R), avg R, streaks, exit type breakdown, R by year/month/weekday. Results persisted to SQLite (`experiments.db`) with config, summary, equity curve, and trade list.
 
 ### API Server
 FastAPI on port 8000. Endpoints for running backtests, listing/loading/deleting results, running optimizations, and per-instrument testing coverage with a manual testing plan checklist. CORS enabled for frontend at localhost:3000.
+
+`/api/candles` serves 1-minute candle data for trade chart visualization. Prefers 1m data when available (≥50 real traded bars), falls back to 5m. Forward-filled bars (volume=0) are stripped for chart display.
 
 ### Database Tables
 - `runs` — Individual backtest/optimization run results with config, metrics, trades, equity curve
 - `optimizations` — Grid sweep metadata with best-by results and all combinations
 - `testing_plan` — Manual checklist items per instrument for tracking what to test next
+
+### Per-Asset Learnings
+
+Living documents in `learnings/` track what works and what doesn't for each asset. Check the relevant file before testing a strategy — if it's already NO-GO, don't re-test. Update after every conclusion with GO/NO-GO status, key metrics, and DB experiment name. See `learnings/GC.md` as the template.
 
 ### Findings Logs
 Do NOT automatically record backtest/optimization results. Only append when the user explicitly says to record/log the results. Use the format documented at the top of each file.
