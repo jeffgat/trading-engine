@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Convert intraday OHLCV CSV files to Parquet and create GC_30s from 1s data.
+"""Convert intraday OHLCV CSV files to Parquet and create 30s resampled files.
 
 Run once after downloading new CSV data:
     uv run python scripts/convert_to_parquet.py
 
 Converts:
   - All *_5m.csv and *_1m.csv  →  corresponding .parquet files
-  - GC_1s.csv (Databento format) →  GC_1s.parquet  (normalized to Eastern tz-naive)
-  - GC_1s.parquet  →  GC_30s.parquet  (resampled)
+  - Any *_1s.csv (Databento format) →  *_1s.parquet  (normalized to Eastern tz-naive)
+  - Each *_1s.parquet  →  *_30s.parquet, *_1m.parquet, *_5m.parquet  (resampled)
 
 The loader will prefer .parquet over .csv automatically after this runs.
 """
@@ -31,8 +31,8 @@ def convert_standard(csv_path: Path) -> None:
     print(f"{len(df):,} bars, {size_mb:.1f} MB")
 
 
-def convert_gc_1s(csv_path: Path) -> pd.DataFrame:
-    """Normalize GC_1s.csv (Databento format) and save as Parquet.
+def convert_1s(csv_path: Path) -> pd.DataFrame:
+    """Normalize a *_1s.csv (Databento format) and save as Parquet.
 
     Databento format differences vs. standard files:
       - Column: ts_event  (not datetime)
@@ -60,12 +60,8 @@ def convert_gc_1s(csv_path: Path) -> pd.DataFrame:
     return df
 
 
-def create_gc_30s(df_1s: pd.DataFrame) -> None:
-    """Resample 1s data to 30s and save as Parquet."""
-    parquet_path = DATA_DIR / "GC_30s.parquet"
-    print(f"  GC_1s → {parquet_path.name} (resampling to 30s) ...", end=" ", flush=True)
-
-    df_30s = df_1s.resample("30s").agg(
+def _resample_agg(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    return df.resample(rule).agg(
         open=("open", "first"),
         high=("high", "max"),
         low=("low", "min"),
@@ -73,10 +69,35 @@ def create_gc_30s(df_1s: pd.DataFrame) -> None:
         volume=("volume", "sum"),
     ).dropna(subset=["open"])
 
-    df_30s.to_parquet(parquet_path)
 
+def create_30s(df_1s: pd.DataFrame, symbol: str) -> None:
+    """Resample 1s data to 30s and save as Parquet."""
+    parquet_path = DATA_DIR / f"{symbol}_30s.parquet"
+    print(f"  {symbol}_1s → {parquet_path.name} (resampling to 30s) ...", end=" ", flush=True)
+    df = _resample_agg(df_1s, "30s")
+    df.to_parquet(parquet_path)
     size_mb = parquet_path.stat().st_size / 1_048_576
-    print(f"{len(df_30s):,} bars, {size_mb:.1f} MB")
+    print(f"{len(df):,} bars, {size_mb:.1f} MB")
+
+
+def create_1m(df_1s: pd.DataFrame, symbol: str) -> None:
+    """Resample 1s data to 1m and save as Parquet."""
+    parquet_path = DATA_DIR / f"{symbol}_1m.parquet"
+    print(f"  {symbol}_1s → {parquet_path.name} (resampling to 1m) ...", end=" ", flush=True)
+    df = _resample_agg(df_1s, "1min")
+    df.to_parquet(parquet_path)
+    size_mb = parquet_path.stat().st_size / 1_048_576
+    print(f"{len(df):,} bars, {size_mb:.1f} MB")
+
+
+def create_5m(df_1s: pd.DataFrame, symbol: str) -> None:
+    """Resample 1s data to 5m and save as Parquet."""
+    parquet_path = DATA_DIR / f"{symbol}_5m.parquet"
+    print(f"  {symbol}_1s → {parquet_path.name} (resampling to 5m) ...", end=" ", flush=True)
+    df = _resample_agg(df_1s, "5min")
+    df.to_parquet(parquet_path)
+    size_mb = parquet_path.stat().st_size / 1_048_576
+    print(f"{len(df):,} bars, {size_mb:.1f} MB")
 
 
 def main() -> None:
@@ -95,26 +116,38 @@ def main() -> None:
     else:
         print("No standard *_5m.csv / *_1m.csv files found.")
 
-    # GC_1s.csv — Databento format, needs normalization
-    gc_1s_path = DATA_DIR / "GC_1s.csv"
-    gc_1s_parquet = DATA_DIR / "GC_1s.parquet"
+    # Any *_1s.csv — Databento format, needs normalization
+    one_sec_csvs = sorted(DATA_DIR.glob("*_1s.csv"))
+    for csv_path in one_sec_csvs:
+        symbol = csv_path.stem.replace("_1s", "")
+        parquet_1s = csv_path.with_suffix(".parquet")
+        parquet_30s = DATA_DIR / f"{symbol}_30s.parquet"
+        parquet_1m  = DATA_DIR / f"{symbol}_1m.parquet"
+        parquet_5m  = DATA_DIR / f"{symbol}_5m.parquet"
 
-    if gc_1s_path.exists():
-        print("\nConverting GC_1s.csv (Databento format):")
-        df_1s = convert_gc_1s(gc_1s_path)
-        print("\nCreating GC_30s.parquet:")
-        create_gc_30s(df_1s)
-    elif gc_1s_parquet.exists():
-        # Already converted; just create 30s if missing
-        gc_30s_parquet = DATA_DIR / "GC_30s.parquet"
-        if not gc_30s_parquet.exists():
-            print("\nGC_1s.parquet exists; creating GC_30s.parquet:")
-            df_1s = pd.read_parquet(gc_1s_parquet)
-            create_gc_30s(df_1s)
-        else:
-            print("\nGC_1s.parquet and GC_30s.parquet already exist — skipping.")
-    else:
-        print(f"\nGC_1s.csv not found at {gc_1s_path} — skipping 1s/30s conversion.")
+        if csv_path.exists():
+            print(f"\nConverting {csv_path.name} (Databento format):")
+            df_1s = convert_1s(csv_path)
+            print(f"\nCreating resampled files for {symbol}:")
+            create_30s(df_1s, symbol)
+            create_1m(df_1s, symbol)
+            create_5m(df_1s, symbol)
+        elif parquet_1s.exists():
+            missing = [p for p in [parquet_30s, parquet_1m, parquet_5m] if not p.exists()]
+            if missing:
+                print(f"\n{parquet_1s.name} exists; creating missing resampled files:")
+                df_1s = pd.read_parquet(parquet_1s)
+                if not parquet_30s.exists():
+                    create_30s(df_1s, symbol)
+                if not parquet_1m.exists():
+                    create_1m(df_1s, symbol)
+                if not parquet_5m.exists():
+                    create_5m(df_1s, symbol)
+            else:
+                print(f"\n{parquet_1s.name}, {parquet_30s.name}, {parquet_1m.name}, {parquet_5m.name} already exist — skipping.")
+
+    if not one_sec_csvs:
+        print("\nNo *_1s.csv files found — skipping 1s/30s conversion.")
 
     print("\nDone.")
 

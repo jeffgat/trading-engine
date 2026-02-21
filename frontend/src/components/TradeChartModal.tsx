@@ -146,6 +146,19 @@ export function TradeChartModal({
 
     series.setData(chartData);
 
+    // Pin the Y-axis to the trade zone so large intraday moves (e.g. GC)
+    // don't compress the entry/stop/TP levels into a tiny band at the top.
+    const levels = [trade.stop_price, trade.entry_price, trade.tp1_price, trade.tp2_price];
+    const zoneLow = Math.min(...levels);
+    const zoneHigh = Math.max(...levels);
+    const zonePad = (zoneHigh - zoneLow) * 3;
+    series.applyOptions({
+      autoscaleInfoProvider: () => ({
+        priceRange: { minValue: zoneLow - zonePad, maxValue: zoneHigh + zonePad },
+        margins: { above: 0.1, below: 0.1 },
+      }),
+    });
+
     // Add price lines for trade levels
     series.createPriceLine({
       price: trade.entry_price,
@@ -183,6 +196,63 @@ export function TradeChartModal({
       title: "TP2",
     });
 
+    // Fallback: approximate entry/exit times from candle data when
+    // timestamps are missing (old backtests stored before fill_time was added).
+    let entryTime = trade.entry_time;
+    let exitTime = trade.exit_time;
+
+    if (!entryTime && trade.exit_type !== "no_fill") {
+      const isLong = trade.direction === "long";
+      for (const c of candles) {
+        // Long limit buy fills when low <= entry; short limit sell fills when high >= entry
+        if (isLong ? c.low <= trade.entry_price : c.high >= trade.entry_price) {
+          entryTime = c.time;
+          break;
+        }
+      }
+    }
+
+    if (!exitTime && entryTime && trade.exit_type !== "no_fill") {
+      const isLong = trade.direction === "long";
+      const entryTs = new Date(entryTime).getTime();
+      const barsAfterEntry = candles.filter((c) => new Date(c.time).getTime() >= entryTs);
+
+      if (trade.exit_type === "flat") {
+        // Flat = last candle in session
+        exitTime = candles[candles.length - 1]?.time;
+      } else if (trade.exit_type === "stop") {
+        // Stop hit: first bar after entry where price crosses stop
+        for (const c of barsAfterEntry) {
+          if (isLong ? c.low <= trade.stop_price : c.high >= trade.stop_price) {
+            exitTime = c.time;
+            break;
+          }
+        }
+      } else {
+        // TP-based exits: find first bar after entry where price crosses TP2 (or TP1)
+        const tpPrice = trade.tp2_price;
+        for (const c of barsAfterEntry) {
+          if (isLong ? c.high >= tpPrice : c.low <= tpPrice) {
+            exitTime = c.time;
+            break;
+          }
+        }
+        // Fallback for tp1_be / tp1_flat: check if TP2 wasn't hit, scan for BE/flat
+        if (!exitTime) {
+          if (trade.exit_type === "tp1_be") {
+            for (const c of barsAfterEntry) {
+              if (isLong ? c.low <= trade.entry_price : c.high >= trade.entry_price) {
+                exitTime = c.time;
+                break;
+              }
+            }
+          } else if (trade.exit_type === "tp1_flat") {
+            exitTime = candles[candles.length - 1]?.time;
+          }
+        }
+      }
+    }
+
     // Entry/exit arrow markers
     const markers: {
       time: Time;
@@ -192,10 +262,10 @@ export function TradeChartModal({
       text: string;
     }[] = [];
 
-    if (trade.entry_time) {
+    if (entryTime) {
       const isLong = trade.direction === "long";
       markers.push({
-        time: toFakeUtcSeconds(trade.entry_time) as unknown as Time,
+        time: toFakeUtcSeconds(entryTime) as unknown as Time,
         position: isLong ? "belowBar" : "aboveBar",
         color: "#22d3ee",
         shape: isLong ? "arrowUp" : "arrowDown",
@@ -203,13 +273,13 @@ export function TradeChartModal({
       });
     }
 
-    if (trade.exit_time) {
+    if (exitTime) {
       const isLong = trade.direction === "long";
       const isWin = trade.pnl_usd >= 0;
       const exitLabel =
         EXIT_LABELS[trade.exit_type] ?? trade.exit_type;
       markers.push({
-        time: toFakeUtcSeconds(trade.exit_time) as unknown as Time,
+        time: toFakeUtcSeconds(exitTime) as unknown as Time,
         position: isLong ? "aboveBar" : "belowBar",
         color: isWin ? "#3dd68c" : "#f0615e",
         shape: isLong ? "arrowDown" : "arrowUp",

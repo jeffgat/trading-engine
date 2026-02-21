@@ -34,7 +34,6 @@ class StrategyConfig:
     reward_risk: float = 2.5
     tp1_ratio: float = 0.5
     atr_length: int = 14
-    be_offset_ticks: int = 4
 
     def with_overrides(self, **kwargs) -> "StrategyConfig":
         """Create new config with overrides. Supports dot notation for nested fields."""
@@ -143,7 +142,6 @@ def _simulate_single_trade(
     is_long: bool,
     flat_bar: int,
     tp1_ratio: float,
-    be_offset: float,
 ) -> tuple:
     """Simulate a single trade bar-by-bar.
 
@@ -172,10 +170,10 @@ def _simulate_single_trade(
         if not hit_tp1:
             if is_long and h >= tp1_price:
                 hit_tp1 = True
-                current_stop = entry_price + be_offset
+                current_stop = entry_price
             elif not is_long and l <= tp1_price:
                 hit_tp1 = True
-                current_stop = entry_price - be_offset
+                current_stop = entry_price
 
         # Check TP2
         if is_long and h >= tp2_price:

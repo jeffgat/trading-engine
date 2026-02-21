@@ -137,14 +137,24 @@ cd python && uv run python scripts/run_server.py
 
 ```bash
 cd python && uv run python scripts/download_data.py \
-  --symbol NQ \
-  --start 2023-01-01 \
-  --end 2024-12-31
+  NQ --start 2023-01-01 --end 2024-12-31 --save-1m
+
+# Download multiple instruments
+cd python && uv run python scripts/download_data.py \
+  NQ ES GC --start 2016-01-01 --save-1m
 
 # Estimate cost first
 cd python && uv run python scripts/download_data.py \
-  --symbol NQ --start 2023-01-01 --end 2024-12-31 --cost-only
+  NQ ES --start 2015-01-01 --cost-only
 ```
+
+**Always use `--save-1m`** to save 1-minute data alongside 5m. The 1m data powers the trade chart magnifier in the dashboard (clicking a trade row shows 1m candles).
+
+**Databento roll rules:**
+- Index futures (NQ, ES, YM, RTY, MNQ, MES, MYM): `.c.0` calendar roll — front month is always liquid
+- Commodity futures (GC, MGC): `.v.0` volume-based roll — calendar roll tracks near-expiry illiquid contracts
+
+These are configured in `SYMBOL_MAP` in `download_data.py`.
 
 ## Comparing with TradingView
 

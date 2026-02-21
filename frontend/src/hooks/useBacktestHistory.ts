@@ -13,6 +13,8 @@ interface UseHistoryReturn {
   deleteBacktest: (id: string) => Promise<void>;
   starBacktest: (id: string) => Promise<boolean>;
   hideBacktest: (id: string) => Promise<boolean>;
+  bulkStarBacktests: (ids: string[]) => Promise<void>;
+  bulkHideBacktests: (ids: string[]) => Promise<void>;
   setActiveId: (id: string | null) => void;
 }
 
@@ -105,11 +107,33 @@ export function useBacktestHistory(): UseHistoryReturn {
     }
   }, [refreshHistory]);
 
+  const bulkStarBacktests = useCallback(async (ids: string[]) => {
+    const toStar = ids.filter((id) => {
+      const item = history.find((h) => h.id === id);
+      return item && !item.starred;
+    });
+    if (toStar.length > 0) {
+      await Promise.all(toStar.map((id) => fetch(`/api/backtests/${id}/star`, { method: "POST" })));
+      await refreshHistory();
+    }
+  }, [history, refreshHistory]);
+
+  const bulkHideBacktests = useCallback(async (ids: string[]) => {
+    const toHide = ids.filter((id) => {
+      const item = history.find((h) => h.id === id);
+      return item && !item.hidden;
+    });
+    if (toHide.length > 0) {
+      await Promise.all(toHide.map((id) => fetch(`/api/backtests/${id}/hide`, { method: "POST" })));
+      await refreshHistory();
+    }
+  }, [history, refreshHistory]);
+
   useEffect(() => {
     refreshHistory();
     const id = setInterval(refreshHistory, POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [refreshHistory]);
 
-  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, setActiveId };
+  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, bulkStarBacktests, bulkHideBacktests, setActiveId };
 }

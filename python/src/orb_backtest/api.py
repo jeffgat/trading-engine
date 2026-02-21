@@ -19,7 +19,7 @@ from .config import (
     LDN_SESSION,
 )
 from .data.instruments import get_instrument, list_instruments
-from .data.loader import load_5m_data
+from .data.loader import load_5m_data, load_1m_for_5m
 from .engine.simulator import run_backtest, EXIT_NO_FILL
 from .errors import (
     BacktestError,
@@ -107,7 +107,7 @@ class BacktestRequest(BaseModel):
     tp1_ratio: Optional[float] = None
     risk_usd: Optional[float] = None
     atr_length: Optional[int] = None
-    be_offset_ticks: Optional[int] = None
+
     ny_stop_atr_pct: Optional[float] = None
     ny_min_gap_atr_pct: Optional[float] = None
     ny_max_gap_points: Optional[float] = None
@@ -166,7 +166,7 @@ def get_candles(
     date: str = Query(..., description="Trade date YYYY-MM-DD"),
     session: str = Query(..., description="Session name: NY, Asia, LDN"),
 ):
-    """Return 5-min OHLCV bars for a single session-day.
+    """Return OHLCV bars for a single session-day (1-min if available, else 5-min).
 
     Used by the TradeChartModal to render a candlestick chart for a specific trade.
     Includes 30 min padding before ORB start and 15 min after flat end.
@@ -205,26 +205,48 @@ def get_candles(
     else:
         window_end_time = datetime.combine(trade_date, datetime.min.time().replace(hour=flat_h, minute=flat_m)) + padding_after
 
-    # Load data with a date range that covers the window
+    # Load data with a date range that covers the window.
+    # Prefer 1-minute data for higher-resolution charts; fall back to 5-min
+    # if the 1m file doesn't exist or the data is too sparse.
+    # Forward-filled bars (volume=0) are excluded from chart display since
+    # they render as invisible flat lines; they exist only for the backtest
+    # engine's stop/TP detection.
     load_start = (window_start_time - timedelta(days=1)).strftime("%Y-%m-%d")
     load_end = (window_end_time + timedelta(days=1)).strftime("%Y-%m-%d")
 
+    MIN_REAL_BARS = 50  # minimum traded bars to use 1m data
+
+    def _load_and_window(loader, *args):
+        df = loader(*args)
+        tz = df.index.tz
+        if tz is not None:
+            ws = pd.Timestamp(window_start_time, tz=tz)
+            we = pd.Timestamp(window_end_time, tz=tz)
+        else:
+            ws = pd.Timestamp(window_start_time)
+            we = pd.Timestamp(window_end_time)
+        windowed = df.loc[(df.index >= ws) & (df.index <= we)]
+        # Strip forward-filled bars (volume=0) for chart display
+        if "volume" in windowed.columns:
+            windowed = windowed[windowed["volume"] > 0]
+        return windowed
+
+    bars = pd.DataFrame()
     try:
-        df = load_5m_data(inst.data_file, start=load_start, end=load_end)
-    except FileNotFoundError as e:
-        raise data_not_found(str(e))
+        bars = _load_and_window(load_1m_for_5m, inst.data_file, load_start, load_end)
+    except FileNotFoundError:
+        pass
 
-    # Localize window boundaries to match the dataframe timezone
-    tz = df.index.tz
-    if tz is not None:
-        window_start = pd.Timestamp(window_start_time, tz=tz)
-        window_end = pd.Timestamp(window_end_time, tz=tz)
-    else:
-        window_start = pd.Timestamp(window_start_time)
-        window_end = pd.Timestamp(window_end_time)
-
-    mask = (df.index >= window_start) & (df.index <= window_end)
-    bars = df.loc[mask]
+    # Fall back to 5-min if 1m data is missing or too sparse
+    if len(bars) < MIN_REAL_BARS:
+        try:
+            bars_5m = _load_and_window(load_5m_data, inst.data_file, load_start, load_end)
+            # Use 5m if it has more real bars than the 1m data
+            if len(bars_5m) >= len(bars):
+                bars = bars_5m
+        except FileNotFoundError as e:
+            if bars.empty:
+                raise data_not_found(str(e))
 
     if bars.empty:
         return []
@@ -265,7 +287,7 @@ def run_backtest_endpoint(req: BacktestRequest):
     # Apply param overrides
     overrides = {}
     for field in (
-        "rr", "tp1_ratio", "risk_usd", "atr_length", "be_offset_ticks",
+        "rr", "tp1_ratio", "risk_usd", "atr_length",
         "name", "notes",
         "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_max_gap_points",
         "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_max_gap_points",

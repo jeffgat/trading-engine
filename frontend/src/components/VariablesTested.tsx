@@ -12,13 +12,21 @@ const LABELS: Record<string, string> = {
     tp1_ratio: 'TP1 Ratio',
     risk_usd: 'Risk',
     atr_length: 'ATR Length',
-    be_offset_ticks: 'BE Offset',
+
     stop_atr_pct: 'Stop ATR%',
     min_gap_atr_pct: 'Min Gap ATR%',
     max_gap_points: 'Max Gap Pts',
+    max_gap_atr_pct: 'Max Gap ATR%',
     orb_window: 'ORB Window',
     entry_window: 'Entry Window',
     flat_window: 'Flat Window',
+    qualifying_move_atr_pct: 'Liq. Sweep ATR%',
+    strategy: 'Strategy',
+    direction_filter: 'Direction',
+    bar_magnifier: 'Bar Magnifier',
+    regime_sizing: 'Regime Sizing',
+    regime_rule: 'Regime Rule',
+    regime_multiplier: 'Regime Mult',
 };
 
 function formatValue(key: string, val: unknown): string {

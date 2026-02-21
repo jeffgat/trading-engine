@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { useCoverage } from "../hooks/useCoverage";
 import type {
   InstrumentCoverage,
@@ -7,7 +7,7 @@ import type {
 } from "../lib/types";
 import { SessionTag } from "./SessionTag";
 import { Skeleton } from "./Skeleton";
-import { formatCurrency, formatNumber, pnlColor } from "../lib/utils";
+import { formatNumber, pnlColor } from "../lib/utils";
 
 // All registered instruments — show cards even for untested ones
 const ALL_INSTRUMENTS = ["NQ", "MNQ", "ES", "CL", "YM"];
@@ -22,6 +22,81 @@ const PARAM_LABELS: Record<string, string> = {
   ldn_stop_atr_pct: "LDN Stop ATR%",
   ldn_min_gap_atr_pct: "LDN Min Gap ATR%",
 };
+
+const ALL_SESSIONS = ["NY", "ASIA", "LDN"];
+
+function generateSuggestions(
+  coverage: InstrumentCoverage | null,
+  planItems: TestingPlanItem[],
+  paramDetail?: Record<string, ParamCoverageDetail>
+): string[] {
+  const pool: string[] = [];
+  const pendingTitles = planItems
+    .filter((i) => i.status === "pending")
+    .map((i) => i.title.toLowerCase());
+
+  // P1: No runs at all
+  if (!coverage) {
+    pool.push("Run baseline NY backtest");
+    return pool.slice(0, 3);
+  }
+
+  // P2: Session not tested
+  const tested = new Set(coverage.sessions_tested.map((s) => s.toUpperCase()));
+  for (const session of ALL_SESSIONS) {
+    if (!tested.has(session)) {
+      pool.push(`Test ${session} session`);
+    }
+  }
+
+  // P3: No optimizations
+  if (coverage.optimization_count === 0 && coverage.sessions_tested.length > 0) {
+    pool.push(`Run parameter sweep on ${coverage.sessions_tested[0]}`);
+  }
+
+  // P4: Only 1 value tested for a key param
+  if (paramDetail) {
+    for (const [param, detail] of Object.entries(paramDetail)) {
+      if (detail.count === 1) {
+        const label = PARAM_LABELS[param] ?? param;
+        pool.push(`Sweep ${label} (only ${detail.values[0]} tested)`);
+      }
+    }
+  }
+
+  // P5: Negative or null best Sharpe
+  if (coverage.best_sharpe != null && coverage.best_sharpe < 0) {
+    pool.push(`Investigate negative Sharpe (${formatNumber(coverage.best_sharpe)})`);
+  } else if (coverage.best_sharpe == null && (coverage.backtest_count + coverage.optimization_count) > 0) {
+    pool.push("Investigate null Sharpe");
+  }
+
+  // P6: Low param diversity (2-3 values)
+  if (paramDetail) {
+    for (const [param, detail] of Object.entries(paramDetail)) {
+      if (detail.count >= 2 && detail.count <= 3) {
+        const label = PARAM_LABELS[param] ?? param;
+        pool.push(`Expand ${label} range (${formatNumber(detail.min)}–${formatNumber(detail.max)})`);
+      }
+    }
+  }
+
+  // P7: No recent runs (> 30 days)
+  if (coverage.last_run_at) {
+    const daysSince = (Date.now() - new Date(coverage.last_run_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince > 30) {
+      pool.push("Re-test with latest data");
+    }
+  }
+
+  // Filter out suggestions that match existing pending items (fuzzy substring)
+  const filtered = pool.filter((s) => {
+    const lower = s.toLowerCase();
+    return !pendingTitles.some((t) => lower.includes(t) || t.includes(lower));
+  });
+
+  return filtered.slice(0, 3);
+}
 
 export function CoverageDashboard() {
   const {
@@ -135,10 +210,11 @@ function InstrumentCard({
   onDeleteItem,
 }: InstrumentCardProps) {
   const [paramsExpanded, setParamsExpanded] = useState(false);
-  const [newItemText, setNewItemText] = useState("");
 
   const totalRuns =
     (coverage?.backtest_count ?? 0) + (coverage?.optimization_count ?? 0);
+
+  const suggestions = generateSuggestions(coverage, planItems, paramDetail);
 
   const handleExpandParams = () => {
     const next = !paramsExpanded;
@@ -146,17 +222,6 @@ function InstrumentCard({
     if (next && !paramDetail) {
       onLoadParams(instrument);
     }
-  };
-
-  const handleAddItem = async () => {
-    const title = newItemText.trim();
-    if (!title) return;
-    await onCreateItem(instrument, title);
-    setNewItemText("");
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") handleAddItem();
   };
 
   const formatTimestamp = (ts: string) => {
@@ -232,9 +297,9 @@ function InstrumentCard({
                 format={(v) => formatNumber(v)}
               />
               <MetricCell
-                label="PnL"
-                value={coverage.best_pnl_usd}
-                format={(v) => formatCurrency(v)}
+                label="R/yr"
+                value={coverage.best_r_per_year}
+                format={(v) => formatNumber(v)}
                 colored
               />
               <MetricCell
@@ -318,24 +383,26 @@ function InstrumentCard({
             ))}
           </div>
 
-          {/* Add item input */}
-          <div className="mt-2 flex gap-1.5">
-            <input
-              type="text"
-              value={newItemText}
-              onChange={(e) => setNewItemText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Add item..."
-              className="flex-1 rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-primary placeholder:text-text-muted outline-none focus:border-accent"
-            />
-            <button
-              onClick={handleAddItem}
-              disabled={!newItemText.trim()}
-              className="rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-secondary hover:bg-bg-card-hover disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Add
-            </button>
-          </div>
+          {/* Suggestion chips */}
+          {suggestions.length > 0 && (
+            <div className="mt-2 space-y-1.5">
+              <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                Suggestions
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => onCreateItem(instrument, suggestion)}
+                    className="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[11px] text-text-muted hover:border-text-muted hover:text-text-secondary hover:bg-bg-secondary transition-colors"
+                  >
+                    <span className="text-accent">+</span>
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

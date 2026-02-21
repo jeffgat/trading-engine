@@ -35,6 +35,8 @@ class SessionConfig:
     stop_atr_pct: float  # stop distance as % of daily ATR
     min_gap_atr_pct: float  # min FVG size as % of daily ATR
     max_gap_points: float  # max FVG size in points (0 = no limit)
+    max_gap_atr_pct: float = 0.0  # max FVG size as % of daily ATR (0 = no limit)
+    qualifying_move_atr_pct: float = 0.0  # min upward extension as % of ATR for inversion shorts (0 = disabled)
 
 
 @dataclass(frozen=True)
@@ -47,8 +49,6 @@ class StrategyConfig:
     tp1_ratio: float = 0.5
     min_qty: float = 1.0
     qty_step: float = 1.0
-    be_offset_ticks: int = 4
-
     # ATR
     atr_length: int = 14
 
@@ -64,16 +64,21 @@ class StrategyConfig:
     # Excluded dates (YYYYMMDD strings)
     excluded_dates: tuple[str, ...] = field(default_factory=tuple)
 
+    # Strategy type: "continuation", "reversal", "inversion", or "cisd"
+    strategy: str = "continuation"
+
+    # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
+    direction_filter: str = "both"
+
+    # Allow FVGs inside ORB range when the impulse candle (bar[1]) closes outside
+    impulse_close_filter: bool = False
+
+    # Bar magnifier: use 1m sub-bars for fill/exit simulation
+    use_bar_magnifier: bool = True
+
     # Experiment metadata (not used in simulation, just for labeling results)
     name: str = ""
     notes: str = ""
-
-    @property
-    def be_offset(self) -> float:
-        """Breakeven offset in price units."""
-        if self.instrument is None:
-            return self.be_offset_ticks * 0.25  # default NQ tick
-        return self.be_offset_ticks * self.instrument.min_tick
 
     @property
     def point_value(self) -> float:

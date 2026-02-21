@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import dataclasses
 import hashlib
 import json
@@ -18,6 +19,67 @@ import pandas as pd
 from ..config import StrategyConfig
 from ..engine.simulator import run_backtest, build_maps, build_signal_cache, TradeResult
 
+# ---------------------------------------------------------------------------
+# Persistent worker pool — avoids per-sweep Pool() creation overhead (~300ms)
+# and keeps Numba bytecode warm in worker processes across sweeps.
+# ---------------------------------------------------------------------------
+
+_pool: Pool | None = None
+_pool_n_workers: int = 0
+_pool_warmed: bool = False
+
+# ---------------------------------------------------------------------------
+# Pickle-bytes cache — avoids re-serialising large DataFrames/arrays on every
+# run_sweep() call when the same objects are reused across consecutive sweeps.
+# Keyed by id(obj), valid while the object is alive.  Cleared when the worker
+# pool is recreated (which is the point where new data might be loaded).
+# ---------------------------------------------------------------------------
+_pickle_cache: dict[int, bytes] = {}
+
+
+def _cached_pickle(obj: object) -> bytes:
+    """Memoize pickle.dumps by object id -- valid while obj is alive."""
+    oid = id(obj)
+    if oid not in _pickle_cache:
+        _pickle_cache[oid] = pickle.dumps(obj)
+    return _pickle_cache[oid]
+
+
+def _get_or_create_pool(n_workers: int) -> Pool:
+    """Return the module-level Pool, creating or replacing it if needed."""
+    global _pool, _pool_n_workers, _pool_warmed
+    if _pool is None or _pool_n_workers != n_workers:
+        if _pool is not None:
+            _pool.terminate()
+            _pool.join()
+        _pickle_cache.clear()
+        # Also clear the QM module's pickle cache since it shares the same pool
+        try:
+            from . import parallel_qm as _par_qm
+            _par_qm._pickle_cache.clear()
+        except (ImportError, AttributeError):
+            pass
+        _pool = Pool(n_workers)
+        _pool_n_workers = n_workers
+        _pool_warmed = False
+    return _pool
+
+
+def _shutdown_pool():
+    global _pool
+    if _pool is not None:
+        _pool.terminate()
+        _pool.join()
+        _pool = None
+    _pickle_cache.clear()
+    try:
+        from . import parallel_qm as _par_qm
+        _par_qm._pickle_cache.clear()
+    except (ImportError, AttributeError):
+        pass
+
+atexit.register(_shutdown_pool)
+
 
 def _run_single(args: tuple) -> tuple[dict, list[TradeResult]]:
     """Worker function for multiprocessing.
@@ -26,11 +88,11 @@ def _run_single(args: tuple) -> tuple[dict, list[TradeResult]]:
     cache so workers skip all map construction, DataFrame unpickling, and signal
     recomputation overhead.
     """
-    config, df_bytes, start_date, maps_bytes, signal_cache_bytes = args
+    config, df_bytes, start_date, end_date, maps_bytes, signal_cache_bytes = args
     df = pickle.loads(df_bytes)
     maps = pickle.loads(maps_bytes) if maps_bytes is not None else None
     signal_cache = pickle.loads(signal_cache_bytes) if signal_cache_bytes is not None else None
-    trades = run_backtest(df, config, start_date=start_date, _maps=maps, _signal_cache=signal_cache)
+    trades = run_backtest(df, config, start_date=start_date, end_date=end_date, _maps=maps, _signal_cache=signal_cache)
     return config, trades
 
 
@@ -104,6 +166,7 @@ def run_sweep(
     n_workers: int | None = None,
     progress_fn: Callable[[int, int], None] | None = None,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
@@ -148,7 +211,7 @@ def run_sweep(
         results = []
         for i, config in enumerate(configs):
             trades = run_backtest(
-                df, config, start_date=start_date,
+                df, config, start_date=start_date, end_date=end_date,
                 _maps=maps, _signal_cache=signal_cache,
             )
             results.append((config, trades))
@@ -156,32 +219,45 @@ def run_sweep(
                 progress_fn(i + 1, len(configs))
         return results
 
-    # Warmup Numba JIT before workers launch — compiled bytecode is cached and
-    # reused by all workers, eliminating per-worker recompilation overhead.
-    _warmup_numba(df, configs)
+    # Warmup Numba JIT once — skip if pool workers are already warm from a prior sweep.
+    global _pool, _pool_n_workers, _pool_warmed
+    if not _pool_warmed:
+        _warmup_numba(df, configs)
 
     # Parallel execution — serialise df, maps, and signal_cache once each;
     # all workers share the same bytes without re-pickling per task.
-    df_bytes           = pickle.dumps(df)
-    maps_bytes         = pickle.dumps(maps)
-    signal_cache_bytes = pickle.dumps(signal_cache)
+    # Clear cache between sweep calls to prevent id()-aliasing when different
+    # DataFrame slices (e.g. per-fold WF) reuse the same memory address.
+    _pickle_cache.clear()
+    df_bytes           = _cached_pickle(df)
+    maps_bytes         = _cached_pickle(maps)
+    signal_cache_bytes = _cached_pickle(signal_cache)
 
     args_list = [
-        (config, df_bytes, start_date, maps_bytes, signal_cache_bytes)
+        (config, df_bytes, start_date, end_date, maps_bytes, signal_cache_bytes)
         for config in configs
     ]
 
     # imap_unordered avoids ordering bookkeeping (~5% throughput gain).
     # Chunksize reduces scheduler overhead for large sweeps.
-    chunksize = max(1, len(configs) // (n_workers * 10))
+    chunksize = max(1, len(configs) // (n_workers * 4))
 
+    pool = _get_or_create_pool(n_workers)
     results = []
-    with Pool(n_workers) as pool:
+    try:
         for i, result in enumerate(pool.imap_unordered(_run_single, args_list, chunksize=chunksize)):
             results.append(result)
             if progress_fn:
                 progress_fn(i + 1, len(configs))
+    except Exception:
+        # Worker crash — invalidate pool so it's recreated on next call
+        _pool = None
+        _pool_n_workers = 0
+        _pool_warmed = False
+        _pickle_cache.clear()
+        raise
 
+    _pool_warmed = True
     return results
 
 
@@ -190,6 +266,7 @@ def run_sweep_sequential(
     configs: list[StrategyConfig],
     progress_fn: Callable[[int, int], None] | None = None,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
@@ -200,7 +277,7 @@ def run_sweep_sequential(
     results = []
     for i, config in enumerate(configs):
         trades = run_backtest(
-            df, config, start_date=start_date,
+            df, config, start_date=start_date, end_date=end_date,
             _maps=maps, _signal_cache=signal_cache,
         )
         results.append((config, trades))

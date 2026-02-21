@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from orb_backtest.config import default_config, with_overrides, NY_SESSION, ASIA_SESSION, LDN_SESSION
-from orb_backtest.data.loader import load_5m_data
+from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
 from orb_backtest.data.instruments import get_instrument, NQ
 from orb_backtest.engine.simulator import run_backtest, EXIT_NAMES, EXIT_NO_FILL
 from orb_backtest.results.metrics import compute_metrics
@@ -36,19 +36,27 @@ def main():
     parser.add_argument("--tp1-ratio", type=float, default=None)
     parser.add_argument("--risk-usd", type=float, default=None)
     parser.add_argument("--atr-length", type=int, default=None)
-    parser.add_argument("--be-offset-ticks", type=int, default=None)
     parser.add_argument("--ny-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ny-min-gap-atr-pct", type=float, default=None)
     parser.add_argument("--ny-max-gap-points", type=float, default=None)
+    parser.add_argument("--ny-max-gap-atr-pct", type=float, default=None)
     parser.add_argument("--asia-stop-atr-pct", type=float, default=None)
     parser.add_argument("--asia-min-gap-atr-pct", type=float, default=None)
     parser.add_argument("--asia-max-gap-points", type=float, default=None)
+    parser.add_argument("--asia-max-gap-atr-pct", type=float, default=None)
     parser.add_argument("--ldn-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ldn-min-gap-atr-pct", type=float, default=None)
     parser.add_argument("--ldn-max-gap-points", type=float, default=None)
+    parser.add_argument("--ldn-max-gap-atr-pct", type=float, default=None)
 
     # Session selection
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
+
+    # Strategy type
+    parser.add_argument("--strategy", default=None, choices=["continuation", "reversal", "inversion", "cisd"],
+                        help="Strategy type: continuation (default), reversal (flip direction), inversion (wait for FVG invalidation), or cisd (ORB sweep + displacement reversal)")
+    parser.add_argument("--direction", default=None, choices=["both", "long", "short"],
+                        help="Direction filter: both (default), long, or short")
 
     # Experiment labeling
     parser.add_argument("--name", default=None, help="Label for this run (e.g. 'atr_stops_baseline')")
@@ -58,6 +66,14 @@ def main():
     parser.add_argument("--no-trades", action="store_true", help="Exclude trade list from output")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
     parser.add_argument("--plot", action="store_true", help="Show equity curve and monthly returns")
+    parser.add_argument("--sma-gate", type=int, default=None, metavar="PERIOD",
+                        help="Apply SMA trend gate post-trade (e.g. --sma-gate 20)")
+    parser.add_argument("--orb-minutes", type=int, default=None, choices=[5, 10, 15, 30],
+                        help="ORB window duration in minutes (overrides orb_end and entry_start for all sessions)")
+    parser.add_argument("--impulse-close-filter", action="store_true",
+                        help="Allow FVGs inside ORB range when impulse candle closes outside")
+    parser.add_argument("--set", action="append", default=[],
+                        help="Set arbitrary config param: name=value (e.g. --set asia_flat_start=00:00)")
 
     args = parser.parse_args()
 
@@ -80,33 +96,70 @@ def main():
         overrides["risk_usd"] = args.risk_usd
     if args.atr_length is not None:
         overrides["atr_length"] = args.atr_length
-    if args.be_offset_ticks is not None:
-        overrides["be_offset_ticks"] = args.be_offset_ticks
+
     if args.ny_stop_atr_pct is not None:
         overrides["ny_stop_atr_pct"] = args.ny_stop_atr_pct
     if args.ny_min_gap_atr_pct is not None:
         overrides["ny_min_gap_atr_pct"] = args.ny_min_gap_atr_pct
     if args.ny_max_gap_points is not None:
         overrides["ny_max_gap_points"] = args.ny_max_gap_points
+    if args.ny_max_gap_atr_pct is not None:
+        overrides["ny_max_gap_atr_pct"] = args.ny_max_gap_atr_pct
     if args.asia_stop_atr_pct is not None:
         overrides["asia_stop_atr_pct"] = args.asia_stop_atr_pct
     if args.asia_min_gap_atr_pct is not None:
         overrides["asia_min_gap_atr_pct"] = args.asia_min_gap_atr_pct
     if args.asia_max_gap_points is not None:
         overrides["asia_max_gap_points"] = args.asia_max_gap_points
+    if args.asia_max_gap_atr_pct is not None:
+        overrides["asia_max_gap_atr_pct"] = args.asia_max_gap_atr_pct
     if args.ldn_stop_atr_pct is not None:
         overrides["ldn_stop_atr_pct"] = args.ldn_stop_atr_pct
     if args.ldn_min_gap_atr_pct is not None:
         overrides["ldn_min_gap_atr_pct"] = args.ldn_min_gap_atr_pct
     if args.ldn_max_gap_points is not None:
         overrides["ldn_max_gap_points"] = args.ldn_max_gap_points
+    if args.ldn_max_gap_atr_pct is not None:
+        overrides["ldn_max_gap_atr_pct"] = args.ldn_max_gap_atr_pct
+    if args.strategy is not None:
+        overrides["strategy"] = args.strategy
+    if args.direction is not None:
+        overrides["direction_filter"] = args.direction
     if args.name is not None:
         overrides["name"] = args.name
     if args.notes is not None:
         overrides["notes"] = args.notes
+    if args.impulse_close_filter:
+        overrides["impulse_close_filter"] = True
 
     if overrides:
         config = with_overrides(config, **overrides)
+
+    # Apply arbitrary --set overrides (e.g. --set asia_flat_start=00:00)
+    if args.set:
+        fixed_overrides = {}
+        for spec in args.set:
+            name, val_str = spec.split("=", 1)
+            try:
+                val = int(val_str)
+            except ValueError:
+                try:
+                    val = float(val_str)
+                except ValueError:
+                    val = val_str
+            fixed_overrides[name] = val
+        config = with_overrides(config, **fixed_overrides)
+
+    # Override ORB window duration if specified
+    if args.orb_minutes is not None:
+        from dataclasses import replace as dc_replace
+        from datetime import datetime, timedelta
+        new_sessions = []
+        for sess in config.sessions:
+            orb_start_dt = datetime.strptime(sess.orb_start, "%H:%M")
+            new_orb_end = (orb_start_dt + timedelta(minutes=args.orb_minutes)).strftime("%H:%M")
+            new_sessions.append(dc_replace(sess, orb_end=new_orb_end, entry_start=new_orb_end))
+        config = dc_replace(config, sessions=tuple(new_sessions))
 
     # Load data
     if not args.quiet:
@@ -118,12 +171,33 @@ def main():
     if not args.quiet:
         print(f"  {len(df):,} bars loaded ({df.index[0].date()} to {df.index[-1].date()}) [{t_load:.1f}s]")
 
+    # Load 1m data for bar magnifier (always on — falls back to 5m if unavailable)
+    df_1m = None
+    try:
+        t0_1m = time.time()
+        df_1m = load_1m_for_5m(args.data, start=args.start, end=args.end)
+        t_1m = time.time() - t0_1m
+        if not args.quiet:
+            print(f"  {len(df_1m):,} 1m bars loaded [{t_1m:.1f}s]")
+    except FileNotFoundError:
+        if not args.quiet:
+            print("  1m data not found, falling back to 5m simulation")
+
     # Run backtest
     if not args.quiet:
         print(f"Running backtest...")
     t0 = time.time()
-    trades = run_backtest(df, config, start_date=args.start)
+    trades = run_backtest(df, config, start_date=args.start, df_1m=df_1m)
     t_sim = time.time() - t0
+
+    # Apply SMA trend gate if requested
+    if args.sma_gate is not None:
+        from orb_backtest.analysis.gates import apply_sma_trend_gate
+        pre_count = len([t for t in trades if t.exit_type != EXIT_NO_FILL])
+        trades = apply_sma_trend_gate(trades, df, sma_period=args.sma_gate)
+        post_count = len([t for t in trades if t.exit_type != EXIT_NO_FILL])
+        if not args.quiet:
+            print(f"  SMA{args.sma_gate} trend gate: {pre_count} → {post_count} trades ({pre_count - post_count} filtered)")
 
     # Compute metrics
     metrics = compute_metrics(trades)
@@ -159,25 +233,21 @@ def _print_summary(m: dict) -> None:
     print()
     print(f"  Win rate:         {m['win_rate']:.1%}")
     print(f"  Wins / Losses:    {m['win_count']} / {m['loss_count']}")
-    print(f"  Total PnL:        ${m['total_pnl_usd']:,.2f}")
-    print(f"  Avg PnL/trade:    ${m['avg_pnl_usd']:,.2f}")
-    print(f"  Avg win:          ${m['avg_win_usd']:,.2f}")
-    print(f"  Avg loss:         ${m['avg_loss_usd']:,.2f}")
-    print(f"  Largest win:      ${m['largest_win_usd']:,.2f}")
-    print(f"  Largest loss:     ${m['largest_loss_usd']:,.2f}")
-    print()
-    print(f"  Profit factor:    {m['profit_factor']:.2f}")
+    print(f"  Net R:            {m['total_r']:.1f}R")
     print(f"  Avg R:            {m['avg_r']:.3f}R")
     print(f"  Avg win R:        {m['avg_win_r']:.3f}R")
     print(f"  Avg loss R:       {m['avg_loss_r']:.3f}R")
-    print(f"  Max drawdown:     ${m['max_drawdown_usd']:,.2f}")
+    print()
+    print(f"  Profit factor:    {m['profit_factor']:.2f}")
+    print(f"  Max DD (R):       {m['max_drawdown_r']:.1f}R")
     print(f"  Sharpe ratio:     {m['sharpe_ratio']:.3f}")
     print(f"  Sortino ratio:    {m['sortino_ratio']:.3f}")
+    print(f"  Calmar ratio:     {m['calmar_ratio']:.3f}")
     print(f"  Max consec wins:  {m['max_consecutive_wins']}")
     print(f"  Max consec losses:{m['max_consecutive_losses']}")
     print()
-    print(f"  Long trades:      {m['long_trades']} ({m['long_win_rate']:.1%} WR, ${m['long_pnl_usd']:,.2f})")
-    print(f"  Short trades:     {m['short_trades']} ({m['short_win_rate']:.1%} WR, ${m['short_pnl_usd']:,.2f})")
+    print(f"  Long trades:      {m['long_trades']} ({m['long_win_rate']:.1%} WR, {m['long_r']:.1f}R)")
+    print(f"  Short trades:     {m['short_trades']} ({m['short_win_rate']:.1%} WR, {m['short_r']:.1f}R)")
     print()
 
     # Exit breakdown
@@ -187,11 +257,12 @@ def _print_summary(m: dict) -> None:
         print(f"    {exit_type:15s} {count:4d} ({pct:5.1f}%)")
     print()
 
-    # PnL by year
-    if m["pnl_by_year"]:
-        print("  PnL by year:")
-        for year, pnl in m["pnl_by_year"].items():
-            print(f"    {year}: ${pnl:>10,.2f}")
+    # R by year
+    r_by_year = m.get("r_by_year", {})
+    if r_by_year:
+        print("  R by year:")
+        for year, r in r_by_year.items():
+            print(f"    {year}: {r:>8.1f}R")
     print("=" * 60)
 
 

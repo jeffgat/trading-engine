@@ -43,6 +43,7 @@ from .simulator import (
     _scan_fill_bar_magnifier,
     _precompute_day_boundaries,
     _extract_cisd_candidates,
+    _first_per_day,
     build_maps,
     build_signal_cache,
     _session_key,
@@ -342,44 +343,46 @@ def _extract_setup_candidates_qm(
             date_strs=date_strs,
         )
     else:
-        # Continuation or reversal mode — same as original
+        # Continuation or reversal mode — vectorized first-per-session-day
         dir_mult = -1 if config.strategy == "reversal" else 1
         take_longs = config.direction_filter in ("both", "long")
         take_shorts = config.direction_filter in ("both", "short")
 
-        seen_long_days: set = set()
-        seen_short_days: set = set()
+        # Bullish FVG: continuation=long, reversal=short
+        long_out_dir = 1 * dir_mult
+        want_long = (long_out_dir == 1 and take_longs) or (long_out_dir == -1 and take_shorts)
+        if want_long:
+            first_long_bars = _first_per_day(valid_long, session_day_id)
+            long_entry_price = fvg["long_entry_price"]
+            long_gap_size = fvg["long_gap_size"]
+            for i in first_long_bars:
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=long_out_dir,
+                    signal_bar=i,
+                    entry_price=long_entry_price[i],
+                    gap_size=long_gap_size[i],
+                    daily_atr=daily_atr[i],
+                ))
 
-        for i in range(len(df)):
-            sd = session_day_id[i]
-
-            out_dir = 1 * dir_mult
-            if valid_long[i] and sd not in seen_long_days:
-                if (out_dir == 1 and take_longs) or (out_dir == -1 and take_shorts):
-                    seen_long_days.add(sd)
-                    candidates.append(_SetupCandidate(
-                        date_str=str(dates[i]),
-                        session=session.name,
-                        direction=out_dir,
-                        signal_bar=i,
-                        entry_price=fvg["long_entry_price"][i],
-                        gap_size=fvg["long_gap_size"][i],
-                        daily_atr=daily_atr[i],
-                    ))
-
-            out_dir = -1 * dir_mult
-            if valid_short[i] and sd not in seen_short_days:
-                if (out_dir == 1 and take_longs) or (out_dir == -1 and take_shorts):
-                    seen_short_days.add(sd)
-                    candidates.append(_SetupCandidate(
-                        date_str=str(dates[i]),
-                        session=session.name,
-                        direction=out_dir,
-                        signal_bar=i,
-                        entry_price=fvg["short_entry_price"][i],
-                        gap_size=fvg["short_gap_size"][i],
-                        daily_atr=daily_atr[i],
-                    ))
+        # Bearish FVG: continuation=short, reversal=long
+        short_out_dir = -1 * dir_mult
+        want_short = (short_out_dir == 1 and take_longs) or (short_out_dir == -1 and take_shorts)
+        if want_short:
+            first_short_bars = _first_per_day(valid_short, session_day_id)
+            short_entry_price = fvg["short_entry_price"]
+            short_gap_size = fvg["short_gap_size"]
+            for i in first_short_bars:
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=short_out_dir,
+                    signal_bar=i,
+                    entry_price=short_entry_price[i],
+                    gap_size=short_gap_size[i],
+                    daily_atr=daily_atr[i],
+                ))
 
     return candidates
 
@@ -392,6 +395,7 @@ def run_backtest_qm(
     df: pd.DataFrame,
     config: StrategyConfig,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
     _maps: dict | None = None,
     _signal_cache: dict | None = None,
@@ -405,6 +409,8 @@ def run_backtest_qm(
         df: 5-minute OHLCV DataFrame (should include warmup data before start_date).
         config: Strategy configuration.
         start_date: Only return trades on or after this date (YYYY-MM-DD).
+        end_date: Exclude trades on or after this date (YYYY-MM-DD).
+            Used by walk-forward IS folds to skip simulating OOS-period candidates.
         df_1m: Optional 1-minute OHLCV DataFrame for bar magnifier mode.
         _maps: Optional pre-built maps dict from :func:`build_maps`. When
             provided, skips bar-map construction entirely. Build once with
@@ -419,9 +425,9 @@ def run_backtest_qm(
     Returns:
         List of TradeResult for each setup candidate (including no-fills).
     """
-    high = df["high"].values.astype(np.float64)
-    low = df["low"].values.astype(np.float64)
-    close = df["close"].values.astype(np.float64)
+    high = np.ascontiguousarray(df["high"].values, dtype=np.float64)
+    low = np.ascontiguousarray(df["low"].values, dtype=np.float64)
+    close = np.ascontiguousarray(df["close"].values, dtype=np.float64)
     timestamps = df.index
     n = len(df)
 
@@ -453,20 +459,40 @@ def run_backtest_qm(
         # Extract candidates using QM-aware extraction
         candidates = _extract_setup_candidates_qm(df, session, config, _signal_cache=_signal_cache)
 
-        # Compute session masks for entry/flat window boundaries
-        masks = compute_session_masks(timestamps, session)
+        # Pre-simulation date filter: skip candidates outside the active window.
+        # This avoids running expensive Numba simulation on dates that will be
+        # filtered out post-hoc. Critical for walk-forward IS folds where the full
+        # df is passed but only a subset of dates is needed.
+        if start_date or end_date:
+            candidates = [
+                c for c in candidates
+                if (start_date is None or c.date_str >= start_date)
+                and (end_date is None or c.date_str < end_date)
+            ]
 
-        # Session-aware day boundaries
-        _, session_day_id = compute_session_days(timestamps, session)
+        # Session signals: reuse from cache when available
+        if _signal_cache is not None:
+            skey = _session_key(session)
+            sc = _signal_cache["session"][skey]
+            masks = sc["masks"]
+            session_day_id = sc["session_day_id"]
+            date_strs = sc["date_strs"]
+        else:
+            masks = compute_session_masks(timestamps, session)
+            _, session_day_id = compute_session_days(timestamps, session)
+            date_strs = compute_date_strings(timestamps)
 
         # Pre-compute half-day flat mask for NY
         half_day_set = set(config.half_days) if session.name == "NY" else set()
-        date_strs = compute_date_strings(timestamps)
 
-        # Precompute per-session-day bar boundaries
-        day_bounds = _precompute_day_boundaries(
-            timestamps, masks, half_day_set, date_strs, session_day_id
-        )
+        # Precompute per-session-day bar boundaries.
+        # Use cached default (empty half_days) when available.
+        if _signal_cache is not None and not half_day_set:
+            day_bounds = sc["day_bounds_default"]
+        else:
+            day_bounds = _precompute_day_boundaries(
+                timestamps, masks, half_day_set, date_strs, session_day_id
+            )
 
         # Phase 1: Prepare all candidates
         prepared: list[_PreparedCandidate] = []
@@ -880,6 +906,7 @@ def run_backtest_no_orb(
     df: pd.DataFrame,
     config: StrategyConfig,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
 ) -> list[TradeResult]:
     """Run backtest with no-ORB liquidity sweep inversion logic.
@@ -888,9 +915,9 @@ def run_backtest_no_orb(
     which detects FVG inversions anywhere in the session, with the qualifying sweep
     measured from the session's running opposite extreme rather than the ORB level.
     """
-    high = df["high"].values.astype(np.float64)
-    low = df["low"].values.astype(np.float64)
-    close = df["close"].values.astype(np.float64)
+    high = np.ascontiguousarray(df["high"].values, dtype=np.float64)
+    low = np.ascontiguousarray(df["low"].values, dtype=np.float64)
+    close = np.ascontiguousarray(df["close"].values, dtype=np.float64)
     timestamps = df.index
     n = len(df)
 
@@ -901,15 +928,23 @@ def run_backtest_no_orb(
     if use_magnifier:
         from ..data.bar_mapping import build_5m_to_1m_map, map_1m_to_5m as _map_1m_to_5m
         bar_map = build_5m_to_1m_map(df, df_1m)
-        high_1m = df_1m["high"].values.astype(np.float64)
-        low_1m = df_1m["low"].values.astype(np.float64)
-        close_1m = df_1m["close"].values.astype(np.float64)
+        high_1m = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
+        low_1m = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
+        close_1m = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
         map_1m_to_5m = _map_1m_to_5m
 
     all_results: list[TradeResult] = []
 
     for session in config.sessions:
         candidates = _extract_setup_candidates_no_orb(df, session, config)
+
+        # Pre-simulation date filter
+        if start_date or end_date:
+            candidates = [
+                c for c in candidates
+                if (start_date is None or c.date_str >= start_date)
+                and (end_date is None or c.date_str < end_date)
+            ]
 
         masks = compute_session_masks(timestamps, session)
         _, session_day_id = compute_session_days(timestamps, session)

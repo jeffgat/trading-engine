@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BacktestHistoryItem } from '../lib/types';
 import { formatPct } from '../lib/utils';
 import { CopyIdButton } from './CopyIdButton';
@@ -13,6 +13,7 @@ type SortKey =
     | 'win_rate'
     | 'max_drawdown_usd'
     | 'sharpe_ratio'
+    | 'calmar_ratio'
     | 'profit_factor'
     | 'rr'
     | 'r_per_year';
@@ -77,6 +78,9 @@ interface HistoryPanelProps {
     onRefresh: () => void;
     onStar?: (id: string) => void;
     onHide?: (id: string) => void;
+    onBulkStar?: (ids: string[]) => Promise<void>;
+    onBulkHide?: (ids: string[]) => Promise<void>;
+    onBulkUnstar?: (ids: string[]) => Promise<void>;
 }
 
 export function BacktestHistoryPanel({
@@ -87,15 +91,64 @@ export function BacktestHistoryPanel({
     onRefresh,
     onStar,
     onHide,
+    onBulkStar,
+    onBulkHide,
+    onBulkUnstar,
 }: HistoryPanelProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('total_pnl_usd');
     const [sortAsc, setSortAsc] = useState(false);
     const [instrumentFilter, setInstrumentFilter] = useState<string>('all');
+    const [sessionFilter, setSessionFilter] = useState<string>('all');
     const [showHidden, setShowHidden] = useState(false);
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkLoading, setBulkLoading] = useState(false);
+
+    const hasBulkActions = !!(onBulkStar || onBulkHide || onBulkUnstar);
+
+    const exitSelectMode = useCallback(() => {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+    }, []);
+
+    const toggleSelected = useCallback((id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const runBulkAction = useCallback(async (action: (ids: string[]) => Promise<void>) => {
+        if (selectedIds.size === 0) return;
+        setBulkLoading(true);
+        try {
+            await action(Array.from(selectedIds));
+        } finally {
+            setBulkLoading(false);
+            exitSelectMode();
+        }
+    }, [selectedIds, exitSelectMode]);
+
+    // ESC to exit select mode
+    useEffect(() => {
+        if (!selectMode) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') exitSelectMode();
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [selectMode, exitSelectMode]);
 
     const instruments = useMemo(() => {
         const set = new Set(history.map((h) => h.instrument));
+        return Array.from(set).sort();
+    }, [history]);
+
+    const sessions = useMemo(() => {
+        const set = new Set(history.flatMap((h) => h.sessions));
         return Array.from(set).sort();
     }, [history]);
 
@@ -118,8 +171,11 @@ export function BacktestHistoryPanel({
         if (instrumentFilter !== 'all') {
             items = items.filter((h) => h.instrument === instrumentFilter);
         }
+        if (sessionFilter !== 'all') {
+            items = items.filter((h) => h.sessions.includes(sessionFilter));
+        }
         return items;
-    }, [history, instrumentFilter, showHidden, onHide]);
+    }, [history, instrumentFilter, sessionFilter, showHidden, onHide]);
 
     const sorted = useMemo(() => {
         const arr = [...filtered];
@@ -181,50 +237,123 @@ export function BacktestHistoryPanel({
 
     return (
         <div className="rounded-lg border border-border bg-bg-card">
-            <div className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-3">
-                    <h2 className="text-sm font-medium text-text-secondary">History</h2>
-                    {instruments.length > 1 && (
-                        <select
-                            value={instrumentFilter}
-                            onChange={(e) => setInstrumentFilter(e.target.value)}
-                            className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent">
-                            <option value="all">All instruments</option>
-                            {instruments.map((inst) => (
-                                <option key={inst} value={inst}>{inst}</option>
-                            ))}
-                        </select>
-                    )}
-                </div>
-                <div className="flex items-center gap-2">
-                    {onHide && hiddenCount > 0 && (
+            {selectMode ? (
+                <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs font-medium text-text-secondary">
+                        {selectedIds.size} selected
+                    </span>
+                    <div className="flex items-center gap-2">
+                        {onBulkStar && (
+                            <button
+                                disabled={bulkLoading || selectedIds.size === 0}
+                                onClick={() => runBulkAction(onBulkStar)}
+                                className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20 disabled:opacity-40">
+                                Star
+                            </button>
+                        )}
+                        {onBulkUnstar && (
+                            <button
+                                disabled={bulkLoading || selectedIds.size === 0}
+                                onClick={() => runBulkAction(onBulkUnstar)}
+                                className="rounded-md border border-yellow-500/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20 disabled:opacity-40">
+                                Unstar
+                            </button>
+                        )}
+                        {onBulkHide && (
+                            <button
+                                disabled={bulkLoading || selectedIds.size === 0}
+                                onClick={() => runBulkAction(onBulkHide)}
+                                className="rounded-md border border-border bg-bg-secondary px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:bg-bg-card-hover disabled:opacity-40">
+                                Hide
+                            </button>
+                        )}
                         <button
-                            onClick={() => setShowHidden(!showHidden)}
-                            className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
-                                showHidden
-                                    ? 'bg-text-muted/15 text-text-secondary'
-                                    : 'text-text-muted hover:text-text-secondary'
-                            }`}
-                            title={showHidden ? 'Hide hidden rows' : 'Show hidden rows'}>
-                            {showHidden ? `${hiddenCount} hidden` : `${hiddenCount} hidden`}
-                            <svg className="ml-1 inline h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                {showHidden ? (
-                                    <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" /><circle cx="8" cy="8" r="2" /></>
-                                ) : (
-                                    <><path d="M2 2l12 12" /><path d="M6.5 6.5a2 2 0 002.8 2.8M4 4.5C2.8 5.6 1.8 7.2 1 8c1 1.5 3.5 5 7 5 1 0 1.9-.2 2.7-.6M9.5 4.2c.5.2 1 .5 1.5.8 1.5 1 3 3 4 3-1-1.5-3.5-5-7-5-.3 0-.7 0-1 .1" /></>
-                                )}
-                            </svg>
+                            onClick={exitSelectMode}
+                            className="rounded-md px-2.5 py-1 text-[11px] font-medium text-text-muted transition-colors hover:text-text-secondary">
+                            Cancel
                         </button>
-                    )}
-                    <span className="text-xs text-text-muted">{sorted.length} runs</span>
-                    <RefreshButton onClick={onRefresh} />
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-sm font-medium text-text-secondary">History</h2>
+                        {instruments.length > 1 && (
+                            <select
+                                value={instrumentFilter}
+                                onChange={(e) => setInstrumentFilter(e.target.value)}
+                                className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent">
+                                <option value="all">All instruments</option>
+                                {instruments.map((inst) => (
+                                    <option key={inst} value={inst}>{inst}</option>
+                                ))}
+                            </select>
+                        )}
+                        {sessions.length > 1 && (
+                            <select
+                                value={sessionFilter}
+                                onChange={(e) => setSessionFilter(e.target.value)}
+                                className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent">
+                                <option value="all">All sessions</option>
+                                {sessions.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {onHide && hiddenCount > 0 && (
+                            <button
+                                onClick={() => setShowHidden(!showHidden)}
+                                className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                                    showHidden
+                                        ? 'bg-text-muted/15 text-text-secondary'
+                                        : 'text-text-muted hover:text-text-secondary'
+                                }`}
+                                title={showHidden ? 'Hide hidden rows' : 'Show hidden rows'}>
+                                {showHidden ? `${hiddenCount} hidden` : `${hiddenCount} hidden`}
+                                <svg className="ml-1 inline h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    {showHidden ? (
+                                        <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" /><circle cx="8" cy="8" r="2" /></>
+                                    ) : (
+                                        <><path d="M2 2l12 12" /><path d="M6.5 6.5a2 2 0 002.8 2.8M4 4.5C2.8 5.6 1.8 7.2 1 8c1 1.5 3.5 5 7 5 1 0 1.9-.2 2.7-.6M9.5 4.2c.5.2 1 .5 1.5.8 1.5 1 3 3 4 3-1-1.5-3.5-5-7-5-.3 0-.7 0-1 .1" /></>
+                                    )}
+                                </svg>
+                            </button>
+                        )}
+                        {hasBulkActions && (
+                            <button
+                                onClick={() => setSelectMode(true)}
+                                className="rounded-md px-2 py-0.5 text-[10px] font-medium text-text-muted transition-colors hover:bg-bg-secondary hover:text-text-secondary">
+                                Select
+                            </button>
+                        )}
+                        <span className="text-xs text-text-muted">{sorted.length} runs</span>
+                        <RefreshButton onClick={onRefresh} />
+                    </div>
+                </div>
+            )}
 
             <ScrollArea className="h-[288px]">
                 <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-bg-card">
                         <tr className="border-b border-border text-text-muted">
+                            {selectMode && (
+                                <th className="w-8 px-2 py-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={sorted.length > 0 && selectedIds.size === sorted.length}
+                                        onChange={() => {
+                                            if (selectedIds.size === sorted.length) {
+                                                setSelectedIds(new Set());
+                                            } else {
+                                                setSelectedIds(new Set(sorted.map((h) => h.id)));
+                                            }
+                                        }}
+                                        className="h-3 w-3 cursor-pointer accent-accent"
+                                    />
+                                </th>
+                            )}
                             <SortHeader label="Instrument" sortBy="instrument" align="left" />
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Sessions</th>
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Date Range</th>
@@ -237,6 +366,7 @@ export function BacktestHistoryPanel({
                             <SortHeader label="Win%" sortBy="win_rate" />
                             <SortHeader label="Max DD (R)" sortBy="max_drawdown_usd" />
                             <SortHeader label="Sharpe" sortBy="sharpe_ratio" />
+                            <SortHeader label="Calmar" sortBy="calmar_ratio" />
                             <SortHeader label="PF" sortBy="profit_factor" />
                             <th className="w-20 px-2 py-2" />
                         </tr>
@@ -244,22 +374,37 @@ export function BacktestHistoryPanel({
                     <tbody>
                         {sorted.map((item) => {
                             const isActive = item.id === activeId;
+                            const isSelected = selectedIds.has(item.id);
                             const netR = (item.total_pnl_usd ?? 0) / (item.risk_usd || 50000);
                             const rPerYear = calcRPerYear(item);
                             const ddR = (item.max_drawdown_usd ?? 0) / (item.risk_usd || 50000);
                             const sharpe = item.sharpe_ratio ?? 0;
+                            const calmar = item.calmar_ratio ?? 0;
                             const pf = item.profit_factor ?? 0;
                             const pnlPositive = netR >= 0;
 
                             return (
                                 <tr
                                     key={item.id}
-                                    onClick={() => onLoad(item.id)}
+                                    onClick={() => selectMode ? toggleSelected(item.id) : onLoad(item.id)}
                                     className={`group cursor-pointer border-l-2 transition-colors ${
-                                        isActive
-                                            ? 'border-l-accent bg-accent/8'
-                                            : 'border-l-transparent hover:bg-bg-card-hover'
+                                        selectMode && isSelected
+                                            ? 'border-l-accent bg-accent/5'
+                                            : isActive
+                                                ? 'border-l-accent bg-accent/8'
+                                                : 'border-l-transparent hover:bg-bg-card-hover'
                                     } ${item.hidden ? 'opacity-40' : ''}`}>
+                                    {selectMode && (
+                                        <td className="w-8 px-2 py-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => toggleSelected(item.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="h-3 w-3 cursor-pointer accent-accent"
+                                            />
+                                        </td>
+                                    )}
                                     <td className="px-3 py-2 text-left">
                                         <div className="flex items-start gap-1">
                                             <div className="flex flex-col">
@@ -315,10 +460,13 @@ export function BacktestHistoryPanel({
                                         {sharpe.toFixed(2)}
                                     </td>
                                     <td className="px-3 py-2 text-right text-text-secondary">
+                                        {calmar.toFixed(2)}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-text-secondary">
                                         {pf.toFixed(2)}
                                     </td>
                                     <td className="px-2 py-2 text-center">
-                                        <span className="inline-flex items-center gap-0.5">
+                                        {!selectMode && <span className="inline-flex items-center gap-0.5">
                                             {onStar && (
                                                 <span
                                                     role="button"
@@ -373,7 +521,7 @@ export function BacktestHistoryPanel({
                                                     <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
                                                 </svg>
                                             </span>
-                                        </span>
+                                        </span>}
                                     </td>
                                 </tr>
                             );

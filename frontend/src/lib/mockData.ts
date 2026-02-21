@@ -41,7 +41,7 @@ export const MOCK_DATA: BacktestResult = {
     tp1_ratio: 0.5,
     risk_usd: 5000,
     atr_length: 14,
-    be_offset_ticks: 4,
+
     min_qty: 1,
     qty_step: 1,
     instrument: "NQ",

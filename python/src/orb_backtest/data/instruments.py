@@ -49,12 +49,32 @@ YM = Instrument(
     exchange_tz="America/New_York",
 )
 
+GC = Instrument(
+    symbol="GC",
+    point_value=100.0,
+    min_tick=0.10,
+    commission=0.05,
+    data_file="GC_5m.csv",
+    exchange_tz="America/New_York",
+)
+
+SIX_B = Instrument(
+    symbol="6B",
+    point_value=62500.0,
+    min_tick=0.0001,
+    commission=0.05,
+    data_file="6B_5m.csv",
+    exchange_tz="America/New_York",
+)
+
 _INSTRUMENTS: dict[str, Instrument] = {
     "NQ": NQ,
     "MNQ": MNQ,
     "ES": ES,
     "CL": CL,
     "YM": YM,
+    "GC": GC,
+    "6B": SIX_B,
 }
 
 

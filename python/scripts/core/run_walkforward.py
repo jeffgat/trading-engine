@@ -45,11 +45,11 @@ from orb_backtest.config import (
     ASIA_SESSION,
     LDN_SESSION,
 )
-from orb_backtest.data.loader import load_5m_data
+from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
 from orb_backtest.data.instruments import get_instrument
 from orb_backtest.optimize.grid import linspace_range, describe_grid
 from orb_backtest.optimize.objectives import OBJECTIVE_MAP, VALID_OBJECTIVES
-from orb_backtest.optimize.walkforward import run_walkforward, generate_windows
+from orb_backtest.optimize.walkforward import run_walkforward, generate_windows, recency_analysis
 from orb_backtest.results.metrics import compute_metrics
 from orb_backtest.results.export import (
     results_to_dict,
@@ -120,10 +120,33 @@ def main():
         help="Apply SMA trend gate (with-trend filter) using this SMA period",
     )
     parser.add_argument(
+        "--max-dd-r",
+        type=float,
+        default=None,
+        help="DD hard gate: reject IS configs with max drawdown worse than this (e.g. -10.0)",
+    )
+    parser.add_argument(
         "--mc-sims",
         type=int,
         default=10000,
         help="Monte Carlo simulations on combined OOS (0 to skip, default: 10000)",
+    )
+    parser.add_argument(
+        "--magnifier",
+        action="store_true",
+        help="Enable 1-minute bar magnifier for sub-bar fill precision",
+    )
+    parser.add_argument(
+        "--strategy",
+        default=None,
+        choices=["continuation", "reversal", "inversion"],
+        help="Strategy type: continuation (default), reversal, or inversion",
+    )
+    parser.add_argument(
+        "--direction",
+        default=None,
+        choices=["both", "long", "short"],
+        help="Direction filter: both (default), long, or short",
     )
 
     args = parser.parse_args()
@@ -140,6 +163,10 @@ def main():
     sessions = tuple(session_map[s.strip()] for s in args.sessions.split(","))
     base_config = default_config(instrument)
     base_config = with_overrides(base_config, sessions=sessions)
+    if args.strategy:
+        base_config = with_overrides(base_config, strategy=args.strategy)
+    if args.direction:
+        base_config = with_overrides(base_config, direction_filter=args.direction)
 
     # Print header
     mode = "Anchored" if args.anchored else "Rolling"
@@ -149,8 +176,12 @@ def main():
         f"Step: {args.step_months} months | Mode: {mode}"
     )
     print(f"  Objective: {args.objective}")
+    if args.max_dd_r is not None:
+        print(f"  DD Hard Gate: reject IS configs with max DD worse than {args.max_dd_r}R")
     if args.sma_gate:
         print(f"  SMA Gate: {args.sma_gate}-period with-trend filter")
+    if args.magnifier:
+        print(f"  Bar Magnifier: 1-minute sub-bar simulation enabled")
     print()
     print(describe_grid(param_ranges))
     print()
@@ -164,6 +195,15 @@ def main():
         f"  {len(df):,} bars ({df.index[0].date()} to {df.index[-1].date()}) "
         f"[{t_load:.1f}s]"
     )
+
+    # Load 1m data for bar magnifier
+    df_1m = None
+    if args.magnifier:
+        t1m = time.time()
+        df_1m = load_1m_for_5m(args.data, start=args.start, end=args.end)
+        print(f"  {len(df_1m):,} 1m bars loaded [{time.time() - t1m:.1f}s]")
+        base_config = with_overrides(base_config, use_bar_magnifier=True)
+
     print()
 
     # Create gate_factory if --sma-gate specified
@@ -205,6 +245,8 @@ def main():
             start_date=args.start,
             progress_fn=_make_fold_progress(t0, param_ranges),
             gate_factory=gate_factory,
+            max_dd_r=args.max_dd_r,
+            df_1m=df_1m,
         )
     except ValueError as e:
         print(f"\nERROR: {e}")
@@ -281,6 +323,10 @@ def main():
     print(f"    (avg OOS {args.objective} / avg IS {args.objective})")
     print()
 
+    # Recency analysis
+    if len(result.folds) >= 4:
+        _print_recency_analysis(result)
+
     # Save results
     output = _build_output(result, param_ranges, base_config, args)
     result_id = save_optimization_result(output)
@@ -291,6 +337,43 @@ def main():
     # Monte Carlo on combined OOS trades
     if args.mc_sims > 0 and m["total_trades"] > 0:
         _run_monte_carlo(result.combined_oos_trades, args.mc_sims, risk_usd)
+
+
+def _print_recency_analysis(result):
+    """Print recency analysis comparing recent vs historical OOS folds."""
+    ra = recency_analysis(result)
+    recent_m = ra["recent_metrics"]
+    hist_m = ra["historical_metrics"]
+
+    print("  Recency Analysis:")
+    print(f"    Recent folds:     {ra['recent_folds_used']} (last)")
+    print(f"    Historical folds: {ra['historical_folds_used']}")
+    print()
+
+    if hist_m and hist_m["total_trades"] > 0:
+        print(f"    {'Metric':<20s} {'Historical':>12s} {'Recent':>12s}")
+        print(f"    {'-'*44}")
+        print(f"    {'Calmar':<20s} {hist_m['calmar_ratio']:>12.2f} {recent_m['calmar_ratio']:>12.2f}")
+        print(f"    {'Sharpe':<20s} {hist_m['sharpe_ratio']:>12.3f} {recent_m['sharpe_ratio']:>12.3f}")
+        print(f"    {'Win Rate':<20s} {hist_m['win_rate']:>11.1%} {recent_m['win_rate']:>11.1%}")
+        print(f"    {'Avg R':<20s} {hist_m['avg_r']:>12.3f} {recent_m['avg_r']:>12.3f}")
+        print(f"    {'Max DD (R)':<20s} {hist_m['max_drawdown_r']:>12.1f} {recent_m['max_drawdown_r']:>12.1f}")
+        print(f"    {'Trades':<20s} {hist_m['total_trades']:>12d} {recent_m['total_trades']:>12d}")
+    else:
+        print(f"    Recent only (no historical folds to compare)")
+        print(f"    Calmar: {recent_m['calmar_ratio']:.2f} | Sharpe: {recent_m['sharpe_ratio']:.3f}")
+
+    if ra["param_stability"]:
+        print()
+        print(f"    Param Stability (std dev across recent folds):")
+        for p, std in ra["param_stability"].items():
+            print(f"      {p}: {std:.3f}")
+
+    if ra["degradation_flag"]:
+        print()
+        print(f"    ** DEGRADATION WARNING: Recent Calmar < 50% of historical **")
+
+    print()
 
 
 def _run_monte_carlo(trades, n_sims, risk_usd):

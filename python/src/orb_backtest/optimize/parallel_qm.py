@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pickle
-import time
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 from typing import Callable
 
 import pandas as pd
@@ -12,7 +11,21 @@ import pandas as pd
 from ..config import StrategyConfig
 from ..engine.qualifying_move import run_backtest_qm
 from ..engine.simulator import TradeResult, build_maps
-from .parallel import _load_or_build_signal_cache, _warmup_numba
+from .parallel import _load_or_build_signal_cache, _warmup_numba, _get_or_create_pool
+
+# ---------------------------------------------------------------------------
+# Pickle-bytes cache — mirrors the one in parallel.py for the QM engine.
+# Avoids re-serialising large DataFrames/arrays on every run_sweep_qm() call.
+# ---------------------------------------------------------------------------
+_pickle_cache: dict[int, bytes] = {}
+
+
+def _cached_pickle(obj: object) -> bytes:
+    """Memoize pickle.dumps by object id -- valid while obj is alive."""
+    oid = id(obj)
+    if oid not in _pickle_cache:
+        _pickle_cache[oid] = pickle.dumps(obj)
+    return _pickle_cache[oid]
 
 
 def _run_single_qm(args: tuple) -> tuple[dict, list[TradeResult]]:
@@ -22,12 +35,12 @@ def _run_single_qm(args: tuple) -> tuple[dict, list[TradeResult]]:
     cache so workers skip all map construction, DataFrame unpickling, and signal
     recomputation overhead.
     """
-    config, df_bytes, start_date, df_1m_bytes, maps_bytes, signal_cache_bytes = args
+    config, df_bytes, start_date, end_date, df_1m_bytes, maps_bytes, signal_cache_bytes = args
     df = pickle.loads(df_bytes)
     df_1m = pickle.loads(df_1m_bytes) if df_1m_bytes is not None else None
     maps = pickle.loads(maps_bytes) if maps_bytes is not None else None
     signal_cache = pickle.loads(signal_cache_bytes) if signal_cache_bytes is not None else None
-    trades = run_backtest_qm(df, config, start_date=start_date, df_1m=df_1m,
+    trades = run_backtest_qm(df, config, start_date=start_date, end_date=end_date, df_1m=df_1m,
                              _maps=maps, _signal_cache=signal_cache)
     return config, trades
 
@@ -38,6 +51,7 @@ def run_sweep_qm(
     n_workers: int | None = None,
     progress_fn: Callable[[int, int], None] | None = None,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
     _prebuilt_signal_cache: object | None = None,
     _prebuilt_maps: object | None = None,
@@ -79,38 +93,53 @@ def run_sweep_qm(
         # Sequential execution — pass pre-built caches on every call
         results = []
         for i, config in enumerate(configs):
-            trades = run_backtest_qm(df, config, start_date=start_date, df_1m=df_1m,
+            trades = run_backtest_qm(df, config, start_date=start_date, end_date=end_date, df_1m=df_1m,
                                      _maps=maps, _signal_cache=signal_cache)
             results.append((config, trades))
             if progress_fn:
                 progress_fn(i + 1, len(configs))
         return results
 
-    # Warmup Numba JIT before workers launch — compiled bytecode is cached and
-    # reused by all workers, eliminating per-worker recompilation overhead.
-    _warmup_numba(df, configs)
+    # Warmup Numba JIT once — skip if pool workers are already warm from a prior sweep.
+    # Uses the shared _pool_warmed flag from parallel.py (same worker pool).
+    import orb_backtest.optimize.parallel as _par
+    if not _par._pool_warmed:
+        _warmup_numba(df, configs)
 
     # Parallel execution — serialise df, maps, and signal_cache once each;
     # all workers share the same bytes without re-pickling per task.
-    df_bytes           = pickle.dumps(df)
-    df_1m_bytes        = pickle.dumps(df_1m) if df_1m is not None else None
-    maps_bytes         = pickle.dumps(maps)
-    signal_cache_bytes = pickle.dumps(signal_cache)
+    # Clear cache between sweep calls to prevent id()-aliasing when different
+    # DataFrame slices (e.g. per-fold WF) reuse the same memory address.
+    _pickle_cache.clear()
+    df_bytes           = _cached_pickle(df)
+    df_1m_bytes        = _cached_pickle(df_1m) if df_1m is not None else None
+    maps_bytes         = _cached_pickle(maps)
+    signal_cache_bytes = _cached_pickle(signal_cache)
 
     args_list = [
-        (config, df_bytes, start_date, df_1m_bytes, maps_bytes, signal_cache_bytes)
+        (config, df_bytes, start_date, end_date, df_1m_bytes, maps_bytes, signal_cache_bytes)
         for config in configs
     ]
 
     # imap_unordered avoids ordering bookkeeping (~5% throughput gain).
     # Chunksize reduces scheduler overhead for large sweeps.
-    chunksize = max(1, len(configs) // (n_workers * 10))
+    chunksize = max(1, len(configs) // (n_workers * 4))
 
+    pool = _get_or_create_pool(n_workers)
     results = []
-    with Pool(n_workers) as pool:
+    try:
         for i, result in enumerate(pool.imap_unordered(_run_single_qm, args_list, chunksize=chunksize)):
             results.append(result)
             if progress_fn:
                 progress_fn(i + 1, len(configs))
+    except Exception:
+        # Worker crash — invalidate pool so it's recreated on next call
+        _par._pool = None
+        _par._pool_n_workers = 0
+        _par._pool_warmed = False
+        _pickle_cache.clear()
+        _par._pickle_cache.clear()
+        raise
 
+    _par._pool_warmed = True
     return results

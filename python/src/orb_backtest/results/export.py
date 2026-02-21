@@ -30,7 +30,7 @@ from ..experiments import (
 _PARAM_ABBREV: dict[str, str] = {
     "rr": "rr",
     "tp1_ratio": "tp1",
-    "be_offset_ticks": "be",
+
     "atr_length": "atr",
     "risk_usd": "risk",
     "ny_stop_atr_pct": "ny.stop",
@@ -150,10 +150,17 @@ def results_to_dict(
         "tp1_ratio": config.tp1_ratio,
         "risk_usd": config.risk_usd,
         "atr_length": config.atr_length,
-        "be_offset_ticks": config.be_offset_ticks,
+
         "min_qty": config.min_qty,
         "qty_step": config.qty_step,
     }
+
+    if config.strategy:
+        config_dict["strategy"] = config.strategy
+    if config.direction_filter:
+        config_dict["direction_filter"] = config.direction_filter
+    if config.use_bar_magnifier:
+        config_dict["bar_magnifier"] = "ON"
 
     # Add per-session params
     for sess in config.sessions:
@@ -161,6 +168,8 @@ def results_to_dict(
         config_dict[f"{prefix}_stop_atr_pct"] = sess.stop_atr_pct
         config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
         config_dict[f"{prefix}_max_gap_points"] = sess.max_gap_points
+        if sess.qualifying_move_atr_pct > 0:
+            config_dict[f"{prefix}_qualifying_move_atr_pct"] = sess.qualifying_move_atr_pct
         config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"
         config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
         config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
@@ -264,7 +273,12 @@ def grid_results_to_dict(
     }
 
     if swept_params is not None:
-        result["swept_params"] = {k: [float(v) for v in vs] for k, vs in swept_params.items()}
+        def _coerce(v):
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return v
+        result["swept_params"] = {k: [_coerce(v) for v in vs] for k, vs in swept_params.items()}
 
     return result
 

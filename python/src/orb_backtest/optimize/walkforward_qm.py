@@ -85,16 +85,28 @@ def run_walkforward_qm(
         ).strftime("%Y-%m-%d")
         is_df = df.loc[warmup_start:window.is_end]
 
-        # 2. Run grid sweep on IS window.
-        # Pass the FULL df (not is_df slice) with start_date so the full-range
-        # signal cache and maps remain valid. IS window filtering happens post-sweep
-        # via date string comparison (same pattern as walkforward.py T2-A).
-        is_results = run_sweep_qm(
-            df, configs, n_workers=n_workers, start_date=window.is_start,
-            df_1m=df_1m,
-            _prebuilt_maps=full_maps,
-            _prebuilt_signal_cache=full_signal_cache,
-        )
+        # 2. Run grid sweep on IS data.
+        is_df_1m = df_1m.loc[warmup_start:window.is_end] if df_1m is not None else None
+        if gate_factory is not None:
+            # gate_factory creates a function that indexes into the DataFrame by
+            # signal_bar position. If we pass the full df to run_sweep, signal_bar
+            # values correspond to full-df positions, not is_df positions — the gate
+            # would look up the wrong rows. Fall back to IS-sliced sweep for safety.
+            is_results = run_sweep_qm(
+                is_df, configs, n_workers=n_workers,
+                start_date=window.is_start,
+                df_1m=is_df_1m,
+            )
+        else:
+            # No gate_factory — safe to pass full df with pre-built caches.
+            # IS-window filtering uses start_date + end_date to pre-filter candidates.
+            is_results = run_sweep_qm(
+                df, configs, n_workers=n_workers,
+                start_date=window.is_start, end_date=window.is_end,
+                df_1m=df_1m,
+                _prebuilt_maps=full_maps,
+                _prebuilt_signal_cache=full_signal_cache,
+            )
 
         # Build per-fold gate
         is_gate = None
@@ -133,21 +145,33 @@ def run_walkforward_qm(
         if progress_fn:
             progress_fn(fold_idx, len(windows), "testing OOS")
 
-        oos_warmup_start = (
-            datetime.strptime(window.oos_start, "%Y-%m-%d")
-            - pd.Timedelta(days=WARMUP_DAYS)
-        ).strftime("%Y-%m-%d")
-        oos_df = df.loc[oos_warmup_start:window.oos_end]
+        if gate_factory is None:
+            # Reuse full-range caches — no index-dependent gate, so full df
+            # with start_date + end_date bounds is safe and avoids rebuilding
+            # maps/signal_cache per fold.
+            oos_trades_all = run_backtest_qm(
+                df, best_config,
+                start_date=window.oos_start, end_date=window.oos_end,
+                df_1m=df_1m,
+                _maps=full_maps, _signal_cache=full_signal_cache,
+            )
+        else:
+            # gate_factory depends on df-relative indices — must build
+            # OOS-scoped maps and signal cache from the sliced DataFrame.
+            oos_warmup_start = (
+                datetime.strptime(window.oos_start, "%Y-%m-%d")
+                - pd.Timedelta(days=WARMUP_DAYS)
+            ).strftime("%Y-%m-%d")
+            oos_df = df.loc[oos_warmup_start:window.oos_end]
 
-        # Build OOS-scoped maps and signal cache — indices must align with oos_df,
-        # not the full df. Re-using full_maps here would misalign bar map lookups.
-        oos_df_1m = df_1m.loc[oos_warmup_start:window.oos_end] if df_1m is not None else None
-        oos_maps = build_maps(oos_df, oos_df_1m, None, None)
-        oos_sig = build_signal_cache(oos_df, [best_config])
-        oos_trades_all = run_backtest_qm(
-            oos_df, best_config, start_date=window.oos_start, df_1m=oos_df_1m,
-            _maps=oos_maps, _signal_cache=oos_sig,
-        )
+            oos_df_1m = df_1m.loc[oos_warmup_start:window.oos_end] if df_1m is not None else None
+            oos_maps = build_maps(oos_df, oos_df_1m, None, None)
+            oos_sig = build_signal_cache(oos_df, [best_config])
+            oos_trades_all = run_backtest_qm(
+                oos_df, best_config, start_date=window.oos_start, df_1m=oos_df_1m,
+                _maps=oos_maps, _signal_cache=oos_sig,
+            )
+
         oos_trades = [
             t for t in oos_trades_all
             if window.oos_start <= t.date < window.oos_end

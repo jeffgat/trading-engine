@@ -44,7 +44,8 @@ src/
 │   ├── SessionTag.tsx             # Colored badge (NY=blue, ASIA=red, LDN=gold)
 │   ├── CoverageDashboard.tsx      # Per-instrument testing coverage + checklist
 │   ├── Skeleton.tsx               # Loading placeholder
-│   ├── ConfirmDeleteDialog.tsx    # Delete confirmation modal
+│   ├── TradeChartModal.tsx        # 1m candlestick chart for individual trades
+│   ├── ConfirmDeleteDialog.tsx    # Delete/unstar confirmation modal
 │   └── ui/                        # Radix UI wrappers (dialog, scroll-area)
 ├── hooks/
 │   ├── useBacktest.ts             # POST /api/backtest
@@ -76,6 +77,7 @@ Proxied to Python FastAPI backend at `http://localhost:8000`:
 | `/api/coverage/{inst}/params` | GET | Distinct param values tested |
 | `/api/testing-plan` | GET/POST | List or create checklist items |
 | `/api/testing-plan/{id}` | PUT/DELETE | Update or delete checklist item |
+| `/api/candles` | GET | 1m candle data for trade chart magnifier (falls back to 5m) |
 
 ## Theme
 
@@ -92,3 +94,4 @@ Dark-only. Custom CSS variables in `index.css`:
 - **OptimizationTable** has column sorting + numeric filters with >= / <= toggle
 - **TradesTable** shows only filled trades, sorted newest-first
 - **CoverageDashboard** shows instrument cards with auto-derived stats + manual testing checklist (polls every 30s)
+- **TradeChartModal** shows 1m candlestick charts via `/api/candles` with entry/exit arrow markers, price lines for Entry/Stop/TP1/TP2, and Y-axis pinned to the trade zone. Falls back to 5m when 1m data has <50 real bars. Forward-filled bars (volume=0) are stripped for clean display.

@@ -54,7 +54,7 @@ Where `{sess}` = `ny`, `asia`, `ldn`.
 | `--name` | str | None | Run label |
 | `--strategy` | str | None | continuation/reversal |
 
-Sweep param names use underscores: `ny_stop_atr_pct`, `asia_min_gap_atr_pct`, `rr`, `tp1_ratio`, `be_offset_ticks`.
+Sweep param names use underscores: `ny_stop_atr_pct`, `asia_min_gap_atr_pct`, `rr`, `tp1_ratio`.
 
 ## run_bayesian.py
 
@@ -90,6 +90,7 @@ Sweep param names use underscores: `ny_stop_atr_pct`, `asia_min_gap_atr_pct`, `r
 | `--step-months` | int | 3 | Roll-forward step (months) |
 | `--anchored` | flag | | Expanding IS window (start fixed) |
 | `--objective` | str | sharpe | Optimization objective |
+| `--max-dd-r` | float | None | DD hard gate: reject IS configs with max DD worse than this (e.g. -10.0) |
 | `--strategy` | str | None | continuation/reversal |
 
 ## run_monte_carlo.py

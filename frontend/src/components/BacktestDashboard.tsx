@@ -13,7 +13,7 @@ import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 
 export function BacktestDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest } =
+    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, bulkStarBacktests, bulkHideBacktests } =
         useBacktestHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
@@ -140,6 +140,8 @@ export function BacktestDashboard() {
                 onRefresh={refreshHistory}
                 onStar={starBacktest}
                 onHide={hideBacktest}
+                onBulkStar={bulkStarBacktests}
+                onBulkHide={bulkHideBacktests}
             />
 
             {/* Stats + Chart + Trades */}

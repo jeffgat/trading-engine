@@ -218,6 +218,7 @@ export function DateRangePicker({
             {hasRange && !disabled && (
                 <div className="flex items-center gap-1.5">
                     <span className="mr-1 text-[10px] text-text-muted">Window:</span>
+                    <PresetBtn label="All" onClick={onReset} />
                     <PresetBtn label="1Y" onClick={() => setSpan(DAYS_1Y)} />
                     <PresetBtn label="2Y" onClick={() => setSpan(DAYS_2Y)} />
                     <div className="mx-1 h-3 w-px bg-border" />

@@ -31,7 +31,6 @@ class StrategyConfig:
     reward_risk: float = 2.5
     tp1_ratio: float = 0.5
     atr_length: int = 14
-    be_offset_ticks: int = 4
 
     def with_overrides(self, **kwargs) -> "StrategyConfig":
         """Create a new config with dot-notation overrides."""

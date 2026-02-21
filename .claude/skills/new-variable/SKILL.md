@@ -55,7 +55,7 @@ PARAM_COLUMNS: dict[str, str] = {
 2. If the param is **global** (always present), also add it to the `_GLOBAL_PARAMS` set:
 
 ```python
-_GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length", "be_offset_ticks", "new_param"}
+_GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length", "new_param"}
 ```
 
 No other backend changes needed — the migration, INSERT, SELECT, and query filter logic all derive from `PARAM_COLUMNS` automatically.

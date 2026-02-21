@@ -39,7 +39,6 @@ def main():
     parser.add_argument("--tp1-ratio", type=float, default=None)
     parser.add_argument("--risk-usd", type=float, default=None)
     parser.add_argument("--atr-length", type=int, default=None)
-    parser.add_argument("--be-offset-ticks", type=int, default=None)
     parser.add_argument("--ny-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ny-min-gap-atr-pct", type=float, default=None)
     parser.add_argument("--ny-max-gap-atr-pct", type=float, default=None)
@@ -85,8 +84,7 @@ def main():
         overrides["risk_usd"] = args.risk_usd
     if args.atr_length is not None:
         overrides["atr_length"] = args.atr_length
-    if args.be_offset_ticks is not None:
-        overrides["be_offset_ticks"] = args.be_offset_ticks
+
     if args.ny_stop_atr_pct is not None:
         overrides["ny_stop_atr_pct"] = args.ny_stop_atr_pct
     if args.ny_min_gap_atr_pct is not None:

@@ -25,7 +25,7 @@ python/
     viz/
       equity.py            # plot_equity_curve(), plot_monthly_returns()
     data/
-      loader.py            # load_5m_data() from CSV
+      loader.py            # load_5m_data(), load_1m_for_5m() from CSV
       instruments.py       # NQ, MNQ, ES instrument registry
   scripts/
     run_backtest.py        # CLI for single backtests
@@ -36,7 +36,7 @@ python/
     query_experiments.py   # CLI for querying experiment DB
     sync_data.py           # Cloudflare R2 sync
   data/
-    raw/                   # NQ_5m.csv, MNQ_5m.csv, ES_5m.csv
+    raw/                   # {SYMBOL}_5m.csv + {SYMBOL}_1m.csv (1m used for trade charts)
     cache/                 # Parquet cached data
     results/               # experiments.db (SQLite — all backtests + optimizations)
 ```
@@ -96,6 +96,7 @@ date, session, direction, signal_bar, fill_bar, entry_price, stop_price, tp1_pri
 | `/api/experiments` | GET | Query experiment DB with filters |
 | `/api/experiments/compare` | GET | Compare specific experiment runs |
 | `/api/experiments/{id}` | GET | Get single experiment detail |
+| `/api/candles` | GET | 1m candle data for trade charts (falls back to 5m if sparse) |
 
 ## Instruments Registry
 

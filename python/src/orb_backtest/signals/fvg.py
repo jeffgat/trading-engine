@@ -26,6 +26,9 @@ def detect_fvg(
     orb_low: np.ndarray,
     min_gap_atr_pct: float,
     max_gap_points: float,
+    max_gap_atr_pct: float = 0.0,
+    close: np.ndarray | None = None,
+    impulse_close_filter: bool = False,
 ) -> dict[str, np.ndarray]:
     """Detect FVG signals with gap size validation.
 
@@ -37,6 +40,10 @@ def detect_fvg(
         orb_low: ORB low for each bar (NaN before ready).
         min_gap_atr_pct: Minimum gap size as % of daily ATR.
         max_gap_points: Maximum gap size in points (0 = no limit).
+        max_gap_atr_pct: Maximum gap size as % of daily ATR (0 = no limit).
+        close: Close prices array (needed when impulse_close_filter is True).
+        impulse_close_filter: When True, also accept FVGs where bar[1]'s close
+            is outside the ORB range, even if the gap zone itself is inside.
 
     Returns:
         Dict with keys:
@@ -53,11 +60,13 @@ def detect_fvg(
 
     # Shifted arrays (bar[1] and bar[2] relative to current bar[0])
     high_1 = np.roll(high, 1)
+    low_1 = np.roll(low, 1)
     high_2 = np.roll(high, 2)
     low_2 = np.roll(low, 2)
 
     # Invalidate first 2 bars (no lookback data)
     high_1[:1] = np.nan
+    low_1[:1] = np.nan
     high_2[:2] = np.nan
     low_2[:2] = np.nan
 
@@ -81,12 +90,27 @@ def detect_fvg(
         long_gap_valid &= long_gap_size <= max_gap_points
         short_gap_valid &= short_gap_size <= max_gap_points
 
+    if max_gap_atr_pct > 0:
+        max_gap = (max_gap_atr_pct / 100.0) * np.where(np.isnan(daily_atr), np.inf, daily_atr)
+        long_gap_valid &= long_gap_size <= max_gap
+        short_gap_valid &= short_gap_size <= max_gap
+
+    # ORB directional filter — optionally relaxed by impulse candle close
+    if impulse_close_filter and close is not None:
+        close_1 = np.roll(close, 1)
+        close_1[:1] = np.nan
+        long_orb_ok = (long_fvg_top > orb_high) | (close_1 > orb_high)
+        short_orb_ok = (short_fvg_bottom < orb_low) | (close_1 < orb_low)
+    else:
+        long_orb_ok = long_fvg_top > orb_high
+        short_orb_ok = short_fvg_bottom < orb_low
+
     # Bullish FVG pattern (Pine: lines 639)
     long_fvg = (
         (high_2 < low)
         & (high_2 < high_1)
         & (low_2 < low)
-        & (long_fvg_top > orb_high)
+        & long_orb_ok
         & long_gap_valid
         & ~np.isnan(orb_high)  # ORB must be ready
     )
@@ -94,9 +118,9 @@ def detect_fvg(
     # Bearish FVG pattern (Pine: line 640)
     short_fvg = (
         (low_2 > high)
-        & (low_2 > np.roll(low, 1))  # low[2] > low[1]
+        & (low_2 > low_1)  # low[2] > low[1]
         & (high_2 > high)
-        & (short_fvg_bottom < orb_low)
+        & short_orb_ok
         & short_gap_valid
         & ~np.isnan(orb_low)  # ORB must be ready
     )
@@ -108,8 +132,90 @@ def detect_fvg(
     return {
         "long_fvg": long_fvg,
         "short_fvg": short_fvg,
-        "long_entry_price": np.where(long_fvg, long_fvg_top, np.nan),
-        "short_entry_price": np.where(short_fvg, short_fvg_bottom, np.nan),
-        "long_gap_size": np.where(long_fvg, long_gap_size, np.nan),
-        "short_gap_size": np.where(short_fvg, short_gap_size, np.nan),
+        "long_entry_price": long_fvg_top,
+        "short_entry_price": short_fvg_bottom,
+        "long_gap_size": long_gap_size,
+        "short_gap_size": short_gap_size,
+        # Zone boundaries for inversion detection
+        "long_fvg_bottom": long_fvg_bottom,  # high[2]
+        "short_fvg_top": short_fvg_top,      # low[2]
+    }
+
+
+def detect_fvg_no_orb(
+    high: np.ndarray,
+    low: np.ndarray,
+    daily_atr: np.ndarray,
+    min_gap_atr_pct: float,
+    max_gap_points: float,
+    max_gap_atr_pct: float = 0.0,
+) -> dict[str, np.ndarray]:
+    """Detect FVGs without any ORB directional filter.
+
+    Same as detect_fvg() but removes the requirement that bullish FVGs sit
+    above the ORB high and bearish FVGs sit below the ORB low. Any valid
+    3-candle FVG pattern in the session qualifies, regardless of direction
+    relative to the opening range. Used for no-ORB liquidity sweep inversions.
+    """
+    n = len(high)
+
+    high_1 = np.roll(high, 1)
+    low_1 = np.roll(low, 1)
+    high_2 = np.roll(high, 2)
+    low_2 = np.roll(low, 2)
+
+    high_1[:1] = np.nan
+    low_1[:1] = np.nan
+    high_2[:2] = np.nan
+    low_2[:2] = np.nan
+
+    long_fvg_top = low
+    long_fvg_bottom = high_2
+    short_fvg_top = low_2
+    short_fvg_bottom = high
+
+    long_gap_size = long_fvg_top - long_fvg_bottom
+    short_gap_size = short_fvg_top - short_fvg_bottom
+
+    min_gap = (min_gap_atr_pct / 100.0) * np.where(np.isnan(daily_atr), 0.0, daily_atr)
+
+    long_gap_valid = long_gap_size >= min_gap
+    short_gap_valid = short_gap_size >= min_gap
+
+    if max_gap_points > 0:
+        long_gap_valid &= long_gap_size <= max_gap_points
+        short_gap_valid &= short_gap_size <= max_gap_points
+
+    if max_gap_atr_pct > 0:
+        max_gap = (max_gap_atr_pct / 100.0) * np.where(np.isnan(daily_atr), np.inf, daily_atr)
+        long_gap_valid &= long_gap_size <= max_gap
+        short_gap_valid &= short_gap_size <= max_gap
+
+    # No ORB directional filter — any valid FVG pattern qualifies
+    long_fvg = (
+        (high_2 < low)
+        & (high_2 < high_1)
+        & (low_2 < low)
+        & long_gap_valid
+    )
+
+    short_fvg = (
+        (low_2 > high)
+        & (low_2 > low_1)
+        & (high_2 > high)
+        & short_gap_valid
+    )
+
+    long_fvg[:2] = False
+    short_fvg[:2] = False
+
+    return {
+        "long_fvg": long_fvg,
+        "short_fvg": short_fvg,
+        "long_entry_price": long_fvg_top,
+        "short_entry_price": short_fvg_bottom,
+        "long_gap_size": long_gap_size,
+        "short_gap_size": short_gap_size,
+        "long_fvg_bottom": long_fvg_bottom,
+        "short_fvg_top": short_fvg_top,
     }

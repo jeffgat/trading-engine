@@ -28,6 +28,7 @@ def compute_daily_atr(
         Array of ATR values aligned to the 5m bar index.
         NaN for bars where insufficient daily history exists.
     """
+    length = int(length)
     # Resample to daily OHLC
     daily = df.resample("1D").agg({
         "open": "first",

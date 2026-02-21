@@ -10,6 +10,8 @@ This module orchestrates the full pipeline: signals → candidates → trades �
 from __future__ import annotations
 
 import math
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -76,7 +78,7 @@ class TradeResult(NamedTuple):
 # ---------------------------------------------------------------------------
 # Numba-compiled trade simulation
 # ---------------------------------------------------------------------------
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _simulate_single_trade(
     high: np.ndarray,
     low: np.ndarray,
@@ -245,7 +247,7 @@ def _simulate_single_trade(
     return fill_bar, EXIT_EOD, last_bar, pnl_points, 0.0, 0.0
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _scan_fill_bar(
     high: np.ndarray,
     low: np.ndarray,
@@ -274,7 +276,7 @@ def _scan_fill_bar(
 # Bar magnifier: 1-minute sub-bar simulation (Numba-compiled)
 # ---------------------------------------------------------------------------
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _simulate_exit_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -411,7 +413,7 @@ def _simulate_exit_magnifier(
     return EXIT_EOD, last_bar_1m, pnl_points
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _simulate_single_trade_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -468,7 +470,7 @@ def _simulate_single_trade_magnifier(
     return fill_bar_1m, exit_type, exit_bar_1m, pnl_points, 0.0, 0.0
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _scan_fill_bar_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -497,7 +499,7 @@ def _scan_fill_bar_magnifier(
 # Only magnifies when a bar simultaneously touches two price objectives.
 # ---------------------------------------------------------------------------
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _drill_down_1s(
     high_1s: np.ndarray,
     low_1s: np.ndarray,
@@ -601,7 +603,7 @@ def _drill_down_1s(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _drill_down_30s(
     high_30s: np.ndarray,
     low_30s: np.ndarray,
@@ -745,7 +747,7 @@ def _drill_down_30s(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _drill_down_1m(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -945,7 +947,7 @@ def _drill_down_1m(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True, fastmath=True)
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _simulate_single_trade_hierarchical(
     high_5m: np.ndarray,
     low_5m: np.ndarray,
@@ -1274,6 +1276,21 @@ def _fvg_key(session: SessionConfig, config: StrategyConfig) -> tuple:
     )
 
 
+def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.ndarray:
+    """Return indices of first True bar per session-day (vectorized).
+
+    Replaces the Python loop with seen_days set for continuation/reversal
+    candidate extraction. Uses numpy to find all valid bar indices, then
+    selects the first per unique session_day_id.
+    """
+    indices = np.where(valid_mask)[0]
+    if len(indices) == 0:
+        return indices
+    day_ids = session_day_id[indices]
+    _, first_idx = np.unique(day_ids, return_index=True)
+    return indices[first_idx]
+
+
 def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
@@ -1395,46 +1412,46 @@ def _extract_setup_candidates(
             direction_filter=config.direction_filter,
         )
     else:
-        # Continuation or reversal mode
+        # Continuation or reversal mode — vectorized first-per-session-day
         dir_mult = -1 if config.strategy == "reversal" else 1
         take_longs = config.direction_filter in ("both", "long")
         take_shorts = config.direction_filter in ("both", "short")
 
-        seen_long_days: set = set()
-        seen_short_days: set = set()
+        # Bullish FVG: continuation=long, reversal=short
+        long_out_dir = 1 * dir_mult
+        want_long = (long_out_dir == 1 and take_longs) or (long_out_dir == -1 and take_shorts)
+        if want_long:
+            first_long_bars = _first_per_day(valid_long, session_day_id)
+            long_entry_price = fvg["long_entry_price"]
+            long_gap_size = fvg["long_gap_size"]
+            for i in first_long_bars:
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=long_out_dir,
+                    signal_bar=i,
+                    entry_price=long_entry_price[i],
+                    gap_size=long_gap_size[i],
+                    daily_atr=daily_atr[i],
+                ))
 
-        for i in range(len(df)):
-            sd = session_day_id[i]
-
-            # Bullish FVG: continuation=long, reversal=short
-            out_dir = 1 * dir_mult
-            if valid_long[i] and sd not in seen_long_days:
-                if (out_dir == 1 and take_longs) or (out_dir == -1 and take_shorts):
-                    seen_long_days.add(sd)
-                    candidates.append(_SetupCandidate(
-                        date_str=str(dates[i]),
-                        session=session.name,
-                        direction=out_dir,
-                        signal_bar=i,
-                        entry_price=fvg["long_entry_price"][i],
-                        gap_size=fvg["long_gap_size"][i],
-                        daily_atr=daily_atr[i],
-                    ))
-
-            # Bearish FVG: continuation=short, reversal=long
-            out_dir = -1 * dir_mult
-            if valid_short[i] and sd not in seen_short_days:
-                if (out_dir == 1 and take_longs) or (out_dir == -1 and take_shorts):
-                    seen_short_days.add(sd)
-                    candidates.append(_SetupCandidate(
-                        date_str=str(dates[i]),
-                        session=session.name,
-                        direction=out_dir,
-                        signal_bar=i,
-                        entry_price=fvg["short_entry_price"][i],
-                        gap_size=fvg["short_gap_size"][i],
-                        daily_atr=daily_atr[i],
-                    ))
+        # Bearish FVG: continuation=short, reversal=long
+        short_out_dir = -1 * dir_mult
+        want_short = (short_out_dir == 1 and take_longs) or (short_out_dir == -1 and take_shorts)
+        if want_short:
+            first_short_bars = _first_per_day(valid_short, session_day_id)
+            short_entry_price = fvg["short_entry_price"]
+            short_gap_size = fvg["short_gap_size"]
+            for i in first_short_bars:
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=short_out_dir,
+                    signal_bar=i,
+                    entry_price=short_entry_price[i],
+                    gap_size=short_gap_size[i],
+                    daily_atr=daily_atr[i],
+                ))
 
     return candidates
 
@@ -1825,20 +1842,20 @@ def build_maps(
 
     if has_1m:
         maps["map_5m_1m"]  = build_5m_to_1m_map(df, df_1m)
-        maps["high_1m"]    = df_1m["high"].values.astype(np.float64)
-        maps["low_1m"]     = df_1m["low"].values.astype(np.float64)
-        maps["close_1m"]   = df_1m["close"].values.astype(np.float64)
+        maps["high_1m"]    = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
+        maps["low_1m"]     = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
+        maps["close_1m"]   = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
 
     if has_30s:
         maps["map_1m_30s"] = build_1m_to_30s_map(df_1m, df_30s)
-        maps["high_30s"]   = df_30s["high"].values.astype(np.float64)
-        maps["low_30s"]    = df_30s["low"].values.astype(np.float64)
-        maps["close_30s"]  = df_30s["close"].values.astype(np.float64)
+        maps["high_30s"]   = np.ascontiguousarray(df_30s["high"].values, dtype=np.float64)
+        maps["low_30s"]    = np.ascontiguousarray(df_30s["low"].values, dtype=np.float64)
+        maps["close_30s"]  = np.ascontiguousarray(df_30s["close"].values, dtype=np.float64)
 
     if has_1s:
-        maps["high_1s"]  = df_1s["high"].values.astype(np.float64)
-        maps["low_1s"]   = df_1s["low"].values.astype(np.float64)
-        maps["close_1s"] = df_1s["close"].values.astype(np.float64)
+        maps["high_1s"]  = np.ascontiguousarray(df_1s["high"].values, dtype=np.float64)
+        maps["low_1s"]   = np.ascontiguousarray(df_1s["low"].values, dtype=np.float64)
+        maps["close_1s"] = np.ascontiguousarray(df_1s["close"].values, dtype=np.float64)
         if has_30s:
             maps["map_30s_1s"] = build_30s_to_1s_map(df_30s, df_1s)
         elif has_1m:
@@ -1871,6 +1888,10 @@ def build_signal_cache(
     For a 1000-config sweep where only rr/tp1_ratio vary (session params and
     atr_length are constant), each signal is computed exactly once instead of
     1000 times — saving ~11 minutes for full-history GC data.
+
+    ATR and session computations run in parallel (batch 1), then FVG
+    computations run in parallel (batch 2) since FVG depends on session + ATR.
+    NumPy/Numba operations release the GIL, so threads achieve true parallelism.
     """
     cache: dict = {"atr": {}, "session": {}, "fvg": {}}
     timestamps = df.index
@@ -1878,36 +1899,68 @@ def build_signal_cache(
     # --- Date strings: config-independent, computed exactly once ---
     date_strs = compute_date_strings(timestamps)
 
-    # --- ATR: one computation per unique atr_length ---
+    # Collect unique keys
     atr_lengths = {c.atr_length for c in configs}
-    for atr_length in atr_lengths:
-        cache["atr"][atr_length] = compute_daily_atr(df, atr_length)
-
-    # --- Session signals: one computation per unique session time-window combo ---
-    seen_sessions: set = set()
+    unique_sessions: dict[tuple, SessionConfig] = {}
     for config in configs:
         for session in config.sessions:
             skey = _session_key(session)
-            if skey in seen_sessions:
-                continue
-            seen_sessions.add(skey)
+            if skey not in unique_sessions:
+                unique_sessions[skey] = session
 
-            masks = compute_session_masks(timestamps, session)
-            new_session_day, session_day_id = compute_session_days(timestamps, session)
-            orb_high, orb_low, orb_ready = compute_orb_levels(
-                df, masks["in_orb"], masks["in_rth"], new_session_day
-            )
-            cache["session"][skey] = {
-                "masks": masks,
-                "new_session_day": new_session_day,
-                "session_day_id": session_day_id,
-                "orb_high": orb_high,
-                "orb_low": orb_low,
-                "orb_ready": orb_ready,
-                "date_strs": date_strs,
-            }
+    # --- Batch 1: ATR + session computations in parallel ---
+    # NumPy/Numba release the GIL, so threads achieve real parallelism.
+    def _compute_atr(atr_length):
+        return atr_length, compute_daily_atr(df, atr_length)
 
-    # --- FVG signals: one computation per unique (session + ATR + gap params) combo ---
+    def _compute_session(skey, session):
+        masks = compute_session_masks(timestamps, session)
+        new_session_day, session_day_id = compute_session_days(timestamps, session)
+        orb_high, orb_low, orb_ready = compute_orb_levels(
+            df, masks["in_orb"], masks["in_rth"], new_session_day
+        )
+        # Pre-compute day boundaries with empty half_day_set (default case).
+        # This avoids re-running the Python loop over all bars on every config
+        # in a sweep when half_days is empty (the common case).
+        day_bounds_default = _precompute_day_boundaries(
+            timestamps, masks, set(), date_strs, session_day_id
+        )
+        return skey, {
+            "masks": masks,
+            "new_session_day": new_session_day,
+            "session_day_id": session_day_id,
+            "orb_high": orb_high,
+            "orb_low": orb_low,
+            "orb_ready": orb_ready,
+            "date_strs": date_strs,
+            "day_bounds_default": day_bounds_default,
+        }
+
+    n_batch1 = len(atr_lengths) + len(unique_sessions)
+    max_workers = min(n_batch1, (os.cpu_count() or 1))
+
+    if max_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            atr_futures = [executor.submit(_compute_atr, al) for al in atr_lengths]
+            session_futures = [
+                executor.submit(_compute_session, skey, session)
+                for skey, session in unique_sessions.items()
+            ]
+            for f in atr_futures:
+                atr_length, atr_arr = f.result()
+                cache["atr"][atr_length] = atr_arr
+            for f in session_futures:
+                skey, session_data = f.result()
+                cache["session"][skey] = session_data
+    else:
+        for atr_length in atr_lengths:
+            cache["atr"][atr_length] = compute_daily_atr(df, atr_length)
+        for skey, session in unique_sessions.items():
+            _, session_data = _compute_session(skey, session)
+            cache["session"][skey] = session_data
+
+    # --- Batch 2: FVG signals in parallel (depends on ATR + session from batch 1) ---
+    unique_fvg_tasks: list[tuple] = []
     seen_fvg: set = set()
     for config in configs:
         for session in config.sessions:
@@ -1915,22 +1968,41 @@ def build_signal_cache(
             if fkey in seen_fvg:
                 continue
             seen_fvg.add(fkey)
+            unique_fvg_tasks.append((fkey, session, config))
 
-            skey = _session_key(session)
-            sc = cache["session"][skey]
-            daily_atr = cache["atr"][config.atr_length]
-            fvg = detect_fvg(
-                df["high"].values,
-                df["low"].values,
-                daily_atr,
-                sc["orb_high"],
-                sc["orb_low"],
-                session.min_gap_atr_pct,
-                session.max_gap_points,
-                max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
-                close=df["close"].values if config.impulse_close_filter else None,
-                impulse_close_filter=config.impulse_close_filter,
-            )
+    def _compute_fvg(fkey, session, config):
+        skey = _session_key(session)
+        sc = cache["session"][skey]
+        daily_atr = cache["atr"][config.atr_length]
+        fvg = detect_fvg(
+            df["high"].values,
+            df["low"].values,
+            daily_atr,
+            sc["orb_high"],
+            sc["orb_low"],
+            session.min_gap_atr_pct,
+            session.max_gap_points,
+            max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
+            close=df["close"].values if config.impulse_close_filter else None,
+            impulse_close_filter=config.impulse_close_filter,
+        )
+        return fkey, fvg
+
+    n_fvg = len(unique_fvg_tasks)
+    max_fvg_workers = min(n_fvg, (os.cpu_count() or 1))
+
+    if max_fvg_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_fvg_workers) as executor:
+            fvg_futures = [
+                executor.submit(_compute_fvg, fkey, session, config)
+                for fkey, session, config in unique_fvg_tasks
+            ]
+            for f in fvg_futures:
+                fkey, fvg = f.result()
+                cache["fvg"][fkey] = fvg
+    else:
+        for fkey, session, config in unique_fvg_tasks:
+            _, fvg = _compute_fvg(fkey, session, config)
             cache["fvg"][fkey] = fvg
 
     return cache
@@ -1944,6 +2016,7 @@ def run_backtest(
     df: pd.DataFrame,
     config: StrategyConfig,
     start_date: str | None = None,
+    end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
@@ -1958,6 +2031,8 @@ def run_backtest(
         start_date: Only return trades on or after this date (YYYY-MM-DD).
             Data before this date is used for indicator warmup (ATR, etc.)
             but trades are excluded from results.
+        end_date: Exclude trades on or after this date (YYYY-MM-DD).
+            Used by walk-forward IS folds to skip simulating OOS-period candidates.
         df_1m: Optional 1-minute OHLCV DataFrame.
             Enables hierarchical drill-down mode: simulation runs at 5m, drilling
             to 1m only on ambiguous bars (where a single candle simultaneously
@@ -1985,9 +2060,9 @@ def run_backtest(
     Returns:
         List of TradeResult for each setup candidate (including no-fills).
     """
-    high = df["high"].values.astype(np.float64)
-    low = df["low"].values.astype(np.float64)
-    close = df["close"].values.astype(np.float64)
+    high = np.ascontiguousarray(df["high"].values, dtype=np.float64)
+    low = np.ascontiguousarray(df["low"].values, dtype=np.float64)
+    close = np.ascontiguousarray(df["close"].values, dtype=np.float64)
     timestamps = df.index
     n = len(df)
 
@@ -2054,22 +2129,22 @@ def run_backtest(
             )
             bar_map = build_5m_to_1m_map(df, df_1m)
             map_5m_1m_arr = bar_map
-            high_1m   = df_1m["high"].values.astype(np.float64)
-            low_1m    = df_1m["low"].values.astype(np.float64)
-            close_1m  = df_1m["close"].values.astype(np.float64)
+            high_1m   = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
+            low_1m    = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
+            close_1m  = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
             map_1m_to_5m = _map_1m_to_5m
 
         if has_30s:
             from ..data.bar_mapping import build_1m_to_30s_map
             map_1m_30s_arr = build_1m_to_30s_map(df_1m, df_30s)
-            high_30s  = df_30s["high"].values.astype(np.float64)
-            low_30s   = df_30s["low"].values.astype(np.float64)
-            close_30s = df_30s["close"].values.astype(np.float64)
+            high_30s  = np.ascontiguousarray(df_30s["high"].values, dtype=np.float64)
+            low_30s   = np.ascontiguousarray(df_30s["low"].values, dtype=np.float64)
+            close_30s = np.ascontiguousarray(df_30s["close"].values, dtype=np.float64)
 
         if has_1s:
-            high_1s  = df_1s["high"].values.astype(np.float64)
-            low_1s   = df_1s["low"].values.astype(np.float64)
-            close_1s = df_1s["close"].values.astype(np.float64)
+            high_1s  = np.ascontiguousarray(df_1s["high"].values, dtype=np.float64)
+            low_1s   = np.ascontiguousarray(df_1s["low"].values, dtype=np.float64)
+            close_1s = np.ascontiguousarray(df_1s["close"].values, dtype=np.float64)
             if has_30s:
                 from ..data.bar_mapping import build_30s_to_1s_map
                 map_30s_1s_arr = build_30s_to_1s_map(df_30s, df_1s)
@@ -2082,6 +2157,17 @@ def run_backtest(
     for session in config.sessions:
         # Extract candidates (vectorized); reuses _signal_cache when provided
         candidates = _extract_setup_candidates(df, session, config, _signal_cache=_signal_cache)
+
+        # Pre-simulation date filter: skip candidates outside the active window.
+        # This avoids running expensive Numba simulation on dates that will be
+        # filtered out post-hoc. Critical for walk-forward IS folds where the full
+        # df is passed but only a subset of dates is needed.
+        if start_date or end_date:
+            candidates = [
+                c for c in candidates
+                if (start_date is None or c.date_str >= start_date)
+                and (end_date is None or c.date_str < end_date)
+            ]
 
         # Session signals: reuse from cache (avoids double-compute vs _extract_setup_candidates)
         if _signal_cache is not None:
@@ -2100,10 +2186,15 @@ def run_backtest(
         # Pre-compute half-day flat mask for NY
         half_day_set = set(config.half_days) if session.name == "NY" else set()
 
-        # Precompute per-session-day bar boundaries (single pass over all bars)
-        day_bounds = _precompute_day_boundaries(
-            timestamps, masks, half_day_set, date_strs, session_day_id
-        )
+        # Precompute per-session-day bar boundaries (single pass over all bars).
+        # Use cached default (empty half_days) when available to avoid re-running
+        # the Python loop over all bars on every config in a sweep.
+        if _signal_cache is not None and not half_day_set:
+            day_bounds = sc["day_bounds_default"]
+        else:
+            day_bounds = _precompute_day_boundaries(
+                timestamps, masks, half_day_set, date_strs, session_day_id
+            )
 
         # Phase 1: Prepare all candidates (compute trade params + bar boundaries)
         prepared: list[_PreparedCandidate] = []

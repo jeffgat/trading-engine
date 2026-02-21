@@ -1,140 +1,250 @@
 ---
 name: multi-phase-backtest
 description: >
-  Run structured multi-phase strategy optimization workflow across trading sessions and instruments.
-  Five phases - (1) baseline backtests, (2) grid sweep parameter optimization, (3) Bayesian refinement,
-  (4) walk-forward validation, (5) Monte Carlo stress testing. Use when the user says "multi-phase backtest",
-  "run all phases", "optimize my strategy", "full optimization workflow", or references testing across
-  multiple sessions/instruments systematically. Also triggers on "phase 1", "phase 2", etc. when referring
-  to strategy optimization.
+  Run structured multi-phase prop firm optimization workflow per instrument.
+  Four phases + optional refinement: (1) structural exploration, (2) adaptive walk-forward optimization,
+  (2.5) optional Bayesian refinement, (3) Monte Carlo stress test, (4) recency analysis.
+  Use when the user says "multi-phase backtest", "run all phases", "optimize my strategy",
+  "full optimization workflow", "prop firm test", or references testing across sessions/instruments
+  systematically. Also triggers on "phase 1", "phase 2", etc. when referring to strategy optimization.
 ---
 
-# Multi-Phase Backtest Workflow
+# Optimized Prop Firm Test Flow
 
-Systematic 5-phase strategy optimization. Each phase builds on the previous.
+Systematic 4-phase strategy optimization designed for prop firm constraints. Each phase builds on the previous. **Run per instrument** (NQ, YM, ES, CL, etc.).
+
+## Primary Objective: Calmar
+
+**Calmar ratio (Avg Annual R ÷ |Max DD R|) is the primary optimization metric — always rank by Calmar first.**
+
+Absolute drawdown in R is NOT a hard filter. Position sizing handles dollar DD. A strategy with -15R DD and 15 R/yr (Calmar 1.0) is identical in practice to -10R DD and 10 R/yr — just trade at 2/3 size. What can't be fixed by sizing is a low Calmar.
+
+**Optimization priority order:**
+1. **Calmar** — primary objective, always
+2. **0 negative full years** — consistency
+3. **Sharpe** — secondary; walk-forward objective
+4. **Net R / Avg Annual R** — only meaningful as Calmar
+
+## Prop Firm Sizing Reference
+
+These thresholds inform position sizing, not go/no-go decisions during optimization.
+
+| Reference | Value | Purpose |
+|-----------|-------|---------|
+| Typical prop DD ceiling | 8-12R | Use to compute position size from strategy DD |
+| Annual profit target | 24R+/year | Benchmark for trade worthiness |
+| DD gate (WF sweep) | -12R (reject worse) | Keeps IS configs from being wildly bad |
+| Ruin threshold (MC) | -8R | Dollar-scaled breach threshold |
 
 ## Before Starting
 
 Ask the user for:
 1. **Data file** and **instrument** (e.g., `NQ_5m.csv`, `NQ`)
-2. **Date range** (`--start`, `--end`)
+2. **Date range** — use full dataset (~10 years) for phases 1-2
 3. **Sessions** to test (any combination of `NY`, `Asia`, `LDN`)
 4. **Strategy type** (`continuation` or `reversal`, default: continuation)
 
-All commands run from `python/` directory using `uv run python scripts/<script>.py`.
+All commands run from `python/` directory using `uv run python scripts/core/<script>.py`.
 
-## Phase 1: Baseline Backtests
+---
 
-Run one backtest per session with default parameters. This is the benchmark.
+## Variable Sweep Discipline — CRITICAL RULE
+
+**Every time the anchor config changes, ALL variable sweeps must be rerun from scratch.**
+
+Parameter sensitivities are anchor-dependent. A dimension that appears insensitive at one anchor may be highly impactful at another. Never carry forward sweep results from a different anchor.
+
+### The sweep-and-grid loop
+
+1. **Set anchor** — from structural exploration or previous iteration
+2. **Variable sweeps** — sweep each dimension independently, all others fixed at anchor:
+   - Structural: ORB window, ATR length, entry_end, flat_start, direction, DOW exclusion
+   - Filters: max_gap_points, max_gap_atr_pct
+3. **Update anchor** — adopt best value from each sweep
+4. **Anchor changed?** → go back to step 2 (re-sweep everything on new anchor)
+5. **Fine-tune** — sweep most impactful dimensions at higher resolution
+6. **Grid sweep** — sweep continuous params together (stop × rr × min_gap × tp1)
+7. **Anchor changed again?** → go back to step 2
+8. **Only then run the robust pipeline** — WF + prop constraints + holdout + MC
+
+Scripts: `run_{asset}_variable_sweeps_{N}.py`, incrementing N with each anchor change.
+
+---
+
+## Phase 1: Structural Exploration (full dataset)
+
+Decide the **categorical/discrete** choices that define the strategy variant. These have low overfitting risk because they're not continuous parameters.
+
+### What to decide
+- Which sessions? (NY, Asia, NY+Asia)
+- Strategy type? (continuation vs reversal)
+- Direction filter? (both, long-only, short-only)
+- Flat time sensitivity? (sweep flat_start across 3-5 values)
+
+### How to run
+
+Run quick single-param sweeps on the **full dataset**. Compare Calmar/Sharpe/DD across variants.
 
 ```bash
-uv run python scripts/run_backtest.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} --name "{SESSION} Baseline"
+# Session comparison
+uv run python scripts/run_backtest.py --data {DATA} --sessions NY \
+  --name "{INSTRUMENT} NY Structural Baseline"
+uv run python scripts/run_backtest.py --data {DATA} --sessions Asia \
+  --name "{INSTRUMENT} Asia Structural Baseline"
+uv run python scripts/run_backtest.py --data {DATA} --sessions NY,Asia \
+  --name "{INSTRUMENT} NY+Asia Structural Baseline"
+
+# Direction filter comparison
+uv run python scripts/run_backtest.py --data {DATA} --sessions {SESSIONS} --direction long \
+  --name "{INSTRUMENT} {SESSIONS} Long Only"
+uv run python scripts/run_backtest.py --data {DATA} --sessions {SESSIONS} --direction short \
+  --name "{INSTRUMENT} {SESSIONS} Short Only"
 ```
 
-Run all sessions **in parallel**. Record each session's Sharpe, PnL, win rate, max drawdown.
+Run all variants **in parallel**. Pick the structural config based on Calmar, Sharpe, and DD.
 
-## Phase 2: Grid Sweep (Coarse Discovery)
+### Pass criteria
+- At least one variant shows positive total R
+- Max DD below 12R
+- Enough trades for statistical significance (100+ per session)
 
-**3 rounds per session** (e.g., 9 sweeps for 3 sessions). All 9 can run in parallel.
+---
 
-**Ask the user** which parameters to sweep and their ranges before running. Present the suggested defaults below but let them customize. Session-specific params use prefixes: `ny_`, `asia_`, `ldn_`.
+## Phase 2: Walk-Forward Optimization (full dataset, adaptive)
 
-### Round 1 — Entry Filters
-Controls *which* trades are taken. These interact, sweep together.
+This IS the core optimization — not a validation step. **Re-optimizes params per fold** instead of testing a fixed config.
+
+### Key settings
+- **Window**: 12m IS / 3m OOS / 3m step, rolling (~35 folds over 10 years)
+- **Sweep per fold**: 2-3 core params — `rr`, `stop_atr_pct`, `min_gap_atr_pct`
+- **Objective**: `calmar` (directly targets return/DD ratio)
+- **DD hard gate**: `--max-dd-r -12.0` rejects any IS config with DD worse than 12R
+
+Each fold picks its own best config. OOS trades are genuinely unseen. Combined OOS = expected live performance estimate.
 
 ```bash
-uv run python scripts/run_optimize.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} \
-  --sweep {prefix}_min_gap_atr_pct=0.5:3.0:0.25 \
-  --sweep {prefix}_max_gap_atr_pct=25:200:25 \
-  --name "{SESSION} R1 Entry Filters"
+uv run python scripts/core/run_walkforward.py --data {DATA} \
+  --start {START} --end {END} \
+  --instrument {INSTRUMENT} --sessions {SESSIONS} \
+  --sweep rr=2.0:4.0:0.5 \
+  --sweep {prefix}_stop_atr_pct=4:15:1 \
+  --sweep {prefix}_min_gap_atr_pct=1.0:3.0:0.5 \
+  --is-months 12 --oos-months 3 --step-months 3 \
+  --objective calmar --max-dd-r -12.0 \
+  --workers 8 \
+  --name "{INSTRUMENT} {SESSIONS} WF Calmar DD-gated"
 ```
 
-### Round 2 — Risk/Reward
-Controls *how* trades are managed. These interact, sweep together.
+### What to check
+- **WF efficiency** > 0.5 = stable, tradeable
+- **WF efficiency** 0.3-0.5 = marginal
+- **WF efficiency** < 0.3 = overfit
+- Per-fold params should vary (proving adaptive re-optimization works)
+- Combined OOS should meet prop targets: 24R+/year, max DD < 12R
+- Recency analysis (auto-printed) should show no degradation
+
+### Pass criteria
+- WF efficiency > 0.3
+- Combined OOS annual R > 24R
+- Combined OOS max DD better than -12R
+- No degradation flag in recency analysis
+
+---
+
+## Phase 2.5 (Optional): Bayesian Refinement
+
+After WF identifies which param region works across most folds, optionally fine-tune within that region.
+
+### When to use
+- Only if WF param selections **cluster tightly** (indicating a stable optimum worth refining)
+- Skip if params drift across folds (indicates no stable optimum exists)
+- Check the "Param Stability" section in the recency analysis output
+
+### How to run
+
+Narrow the search to +/-20% of the WF-dominant param values. Run on the most recent 3-5 years (not the full dataset).
 
 ```bash
-uv run python scripts/run_optimize.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} \
-  --sweep {prefix}_stop_atr_pct=5:15:1 \
-  --sweep rr=1.5:4.0:0.5 \
-  --name "{SESSION} R2 Risk Reward"
-```
-
-### Round 3 — Exit Management
-Fine-tuning. Only matters once entries and R:R are good.
-
-```bash
-uv run python scripts/run_optimize.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} \
-  --sweep tp1_ratio=0.3:0.7:0.1 \
-  --sweep be_offset_ticks=2:8:2 \
-  --name "{SESSION} R3 Exit Management"
-```
-
-## Phase 3: Bayesian Refinement
-
-Narrow search around Phase 2 winners. Set param ranges ~20-30% around best values. Can sweep all session params simultaneously (5-6 params).
-
-```bash
-uv run python scripts/run_bayesian.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} \
+uv run python scripts/core/run_bayesian.py --data {DATA} \
+  --start {RECENT_START} --end {END} \
+  --instrument {INSTRUMENT} --sessions {SESSIONS} \
+  --param rr={LOW}:{HIGH}:{STEP} \
   --param {prefix}_stop_atr_pct={LOW}:{HIGH}:{STEP} \
   --param {prefix}_min_gap_atr_pct={LOW}:{HIGH}:{STEP} \
-  --param {prefix}_max_gap_atr_pct={LOW}:{HIGH}:{STEP} \
-  --param rr={LOW}:{HIGH}:{STEP} \
-  --param tp1_ratio={LOW}:{HIGH}:{STEP} \
-  --n-trials 200 --objective sharpe --sampler tpe --seed 42 \
-  --name "{SESSION} Bayesian Refinement"
+  --n-trials 200 --objective calmar --sampler tpe --seed 42 \
+  --name "{INSTRUMENT} {SESSIONS} Bayesian Refinement"
 ```
 
-## Phase 4: Walk-Forward Validation
+Compare refined config vs WF-selected configs via a fresh OOS test on held-out data.
 
-**Most important phase.** Tests if parameters generalize to unseen data.
+---
+
+## Phase 3: Monte Carlo Stress Test (on combined OOS trades)
+
+Run on the WF combined OOS trades only (not pre-optimized data). The `run_walkforward.py` script runs MC automatically with `--mc-sims` (default: 10000).
+
+### What MC checks
+- 10k bootstrap paths
+- Ruin thresholds at -8R (prop breach) and -12R (hard ceiling)
+- p25 annualized R meets 24R/year target
+- Ruin probability < 5% at -8R
+
+If you need to run MC separately (e.g., on a saved result):
 
 ```bash
-uv run python scripts/run_walkforward.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} \
-  --sweep {PARAM1}={RANGE} --sweep {PARAM2}={RANGE} \
-  --is-months 12 --oos-months 3 --step-months 3 \
-  --objective sharpe --name "{SESSION} Walk-Forward"
-```
-
-Sweep the top 2-3 most impactful parameters from Phase 2/3.
-
-**Walk-forward efficiency** (OOS/IS ratio):
-- \> 0.5 = stable, tradeable
-- 0.3-0.5 = marginal, may be overfit
-- < 0.3 = overfit, parameter values are noise
-
-Also try `--anchored` for expanding-window comparison.
-
-## Phase 5: Monte Carlo Stress Testing
-
-### A) Trade Resampling — Drawdown risk
-```bash
-uv run python scripts/run_monte_carlo.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} --method bootstrap --sims 1000 --seed 42 \
+uv run python scripts/core/run_monte_carlo.py --result {RESULT_ID} \
+  --method bootstrap --sims 10000 --seed 42 \
   --ruin-threshold -8.0
 ```
 
-Ruin probability > 5% = sizing too aggressive or edge too thin.
+### Pass criteria
+- Ruin probability < 5% at -8R
+- p25 final R > 0
+- p75 max DD better than -8R
 
-### B) Parameter-Space LHS — Sensitivity
-```bash
-uv run python scripts/run_monte_carlo.py --data {DATA} --start {START} --end {END} \
-  --sessions {SESSION} --param-sample \
-  --param {PARAM1}={LOW}:{HIGH}:{STEP} \
-  --sims 500 --workers 8
-```
+---
 
-If Sharpe drops with +/-10% perturbation, move toward flatter regions.
+## Phase 4: Recency Analysis
+
+Automatically printed by `run_walkforward.py` when there are 4+ folds. Extracts the last 4-8 OOS folds and computes separate metrics.
+
+### What it checks
+- Recent OOS Calmar/Sharpe vs historical average
+- Param stability (std dev of each swept param across recent folds)
+- Degradation flag: fires if recent Calmar < 50% of historical
+
+### Pass criteria
+- No degradation flag
+- Recent Calmar within 50% of historical
+- Param selections not wildly different fold-to-fold (low std dev)
+
+---
+
+## Decision Framework
+
+After all phases, summarize with this table:
+
+| Check | Threshold | Result |
+|-------|-----------|--------|
+| WF Efficiency | > 0.3 | |
+| OOS Calmar | > 1.0 | |
+| OOS Annual R | > 24R/year | |
+| OOS Max DD | Report (sizing input) | |
+| MC Ruin Prob (-8R) | < 5% | |
+| MC p75 Max DD | > -8R | |
+| Recency Degradation | No flag | |
+| Param Stability | Low std dev | |
+
+**GO**: WF efficiency > 0.3, OOS Calmar > 1.0, MC ruin < 5%, no recency degradation
+**CAUTION**: Calmar 0.5-1.0, or MC ruin 5-15% — trade with reduced size
+**NO-GO**: WF efficiency < 0.3, Calmar < 0.5, or MC ruin > 15%
+
+Note: OOS Max DD is reported for position sizing purposes, not as a pass/fail gate. A strategy with Calmar > 1.0 but DD > 12R is still viable — reduce position size so the dollar DD fits your account.
 
 ## Execution Notes
 
 - Run sessions in parallel when possible
-- All results auto-save to the experiment DB (`python/data/results/experiments.db`) and are viewable in the frontend dashboard
-- Use `--name` labels consistently for identification
-- Objectives: `sharpe` (recommended), `pnl`, `profit_factor`, `calmar`, `avg_r`
+- All results auto-save to the experiment DB and are viewable in the frontend dashboard
+- Use `--name` labels consistently for identification (see naming convention in CLAUDE.md)
+- Objectives: `calmar` (recommended for prop), `sharpe`, `pnl`, `profit_factor`, `avg_r`
 - See [cli-reference.md](references/cli-reference.md) for full argument details

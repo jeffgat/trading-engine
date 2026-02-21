@@ -3,7 +3,6 @@ export interface BacktestConfig {
   tp1_ratio: number;
   risk_usd: number;
   atr_length: number;
-  be_offset_ticks: number;
   min_qty: number;
   qty_step: number;
   strategy?: string;
@@ -111,7 +110,6 @@ export interface BacktestHistoryItem {
   tp1_ratio: number;
   risk_usd: number;
   atr_length: number;
-  be_offset_ticks: number;
   min_qty: number;
   qty_step: number;
   point_value: number;
@@ -198,7 +196,7 @@ export interface InstrumentCoverage {
   last_run_at: string;
   sessions_tested: string[];
   best_sharpe: number | null;
-  best_pnl_usd: number | null;
+  best_r_per_year: number | null;
   best_win_rate: number | null;
   best_profit_factor: number | null;
 }

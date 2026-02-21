@@ -139,6 +139,17 @@ export function useCoverage(): UseCoverageReturn {
     return () => clearInterval(id);
   }, [refreshCoverage]);
 
+  // Auto-load param coverage for all instruments to power suggestions
+  const paramCoverageLoaded = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const c of coverage) {
+      if (!paramCoverageLoaded.current.has(c.instrument)) {
+        paramCoverageLoaded.current.add(c.instrument);
+        loadParamCoverage(c.instrument);
+      }
+    }
+  }, [coverage, loadParamCoverage]);
+
   return {
     coverage,
     planItems,

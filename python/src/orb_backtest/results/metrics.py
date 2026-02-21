@@ -62,13 +62,13 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
     downside_std = float(np.sqrt(np.mean(downside_returns ** 2)))
     sortino = (avg_r / downside_std * np.sqrt(252)) if downside_std > 0 else 0.0
 
-    # Calmar Ratio: Net R / |Max Drawdown in R|
+    # R-based equity curve and drawdown
     r_equity = np.cumsum(r_multiples)
     r_peak = np.maximum.accumulate(r_equity)
     r_drawdown = r_equity - r_peak
-    max_dd_r = abs(float(np.min(r_drawdown))) if len(r_drawdown) > 0 else 0.0
+    max_dd_r = float(np.min(r_drawdown)) if len(r_drawdown) > 0 else 0.0
     net_r_total = float(r_equity[-1]) if len(r_equity) > 0 else 0.0
-    calmar = (net_r_total / max_dd_r) if max_dd_r > 0 else 0.0
+    calmar = (net_r_total / abs(max_dd_r)) if max_dd_r != 0 else 0.0
 
     # Exit type breakdown
     exit_counts = defaultdict(int)
@@ -79,6 +79,9 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
     pnl_by_year = _group_pnl(filled, lambda t: t.date[:4])
     pnl_by_month = _group_pnl(filled, lambda t: t.date[:7])
     pnl_by_dow = _group_pnl_dow(filled)
+
+    # R by year
+    r_by_year = _group_r(filled, lambda t: t.date[:4])
 
     # Direction breakdown
     long_trades = [t for t in filled if t.direction == 1]
@@ -102,8 +105,10 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "avg_r": avg_r,
         "avg_win_r": float(np.mean(r_multiples[wins])) if wins.any() else 0.0,
         "avg_loss_r": float(np.mean(r_multiples[losses])) if losses.any() else 0.0,
+        "total_r": net_r_total,
         "max_drawdown_usd": max_dd,
         "max_drawdown_pct": max_dd_pct,
+        "max_drawdown_r": max_dd_r,
         "sharpe_ratio": sharpe,
         "sortino_ratio": sortino,
         "calmar_ratio": calmar,
@@ -113,12 +118,15 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "pnl_by_year": pnl_by_year,
         "pnl_by_month": pnl_by_month,
         "pnl_by_dow": pnl_by_dow,
+        "r_by_year": r_by_year,
         "long_trades": len(long_trades),
         "short_trades": len(short_trades),
         "long_win_rate": _win_rate(long_trades),
         "short_win_rate": _win_rate(short_trades),
         "long_pnl_usd": sum(t.pnl_usd for t in long_trades),
         "short_pnl_usd": sum(t.pnl_usd for t in short_trades),
+        "long_r": sum(t.r_multiple for t in long_trades),
+        "short_r": sum(t.r_multiple for t in short_trades),
     }
 
 
@@ -142,8 +150,10 @@ def _empty_metrics(total_signals: int) -> dict:
         "avg_r": 0.0,
         "avg_win_r": 0.0,
         "avg_loss_r": 0.0,
+        "total_r": 0.0,
         "max_drawdown_usd": 0.0,
         "max_drawdown_pct": 0.0,
+        "max_drawdown_r": 0.0,
         "sharpe_ratio": 0.0,
         "sortino_ratio": 0.0,
         "calmar_ratio": 0.0,
@@ -153,12 +163,15 @@ def _empty_metrics(total_signals: int) -> dict:
         "pnl_by_year": {},
         "pnl_by_month": {},
         "pnl_by_dow": {},
+        "r_by_year": {},
         "long_trades": 0,
         "short_trades": 0,
         "long_win_rate": 0.0,
         "short_win_rate": 0.0,
         "long_pnl_usd": 0.0,
         "short_pnl_usd": 0.0,
+        "long_r": 0.0,
+        "short_r": 0.0,
     }
 
 
@@ -188,6 +201,14 @@ def _group_pnl(trades: list[TradeResult], key_fn) -> dict[str, float]:
     for t in trades:
         k = key_fn(t)
         groups[k] = groups.get(k, 0.0) + t.pnl_usd
+    return dict(sorted(groups.items()))
+
+
+def _group_r(trades: list[TradeResult], key_fn) -> dict[str, float]:
+    groups: dict[str, float] = {}
+    for t in trades:
+        k = key_fn(t)
+        groups[k] = groups.get(k, 0.0) + t.r_multiple
     return dict(sorted(groups.items()))
 
 

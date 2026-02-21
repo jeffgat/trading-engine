@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useStarredHistory } from '../hooks/useStarredHistory';
 import type { BacktestResult } from '../lib/types';
 import { BacktestHistoryPanel } from './BacktestHistoryPanel';
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { ConfigBar } from './ConfigBar';
 import { DateRangePicker } from './DateRangePicker';
 import { EquityChart } from './EquityChart';
@@ -12,10 +13,11 @@ import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 
 export function SavedStrategiesDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest } =
+    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, bulkUnstarBacktests, bulkHideBacktests } =
         useStarredHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
+    const [unstarId, setUnstarId] = useState<string | null>(null);
 
     // Date filter state
     const [filterStart, setFilterStart] = useState('');
@@ -29,7 +31,6 @@ export function SavedStrategiesDashboard() {
         setLoading(true);
         const result = await loadBacktest(id);
         if (result) {
-            setData(result);
             const r = result as any;
             const dates = r.equity_curve?.length
                 ? [r.equity_curve[0].date, r.equity_curve[r.equity_curve.length - 1].date]
@@ -38,10 +39,21 @@ export function SavedStrategiesDashboard() {
                     : ['', ''];
             const dateStart = r.date_start || dates[0] || '';
             const dateEnd = r.date_end || dates[1] || '';
-            setFilterStart(dateStart);
-            setFilterEnd(dateEnd);
+
+            // Always update the original (full) range for this backtest
             setOriginalDateStart(dateStart);
             setOriginalDateEnd(dateEnd);
+
+            if (!filterStart) {
+                // First load — no filter yet, use full range
+                setFilterStart(dateStart);
+                setFilterEnd(dateEnd);
+                setData(result);
+            } else {
+                // Subsequent loads — keep existing date filter, re-apply it
+                const filtered = await refilterBacktest(id, filterStart, filterEnd);
+                setData(filtered || result);
+            }
         }
         setLoading(false);
     };
@@ -77,6 +89,10 @@ export function SavedStrategiesDashboard() {
         }
     };
 
+    const confirmUnstar = () => {
+        if (unstarId) handleUnstar(unstarId);
+    };
+
     return (
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             <div className="mb-6">
@@ -103,14 +119,29 @@ export function SavedStrategiesDashboard() {
                     </p>
                 </div>
             ) : (
-                <BacktestHistoryPanel
-                    history={history}
-                    activeId={activeId}
-                    onLoad={handleLoad}
-                    onDelete={handleUnstar}
-                    onRefresh={refreshHistory}
-                    onHide={hideBacktest}
-                />
+                <>
+                    <BacktestHistoryPanel
+                        history={history}
+                        activeId={activeId}
+                        onLoad={handleLoad}
+                        onDelete={handleUnstar}
+                        onRefresh={refreshHistory}
+                        onStar={(id) => setUnstarId(id)}
+                        onHide={hideBacktest}
+                        onBulkUnstar={bulkUnstarBacktests}
+                        onBulkHide={bulkHideBacktests}
+                    />
+
+                    <ConfirmDeleteDialog
+                        open={unstarId !== null}
+                        onOpenChange={(open) => { if (!open) setUnstarId(null); }}
+                        onConfirm={confirmUnstar}
+                        title="Remove from saved?"
+                        description="This strategy will be unstarred and removed from your saved list."
+                        confirmLabel="Unstar"
+                        confirmClassName="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-1.5 text-xs font-medium text-yellow-400 transition-colors hover:bg-yellow-500/20"
+                    />
+                </>
             )}
 
             {loading && <LoadingSkeleton />}

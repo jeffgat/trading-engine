@@ -210,7 +210,7 @@ python/
 │   ├── compare_tv.py              # TradingView report comparison
 │   └── download_data.py           # Databento data fetcher
 ├── data/
-│   ├── raw/                       # 5-min OHLCV CSVs
+│   ├── raw/                       # 5m + 1m OHLCV CSVs ({SYMBOL}_5m.csv, {SYMBOL}_1m.csv)
 │   ├── cache/                     # Parquet caches
 │   └── results/                   # experiments.db (SQLite)
 └── tests/

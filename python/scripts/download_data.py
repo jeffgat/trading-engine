@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download historical 5-minute futures data from Databento.
+"""Download historical futures data from Databento (1m bars, resampled to 5m).
 
 Setup:
     1. Sign up at https://databento.com (get $125 free credits)
@@ -7,22 +7,27 @@ Setup:
     3. Install: uv pip install databento
 
 Usage:
-    # Download NQ front-month continuous, 2015 to today
-    python scripts/download_data.py NQ --start 2015-01-01
+    # Download NQ with both 5m and 1m data (always use --save-1m)
+    python scripts/download_data.py NQ --start 2015-01-01 --save-1m
 
     # Download multiple instruments
-    python scripts/download_data.py NQ ES CL GC --start 2016-01-01
+    python scripts/download_data.py NQ ES CL GC --start 2016-01-01 --save-1m
 
     # Download all supported instruments
-    python scripts/download_data.py --all --start 2018-01-01
+    python scripts/download_data.py --all --start 2018-01-01 --save-1m
 
     # Download with explicit end date
-    python scripts/download_data.py NQ --start 2015-01-01 --end 2026-01-01
+    python scripts/download_data.py NQ --start 2015-01-01 --end 2026-01-01 --save-1m
 
     # Estimate cost before downloading
     python scripts/download_data.py NQ ES --start 2015-01-01 --cost-only
 
-Data is saved to: python/data/raw/{SYMBOL}_5m.csv
+Roll rules:
+    Index futures (NQ, ES, YM, etc.): .c.0 calendar roll (front month is always liquid)
+    Commodity futures (GC, MGC):      .v.0 volume roll (liquidity in specific months)
+
+Data is saved to: python/data/raw/{SYMBOL}_5m.csv (+ {SYMBOL}_1m.csv with --save-1m)
+The 1m data powers the trade chart magnifier in the dashboard.
 Files are standard CSV with columns: datetime, open, high, low, close, volume
 Timezone: America/New_York (Eastern)
 """
@@ -39,9 +44,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
-# Databento continuous front-month symbol mapping
+# Databento continuous contract symbol mapping
 # Format: {OUR_SYMBOL: DATABENTO_SYMBOL}
-# .c.0 = front month continuous contract
+# .c.0 = calendar roll (nearest expiration) — works for index futures
+# .v.0 = volume roll (highest volume contract) — required for commodities
+#         where liquidity concentrates in specific months (GC: even months only)
 SYMBOL_MAP = {
     "NQ": "NQ.c.0",
     "MNQ": "MNQ.c.0",
@@ -50,10 +57,11 @@ SYMBOL_MAP = {
     "YM": "YM.c.0",
     "MYM": "MYM.c.0",
     "RTY": "RTY.c.0",
-    "GC": "GC.c.0",
-    "MGC": "MGC.c.0",
+    "GC": "GC.v.0",
+    "MGC": "MGC.v.0",
     "CL": "CL.c.0",
     "MCL": "MCL.c.0",
+    "6B": "6B.c.0",
 }
 
 DATASET = "GLBX.MDP3"  # CME Globex
@@ -95,6 +103,8 @@ def download_symbol(
     start: str,
     end: str,
     output_dir: Path,
+    *,
+    save_1m: bool = True,
 ) -> Path | None:
     """Download 1-minute OHLCV data, resample to 5m, save as CSV.
 
@@ -163,6 +173,27 @@ def download_symbol(
 
     df = df[["open", "high", "low", "close", "volume"]].copy()
 
+    # Optionally save 1m data (also forward-filled)
+    if save_1m:
+        output_1m = output_dir / f"{symbol}_1m.csv"
+        df_1m = df.resample("1min").agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        })
+        df_1m["volume"] = df_1m["volume"].fillna(0).astype(int)
+        df_1m["close"] = df_1m["close"].ffill(limit=300)  # 5h limit
+        df_1m["open"] = df_1m["open"].fillna(df_1m["close"])
+        df_1m["high"] = df_1m["high"].fillna(df_1m["close"])
+        df_1m["low"] = df_1m["low"].fillna(df_1m["close"])
+        df_1m = df_1m.dropna(subset=["open"])
+        df_1m.index = df_1m.index.tz_localize(None)
+        df_1m.index.name = "datetime"
+        df_1m.to_csv(output_1m)
+        print(f"    Saved {len(df_1m):,} 1m bars → {output_1m.name}")
+
     # Resample 1m → 5m
     df_5m = df.resample("5min").agg({
         "open": "first",
@@ -170,7 +201,24 @@ def download_symbol(
         "low": "min",
         "close": "last",
         "volume": "sum",
-    }).dropna(subset=["open"])
+    })
+
+    # Forward-fill gaps during market hours so the backtest engine
+    # and chart see continuous bars. CME Globex futures trade ~23h/day
+    # (Sun 6 PM – Fri 5 PM ET). Bars with no trades get O=H=L=C=last
+    # close, volume=0.  Limit to 60 bars (5h) so weekends/holidays
+    # don't get filled.
+    traded_mask = df_5m["open"].notna()
+    df_5m["volume"] = df_5m["volume"].fillna(0).astype(int)
+    df_5m["close"] = df_5m["close"].ffill(limit=60)
+    df_5m["open"] = df_5m["open"].fillna(df_5m["close"])
+    df_5m["high"] = df_5m["high"].fillna(df_5m["close"])
+    df_5m["low"] = df_5m["low"].fillna(df_5m["close"])
+    df_5m = df_5m.dropna(subset=["open"])
+
+    filled_count = int((~traded_mask).sum()) - (len(traded_mask) - len(df_5m))
+    if filled_count > 0:
+        print(f"    Forward-filled {filled_count:,} empty 5m slots (vol=0)")
 
     # Remove timezone info for cleaner CSV (it's all Eastern)
     df_5m.index = df_5m.index.tz_localize(None)
@@ -218,6 +266,10 @@ Supported symbols: """ + ", ".join(sorted(SYMBOL_MAP.keys())),
     parser.add_argument(
         "--cost-only", action="store_true",
         help="Only estimate cost, don't download",
+    )
+    parser.add_argument(
+        "--save-1m", action="store_true",
+        help="Also save the raw 1-minute data (in addition to 5m)",
     )
 
     args = parser.parse_args()
@@ -269,7 +321,7 @@ Supported symbols: """ + ", ".join(sorted(SYMBOL_MAP.keys())),
     total_t0 = time.time()
 
     for symbol in symbols:
-        result = download_symbol(client, symbol, args.start, end, DATA_DIR)
+        result = download_symbol(client, symbol, args.start, end, DATA_DIR, save_1m=args.save_1m)
         results.append((symbol, result))
         print()
 

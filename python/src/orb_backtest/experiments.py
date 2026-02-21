@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -22,7 +23,7 @@ PARAM_COLUMNS: dict[str, str] = {
     "tp1_ratio": "REAL",
     "risk_usd": "REAL",
     "atr_length": "INTEGER",
-    "be_offset_ticks": "INTEGER",
+
     "min_qty": "REAL",
     "qty_step": "REAL",
     "point_value": "REAL",
@@ -50,7 +51,7 @@ PARAM_COLUMNS: dict[str, str] = {
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)
-_GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length", "be_offset_ticks",
+_GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length",
                   "min_qty", "qty_step", "point_value"}
 
 # ---------------------------------------------------------------------------
@@ -66,6 +67,8 @@ METRIC_COLUMNS: dict[str, str] = {
     "profit_factor": "REAL",
     "sortino_ratio": "REAL",
     "calmar_ratio": "REAL",
+    "total_r": "REAL",
+    "max_drawdown_r": "REAL",
 }
 
 _param_ddl = ",\n    ".join(f"{col} {dtype}" for col, dtype in PARAM_COLUMNS.items())
@@ -227,7 +230,7 @@ _SAFE_PARAM_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _DEFAULT_PARAMS: dict[str, object] = {
     "rr": 2.5,
     "tp1_ratio": 0.5,
-    "be_offset_ticks": 4,
+
     "atr_length": 14,
 }
 
@@ -258,6 +261,18 @@ def _auto_experiment_name(
         val = config.get(param)
         if val is not None and val != default_val:
             parts.append(f"{param}{val:g}" if isinstance(val, float) else f"{param}{val}")
+
+    # Append 4-char fingerprint of session-specific params for uniqueness.
+    # Runs with different session configs (stop_atr_pct, min_gap_atr_pct, etc.)
+    # will always produce different names even when global params match.
+    session_keys = sorted(
+        k for k in config
+        if any(k.startswith(p) for p in ("ny_", "asia_", "ldn_"))
+    )
+    if session_keys:
+        fp_str = "|".join(f"{k}={config[k]}" for k in session_keys)
+        fp = hashlib.md5(fp_str.encode()).hexdigest()[:4]
+        parts.append(f"({fp})")
 
     return " ".join(parts)
 
@@ -940,7 +955,13 @@ def get_instrument_coverage() -> list[dict]:
             MAX(timestamp) AS last_run_at,
             GROUP_CONCAT(DISTINCT sessions) AS sessions_raw,
             MAX(sharpe_ratio) AS best_sharpe,
-            MAX(total_pnl_usd) AS best_pnl_usd,
+            MAX(
+                COALESCE(
+                    json_extract(metrics_json, '$.total_r'),
+                    json_extract(metrics_json, '$.avg_r') * total_trades
+                )
+                / MAX(1.0, (julianday(date_end) - julianday(date_start)) / 365.25)
+            ) AS best_r_per_year,
             MAX(win_rate) AS best_win_rate,
             MAX(profit_factor) AS best_profit_factor
         FROM runs
@@ -973,7 +994,7 @@ def get_instrument_coverage() -> list[dict]:
             "last_run_at": row["last_run_at"] or "",
             "sessions_tested": sorted(sessions_set),
             "best_sharpe": row["best_sharpe"],
-            "best_pnl_usd": row["best_pnl_usd"],
+            "best_r_per_year": row["best_r_per_year"],
             "best_win_rate": row["best_win_rate"],
             "best_profit_factor": row["best_profit_factor"],
         })

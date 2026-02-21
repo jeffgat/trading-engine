@@ -133,7 +133,6 @@ def main():
         # NY params
         "ny_rr": PROD_NY_GLOBALS["rr"],
         "ny_tp1_ratio": PROD_NY_GLOBALS["tp1_ratio"],
-        "ny_be_offset_ticks": PROD_NY_GLOBALS["be_offset_ticks"],
         "ny_stop_atr_pct": PROD_NY_SESSION.stop_atr_pct,
         "ny_min_gap_atr_pct": PROD_NY_SESSION.min_gap_atr_pct,
         "ny_max_gap_atr_pct": PROD_NY_SESSION.max_gap_atr_pct,
@@ -143,7 +142,6 @@ def main():
         # Asia params
         "asia_rr": PROD_ASIA_GLOBALS["rr"],
         "asia_tp1_ratio": PROD_ASIA_GLOBALS["tp1_ratio"],
-        "asia_be_offset_ticks": PROD_ASIA_GLOBALS["be_offset_ticks"],
         "asia_stop_atr_pct": PROD_ASIA_SESSION.stop_atr_pct,
         "asia_min_gap_atr_pct": PROD_ASIA_SESSION.min_gap_atr_pct,
         "asia_max_gap_atr_pct": PROD_ASIA_SESSION.max_gap_atr_pct,

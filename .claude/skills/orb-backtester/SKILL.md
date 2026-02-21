@@ -16,7 +16,7 @@ Python backtesting engine for Opening Range Breakout + Fair Value Gap trading st
 
 ## When to Use
 
-- Running single backtests or optimization sweeps on NQ, MNQ, ES
+- Running single backtests or optimization sweeps on NQ, MNQ, ES, GC, CL, YM, etc.
 - Analyzing strategy performance (metrics, equity curves, drawdowns)
 - Querying or comparing experiment history
 - Adding new signal modules, instruments, or session configurations
@@ -129,7 +129,7 @@ After completing the task, determine if any new insight was discovered. If so, u
 |-------|----------|
 | `unknown_instrument` | Check spelling; valid: NQ, MNQ, ES. Add new ones to `instruments.py` |
 | `unknown_session` | Valid sessions: ny, asia, ldn. Check `config.py` for session definitions |
-| `data_not_found` | Run `scripts/download_data.py` or check `python/data/raw/` for CSV files |
+| `data_not_found` | Run `scripts/download_data.py {SYMBOL} --start YYYY-MM-DD --save-1m` (always use `--save-1m` for chart data) |
 | `invalid_sweep_spec` | Format: `param=start:end:step` or `param=val1,val2,val3` |
 | Numba compilation slow on first run | Normal cold-start behavior; subsequent calls are fast |
 | `ModuleNotFoundError` | Run `cd python && uv sync` to install dependencies |

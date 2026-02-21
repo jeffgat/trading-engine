@@ -28,6 +28,55 @@ This repository contains a Python backtesting engine for Opening Range Breakout 
 - US: ORB 09:30-09:45 NY, entries until 12:00, flat by 15:50
 - Asia: ORB 09:00-09:30 JST, entries until 12:30, flat by 14:50
 
+## Backtest Naming Convention
+
+Every backtest and optimization **must** have a unique, descriptive `experiment_name`. Duplicate names make it impossible to identify runs in the history dashboard.
+
+### Format
+
+```
+{INSTRUMENT} {SESSIONS} {description}
+```
+
+- **INSTRUMENT**: Symbol (NQ, ES, CL, GC, MNQ, YM, etc.)
+- **SESSIONS**: Which sessions ran (NY, ASIA+NY, ASIA, etc.)
+- **description**: What this run is testing — this is what makes names unique
+
+### Description guidelines
+
+| Run type | Description pattern | Example |
+|----------|-------------------|---------|
+| Default params | `{year_range} Defaults` | `NQ ASIA+NY 2024-2025 Defaults` |
+| Post-optimization | `{year_range} Optimized` | `NQ NY 2024-2025 Optimized` |
+| Specific param test | `{what changed}` | `NQ ASIA+NY 2015-2026 rr3` |
+| Variant/iteration | append `v2`, `v3`, or `(detail)` | `MNQ ASIA+NY 2024-2025 Optimized v2` |
+| Walk-forward OOS | `WF{N} OOS` | `WF1 OOS` |
+| Feature/gate test | descriptive label | `CL SMA20 Trend Gated` |
+| Baseline reference | `Baseline` | `GC NY Baseline` |
+
+### Rules for agents
+
+1. **Always pass `--name`** on CLI runs or `name` in API requests — never rely on auto-naming alone
+2. **Check existing names** before running: query the DB or dashboard to avoid duplicates
+3. **Include the differentiator** — if two runs share instrument/sessions/dates, the description must explain what's different (params, risk size, feature toggle, etc.)
+4. The auto-namer appends a session-config fingerprint as a safety net, but explicit names are always preferred
+
+## Per-Asset Learnings
+
+Maintain a living document for each asset in `python/learnings/`. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
+
+- **Location**: `python/learnings/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
+- **When to update**: After completing a strategy test, robust pipeline run, or discovering a significant finding for any asset
+- **What to include**: Instrument profile, strategies tested (with GO/NO-GO status), winning configs, key findings, parameter sensitivity, prop firm considerations
+- **Format**: See `python/learnings/GC.md` as the reference template
+
+### Rules for agents
+
+1. **Check learnings before testing** — read the asset's learnings file before proposing or running a strategy. If it's already marked NO-GO, don't re-test without a fundamentally different approach.
+2. **Update after every conclusion** — when a strategy is validated (GO) or ruled out (NO-GO), add it to the learnings doc immediately.
+3. **Include the evidence** — record key metrics (trades, WR, Net R, Sharpe, DD) and the DB experiment name so results are traceable.
+4. **Create new files as needed** — when testing a new asset for the first time, create its learnings file following the GC.md template.
+
 ## Backtesting Engine
 
 ### Architecture (Hybrid Vectorized + Numba)

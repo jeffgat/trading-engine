@@ -18,7 +18,7 @@ Multi-model backtesting engine for futures trading strategies. Includes Pine Scr
 │   │   ├── orb_reversal/        # ORB reversal model configs (stub)
 │   │   └── orb_backtest/        # Backward-compat shims (deprecated)
 │   ├── scripts/                 # CLI scripts (backtest, optimize, compare, download)
-│   ├── data/raw/                # Raw 5m OHLCV CSVs
+│   ├── data/raw/                # 5m + 1m OHLCV CSVs
 │   └── data/cache/              # Parquet cache for faster loads
 ├── frontend/                    # React + TypeScript dashboard (Vite + Tailwind)
 └── tradingview_reports/         # Exported trade reports from TradingView
@@ -104,16 +104,16 @@ uv sync --extra api          # + FastAPI for the dashboard API
 
 ### Download Data
 
-Fetches 5-minute OHLCV bars from [Databento](https://databento.com) (free $125 credits on signup).
+Downloads 1-minute OHLCV bars from [Databento](https://databento.com) (free $125 credits on signup), resamples to 5m, and saves both resolutions.
 
 ```bash
 export DATABENTO_API_KEY=db-your-key-here
 
-# Download NQ front-month continuous
-python scripts/download_data.py NQ --start 2015-01-01
+# Download NQ with both 5m and 1m data (always use --save-1m)
+python scripts/download_data.py NQ --start 2015-01-01 --save-1m
 
 # Download multiple instruments
-python scripts/download_data.py NQ ES CL GC --start 2016-01-01
+python scripts/download_data.py NQ ES CL GC --start 2016-01-01 --save-1m
 
 # Estimate cost before downloading
 python scripts/download_data.py NQ ES --start 2015-01-01 --cost-only
@@ -121,7 +121,9 @@ python scripts/download_data.py NQ ES --start 2015-01-01 --cost-only
 
 Supported instruments: NQ, MNQ, ES, MES, YM, MYM, RTY, GC, MGC, CL, MCL
 
-Data is saved to `python/data/raw/{SYMBOL}_5m.csv`.
+Data is saved to `python/data/raw/{SYMBOL}_5m.csv` and `{SYMBOL}_1m.csv`. The 5m data drives backtests; the 1m data powers the trade chart magnifier in the dashboard.
+
+**Roll rules**: Index futures use `.c.0` (calendar roll). Commodity futures (GC, MGC) use `.v.0` (volume-based roll) because liquidity concentrates in specific contract months.
 
 ### Run a Backtest
 
