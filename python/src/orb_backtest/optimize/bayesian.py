@@ -8,9 +8,10 @@ from typing import Callable
 import pandas as pd
 
 from ..config import StrategyConfig, with_overrides
-from ..engine.simulator import run_backtest
+from ..engine.simulator import run_backtest, build_maps
 from ..results.metrics import compute_metrics
 from .objectives import OBJECTIVE_MAP
+from .parallel import _load_or_build_signal_cache
 
 
 @dataclass
@@ -67,6 +68,7 @@ def run_bayesian(
     start_date: str | None = None,
     seed: int | None = None,
     progress_fn: Callable | None = None,
+    df_1m: pd.DataFrame | None = None,
 ) -> BayesianResult:
     """Run Bayesian optimization over parameter space.
 
@@ -80,6 +82,7 @@ def run_bayesian(
         start_date: Only count trades on/after this date.
         seed: Random seed for reproducibility.
         progress_fn: Optional callback(trial_num, total, best_val, trial_params).
+        df_1m: Optional 1-minute DataFrame for bar magnifier fill simulation.
 
     Returns:
         BayesianResult with all trials and best trial.
@@ -91,6 +94,11 @@ def run_bayesian(
     obj_key = OBJECTIVE_MAP[objective]
     trials_list: list[BayesianTrial] = []
     best_value = float("-inf")
+
+    # Pre-build maps and signal cache once — reused across all Optuna trials.
+    # For 300 trials × ~650ms signal overhead = ~3.25 min saved.
+    _maps = build_maps(df, df_1m, None, None)
+    _signal_cache = _load_or_build_signal_cache(df, [base_config])
 
     def optuna_objective(trial: optuna.Trial) -> float:
         nonlocal best_value
@@ -104,7 +112,8 @@ def run_bayesian(
             overrides[p.name] = val
 
         config = with_overrides(base_config, **overrides)
-        trades = run_backtest(df, config, start_date=start_date)
+        trades = run_backtest(df, config, start_date=start_date, df_1m=df_1m,
+                              _maps=_maps, _signal_cache=_signal_cache)
         metrics = compute_metrics(trades)
 
         obj_val = metrics.get(obj_key, 0.0)

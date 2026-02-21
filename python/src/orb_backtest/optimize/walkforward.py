@@ -14,7 +14,7 @@ from ..engine.simulator import run_backtest, build_maps, build_signal_cache, Tra
 from ..results.metrics import compute_metrics
 from .grid import generate_param_grid
 from .objectives import OBJECTIVE_MAP, get_objective_value
-from .parallel import run_sweep
+from .parallel import run_sweep, _load_or_build_signal_cache
 
 
 # Days of warmup data loaded before IS start for ATR initialization
@@ -192,6 +192,14 @@ def run_walkforward(
     folds: list[WalkForwardFold] = []
     all_oos_trades: list[TradeResult] = []
 
+    # Pre-build full-range signal cache and maps once — reused across all IS folds.
+    # Key invariant: we use the FULL df (not sliced), with start_date filtering
+    # handled inside the engine. This avoids index-alignment issues per fold.
+    # Saves ~120s x N_folds of redundant signal computation.
+    print("[wf] Pre-building full-range signal cache and maps...")
+    full_maps = build_maps(df, df_1m, df_30s, df_1s)
+    full_signal_cache = _load_or_build_signal_cache(df, configs)
+
     for fold_idx, window in enumerate(windows):
         if progress_fn:
             progress_fn(fold_idx, len(windows), "optimizing IS")
@@ -203,14 +211,27 @@ def run_walkforward(
         ).strftime("%Y-%m-%d")
         is_df = df.loc[warmup_start:window.is_end]
 
-        # 2. Run grid sweep on IS slice
+        # 2. Run grid sweep on IS data.
         is_df_1m = df_1m.loc[warmup_start:window.is_end] if df_1m is not None else None
         is_df_30s = df_30s.loc[warmup_start:window.is_end] if df_30s is not None else None
         is_df_1s = df_1s.loc[warmup_start:window.is_end] if df_1s is not None else None
-        is_results = run_sweep(
-            is_df, configs, n_workers=n_workers, start_date=window.is_start,
-            df_1m=is_df_1m, df_30s=is_df_30s, df_1s=is_df_1s,
-        )
+        if gate_factory is not None:
+            # gate_factory creates a function that indexes into the DataFrame by
+            # signal_bar position. If we pass the full df to run_sweep, signal_bar
+            # values correspond to full-df positions, not is_df positions — the gate
+            # would look up the wrong rows. Fall back to IS-sliced sweep for safety.
+            is_results = run_sweep(
+                is_df, configs, n_workers=n_workers, start_date=window.is_start,
+                df_1m=is_df_1m, df_30s=is_df_30s, df_1s=is_df_1s,
+            )
+        else:
+            # No gate_factory — safe to pass full df with pre-built caches.
+            # IS-window filtering is done post-sweep by date string comparison.
+            is_results = run_sweep(
+                df, configs, n_workers=n_workers, start_date=window.is_start,
+                df_1m=df_1m, df_30s=df_30s, df_1s=df_1s,
+                _prebuilt_signal_cache=full_signal_cache, _prebuilt_maps=full_maps,
+            )
 
         # Build per-fold gate from factory (indices are relative to is_df)
         is_gate = None

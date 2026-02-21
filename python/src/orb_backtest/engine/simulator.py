@@ -76,7 +76,7 @@ class TradeResult(NamedTuple):
 # ---------------------------------------------------------------------------
 # Numba-compiled trade simulation
 # ---------------------------------------------------------------------------
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _simulate_single_trade(
     high: np.ndarray,
     low: np.ndarray,
@@ -245,7 +245,7 @@ def _simulate_single_trade(
     return fill_bar, EXIT_EOD, last_bar, pnl_points, 0.0, 0.0
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _scan_fill_bar(
     high: np.ndarray,
     low: np.ndarray,
@@ -274,7 +274,7 @@ def _scan_fill_bar(
 # Bar magnifier: 1-minute sub-bar simulation (Numba-compiled)
 # ---------------------------------------------------------------------------
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _simulate_exit_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -411,7 +411,7 @@ def _simulate_exit_magnifier(
     return EXIT_EOD, last_bar_1m, pnl_points
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _simulate_single_trade_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -468,7 +468,7 @@ def _simulate_single_trade_magnifier(
     return fill_bar_1m, exit_type, exit_bar_1m, pnl_points, 0.0, 0.0
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _scan_fill_bar_magnifier(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -497,7 +497,7 @@ def _scan_fill_bar_magnifier(
 # Only magnifies when a bar simultaneously touches two price objectives.
 # ---------------------------------------------------------------------------
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _drill_down_1s(
     high_1s: np.ndarray,
     low_1s: np.ndarray,
@@ -601,7 +601,7 @@ def _drill_down_1s(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _drill_down_30s(
     high_30s: np.ndarray,
     low_30s: np.ndarray,
@@ -745,7 +745,7 @@ def _drill_down_30s(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _drill_down_1m(
     high_1m: np.ndarray,
     low_1m: np.ndarray,
@@ -945,7 +945,7 @@ def _drill_down_1m(
     return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
-@nb.njit(cache=True)
+@nb.njit(cache=True, fastmath=True)
 def _simulate_single_trade_hierarchical(
     high_5m: np.ndarray,
     low_5m: np.ndarray,
@@ -1252,48 +1252,93 @@ class _SetupCandidate:
     daily_atr: float
 
 
+def _session_key(session: SessionConfig) -> tuple:
+    """Hashable key identifying a session's time windows (independent of trade params)."""
+    return (
+        session.name,
+        session.orb_start, session.orb_end,
+        session.entry_start, session.entry_end,
+        session.flat_start, session.flat_end,
+    )
+
+
+def _fvg_key(session: SessionConfig, config: StrategyConfig) -> tuple:
+    """Hashable key identifying a unique FVG signal computation."""
+    return (
+        _session_key(session),
+        config.atr_length,
+        session.min_gap_atr_pct,
+        getattr(session, "max_gap_atr_pct", 0.0),
+        session.max_gap_points,
+        config.impulse_close_filter,
+    )
+
+
 def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
     config: StrategyConfig,
+    _signal_cache: dict | None = None,
 ) -> list[_SetupCandidate]:
     """Extract first-FVG-per-day setup candidates for a session.
 
     This is the vectorized Phase 1: compute all signals, then group by
     session-day and take the first valid FVG per direction.
+
+    Args:
+        _signal_cache: Optional pre-computed signal cache from
+            :func:`build_signal_cache`. When provided, all signal arrays
+            are looked up instead of recomputed — critical for parameter
+            sweeps where the same session/ATR params repeat across many configs.
     """
     timestamps = df.index
 
-    # Session masks
-    masks = compute_session_masks(timestamps, session)
+    if _signal_cache is not None:
+        # Fast path: all signals pre-computed — zero recomputation cost.
+        skey = _session_key(session)
+        fkey = _fvg_key(session, config)
+        sc          = _signal_cache["session"][skey]
+        masks       = sc["masks"]
+        new_session_day = sc["new_session_day"]
+        session_day_id  = sc["session_day_id"]
+        orb_high    = sc["orb_high"]
+        orb_low     = sc["orb_low"]
+        orb_ready   = sc["orb_ready"]
+        date_strs   = sc["date_strs"]
+        daily_atr   = _signal_cache["atr"][config.atr_length]
+        fvg         = _signal_cache["fvg"][fkey]
+    else:
+        # Slow path: compute signals fresh (correct for single-backtest calls).
+        # Session masks
+        masks = compute_session_masks(timestamps, session)
 
-    # Session-aware day boundaries (handles cross-midnight sessions like Asia)
-    new_session_day, session_day_id = compute_session_days(timestamps, session)
+        # Session-aware day boundaries (handles cross-midnight sessions like Asia)
+        new_session_day, session_day_id = compute_session_days(timestamps, session)
 
-    # Daily ATR
-    daily_atr = compute_daily_atr(df, config.atr_length)
+        # Daily ATR
+        daily_atr = compute_daily_atr(df, config.atr_length)
 
-    # ORB levels — use session day boundaries so ORB isn't reset at midnight
-    orb_high, orb_low, orb_ready = compute_orb_levels(
-        df, masks["in_orb"], masks["in_rth"], new_session_day
-    )
+        # ORB levels — use session day boundaries so ORB isn't reset at midnight
+        orb_high, orb_low, orb_ready = compute_orb_levels(
+            df, masks["in_orb"], masks["in_rth"], new_session_day
+        )
 
-    # FVG detection
-    fvg = detect_fvg(
-        df["high"].values,
-        df["low"].values,
-        daily_atr,
-        orb_high,
-        orb_low,
-        session.min_gap_atr_pct,
-        session.max_gap_points,
-        max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
-        close=df["close"].values if config.impulse_close_filter else None,
-        impulse_close_filter=config.impulse_close_filter,
-    )
+        # FVG detection
+        fvg = detect_fvg(
+            df["high"].values,
+            df["low"].values,
+            daily_atr,
+            orb_high,
+            orb_low,
+            session.min_gap_atr_pct,
+            session.max_gap_points,
+            max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
+            close=df["close"].values if config.impulse_close_filter else None,
+            impulse_close_filter=config.impulse_close_filter,
+        )
 
-    # Date strings for excluded dates and half-days
-    date_strs = compute_date_strings(timestamps)
+        # Date strings for excluded dates and half-days
+        date_strs = compute_date_strings(timestamps)
 
     excluded = set(config.excluded_dates)
 
@@ -1803,6 +1848,95 @@ def build_maps(
 
 
 # ---------------------------------------------------------------------------
+# Signal pre-computation cache
+# ---------------------------------------------------------------------------
+
+def build_signal_cache(
+    df: pd.DataFrame,
+    configs: list[StrategyConfig],
+) -> dict:
+    """Pre-compute all signal arrays needed by a set of configs.
+
+    Call once before a parameter sweep, then pass the result as
+    ``_signal_cache=cache`` to :func:`run_backtest` or (via parallel.py)
+    to :func:`run_sweep`.
+
+    Groups configs by their signal-determining keys and computes each unique
+    combination exactly once:
+
+    - ``cache["atr"][atr_length]``       → daily ATR array
+    - ``cache["session"][session_key]``   → masks, day IDs, ORB levels, date strings
+    - ``cache["fvg"][fvg_key]``           → FVG signal arrays
+
+    For a 1000-config sweep where only rr/tp1_ratio vary (session params and
+    atr_length are constant), each signal is computed exactly once instead of
+    1000 times — saving ~11 minutes for full-history GC data.
+    """
+    cache: dict = {"atr": {}, "session": {}, "fvg": {}}
+    timestamps = df.index
+
+    # --- Date strings: config-independent, computed exactly once ---
+    date_strs = compute_date_strings(timestamps)
+
+    # --- ATR: one computation per unique atr_length ---
+    atr_lengths = {c.atr_length for c in configs}
+    for atr_length in atr_lengths:
+        cache["atr"][atr_length] = compute_daily_atr(df, atr_length)
+
+    # --- Session signals: one computation per unique session time-window combo ---
+    seen_sessions: set = set()
+    for config in configs:
+        for session in config.sessions:
+            skey = _session_key(session)
+            if skey in seen_sessions:
+                continue
+            seen_sessions.add(skey)
+
+            masks = compute_session_masks(timestamps, session)
+            new_session_day, session_day_id = compute_session_days(timestamps, session)
+            orb_high, orb_low, orb_ready = compute_orb_levels(
+                df, masks["in_orb"], masks["in_rth"], new_session_day
+            )
+            cache["session"][skey] = {
+                "masks": masks,
+                "new_session_day": new_session_day,
+                "session_day_id": session_day_id,
+                "orb_high": orb_high,
+                "orb_low": orb_low,
+                "orb_ready": orb_ready,
+                "date_strs": date_strs,
+            }
+
+    # --- FVG signals: one computation per unique (session + ATR + gap params) combo ---
+    seen_fvg: set = set()
+    for config in configs:
+        for session in config.sessions:
+            fkey = _fvg_key(session, config)
+            if fkey in seen_fvg:
+                continue
+            seen_fvg.add(fkey)
+
+            skey = _session_key(session)
+            sc = cache["session"][skey]
+            daily_atr = cache["atr"][config.atr_length]
+            fvg = detect_fvg(
+                df["high"].values,
+                df["low"].values,
+                daily_atr,
+                sc["orb_high"],
+                sc["orb_low"],
+                session.min_gap_atr_pct,
+                session.max_gap_points,
+                max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
+                close=df["close"].values if config.impulse_close_filter else None,
+                impulse_close_filter=config.impulse_close_filter,
+            )
+            cache["fvg"][fkey] = fvg
+
+    return cache
+
+
+# ---------------------------------------------------------------------------
 # Main simulation orchestrator
 # ---------------------------------------------------------------------------
 
@@ -1814,6 +1948,7 @@ def run_backtest(
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
     _maps: dict | None = None,
+    _signal_cache: dict | None = None,
 ) -> list[TradeResult]:
     """Run the full backtest pipeline.
 
@@ -1840,6 +1975,12 @@ def run_backtest(
             where the same data is reused across many configs. Build once with
             ``maps = build_maps(df, df_1m, df_30s, df_1s)`` and pass as
             ``_maps=maps``.
+        _signal_cache: Optional pre-computed signal cache from
+            :func:`build_signal_cache`. When provided, skips all signal
+            generation (ATR, session masks, ORB levels, FVG detection) for
+            configs that share the same signal-determining parameters. Build
+            once with ``cache = build_signal_cache(df, configs)`` and pass as
+            ``_signal_cache=cache``.
 
     Returns:
         List of TradeResult for each setup candidate (including no-fills).
@@ -1939,18 +2080,25 @@ def run_backtest(
     all_results: list[TradeResult] = []
 
     for session in config.sessions:
-        # Extract candidates (vectorized)
-        candidates = _extract_setup_candidates(df, session, config)
+        # Extract candidates (vectorized); reuses _signal_cache when provided
+        candidates = _extract_setup_candidates(df, session, config, _signal_cache=_signal_cache)
 
-        # Compute session masks for entry/flat window boundaries
-        masks = compute_session_masks(timestamps, session)
-
-        # Session-aware day boundaries for precomputing bar lookups
-        _, session_day_id = compute_session_days(timestamps, session)
+        # Session signals: reuse from cache (avoids double-compute vs _extract_setup_candidates)
+        if _signal_cache is not None:
+            skey = _session_key(session)
+            sc = _signal_cache["session"][skey]
+            masks = sc["masks"]
+            session_day_id = sc["session_day_id"]
+            date_strs = sc["date_strs"]
+        else:
+            # Compute session masks for entry/flat window boundaries
+            masks = compute_session_masks(timestamps, session)
+            # Session-aware day boundaries for precomputing bar lookups
+            _, session_day_id = compute_session_days(timestamps, session)
+            date_strs = compute_date_strings(timestamps)
 
         # Pre-compute half-day flat mask for NY
         half_day_set = set(config.half_days) if session.name == "NY" else set()
-        date_strs = compute_date_strings(timestamps)
 
         # Precompute per-session-day bar boundaries (single pass over all bars)
         day_bounds = _precompute_day_boundaries(

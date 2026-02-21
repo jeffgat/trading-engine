@@ -107,6 +107,8 @@ def run_sweep(
     df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
+    _prebuilt_signal_cache: object | None = None,
+    _prebuilt_maps: object | None = None,
 ) -> list[tuple[StrategyConfig, list[TradeResult]]]:
     """Run backtests for all configs, optionally in parallel.
 
@@ -138,8 +140,8 @@ def run_sweep(
     # Build bar maps and signal cache once — reused across all configs.
     # Maps: saves ~4s/config for GC full-history (~67 min per 1000-config sweep).
     # Signal cache: saves ~650ms/config (~11 min per 1000-config sweep).
-    maps = build_maps(df, df_1m, df_30s, df_1s)
-    signal_cache = _load_or_build_signal_cache(df, configs)
+    maps = _prebuilt_maps if _prebuilt_maps is not None else build_maps(df, df_1m, df_30s, df_1s)
+    signal_cache = _prebuilt_signal_cache if _prebuilt_signal_cache is not None else _load_or_build_signal_cache(df, configs)
 
     if n_workers <= 1 or len(configs) <= 1:
         # Sequential execution — pass pre-built caches on every call
