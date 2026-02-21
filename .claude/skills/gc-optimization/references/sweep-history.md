@@ -80,6 +80,109 @@ Friday exclusion showed +3.10 Calmar. Decomposed by NFP status:
 
 ---
 
+## R2 — Full Convergence Loop (2026-02-21)
+
+Grid R1 winner (rr=4.0, gap=3.5%) differed from anchor (rr=4.5, gap=2.5%), requiring re-sweep of all variables.
+
+### R2 Variable Sweeps
+
+**Script**: `run_gc_cont_long_variable_sweeps_2.py`
+**Anchor entering round**: stop=4.0%, rr=4.0, min_gap=3.5%, tp1=0.5, ATR 16, 10m ORB, entry→11:00, FOMC excluded
+**Anchor Calmar**: 10.49
+
+| Variable | Best | Calmar Δ | Decision |
+|----------|------|----------|----------|
+| ORB window | 10m (anchor) | 0 | Confirmed |
+| ATR length | **ATR 10 (11.80)** | **+1.31** | **ADOPTED** |
+| Entry end | 11:00 (anchor) | 0 | Confirmed |
+| Flat start | all identical | 0 | Insensitive |
+| Direction | long (anchor) | — | Confirmed |
+| DOW excl | excl Fri (+0.68) | +0.68 | Skip — data-mining |
+| Max gap pts | insensitive | ~0 | Confirmed |
+| Max gap ATR% | 30% (+1.05) | +1.05 | Skip — adds neg year (2 vs 1) |
+
+**Anchor exiting**: ATR 16→10 adopted. Calmar 10.49→11.80.
+
+### R3 Variable Sweeps
+
+**Script**: `run_gc_cont_long_variable_sweeps_3.py`
+**Anchor entering round**: ATR 10, Calmar 11.80
+
+| Variable | Best | Calmar Δ | Decision |
+|----------|------|----------|----------|
+| ORB window | 10m (anchor) | 0 | Confirmed |
+| ATR length | ATR 10 (anchor) | 0 | Confirmed |
+| Entry end | 11:00 (anchor) | 0 | Confirmed |
+| Flat start | all identical | 0 | Insensitive |
+| Direction | long (anchor) | — | Confirmed |
+| DOW excl | skip | — | Skip — per policy |
+| Max gap pts | insensitive | ~0 | Confirmed |
+| Max gap ATR% | **30% (13.10)** | **+1.30** | **ADOPTED** — neg years stays 1 (interaction with ATR 10) |
+
+**Key insight**: max_gap_atr=30% was rejected in R2 at ATR 16 (added neg year) but adopted in R3 at ATR 10 (no new neg year). ATR length and gap filtering interact — this is exactly why re-sweeping matters.
+
+**Anchor exiting**: max_gap_atr=30% adopted. Calmar 11.80→13.10.
+
+### R4 Variable Sweeps
+
+**Script**: `run_gc_cont_long_variable_sweeps_4.py`
+**Anchor entering round**: ATR 10, max_gap_atr=30%, Calmar 13.10
+
+| Variable | Best | Calmar Δ | Decision |
+|----------|------|----------|----------|
+| All 8 dimensions | anchor | 0 | **ALL CONFIRMED** |
+
+**Anchor fully converged.** Zero changes. Proceed to grid sweep.
+
+### R2 Grid Sweep
+
+**Script**: `run_gc_cont_long_grid_r2.py`
+**Grid**: stop(6) × rr(5) × min_gap(5) × tp1(3) = 450 combos
+**Fixed**: ATR 10, 10m ORB, entry→11:00, max_gap_atr=30%, FOMC excluded
+
+| Rank | stop | rr | gap | tp1 | Trd | WR | Net R | R/yr | MaxDD | Calmar | NegYr |
+|------|------|----|-----|-----|-----|----|-------|------|-------|--------|-------|
+| #1 | 4.0 | 3.5 | 3.5 | 0.5 | 492 | 44.7% | 120.2 | 11.5 | -9.1 | 13.17 | 1 |
+| **#2** | **4.0** | **4.0** | **3.5** | **0.5** | **492** | **42.7%** | **131.8** | **12.8** | **-10.1** | **13.10** | **1** |
+| #3 | 4.0 | 4.5 | 3.5 | 0.4 | 492 | 44.1% | 115.9 | 11.2 | -9.1 | 12.73 | 1 |
+
+Anchor ranked #2/450 (Δ=+0.07 vs winner). Top 20 dominated by min_gap=3.5% (18/20). **Convergence confirmed — anchor unchanged.**
+
+### R2 Robust Pipeline
+
+**Script**: `run_gc_cont_long_r2_pipeline.py`
+**WF**: 36m IS / 12m OOS / 12m step, 5 folds, 200 combos/fold
+
+| Phase | Result | Key Numbers |
+|-------|--------|-------------|
+| 1 — Structural | PASS | 492 trades, Calmar 13.10, Sharpe 2.638, DD -10.1R, 1 neg year |
+| 2 — Walk-Forward | PASS | WF Eff 0.43, Stability 0.85 (HIGH), OOS 69.1R, Calmar 5.30 |
+| 3 — Prop Constraints | PASS | 13.8 R/yr (≥12 threshold), Expectancy +0.259 |
+| 4 — Hold-Out OOS | PASS | 55 trades, 12.1R, Sharpe 2.095, PF 1.37 (2025-01 → 2026-02) |
+| 5 — Monte Carlo | PASS | 93.9% survival at -25R ruin (STRONG) |
+
+**WF mode params**: rr=4.5, tp1=0.5, stop=3.0%, min_gap=3.5%
+
+**WF fold detail:**
+
+| Fold | OOS Period | OOS Calmar | Best rr | Best stop | Best min_gap |
+|------|-----------|------------|---------|-----------|-------------|
+| 1 | 2019 | 0.901 | 4.00 | 4.00 | 3.50 |
+| 2 | 2020 | 7.384 | 4.50 | 3.00 | 2.50 |
+| 3 | 2021 | -0.422 | 4.50 | 3.00 | 2.50 |
+| 4 | 2022 | 1.223 | 4.50 | 3.00 | 3.50 |
+| 5 | 2023 | 5.303 | 5.00 | 3.00 | 3.50 |
+
+**R2 vs R1 improvements:**
+- MC survival: 85.5% → 93.9%
+- Phase 3: 11.7 R/yr (CAUTION) → 13.8 R/yr (PASS)
+- Structural Calmar: 9.71 → 13.10
+- Hold-out R: 19.3 → 12.1 (lower but still strong; R2 uses tighter filters)
+
+**Verdict: GO — All 5 phases pass. Deploy to prop firm.**
+
+---
+
 ## Historical Rounds (Contaminated 1s Data — Numbers Invalid)
 
 > **Warning**: All results below were produced with contaminated 1s data (included all GC contracts, not front-month only). The methodology and decision rationale are preserved for reference, but Calmar, Sharpe, Net R, and drawdown numbers should not be used as performance targets.

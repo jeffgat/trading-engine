@@ -67,9 +67,9 @@
 - **atr_length=5** (was 14): Faster ATR adapts to recent vol, tightens stops during calm periods
 - **No Thursday trades**: Thursday is negative EV on NQ Asia — removing it cuts ~15% of trades but eliminates a drag
 
-### Asia Continuation v3 — Dual-Model Sweep + Stop Anchor Discovery + Round 11 Grid (IN PROGRESS)
+### Asia Continuation v3 — Dual-Model Sweep + Stop Anchor Discovery + Round 11 Grid (SUPERSEDED by R4 Final)
 
-- **Status**: OPTIMIZATION COMPLETE — walk-forward pending
+- **Status**: SUPERSEDED — R4 Final (1s magnifier, 2016 start) achieved Calmar 23.85 vs v3's 20.14 (1m magnifier, 2015 start)
 
 #### Dual-Model Sweep (run_nq_asia_dual_sweep.py)
 - Tested both "Aggressive" (tight stop / high rr) and "Wide" (wide stop / low rr) model profiles
@@ -283,6 +283,63 @@ Key findings:
 - No-Thursday gate still needs to be applied and re-confirmed with ICF config
 - **DB entry**: `bt-nq-asia-v3-icf-optimized-4d86d0`
 
+### Asia Continuation R4 Final (10m ORB, both, 1s magnifier) — GO
+- **Status**: GO — fixed-param WF 6/6 folds profitable, hold-out PASS
+- **Config** (R1-R4 optimization with 1s magnifier, 2016 start):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 10m (20:00-20:10 ET) |
+| entry_start | 20:10 |
+| entry_end | 01:00 |
+| flat_start | 00:00 |
+| flat_end | 07:00 |
+| direction | both |
+| rr | 1.75 |
+| tp1_ratio | 0.35 |
+| stop_atr_pct | 3.7% |
+| min_gap_atr_pct | 0.90% |
+| max_gap_atr_pct | 5.0% |
+| max_gap_points | 0 |
+| atr_length | 5 |
+| magnifier | 1s |
+| gate | no-Thursday |
+| impulse_close_filter | OFF |
+
+- **Full-history performance** (2016-2026): 1,593 trades, 66.8% WR, PF 1.43, 211.2R total (21.1 R/yr), Max DD -8.9R, Calmar 23.85, Sharpe 2.53, **0 negative full years**
+- **R by year**: 2016:+31  2017:+16  2018:+24  2019:+21  2020:+21  2021:+26  2022:+9  2023:+18  2024:+19  2025:+24  2026:+3
+
+#### Fixed-param Walk-Forward (6 folds, OOS 2019-2024)
+
+| Fold | OOS Period | Trades | WR | Sharpe | R | DD |
+|------|-----------|--------|-----|--------|---|-----|
+| 1 | 2019 | 157 | 63.7% | 2.09 | +20.7 | -7.8 |
+| 2 | 2020 | 154 | 66.9% | 2.17 | +20.8 | -8.7 |
+| 3 | 2021 | 155 | 71.0% | 2.82 | +25.8 | -5.4 |
+| 4 | 2022 | 140 | 62.1% | 1.22 | +8.9 | -8.5 |
+| 5 | 2023 | 157 | 67.5% | 2.23 | +17.8 | -5.1 |
+| 6 | 2024 | 155 | 68.4% | 2.54 | +19.3 | -5.5 |
+
+- **Combined OOS**: 918 trades, 66.9% WR, PF 1.41, Sharpe 2.40, +113.3R (18.9 R/yr), DD -8.7R, Calmar 2.17
+- **Hold-out (2025+)**: 172 trades, 67.4% WR, PF 1.52, Sharpe 2.94, +27.2R, DD -6.4R — PASS
+- **Verdict**: GO — all 6 folds profitable, hold-out strong, combined OOS Calmar 2.17
+
+#### R4 Optimization History (R1-R4, 1s magnifier)
+- **R1**: Fresh start with 1s magnifier + 2016 start (v3 anchor). Baseline Calmar 16.72 (down from v3's 20.14 due to data change). Adopted: ORB=15m (+2.95), entry_end=01:00 (+7.13). flat_start=23:00 conflicted with entry_end=01:00, not adopted.
+- **R2**: ORB=15m, entry_end=01:00, flat=00:00. Calmar 20.18. Adopted 5 changes: ORB=10m (+3.67), flat=23:00 (+2.40), tp1=0.30 (+1.75), ICF=ON (+1.65), gap=1.25% (+0.54).
+- **R3**: All 5 R2 changes applied simultaneously → **Calmar crashed from 20.18 to 11.97**. Destructive parameter interaction. Sweep wanted to revert most changes. Key lesson: never adopt 5+ interacting changes at once.
+- **R4**: Reset to best-proven config (ORB=10m + entry_end=01:00 + flat=00:00 with v3 continuous params). **Fully converged — every dimension Δ=0.00.** Calmar 23.85.
+- **Grid sweep**: 2,016 combos (8 stops × 7 rrs × 6 gaps × 6 tp1s). R4 anchor is **#1 overall AND #1 among 797 zero-neg-year configs**. Gap to #2 is 2.63 Calmar points. No fine-tune needed.
+- **DB entry**: `bt-nq-asia-r4-final-69df58`
+
+#### Key differences from v3 (1m magnifier, 2015 start)
+- **entry_end shifted from 23:00 → 01:00**: The single biggest change. Extending entry window past midnight captures late Asia session FVGs. This was invisible in v3's optimization because v3 used 2015 data and 1m magnifier.
+- **flat_start remains 00:00**: Midnight close confirmed. Combining entry_end=01:00 with flat_start=00:00 means entries between 00:00-01:00 get immediately flattened at end of bar — effectively these are very short-duration trades that only work if TP1 is hit quickly.
+- **ICF is OFF**: Unlike v3+ICF optimization which showed +29% Calmar, ICF was not beneficial at the R4 anchor (entry_end=01:00 changes the trade mix).
+- **Calmar improved 20.14 → 23.85 (+18%)** despite losing 2015 data year.
+
 ### NY Continuation R20 (20m ORB, both, 1s magnifier) — GO
 - **Status**: GO — fixed-param WF 6/6 folds profitable, hold-out PASS
 - **Config** (R16-R20 optimization with 1s magnifier):
@@ -489,30 +546,24 @@ Key findings:
 ## Key Findings
 
 ### Asia Session
-- **Asia session produces high trade counts** (~190/year) with good win rates (70-78%), but the continuation strategy's edge per trade is very thin (~0.05R avg at best).
-- **10m ORB is definitively better than 15m** for NQ Asia — Sharpe improves from 0.54 to 1.23, DD from -25.6R to -11.0R. The full 15-minute window is too wide for Asia's lower volatility.
-- **Thursday is negative EV** on NQ Asia continuation. Removing it improved all metrics.
+- **R4 Final is the GO config**: stop=3.7%, rr=1.75, gap=0.90%, tp1=0.35, ORB=10m, entry_end=01:00, flat=00:00, ATR=5, both, no-Thu, ICF=OFF, 1s magnifier → Calmar 23.85, 21.1 R/yr, DD -8.9R, 0 neg years. Fixed-param WF 6/6 folds profitable. DB: `bt-nq-asia-r4-final-69df58`.
+- **entry_end=01:00 is the single biggest lever discovered in R1-R4**: Extending past midnight from 23:00→01:00 jumped Calmar from 16.72→23.85. The entry_end + flat_start interaction is critical — entries 00:00-01:00 are short-duration trades that work if TP1 fills fast.
+- **Destructive parameter interaction warning**: In R3, adopting 5 changes simultaneously crashed Calmar from 20.18→11.97 (-41%). Never adopt more than 2-3 changes at once. The safe approach is resetting to the best-proven config when oscillation is detected.
+- **Asia session produces high trade counts** (~160/year) with good win rates (67%), and the R4 config has strong edge per trade (~0.13R avg).
+- **10m ORB is definitively better than 15m** for NQ Asia — confirmed across v2, v3, and R4 optimizations. ORB oscillated (10m→15m→10m) across R1-R2 due to interaction with entry_end. At entry_end=01:00, 10m is dominant.
+- **Thursday is negative EV** on NQ Asia continuation. Removing it improved all metrics across every optimization round.
 - **SMA trend gate hurts NQ Asia** — opposite of CL where it doubled Sharpe. Both trend directions are profitable; filtering halves trade count without improving edge.
 - **atr_length=5 beats 14 for walk-forward** — ATR 14 shows better in-sample Sharpe in pre-sweeps but performs worse OOS (WF efficiency 0.311 vs 0.59 for ATR 5). Use ATR 5 for pipeline validation.
 - **Two distinct strategy zones exist** for NQ Asia continuation:
-  - **Zone A** (stop≈3.5–4.5%, rr≈2.0–3.0): ~65–73% WR, 10–14 R/yr, DD -12–16R, Calmar 8–11. Higher edge, higher drawdown.
-  - **Zone B** (stop≈5.5–6.5%, rr≈1.0–1.5): ~78–82% WR, 6–9 R/yr, DD -9–12R, Calmar 6–9. Lower edge, tighter drawdown. v2 lives here.
+  - **Zone A** (stop≈3.5–4.5%, rr≈1.75–3.0): ~65–73% WR, 10–21 R/yr, DD -9–16R. R4 Final lives here at the optimal point.
+  - **Zone B** (stop≈5.5–6.5%, rr≈1.0–1.5): ~78–82% WR, 6–9 R/yr, DD -9–12R. v2 CONDITIONAL lived here.
   - The dead zone between (~4.5–5.5%) has no consistent winner — avoid it.
-- **stop=3.7% is the anchor for Zone A** — confirmed as Calmar peak by both broad and fine stop sweeps. The plateau runs 3.6–4.2% (all Calmar > 10 at rr=3.0) — not a fragile spike.
-- **Round 11 reshuffled the optimal surface** (same lesson as NY Round 11): fixing stop=3.7% and re-running the full gap×rr×tp1×maxgap grid shifted the optimal rr from 3.0→2.5 and tp1 from 0.20→0.25, and boosted the top Calmar from 11.12→13.05. Always re-run the full grid after finding a new stop anchor.
-- **gap=1.25% is the optimal value at stop=3.7%** — marginal avg Calmar 9.85 vs 9.73 for 1.5% and below 8 for all other values. This is a strong signal, not a coincidence with the v2 baseline.
-- **maxgap is not a meaningful lever** at stop=3.7% — 5.0% through 11.0% all within 0.3 avg Calmar. Don't over-optimize this dimension.
-- **tp1=0.25–0.30 is the clean zone** — best avg Calmar (8.77, 8.92), 0 negative full years at the top. tp1=0.15 is clearly worse; tp1=0.35 adds R/yr but introduces negative years.
-- **Best v3 candidate (pre-config-sweep)**: stop=3.7%, gap=0.90%, maxgap=5%, rr=1.75, tp1=0.35 → Calmar 14.82, 17.4 R/yr, DD -13.0R, Sharpe 1.964. Beats v2 by 71% on Calmar.
-- **flat_start=00:00 (midnight close) is the single biggest lever**: Calmar 14.82 → 20.14, DD -13.0R → -10.1R, same 1800 trades. Midnight close is a smooth peak (R14 confirmed with 30-min steps) — not fragile. Excludes Tue exclusion does NOT stack with it (they fix the same problem).
-- **The new v3 anchor**: stop=3.7%, gap=0.90%, maxgap=5%, rr=1.75, tp1=0.35, ATR 5, ORB 10m, entry≤23:00, **flat_start=00:00**, no-Thu → Calmar 20.14, 18.3 R/yr, DD -10.1R, Sharpe 2.123. flat_start change likely reshuffles optimal rr/tp1 surface — re-sweep required before walk-forward.
-- **Both directions required** — unlike NY where long-only dominates. NQ Asia shorts contribute positively at the combined level even though short-only alone is dead (Calmar 3.92). Long-only has higher Sharpe but a bad 2022.
-- **Gap dimension has two peaks with a dead zone between them**: gap=0.90% (Calmar peak ~15) and gap=1.20% (Calmar peak ~15.5) are two distinct local maxima. gap=1.00–1.10% is a valley with fewest clean configs and lower avg Calmar. This was invisible at the 0.25-step resolution in R11 — only appeared in the 0.1-step R12 fine sweep.
-- **gap=1.40–1.50% is the most robust plateau**: 44–47/64 configs at these values are clean (0 neg years), though peak Calmar is lower (~12–13 vs ~15). Use when prioritizing robustness over peak performance.
-- **2022-2023 is the structural weak spot** — OOS periods covering these years consistently underperform. Any config that can survive 2022-2023 OOS is genuinely robust.
-- **Hold-out (2025) was strong** for both v1 and v2 — consistent with a favorable recent regime, but not sufficient evidence alone.
-- **Walk-forward stability improved** from v1's 1.0 (vacuously high from constraint elimination) to v2's meaningful 0.77 with real parameter convergence.
-- **Impulse Close Filter (ICF) is positive for NQ Asia** — adds +9.1% Calmar at v3 params, improvement driven entirely by shorts (+24.5R). After re-optimization with ICF, Calmar went from 11.93 (v3 no ICF, no Thu gate) → 15.42 (+29%). ICF reshuffled the optimal surface: RR 1.75→2.15, stop 3.7→3.3%, tp1 0.35→0.40, entry_end 23:00→23:30. Win rate drops (64→57%) but edge per trade increases (0.086→0.111R). Walk-forward pending to confirm OOS improvement.
+- **stop=3.7% is the anchor for Zone A** — confirmed as Calmar peak by broad, fine, and R4 grid sweeps. The R4 grid (2,016 combos) showed stop=3.7% configs dominating both overall and zero-neg-year rankings.
+- **Both directions required** — unlike NY where long-only dominates at some anchors. NQ Asia shorts contribute positively. Long-only has higher Sharpe but a bad 2022.
+- **flat_start=00:00 (midnight close) is critical**: Removes overnight drift risk from trades that haven't hit TP2. Smooth peak confirmed with 30-min step resolution. No-Tuesday exclusion does NOT stack (they fix the same problem).
+- **Gap dimension has two peaks with a dead zone**: gap=0.90% and gap=1.20% are local maxima. gap=1.00–1.10% is a valley. At the R4 anchor, gap=0.90% is dominant.
+- **2022 is the structural weak spot** — +8.9R in WF fold 4. Still profitable but the lowest fold. R4 anchor survives it cleanly unlike v1/v2.
+- **ICF is anchor-dependent**: Positive at v3 anchor (entry_end=23:00) but not beneficial at R4 anchor (entry_end=01:00). The entry_end shift changes the trade mix enough to invalidate v3+ICF findings.
 
 ### NY Session
 - **Both directions viable at the right params** — R16-R20 optimization with 1s magnifier found that both directions (Calmar 16.36) beats long-only (Calmar 11.51) at the R20 anchor. The key was wider entry window (15:30 vs 13:00) and lower RR (2.625 vs 3.2). Earlier rounds found long-only essential, but that was anchor-specific — at different stop/rr/gap combinations, shorts add value.
