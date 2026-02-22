@@ -34,6 +34,17 @@ Then verify:
 - Compute `DATA_YEARS` from start to current date (used for R/yr calculation).
 - Query the experiment DB for existing names with the same instrument/session prefix to avoid duplicates (per CLAUDE.md naming convention).
 
+## Progress Tracking (CRITICAL — survives context compaction)
+
+Maintain a temporary file `python/{asset}_{session}_progress.md` throughout the workflow. This file is the single source of truth for workflow state and survives context compaction.
+
+- **Create** it at the start of Step 1 using `references/progress-template.md`.
+- **Read it first** at the beginning of every step — if context was compacted, this file tells you exactly where you are and what to do next.
+- **Update it** after every significant result: baseline metrics, each sweep round (adoptions + new anchor), grid sweep winner, pipeline phase results.
+- **Delete it** after Step 6 completes — the learnings doc now has the permanent record.
+
+If you find an existing progress file when starting, **resume from where it left off** rather than starting over. The "Next Action" section tells you exactly what to do.
+
 ## Step 1: Baseline
 
 Generate `run_{asset}_{session}_baseline.py` in `python/scripts/`.
@@ -63,6 +74,8 @@ START_DATE = "2016-01-01"
 - FAIL: Record as NO-GO in learnings, stop workflow.
 - PASS: This becomes the initial anchor config for Step 2.
 - Also print median stop in ticks for the baseline — this is the sanity check before sweeps begin.
+
+**Progress**: Create `python/{asset}_{session}_progress.md` from `references/progress-template.md`. Record baseline metrics, anchor config, and set Next Action to "Run variable sweeps R1".
 
 **Experiment name**: `{INSTRUMENT} {SESSION} Baseline`
 
@@ -104,6 +117,8 @@ Each script must:
 
 **DOW filter**: Applied post-backtest via `apply_dow_filter()`, not in config.
 
+**Progress**: After each round completes, update the progress file: append a Round entry to the Adoption Log with entering/exiting anchor and adoptions. Update Current Anchor Config/Metrics tables. Update Next Action. Add the sweep script to Scripts Generated.
+
 **Experiment name**: Not saved to DB (these are diagnostic sweeps printed to stdout).
 
 ## Step 3: Grid Sweep
@@ -132,6 +147,8 @@ Each script must:
 **Decision logic**:
 - If grid winner differs from anchor by >0.5 Calmar: adopt new anchor, return to Step 2 variable sweeps.
 - If grid winner is close to anchor (<0.5 Calmar delta): convergence confirmed, proceed to Step 4.
+
+**Progress**: Update the progress file: append a Grid entry to the Grid Sweep Log with winner, delta, and decision. Update Current Anchor if changed. Update Next Action.
 
 ## Step 4: Robust Pipeline
 
@@ -175,6 +192,8 @@ Test on 2025+ data (never used during optimization).
 - **CONDITIONAL**: 4/5 pass.
 - **NO-GO**: 3 or fewer pass.
 
+**Progress**: Update the progress file: fill in the Pipeline Result table with each phase's result and key metrics. Record the verdict. Update Next Action.
+
 ## Step 5: Save Final Config
 
 If GO or CONDITIONAL: generate `save_{asset}_{session}_r{N}_final.py` in `python/scripts/`.
@@ -216,6 +235,8 @@ Add a strategy section with:
 - Parameter sensitivity notes (which dimensions mattered, which were insensitive)
 - Update "what works / what doesn't" sections
 
+**Progress**: Delete `python/{asset}_{session}_progress.md` — the learnings doc now has the permanent record. The progress file is no longer needed.
+
 ## Script Naming Convention
 
 All generated scripts go in `python/scripts/`:
@@ -244,6 +265,7 @@ Every generated script must follow these rules:
 8. **Imports**: Use direct import like `from orb_backtest.data.instruments import ES` (not `get_instrument()`).
 9. **Working directory**: Scripts run from `python/` via `cd python && uv run python scripts/{script}.py`.
 10. **10-tick minimum stop**: Every generated script must include a `median_stop_ticks()` helper that computes `median(t.risk_points / instrument.tick_size)` for filled trades. Any config with median stop < 10 ticks must be skipped (sweeps/grids) or flagged as FAIL (baseline/pipeline). This is a hard constraint — no exceptions.
+11. **Progress tracking**: Every optimization maintains a `python/{asset}_{session}_progress.md` file. Read it at the start of every step. Update it after every significant result. Delete it after Step 6. This file survives context compaction and is the single source of truth for workflow state.
 
 ## Relationship to Other Skills
 
