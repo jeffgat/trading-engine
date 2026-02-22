@@ -56,6 +56,7 @@ from .experiments import (
     toggle_star,
     list_starred,
     toggle_hidden,
+    rename_backtest as rename_backtest_db,
     get_instrument_coverage,
     get_param_coverage,
     list_testing_plan,
@@ -383,6 +384,17 @@ def hide_backtest(result_id: str):
     if new_state is None:
         raise backtest_not_found(result_id)
     return ok({"hidden": new_state})
+
+
+@app.patch("/api/backtests/{result_id}/name")
+def rename_backtest_endpoint(result_id: str, body: dict):
+    new_name = body.get("name", "").strip()
+    if not new_name:
+        raise BacktestError("Name cannot be empty")
+    result = rename_backtest_db(result_id, new_name)
+    if result is None:
+        raise backtest_not_found(result_id)
+    return ok({"name": result})
 
 
 @app.get("/api/starred")

@@ -12,6 +12,7 @@ interface UseStarredReturn {
   refilterBacktest: (id: string, start?: string, end?: string) => Promise<BacktestResult | null>;
   unstarBacktest: (id: string) => Promise<void>;
   hideBacktest: (id: string) => Promise<boolean>;
+  renameBacktest: (id: string, newName: string) => Promise<boolean>;
   bulkUnstarBacktests: (ids: string[]) => Promise<void>;
   bulkHideBacktests: (ids: string[]) => Promise<void>;
   setActiveId: (id: string | null) => void;
@@ -93,6 +94,21 @@ export function useStarredHistory(): UseStarredReturn {
     }
   }, [refreshHistory]);
 
+  const renameBacktest = useCallback(async (id: string, newName: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/backtests/${id}/name`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!res.ok) return false;
+      await refreshHistory();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [refreshHistory]);
+
   const bulkUnstarBacktests = useCallback(async (ids: string[]) => {
     const toUnstar = ids.filter((id) => {
       const item = history.find((h) => h.id === id);
@@ -121,5 +137,5 @@ export function useStarredHistory(): UseStarredReturn {
     return () => clearInterval(id);
   }, [refreshHistory]);
 
-  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, bulkUnstarBacktests, bulkHideBacktests, setActiveId };
+  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests, setActiveId };
 }

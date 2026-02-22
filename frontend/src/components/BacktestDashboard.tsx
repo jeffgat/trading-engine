@@ -11,9 +11,10 @@ import { StatBar } from './StatBar';
 import { StrategyTag } from './StrategyTag';
 import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
+import { Dialog, DialogContent } from './ui/dialog';
 
 export function BacktestDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, bulkStarBacktests, bulkHideBacktests } =
+    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
         useBacktestHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
@@ -25,6 +26,8 @@ export function BacktestDashboard() {
     const [originalDateEnd, setOriginalDateEnd] = useState('');
     const [filterLoading, setFilterLoading] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
     // Monte Carlo state
     const [mcResult, setMcResult] = useState<MonteCarloResult | null>(null);
@@ -140,9 +143,30 @@ export function BacktestDashboard() {
                 onRefresh={refreshHistory}
                 onStar={starBacktest}
                 onHide={hideBacktest}
+                onRename={renameBacktest}
                 onBulkStar={bulkStarBacktests}
                 onBulkHide={bulkHideBacktests}
+                onExpand={() => setHistoryModalOpen(true)}
             />
+
+            {/* History expanded modal */}
+            <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
+                <DialogContent className="max-w-7xl p-0">
+                    <BacktestHistoryPanel
+                        history={history}
+                        activeId={activeId}
+                        onLoad={(id) => { handleLoad(id); setHistoryModalOpen(false); }}
+                        onDelete={deleteBacktest}
+                        onRefresh={refreshHistory}
+                        onStar={starBacktest}
+                        onHide={hideBacktest}
+                        onRename={renameBacktest}
+                        onBulkStar={bulkStarBacktests}
+                        onBulkHide={bulkHideBacktests}
+                        isModal
+                    />
+                </DialogContent>
+            </Dialog>
 
             {/* Stats + Chart + Trades */}
             {loading && <LoadingSkeleton />}

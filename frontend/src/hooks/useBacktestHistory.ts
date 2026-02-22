@@ -13,6 +13,7 @@ interface UseHistoryReturn {
   deleteBacktest: (id: string) => Promise<void>;
   starBacktest: (id: string) => Promise<boolean>;
   hideBacktest: (id: string) => Promise<boolean>;
+  renameBacktest: (id: string, newName: string) => Promise<boolean>;
   bulkStarBacktests: (ids: string[]) => Promise<void>;
   bulkHideBacktests: (ids: string[]) => Promise<void>;
   setActiveId: (id: string | null) => void;
@@ -107,6 +108,21 @@ export function useBacktestHistory(): UseHistoryReturn {
     }
   }, [refreshHistory]);
 
+  const renameBacktest = useCallback(async (id: string, newName: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/backtests/${id}/name`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!res.ok) return false;
+      await refreshHistory();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [refreshHistory]);
+
   const bulkStarBacktests = useCallback(async (ids: string[]) => {
     const toStar = ids.filter((id) => {
       const item = history.find((h) => h.id === id);
@@ -135,5 +151,5 @@ export function useBacktestHistory(): UseHistoryReturn {
     return () => clearInterval(id);
   }, [refreshHistory]);
 
-  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, bulkStarBacktests, bulkHideBacktests, setActiveId };
+  return { history, loading, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests, setActiveId };
 }

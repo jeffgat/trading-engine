@@ -3,6 +3,7 @@ import { useStarredHistory } from '../hooks/useStarredHistory';
 import type { BacktestResult } from '../lib/types';
 import { BacktestHistoryPanel } from './BacktestHistoryPanel';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
+import { Dialog, DialogContent } from './ui/dialog';
 import { ConfigBar } from './ConfigBar';
 import { DateRangePicker } from './DateRangePicker';
 import { EquityChart } from './EquityChart';
@@ -13,11 +14,12 @@ import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 
 export function SavedStrategiesDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, bulkUnstarBacktests, bulkHideBacktests } =
+    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests } =
         useStarredHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [unstarId, setUnstarId] = useState<string | null>(null);
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
     // Date filter state
     const [filterStart, setFilterStart] = useState('');
@@ -128,9 +130,29 @@ export function SavedStrategiesDashboard() {
                         onRefresh={refreshHistory}
                         onStar={(id) => setUnstarId(id)}
                         onHide={hideBacktest}
+                        onRename={renameBacktest}
                         onBulkUnstar={bulkUnstarBacktests}
                         onBulkHide={bulkHideBacktests}
+                        onExpand={() => setHistoryModalOpen(true)}
                     />
+
+                    <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
+                        <DialogContent className="max-w-7xl p-0">
+                            <BacktestHistoryPanel
+                                history={history}
+                                activeId={activeId}
+                                onLoad={(id) => { handleLoad(id); setHistoryModalOpen(false); }}
+                                onDelete={handleUnstar}
+                                onRefresh={refreshHistory}
+                                onStar={(id) => setUnstarId(id)}
+                                onHide={hideBacktest}
+                                onRename={renameBacktest}
+                                onBulkUnstar={bulkUnstarBacktests}
+                                onBulkHide={bulkHideBacktests}
+                                isModal
+                            />
+                        </DialogContent>
+                    </Dialog>
 
                     <ConfirmDeleteDialog
                         open={unstarId !== null}

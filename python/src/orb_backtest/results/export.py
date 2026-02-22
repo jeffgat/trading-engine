@@ -16,6 +16,7 @@ from ..experiments import (
     log_optimization,
     get_backtest_result,
     delete_backtest_run,
+    rename_backtest,
     list_optimization_history,
     get_optimization_result,
     delete_optimization_run,

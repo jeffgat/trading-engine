@@ -78,9 +78,12 @@ interface HistoryPanelProps {
     onRefresh: () => void;
     onStar?: (id: string) => void;
     onHide?: (id: string) => void;
+    onRename?: (id: string, newName: string) => Promise<boolean>;
     onBulkStar?: (ids: string[]) => Promise<void>;
     onBulkHide?: (ids: string[]) => Promise<void>;
     onBulkUnstar?: (ids: string[]) => Promise<void>;
+    onExpand?: () => void;
+    isModal?: boolean;
 }
 
 export function BacktestHistoryPanel({
@@ -91,9 +94,12 @@ export function BacktestHistoryPanel({
     onRefresh,
     onStar,
     onHide,
+    onRename,
     onBulkStar,
     onBulkHide,
     onBulkUnstar,
+    onExpand,
+    isModal = false,
 }: HistoryPanelProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('total_pnl_usd');
@@ -104,6 +110,8 @@ export function BacktestHistoryPanel({
     const [selectMode, setSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkLoading, setBulkLoading] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editValue, setEditValue] = useState("");
 
     const hasBulkActions = !!(onBulkStar || onBulkHide || onBulkUnstar);
 
@@ -330,11 +338,21 @@ export function BacktestHistoryPanel({
                         )}
                         <span className="text-xs text-text-muted">{sorted.length} runs</span>
                         <RefreshButton onClick={onRefresh} />
+                        {onExpand && (
+                            <button
+                                onClick={onExpand}
+                                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-secondary hover:text-text-primary"
+                                title="Expand history">
+                                <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d="M1.5 6V1.5H6M10 1.5h4.5V6M14.5 10v4.5H10M6 14.5H1.5V10" />
+                                </svg>
+                            </button>
+                        )}
                     </div>
                 </div>
             )}
 
-            <ScrollArea className="h-[288px]">
+            <ScrollArea className={isModal ? 'h-[70vh]' : 'h-[288px]'}>
                 <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-bg-card">
                         <tr className="border-b border-border text-text-muted">
@@ -408,11 +426,46 @@ export function BacktestHistoryPanel({
                                     <td className="px-3 py-2 text-left">
                                         <div className="flex items-start gap-1">
                                             <div className="flex flex-col">
-                                                {item.name && (
-                                                    <span className="text-[10px] font-medium text-accent leading-tight">
+                                                {editingId === item.id ? (
+                                                    <input
+                                                        autoFocus
+                                                        className="text-[10px] font-medium text-accent leading-tight bg-bg-tertiary border border-accent/40 rounded px-1 py-0.5 outline-none focus:border-accent w-full min-w-[120px]"
+                                                        value={editValue}
+                                                        onChange={(e) => setEditValue(e.target.value)}
+                                                        onKeyDown={async (e) => {
+                                                            if (e.key === "Enter") {
+                                                                e.preventDefault();
+                                                                if (editValue.trim() && onRename) {
+                                                                    await onRename(item.id, editValue.trim());
+                                                                }
+                                                                setEditingId(null);
+                                                            } else if (e.key === "Escape") {
+                                                                setEditingId(null);
+                                                            }
+                                                        }}
+                                                        onBlur={async () => {
+                                                            if (editValue.trim() && onRename && editValue.trim() !== item.name) {
+                                                                await onRename(item.id, editValue.trim());
+                                                            }
+                                                            setEditingId(null);
+                                                        }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    />
+                                                ) : item.name ? (
+                                                    <span
+                                                        className="text-[10px] font-medium text-accent leading-tight cursor-pointer hover:underline"
+                                                        onDoubleClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (onRename) {
+                                                                setEditingId(item.id);
+                                                                setEditValue(item.name || "");
+                                                            }
+                                                        }}
+                                                        title="Double-click to rename"
+                                                    >
                                                         {item.name}
                                                     </span>
-                                                )}
+                                                ) : null}
                                                 <span className="font-bold text-text-primary">
                                                     {item.instrument}
                                                 </span>

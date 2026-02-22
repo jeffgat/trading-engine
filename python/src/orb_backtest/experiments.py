@@ -5,12 +5,37 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db"
+BACKUP_DIR = DB_PATH.parent / "backups"
+MAX_BACKUPS = 20  # Keep last 20 backups
+
+
+def backup_db() -> Path | None:
+    """Create a timestamped backup of experiments.db before destructive operations.
+
+    Returns the backup path, or None if the DB doesn't exist.
+    Keeps the last MAX_BACKUPS backups, pruning oldest.
+    """
+    if not DB_PATH.exists():
+        return None
+
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = BACKUP_DIR / f"experiments_{ts}.db"
+    shutil.copy2(DB_PATH, backup_path)
+
+    # Prune old backups
+    backups = sorted(BACKUP_DIR.glob("experiments_*.db"))
+    while len(backups) > MAX_BACKUPS:
+        backups.pop(0).unlink()
+
+    return backup_path
 
 # ---------------------------------------------------------------------------
 # Single source of truth for strategy param columns.
@@ -438,6 +463,7 @@ def get_backtest_result(result_id: str) -> dict | None:
 def delete_backtest_run(result_id: str) -> bool:
     """Delete a backtest from the runs table by result_file. Returns True if deleted."""
     init_db()
+    backup_db()
 
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute(
@@ -445,6 +471,24 @@ def delete_backtest_run(result_id: str) -> bool:
             [result_id],
         )
         return cur.rowcount > 0
+
+
+def rename_backtest(result_id: str, new_name: str) -> str | None:
+    """Rename a backtest's experiment_name. Returns new name, or None if not found."""
+    init_db()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT id FROM runs WHERE result_file = ? AND run_type = 'backtest' ORDER BY id DESC LIMIT 1",
+            [result_id],
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE runs SET experiment_name = ? WHERE result_file = ? AND run_type = 'backtest'",
+            [new_name, result_id],
+        )
+        return new_name
 
 
 def toggle_star(result_id: str) -> bool | None:
@@ -712,6 +756,7 @@ def get_optimization_result(result_id: str) -> dict | None:
 def delete_optimization_run(result_id: str) -> bool:
     """Delete an optimization from the optimizations table. Returns True if deleted."""
     init_db()
+    backup_db()
 
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute(
@@ -1142,6 +1187,7 @@ def update_testing_plan_item(item_id: int, **updates) -> dict | None:
 def delete_testing_plan_item(item_id: int) -> bool:
     """Delete a testing plan item. Returns True if deleted."""
     init_db()
+    backup_db()
 
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute("DELETE FROM testing_plan WHERE id = ?", [item_id])
