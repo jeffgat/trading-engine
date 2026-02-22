@@ -16,6 +16,8 @@ Six-step end-to-end workflow that takes an instrument from baseline through vali
 
 Orchestrates `multi-phase-backtest` sweep discipline with `robust-pipeline` validation. Calmar ratio is the primary optimization objective. DD is NOT a hard filter -- set `max_drawdown_r=999.0` everywhere.
 
+**HARD CONSTRAINT — 10-Tick Minimum Stop**: Never test, adopt, or save a config where the median stop is less than 10 ticks. Stops below 10 ticks are unrealistic — slippage eats the edge. Compute as `median(t.risk_points / instrument.tick_size for filled trades)`. Skip and print `SKIP (median stop < 10 ticks)` for any variant that fails this check. This applies at EVERY step: baseline, sweeps, grid, pipeline, and save.
+
 ## Before Starting
 
 Gather from the user:
@@ -57,9 +59,10 @@ START_DATE = "2016-01-01"
 # Run backtest, compute metrics, print results + R by year
 ```
 
-**Pass criteria**: >100 trades AND profit factor >1.0.
+**Pass criteria**: >100 trades AND profit factor >1.0 AND median stop >= 10 ticks.
 - FAIL: Record as NO-GO in learnings, stop workflow.
 - PASS: This becomes the initial anchor config for Step 2.
+- Also print median stop in ticks for the baseline — this is the sanity check before sweeps begin.
 
 **Experiment name**: `{INSTRUMENT} {SESSION} Baseline`
 
@@ -92,7 +95,7 @@ Each script must:
 - Track `neg_year_set()` -- negative full calendar years (exclude current partial year).
 - Print a summary table at the end showing the best value per dimension and whether to adopt.
 
-**Adoption rule**: Calmar delta > +0.3 AND no new negative full years AND trade count stays >100.
+**Adoption rule**: Calmar delta > +0.3 AND no new negative full years AND trade count stays >100 AND median stop >= 10 ticks.
 
 **Convergence logic**:
 - If any dimension is adopted: update anchor, increment N, re-sweep ALL 12 dimensions.
@@ -120,10 +123,11 @@ Target: 200-600 total combos.
 
 Each script must:
 - Iterate all combos, run backtest, compute metrics.
+- **Skip combos where median stop < 10 ticks** (10-tick minimum stop rule).
 - Print progress every 50 combos (elapsed time, rate, ETA).
 - Print Top 20 by Calmar (all combos).
 - Print Top 20 by Calmar (0 negative full years only).
-- Print grid summary: total combos, % with 0 neg years, % profitable.
+- Print grid summary: total combos, % with 0 neg years, % profitable, combos skipped for <10 tick stop.
 
 **Decision logic**:
 - If grid winner differs from anchor by >0.5 Calmar: adopt new anchor, return to Step 2 variable sweeps.
@@ -137,7 +141,7 @@ Five phases, each with pass/fail (except DD which is INFO only):
 
 ### Phase 1: Structural Validation
 Run full-history backtest on the final anchor config.
-- PASS: Trades >100, WR >35%, PF >1.2, Calmar >0.5
+- PASS: Trades >100, WR >35%, PF >1.2, Calmar >0.5, median stop >= 10 ticks
 
 ### Phase 2: Walk-Forward + Stability
 Rolling 36m IS / 12m OOS / 12m step. Tight param grid around anchor (3 values per dimension, ~81 combos/fold). Objective: sharpe.
@@ -239,6 +243,7 @@ Every generated script must follow these rules:
 7. **Negative year tracking**: Exclude the current partial year when counting negative years.
 8. **Imports**: Use direct import like `from orb_backtest.data.instruments import ES` (not `get_instrument()`).
 9. **Working directory**: Scripts run from `python/` via `cd python && uv run python scripts/{script}.py`.
+10. **10-tick minimum stop**: Every generated script must include a `median_stop_ticks()` helper that computes `median(t.risk_points / instrument.tick_size)` for filled trades. Any config with median stop < 10 ticks must be skipped (sweeps/grids) or flagged as FAIL (baseline/pipeline). This is a hard constraint — no exceptions.
 
 ## Relationship to Other Skills
 

@@ -48,6 +48,15 @@ CONFIG = StrategyConfig(
 START_DATE = "{START_DATE}"
 
 
+def median_stop_ticks(trades):
+    """Median stop distance in ticks. Configs with < 10 ticks are rejected."""
+    from statistics import median
+    filled = [t for t in trades if t.risk_points > 0]
+    if not filled:
+        return 0.0
+    return median(t.risk_points / {INSTRUMENT_IMPORT}.tick_size for t in filled)
+
+
 def main():
     print("{INSTRUMENT} {SESSION_UPPER} Baseline")
     print("=" * 60)
@@ -88,15 +97,22 @@ def main():
         neg_years = [yr for yr, r in years if r < 0 and str(yr) != "2026"]
         print(f"  Negative full years: {neg_years if neg_years else 'none'}")
 
+    # ── 10-tick minimum stop check ────────────────────────────────
+    med_ticks = median_stop_ticks(trades)
+    print(f"\n  Median stop: {med_ticks:.1f} ticks")
+
     # ── PASS / FAIL gate ──────────────────────────────────────────
     enough_trades = m["total_trades"] >= 100
     profitable = m["profit_factor"] > 1.0
-    verdict = "PASS" if (enough_trades and profitable) else "FAIL"
+    stop_ok = med_ticks >= 10
+    verdict = "PASS" if (enough_trades and profitable and stop_ok) else "FAIL"
     print(f"\n  Baseline verdict: {verdict}")
     if not enough_trades:
         print(f"    FAIL: only {m['total_trades']} trades (need >= 100)")
     if not profitable:
         print(f"    FAIL: PF {m['profit_factor']:.2f} (need > 1.0)")
+    if not stop_ok:
+        print(f"    FAIL: median stop {med_ticks:.1f} ticks (need >= 10)")
 
     print(f"\n  Total runtime: {time.time() - t0:.0f}s")
 

@@ -8,7 +8,7 @@ Single source of truth for all thresholds, criteria, and decision logic used in 
 
 - **Primary metric**: Calmar ratio
 - **Adoption threshold**: Calmar delta > +0.3 vs anchor
-- **Guard rails**: No new negative full years; trade count stays > 100
+- **Guard rails**: No new negative full years; trade count stays > 100; median stop >= 10 ticks
 - **If adopted**: Update anchor, increment sweep round N, re-sweep all dimensions
 - **Convergence**: 0 adoptions in a complete pass through all dimensions
 - **Max changes per round**: Adopt 2-3 changes at most -- never 5+ simultaneously (destructive parameter interaction risk, see NQ Asia R3 crash in `python/learnings/NQ.md`)
@@ -58,6 +58,15 @@ Single source of truth for all thresholds, criteria, and decision logic used in 
 | **GO** | All 5 phases pass | Deploy to prop firm |
 | **CONDITIONAL** | 4 of 5 pass, or borderline failures | Trade with reduced size; note which failed |
 | **NO-GO** | 3 or fewer pass | Do not trade; record in learnings |
+
+## Minimum Stop Size (10-Tick Rule)
+
+- **Never test or adopt a config where the median stop is less than 10 ticks**
+- Computed as: `median(t.risk_points for t in filled_trades) / instrument.tick_size`
+- Stops below 10 ticks are unrealistic (slippage eats the edge) and produce misleading backtests
+- This applies to: variable sweep stop dimension, grid sweep results, baseline pass/fail, pipeline Phase 1
+- In sweep scripts, skip the variant and print `SKIP (median stop < 10 ticks)` instead of metrics
+- In grid sweeps, filter out combos with median stop < 10 ticks before ranking
 
 ## DOW Filter Rules
 

@@ -75,6 +75,18 @@ GRID = list(product(STOPS, RRS, GAPS, TP1S))
 print(f"Grid size: {len(GRID)} combos ({len(STOPS)}x{len(RRS)}x{len(GAPS)}x{len(TP1S)})")
 
 
+MIN_STOP_TICKS = 10  # reject configs with median stop < 10 ticks
+
+
+def median_stop_ticks(trades):
+    """Median stop distance in ticks."""
+    from statistics import median
+    filled = [t for t in trades if t.risk_points > 0]
+    if not filled:
+        return 0.0
+    return median(t.risk_points / {INSTRUMENT_IMPORT}.tick_size for t in filled)
+
+
 def neg_year_set(rby: dict) -> set:
     """Return set of full calendar years with negative R (exclude current year)."""
     current_year = str(datetime.now().year)
@@ -105,6 +117,8 @@ def main():
         sess = replace(ANCHOR_SESSION, stop_atr_pct=stop, min_gap_atr_pct=gap)
         cfg = replace(ANCHOR, sessions=(sess,), rr=rr, tp1_ratio=tp1)
         trades = run_backtest(df_5m, cfg, start_date=START_DATE, df_1m=df_1m, df_1s=df_1s)
+        if median_stop_ticks(trades) < MIN_STOP_TICKS:
+            continue  # skip configs with stop < 10 ticks
         m = compute_metrics(trades)
 
         rby = m.get("r_by_year", {})

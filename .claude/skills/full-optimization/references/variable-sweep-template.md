@@ -170,6 +170,15 @@ def neg_year_set(m):
     return {yr for yr, r in m.get("r_by_year", {}).items() if r < 0 and str(yr) != current_year}
 
 
+def median_stop_ticks(trades):
+    """Median stop distance in ticks. Configs with < 10 ticks are rejected."""
+    from statistics import median
+    filled = [t for t in trades if t.risk_points > 0]
+    if not filled:
+        return 0.0
+    return median(t.risk_points / {INSTRUMENT_IMPORT}.tick_size for t in filled)
+
+
 def check_adopt(label, m, anchor_calmar, anchor_neg):
     cal = m["calmar_ratio"]
     delta = cal - anchor_calmar
@@ -228,7 +237,11 @@ def main():
     for i, s in enumerate(stop_vals, 1):
         sess = replace(ANCHOR_SESSION, stop_atr_pct=s)
         cfg = replace(ANCHOR, sessions=(sess,))
-        _, m = run_and_metric(df_5m, df_1m, df_1s, cfg)
+        trades_s, m = run_and_metric(df_5m, df_1m, df_1s, cfg)
+        med_ticks = median_stop_ticks(trades_s)
+        if med_ticks < 10:
+            print(f"    {i:>3} {'stop=' + str(s) + '%':>24}  SKIP (median stop {med_ticks:.1f} ticks < 10)")
+            continue
         print_row(i, f"stop={s}%", m, is_base=(abs(s - ANCHOR_SESSION.stop_atr_pct) < 0.01))
         if m["calmar_ratio"] > best_cal:
             best_cal, best_lbl, best_m = m["calmar_ratio"], f"stop={s}%", m

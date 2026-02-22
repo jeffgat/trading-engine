@@ -100,6 +100,15 @@ for v in PARAM_RANGES.values():
 # -- Helpers -------------------------------------------------------------------
 
 
+def median_stop_ticks(trades):
+    """Median stop distance in ticks. Configs with < 10 ticks are rejected."""
+    from statistics import median
+    filled = [t for t in trades if t.risk_points > 0]
+    if not filled:
+        return 0.0
+    return median(t.risk_points / INST.tick_size for t in filled)
+
+
 def fmt(passed: bool) -> str:
     return "PASS" if passed else "FAIL"
 
@@ -174,11 +183,15 @@ def main():
     p1_m = compute_metrics(p1_trades)
     print_metrics(p1_m, f"Full-history metrics ({time.time() - t0:.1f}s)")
 
+    p1_med_ticks = median_stop_ticks(p1_trades)
+    print(f"\n  Median stop: {p1_med_ticks:.1f} ticks", flush=True)
+
     p1_checks = {
         "Trades >= 100": p1_m["total_trades"] >= 100,
         "PF >= 1.2": p1_m["profit_factor"] >= 1.2,
         "Win rate >= 35%": p1_m["win_rate"] >= 0.35,
         "Calmar >= 0.5": p1_m["calmar_ratio"] >= 0.5,
+        "Median stop >= 10 ticks": p1_med_ticks >= 10,
     }
 
     print(f"\n  Structural checks:", flush=True)
@@ -504,6 +517,7 @@ Use session-prefixed param names matching the session (ny_, asia_, ldn_):
 | 1 - Structural | Profit factor | >= 1.2 | Yes |
 | 1 - Structural | Win rate | >= 35% | Yes |
 | 1 - Structural | Calmar | >= 0.5 | Yes |
+| 1 - Structural | Median stop | >= 10 ticks | Yes |
 | 2 - Walk-Forward | WF efficiency | >= 0.5 | Yes |
 | 2 - Walk-Forward | Stability score | >= 0.4 | Yes |
 | 2 - Walk-Forward | Folds completed | >= 4 | Yes (ensures statistical significance) |
