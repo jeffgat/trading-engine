@@ -1,8 +1,8 @@
 //@version=6
 strategy(
-     title              = "ORB V1 LDN/ES Testing",
+     title              = "ORB V1 Bot LDN/ES",
      overlay            = true,
-     initial_capital    = 500000,
+     initial_capital    = 30000,
      pyramiding         = 0,
      margin_long        = 0,
      margin_short       = 0,
@@ -17,12 +17,13 @@ strategy(
 // ----------------------------------------------------------------------------------------
 // Inputs - Risk Settings
 // ----------------------------------------------------------------------------------------
-riskUsd      = input.float(5000, "Risk per trade ($)", step=50, group="Risk Settings")
-rr           = input.float(2.0, "Reward/Risk", step=0.25, group="Risk Settings")
-tp1Ratio     = input.float(0.4, "Partial TP & BE Level (0.4 = 40% of target)", step=0.1, minval=0.1, maxval=0.9, group="Risk Settings")
+riskUsd      = input.float(300, "Risk per trade ($)", step=50, group="Risk Settings")
+rr           = input.float(3.5, "Reward/Risk", step=0.25, group="Risk Settings")
+tp1Ratio     = input.float(0.2, "Partial TP & BE Level (0.2 = 20% of target)", step=0.1, minval=0.1, maxval=0.9, group="Risk Settings")
 minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
 qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
 beOffsetTicks = input.int(4, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission", group="Risk Settings")
+execPointValue = input.float(5.0, "Execution Point Value ($)", step=1.0, tooltip="Point value of the execution instrument (MES=$5). Overrides chart syminfo for qty sizing.", group="Risk Settings")
 
 // ----------------------------------------------------------------------------------------
 // Inputs - Daily ATR
@@ -37,8 +38,8 @@ ldnOrbSession   = input.session("0300-0315", "LDN ORB window (ny time)", group="
 ldnEntryWindow  = input.session("0315-0825", "LDN Entry window (ny time)", group="LDN Session")
 ldnFlatWindow   = input.session("0820-0825", "LDN Flat window (ny time)", group="LDN Session")
 ldnMaxGapAtrPct = input.float(85.0, "LDN Max Gap (% ATR)", step=1.0, tooltip="Maximum gap size as percentage of daily ATR (0 = no limit)", group="LDN Session")
-ldnMinGapAtrPct = input.float(3.25, "LDN Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
-ldnStopAtrPct   = input.float(2.5, "LDN Stop Loss (% ATR)", step=0.5, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="LDN Session")
+ldnMinGapAtrPct = input.float(1.25, "LDN Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="LDN Session")
+ldnStopAtrPct   = input.float(3.0, "LDN Stop Loss (% ATR)", step=0.5, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="LDN Session")
 
 // ----------------------------------------------------------------------------------------
 // Safety: intended for 5m charts
@@ -102,8 +103,11 @@ var float shortFilledEntry = na
 
 var int longSetupBar  = na
 var int shortSetupBar = na
+var int fillBar = na
 
 var string activeSession = na
+var bool  tp1Alerted = false
+var float prevPos = 0
 
 // ----------------------------------------------------------------------------------------
 // Reset on new day
@@ -139,6 +143,7 @@ if newDay
     shortFilledEntry := na
     longSetupBar := na
     shortSetupBar := na
+    fillBar := na
     activeSession := na
 
     strategy.cancel("LL")
@@ -217,7 +222,7 @@ if canArmSetup and not longFirstFvgFound and longFVG
     riskPts = entry - stop
 
     if riskPts > 0
-        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qtyRaw = riskUsd / (riskPts * execPointValue)
         qty    = floorToStep(qtyRaw, qtyStep)
         isSingleContract = qty <= minQty
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
@@ -242,7 +247,7 @@ if canArmSetup and not shortFirstFvgFound and shortFVG
     riskPts = stop - entry
 
     if riskPts > 0
-        qtyRaw = riskUsd / (riskPts * syminfo.pointvalue)
+        qtyRaw = riskUsd / (riskPts * execPointValue)
         qty    = floorToStep(qtyRaw, qtyStep)
         isSingleContract = qty <= minQty
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
@@ -266,18 +271,21 @@ if canArmSetup and not shortFirstFvgFound and shortFVG
 if strategy.position_size > 0 and na(longFilledEntry)
     longFilledEntry := strategy.opentrades.entry_price(0)
     activeSession := "ldn"
+    fillBar := bar_index
 if strategy.position_size < 0 and na(shortFilledEntry)
     shortFilledEntry := strategy.opentrades.entry_price(0)
     activeSession := "ldn"
+    fillBar := bar_index
 
 // Reset when flat
 if strategy.position_size == 0
     activeSession := na
+    tp1Alerted := false
 
 // ----------------------------------------------------------------------------------------
-// Update breakeven state
+// Update breakeven state (gated on fill bar + 1)
 // ----------------------------------------------------------------------------------------
-if strategy.position_size > 0
+if strategy.position_size > 0 and not na(fillBar) and bar_index > fillBar
     if longSingleContract
         if not na(longHalfwayStored) and high >= longHalfwayStored
             longBEActive := true
@@ -286,7 +294,7 @@ if strategy.position_size > 0
         if positionReduced
             longBEActive := true
 
-if strategy.position_size < 0
+if strategy.position_size < 0 and not na(fillBar) and bar_index > fillBar
     if shortSingleContract
         if not na(shortHalfwayStored) and low <= shortHalfwayStored
             shortBEActive := true
@@ -305,9 +313,9 @@ if is5m and inLdnRTH and inLdnEntryWin and not hasTradedToday and strategy.posit
         strategy.entry("LS", strategy.short, qty=shortQtyStored, limit=shortEntryStored)
 
 // ----------------------------------------------------------------------------------------
-// Exit orders
+// Exit orders (gated on fill bar)
 // ----------------------------------------------------------------------------------------
-if strategy.position_size > 0
+if strategy.position_size > 0 and not na(fillBar) and bar_index >= fillBar
     beStopPrice = (not na(longFilledEntry) ? longFilledEntry : longEntryStored) + beOffset
     finalStop = longBEActive ? beStopPrice : longStopStored
 
@@ -317,7 +325,7 @@ if strategy.position_size > 0
         strategy.exit("LL-P", from_entry="LL", qty=longHalfQty, stop=finalStop, limit=longHalfwayStored, comment_loss=longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp1")
         strategy.exit("LL-F", from_entry="LL", stop=finalStop, limit=longTargetStored, comment_loss=longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp2")
 
-if strategy.position_size < 0
+if strategy.position_size < 0 and not na(fillBar) and bar_index >= fillBar
     beStopPrice = (not na(shortFilledEntry) ? shortFilledEntry : shortEntryStored) - beOffset
     finalStop = shortBEActive ? beStopPrice : shortStopStored
 
@@ -331,6 +339,8 @@ if strategy.position_size < 0
 // Cancel pending orders after cutoff
 // ----------------------------------------------------------------------------------------
 if ldnAfterCutoff
+    if (longSetupActive or shortSetupActive) and strategy.position_size == 0
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("LL")
     strategy.cancel("LS")
     longSetupActive := false
@@ -341,6 +351,8 @@ if ldnAfterCutoff
     shortSetupBar := na
 
 if not inLdnRTH
+    if (longSetupActive or shortSetupActive) and strategy.position_size == 0
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("LL")
     strategy.cancel("LS")
     longSetupActive := false
@@ -358,6 +370,101 @@ if inLdnFlatWin and strategy.position_size != 0
         strategy.close("LL", comment="ldn-eod-flat")
     if strategy.position_size < 0
         strategy.close("LS", comment="ldn-eod-flat")
+
+// ----------------------------------------------------------------------------------------
+// Hidden Plots for TradersPost Webhooks
+// ----------------------------------------------------------------------------------------
+currentTP1 = strategy.position_size > 0 ? longHalfwayStored : strategy.position_size < 0 ? shortHalfwayStored : na
+currentTP2 = strategy.position_size > 0 ? longTargetStored : strategy.position_size < 0 ? shortTargetStored : na
+currentStop = strategy.position_size > 0 ? longStopStored : strategy.position_size < 0 ? shortStopStored : na
+currentBE = strategy.position_size > 0 ? longFilledEntry + beOffset : strategy.position_size < 0 ? shortFilledEntry - beOffset : na
+currentEntry = strategy.position_size > 0 ? longEntryStored : strategy.position_size < 0 ? shortEntryStored : na
+currentQty = (longSetupActive and longSetupActive[1] == false) ? longQtyStored : (shortSetupActive and shortSetupActive[1] == false) ? shortQtyStored : strategy.position_size > 0 ? longQtyStored : strategy.position_size < 0 ? shortQtyStored : na
+currentHalfQty = strategy.position_size > 0 ? longHalfQty : strategy.position_size < 0 ? shortHalfQty : na
+currentSingleContract = strategy.position_size > 0 ? longSingleContract : strategy.position_size < 0 ? shortSingleContract : false
+
+setupEntry = (longSetupActive and longSetupActive[1] == false) ? longEntryStored : (shortSetupActive and shortSetupActive[1] == false) ? shortEntryStored : na
+setupStop = (longSetupActive and longSetupActive[1] == false) ? longStopStored : (shortSetupActive and shortSetupActive[1] == false) ? shortStopStored : na
+setupTP1 = (longSetupActive and longSetupActive[1] == false) ? longHalfwayStored : (shortSetupActive and shortSetupActive[1] == false) ? shortHalfwayStored : na
+setupTP2 = (longSetupActive and longSetupActive[1] == false) ? longTargetStored : (shortSetupActive and shortSetupActive[1] == false) ? shortTargetStored : na
+setupSingleContract = (longSetupActive and longSetupActive[1] == false) ? longSingleContract : (shortSetupActive and shortSetupActive[1] == false) ? shortSingleContract : false
+
+plot(currentTP1, "TP1", display=display.none)
+plot(currentTP2, "TP2", display=display.none)
+plot(currentStop, "StopLoss", display=display.none)
+plot(currentBE, "BreakevenPrice", display=display.none)
+plot(currentEntry, "Entry", display=display.none)
+plot(currentQty, "Quantity", display=display.none)
+plot(currentHalfQty, "HalfQuantity", display=display.none)
+plot(setupEntry, "SetupEntry", display=display.none)
+plot(setupStop, "SetupStop", display=display.none)
+plot(setupTP1, "SetupTP1", display=display.none)
+plot(setupTP2, "SetupTP2", display=display.none)
+
+// ----------------------------------------------------------------------------------------
+// Alert Conditions for TradersPost
+// ----------------------------------------------------------------------------------------
+longEntrySignal = (longSetupActive and longSetupActive[1] == false)
+shortEntrySignal = (shortSetupActive and shortSetupActive[1] == false)
+
+// TP1 hit - fire on live touch or position reduction (position still open)
+// Gate on fill bar + 1 to prevent same-bar entry + TP1 exit
+positionMature = not na(fillBar) and bar_index > fillBar
+
+tp1TouchLong = strategy.position_size > 0 and not na(currentTP1) and high >= currentTP1 and positionMature
+tp1TouchShort = strategy.position_size < 0 and not na(currentTP1) and low <= currentTP1 and positionMature
+tp1HitLong = (strategy.position_size > 0 and not currentSingleContract and not tp1Alerted and positionMature) and (
+    (strategy.position_size < strategy.position_size[1]) or tp1TouchLong
+)
+tp1HitShort = (strategy.position_size < 0 and not currentSingleContract and not tp1Alerted and positionMature) and (
+    (math.abs(strategy.position_size) < math.abs(strategy.position_size[1])) or tp1TouchShort
+)
+tp1HitSingleLong = (strategy.position_size > 0 and currentSingleContract and not tp1Alerted and positionMature) and tp1TouchLong
+tp1HitSingleShort = (strategy.position_size < 0 and currentSingleContract and not tp1Alerted and positionMature) and tp1TouchShort
+
+if longEntrySignal
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
+    if setupSingleContract
+        alert('{"ticker": "MES", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+    else
+        alert('{"ticker": "MES", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+if shortEntrySignal
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
+    if setupSingleContract
+        alert('{"ticker": "MES", "action": "sell", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+    else
+        alert('{"ticker": "MES", "action": "sell", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+if tp1HitLong
+    alert('{"ticker": "MES", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
+    tp1Alerted := true
+if tp1HitShort
+    alert('{"ticker": "MES", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "buy", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
+    tp1Alerted := true
+if tp1HitSingleLong
+    alert('{"ticker": "MES", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    tp1Alerted := true
+if tp1HitSingleShort
+    alert('{"ticker": "MES", "action": "buy", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    tp1Alerted := true
+
+// ----------------------------------------------------------------------------------------
+// Final exit alert - flatten and cancel remaining orders
+// ----------------------------------------------------------------------------------------
+flatNow = prevPos != 0 and strategy.position_size == 0
+if flatNow
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar)
+
+prevPos := strategy.position_size
+
+// ----------------------------------------------------------------------------------------
+// EOD Flat Alert
+// ----------------------------------------------------------------------------------------
+if inLdnFlatWin and strategy.position_size != 0
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
 
 // ----------------------------------------------------------------------------------------
 // Visuals - ORB Lines

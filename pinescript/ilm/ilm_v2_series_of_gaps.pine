@@ -38,7 +38,7 @@ minGapPts         = input.float(5.0, "Min Gap Size (pts)", step=1.0, minval=0, t
 maxGapPts         = input.float(40.0, "Max Gap Size (pts)", step=1.0, minval=0, tooltip="Maximum gap size in points — gaps larger than this are invalidated")
 gapWindowBars     = input.int(10, "Gap Window (bars)", minval=1, maxval=50, tooltip="Only use gaps formed within this many bars before/after the sweep candle")
 maxTradesPerDay   = input.int(3, "Max Trades Per Day", minval=1, maxval=10, tooltip="Maximum number of trades allowed per day")
-maxCandlesInGapSeries = input.int(4, "Max Candles in Gap Series", minval=1, maxval=10, tooltip="If this many or more adjacent gaps form in a series, the setup is invalidated")
+requireSingularGap = input.bool(true, "Require Singular Gap", tooltip="If true, setup is invalidated when a second valid gap of the same type forms within the gap window after the first")
 
 // Sweep Type Toggles
 useAsiaHighSweeps   = input.bool(true, "Use Asia High Sweeps", tooltip="Enable short setups from Asia high sweeps")
@@ -598,8 +598,11 @@ if waitingForGap and barClosed and isIntraday
         gapImpulseLow := low[1]   // Store impulse candle low
         gapImpulseHigh := high[1] // Store impulse candle high
         waitingForGap := false
-        collectingGaps := true
-        gapSeriesCount := 1
+        if requireSingularGap
+            collectingGaps := true   // Scan for a second gap to invalidate
+            gapSeriesCount := 1
+        else
+            waitingForInversion := true  // Skip singular check, proceed directly
 
     // For bullish setup (after low sweep): wait for BEARISH Gap
     if sweepType == "bullish" and bearishGapDetected and gapWithinWindow
@@ -610,44 +613,31 @@ if waitingForGap and barClosed and isIntraday
         gapImpulseLow := low[1]   // Store impulse candle low
         gapImpulseHigh := high[1] // Store impulse candle high
         waitingForGap := false
-        collectingGaps := true
-        gapSeriesCount := 1
+        if requireSingularGap
+            collectingGaps := true   // Scan for a second gap to invalidate
+            gapSeriesCount := 1
+        else
+            waitingForInversion := true  // Skip singular check, proceed directly
 
 // ----------------------------------------------------------------------------------------
-// Gap Series Collection (check for adjacent gaps on subsequent bars)
+// Singular Gap Validation (a second gap of the same type invalidates the setup)
 // ----------------------------------------------------------------------------------------
 if collectingGaps and barClosed and isIntraday
     // Skip the bar where the first gap was just detected (gapBar == bar_index)
     if gapBar < bar_index
-        // Check for a new gap of the SAME TYPE that is PRICE-ADJACENT to the combined gap
-        foundAdjacent = false
+        // Check if a second valid gap of the same type formed — invalidate if so
+        secondGapFound = false
+        impulseBar = bar_index - 1
+        stillInWindow = not na(sweepBar) and math.abs(impulseBar - sweepBar) <= gapWindowBars
 
-        if gapIsBullish and bullishGapDetected
-            // Check adjacency: new gap overlaps or touches the combined gap
-            if bullishGapBottom <= gapTop and bullishGapTop >= gapBottom
-                // Merge: extend combined gap boundaries
-                gapTop := math.max(gapTop, bullishGapTop)
-                gapBottom := math.min(gapBottom, bullishGapBottom)
-                gapImpulseHigh := math.max(gapImpulseHigh, high[1])
-                gapImpulseLow := math.min(gapImpulseLow, low[1])
-                gapBar := bar_index
-                gapSeriesCount += 1
-                foundAdjacent := true
+        if requireSingularGap and stillInWindow
+            if gapIsBullish and bullishGapDetected
+                secondGapFound := true
+            if not gapIsBullish and bearishGapDetected
+                secondGapFound := true
 
-        if not gapIsBullish and bearishGapDetected
-            // Check adjacency: new gap overlaps or touches the combined gap
-            if bearishGapBottom <= gapTop and bearishGapTop >= gapBottom
-                // Merge: extend combined gap boundaries
-                gapTop := math.max(gapTop, bearishGapTop)
-                gapBottom := math.min(gapBottom, bearishGapBottom)
-                gapImpulseHigh := math.max(gapImpulseHigh, high[1])
-                gapImpulseLow := math.min(gapImpulseLow, low[1])
-                gapBar := bar_index
-                gapSeriesCount += 1
-                foundAdjacent := true
-
-        // Check if series has too many gaps — immediately invalidate
-        if gapSeriesCount >= maxCandlesInGapSeries
+        if secondGapFound
+            // Second gap detected — invalidate the entire setup
             collectingGaps := false
             gapSeriesCount := 0
             waitingForGap := false
@@ -662,11 +652,11 @@ if collectingGaps and barClosed and isIntraday
             gapBar := na
             gapImpulseLow := na
             gapImpulseHigh := na
-        else if not foundAdjacent
-            // No adjacent gap on this bar — finalize the series
+        else if not stillInWindow
+            // Past the gap window with no second gap — proceed to inversion
             collectingGaps := false
-            // Series count is under the limit, proceed to inversion waiting
             waitingForInversion := true
+        // else: still within window, keep scanning for a second gap
 
 // ----------------------------------------------------------------------------------------
 // Setup Expiration (12 bars after sweep)
