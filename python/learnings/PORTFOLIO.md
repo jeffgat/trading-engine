@@ -227,3 +227,148 @@ F2 (skip NQ NY when NQ ASIA lost): Same problem — NQ NY has no dependence on p
 | NQ ASIA component | 6718 | NQ ASIA 2015-2026 v3 flat00 Pipeline NO-GO |
 
 Analysis script: `scripts/run_cross_asset_analysis.py` (re-runnable, read-only, < 30 seconds)
+
+---
+
+## NQ ASIA R4 ↔ ES ASIA R5 — Correlation Analysis
+
+**Context**: Both strategies trade the same Asia ORB window (20:00-20:10 ET). NQ uses both directions, ES is long only. Different instruments, configs, and exit profiles.
+
+**Analysis script**: `scripts/run_nq_es_asia_correlation.py` (re-runs both backtests, ~39s)
+
+### Individual Performance
+
+| Metric | NQ Asia R4 | ES Asia R5 |
+|--------|-----------|-----------|
+| Trades | 1,593 | 1,178 |
+| Win Rate | 66.8% | 59.6% |
+| Avg R | +0.133 | +0.189 |
+| Net R | +211.2 | +223.1 |
+| Max DD (R) | 8.9 | 10.5 |
+| Calmar | 23.85 | 21.24 |
+| Negative Years | 0 | 0 |
+
+### Overlap Statistics
+
+- **879 concurrent dates** (48.7% of 1,804 total active dates)
+- Both fire on the same day roughly half the time
+- Overlap is consistent across years (42-55%)
+
+### Correlation
+
+| Measure | r | p-value | Signal |
+|---------|---|---------|--------|
+| Daily R (concurrent) | +0.222 | 0.0000 | Weak but statistically significant |
+| Daily R (0-fill) | +0.139 | 0.0000 | Weak |
+| Monthly R (common) | +0.089 | 0.3295 | None (not significant) |
+
+**Diversification score: 0.911** (monthly |r| = 0.089) — **excellent**
+
+Rolling yearly correlation shows 3 spikes > 0.50: 2019 (+0.799), 2023 (+0.659), 2025 (+0.547). These are transient, not persistent.
+
+### Concurrent Outcome Crosstab
+
+| Condition | ES Win Rate | n |
+|-----------|------------|---|
+| Unconditional (overlap days) | 58.1% | 879 |
+| NQ Won | 66.3% | 579 |
+| NQ Lost | 42.6% | 298 |
+
+**Win-rate delta: +23.7%** — when NQ wins, ES is much more likely to win too (and vice versa). This is **positive daily correlation / concentration risk**. However, monthly correlation remains near-zero because losing days are smaller in magnitude and the effects average out over a month.
+
+### Combined Portfolio
+
+| Metric | NQ Alone | ES Alone | Combined |
+|--------|---------|---------|----------|
+| Net R | 211.2 | 223.1 | 434.3 |
+| Max DD (R) | 8.9 | 10.5 | 13.5 |
+| Calmar | 23.85 | 21.24 | **32.19** |
+| Negative Years | 0 | 0 | 0 |
+| Avg Annual R | 21.1 | 22.3 | 39.5 |
+
+**DD reduction: 30.3%** (actual 13.5R vs additive worst-case 19.4R).
+
+Worst concurrent day: 2016-01-20, combined -2.0R (NQ -1.0R, ES -1.0R)
+Best concurrent day: 2016-03-08, combined +3.787R
+
+### Key Findings
+
+1. **Monthly correlation is near-zero (+0.089)** despite sharing the same ORB window. Different instruments, different configs (NQ both/ES long-only), and different entry/flat windows create genuinely independent monthly return streams.
+
+2. **Daily correlation is positive but weak (+0.222)**. On overlap days, both tend to win or lose together — the win-rate delta of +23.7% confirms this. This is expected: same ORB window means the same overnight macro move drives both signals.
+
+3. **The daily correlation washes out at monthly level** because: (a) NQ fires on 687 days ES doesn't, (b) ES fires on 238 days NQ doesn't, and (c) the magnitude of wins/losses differs enough that daily co-movement doesn't compound into monthly correlation.
+
+4. **Combined Calmar (32.19) exceeds both standalone Calmars** (23.85, 21.24). The DD reduction of 30% is genuine diversification benefit despite sharing a session window.
+
+5. **Concentration risk is real but manageable**: On the worst concurrent day, total loss was -2.0R (each lost -1.0R). This is within normal single-strategy DD range.
+
+### Verdict: RUN BOTH
+
+Despite trading the same ORB window, NQ Asia R4 and ES Asia R5 provide genuine diversification. The combined Calmar (32.19) is 35% above the better standalone (NQ at 23.85). Monthly correlation is near-zero. DD reduction is 30%.
+
+**Position sizing**: On overlap days (~49% of active dates), total session risk is $10,000 ($5K each). If this exceeds single-session risk limits, reduce each to $2,500 on concurrent days.
+
+**Watch list**: 2019 and 2023 showed elevated yearly correlation (r > 0.50). In prolonged equity bull runs, both strategies may temporarily move together. Monitor for extended periods of high correlation.
+
+### Fill Order & Sizing Variants (Section 8-9)
+
+**Fill order on 879 overlap days**: NQ fills first 315 (35.8%), ES fills first 336 (38.2%), same-bar 228 (26.0%).
+
+**Second-to-fill systematically outperforms first-to-fill:**
+- When NQ fills 1st: NQ avg R = 0.033 vs ES (2nd) avg R = 0.152
+- When ES fills 1st: ES avg R = 0.195 vs NQ (2nd) avg R = 0.201
+- When ES fills 1st, NQ (2nd) wins 74.1% of the time (n=201)
+
+**Fill timing gap** (651 distinguishable-order days): Median 60 min, mean 154 min. Distribution: 0% under 5 min, 13% at 5-15 min, 16% at 15-30 min, 21% at 30-60 min, 25% at 1-2h, 25% at 2h+. There is reaction time for most fills, but the gap is large enough that real-time execution adds complexity.
+
+**Sizing variant simulation (Section 9):**
+
+| Variant | Description | Net R | Max DD | Calmar |
+|---------|-------------|-------|--------|--------|
+| A | Baseline 1.0x all | 434.3 | 13.5 | **32.19** |
+| B | Overlap both 1.25x | 494.5 | 17.9 | 27.66 |
+| C | Overlap both 1.5x | 554.6 | 22.3 | 24.91 |
+| D | 1st 1.0x / 2nd 1.5x | 505.9 | 17.9 | 28.31 |
+| E | 1st 1.0x / 2nd 2.0x | 577.5 | 22.4 | 25.76 |
+| F | 1st 0.5x / 2nd 1.5x | 457.3 | 15.0 | 30.56 |
+
+All variants have 0 negative years. **No variant beats baseline Calmar.** Increasing overlap size adds Net R but proportionally increases DD more, degrading risk-adjusted returns.
+
+### Conditional Sizing — Refined (Section 9e)
+
+**Concept**: On overlap days where fill order is distinguishable (651 of 879), the first trade's exit state is known before the second fills 88% of the time. Use this information to conditionally size the second trade.
+
+**First trade state when second fills** (651 distinguishable-order days):
+- 1st exited as TP1+ winner: 345 (53.0%)
+- 1st exited as TP2 winner: 148 (22.7%)
+- 1st exited as loser: 225 (34.6%)
+- 1st still open: 78 (12.0%)
+
+**Fine-grained sweep results** (Calmar-maximizing boost/reduce levels):
+
+| Sweep | Optimal Level | Calmar | vs Baseline |
+|-------|--------------|--------|-------------|
+| TP1+ boost (1.1x–2.5x) | **1.3x** | **33.23** | +3.2% |
+| TP2 boost (1.1x–2.5x) | 1.4x | 32.70 | +1.6% |
+| Reduce on 1st loss (0.25x–0.9x) | 1.00x (none) | 32.19 | 0% |
+
+Key finding: **Reducing size when the first trade lost does NOT help.** Every reduce level tested (0.25x–0.90x) degraded Calmar vs baseline. The second-to-fill's 64% win rate is independent of the first trade's outcome — "bad flow" days don't predict second-trade losses.
+
+**Recommended production variant (K):**
+
+| Metric | Baseline (A) | Variant K |
+|--------|-------------|-----------|
+| Net R | 434.3 | **453.0** (+18.7R) |
+| Max DD | 13.5 | 13.6 |
+| Calmar | 32.19 | **33.23** (+3.2%) |
+| Neg years | 0 | 0 |
+
+R-by-year delta is positive in every year (+0.2R to +3.2R).
+
+**Production sizing rule:**
+- On overlap days where the first-to-fill has already exited as TP1+ winner → boost 2nd to **1.3x**
+- If 1st still open or 1st lost → keep 2nd at **1.0x**
+- Non-overlap or same-bar fill days → **1.0x** (unchanged)
+
+This is a modest but consistent edge (+18.7R over 10 years, +3.2% Calmar) with near-zero additional risk (+0.1R DD). The rule is implementable in live trading: monitor the first fill's exit, and if it hits TP1+, increase the second position by 30%.

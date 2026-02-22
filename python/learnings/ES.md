@@ -140,12 +140,103 @@ All prior results above were obtained with 1m bar magnifier. The 1s magnifier is
 - **Runner-up**: stop=3.0% (Calmar 5.84, Sharpe 1.281, 218.8R, DD -37.4R, 1 neg year)
 - **Sweet spot**: 3-6% ATR; degrades badly above 8%
 
-### 1s Fine-Tune (in progress)
+### 1s Fine-Tune v1 (complete)
 - **Grid**: stop=[2.5-6.0] × rr=[2.0-5.0] × gap=[0.75-3.0] × tp1=[0.3-0.7] = 1,960 combos
-- **Status**: Running
+- **Winner (clean, >= 3% stop floor)**: stop=5.0%, rr=2.0, gap=1.25%, tp1=0.40 → Calmar 10.39
 
-## Next Steps
-1. Complete fine-tune, identify new anchor
-2. Re-sweep all variables on new anchor
-3. Run robust pipeline (WF + prop + holdout + MC)
-4. Test **ES NY session** if London continues to underperform
+### 1s Robust Pipeline (pre fill-bar fix)
+- **Anchor**: stop=5.2%, rr=2.0, gap=1.25%, tp1=0.40, flat=08:00
+- **Phase 1**: Calmar 14.57, Sharpe 1.383, DD -11.8R, 171.8 Net R, 0 neg years
+- **Status**: Complete, but engine fill-bar fix landed — re-optimization needed
+
+### Post Fill-Bar Fix Re-Optimization (in progress)
+- **Engine fix**: Stops/TPs that fill on the same bar as entry now correctly count
+- **Pre-fix anchor**: stop=5.2%, rr=2.0, gap=1.25%, tp1=0.40, ORB 10m, flat 08:00, ATR 50, 1s
+- **Step 1**: Diagnostic — run pre-fix anchor through fixed engine, compare metrics
+- **Step 2**: Variable sweep #3 (`run_es_ldn_1s_variable_sweeps_3.py`)
+- **Step 3**: Fine-tune grid v2 (`run_es_ldn_1s_fine_tune_v2.py`) — 1,728 combos
+- **Step 4**: Convergence check (sweep #4 if needed)
+- **Step 5**: Robust pipeline with converged anchor
+- **Step 6**: Save final + update learnings
+- **Scripts**: `run_es_ldn_1s_variable_sweeps_3.py`, `run_es_ldn_1s_fine_tune_v2.py`, `save_es_ldn_1s_final.py`
+
+---
+
+## Asia ORB Continuation — Long Only ✅ GO (2026-02-21)
+
+### Optimization History
+
+**R1→R5 variable sweeps** converged in 5 rounds. Key adoptions:
+- R1: stop 5.25→3.0%, ORB 15m→10m, entry 23:15→01:00, tp1 0.5→0.3, gap 0.9→0.5%
+- R2: ATR 14→5, entry 01:00→03:00, DOW none→excl Thu
+- R3: direction both→long (+4.19 Calmar)
+- R4: tp1 0.3→0.5 (+0.35 Calmar)
+- R5: **CONVERGED** — all 12 dimensions Δ=0
+
+**Scripts**: `run_es_asia_variable_sweeps_{1-5}.py`, `run_es_asia_grid_sweep_r1.py`, `run_es_asia_walkforward_r1.py`
+
+### Converged Anchor Config
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| direction | long only |
+| rr | 2.0 |
+| tp1_ratio | 0.5 |
+| atr_length | 5 |
+| stop_atr_pct | 3.0% |
+| min_gap_atr_pct | 0.5% |
+| max_gap_points | 50.0 (inert — no gaps exceed this) |
+| max_gap_atr_pct | 0 (no limit) |
+| ORB window | 20:00-20:10 (10m) |
+| entry_end | 03:00 |
+| flat_start | 06:45 |
+| DOW exclusion | Thu |
+| ICF | OFF |
+| magnifier | 1s |
+
+### Structural Backtest (full history 2016-2026)
+
+| Metric | Value |
+|--------|-------|
+| Trades | 1,178 |
+| Win Rate | 59.6% |
+| PF | 1.46 |
+| Sharpe | 2.85 |
+| Net R | 223.1 |
+| R/yr | 22.3 |
+| Max DD | -10.5R |
+| **Calmar** | **21.24** |
+| Neg years | **0** |
+
+R by year: 2016:+12  2017:+17  2018:+30  2019:+34  2020:+11  2021:+39  2022:+5  2023:+18  2024:+26  2025:+24  2026:+7
+
+### Grid Sweep (576 combos: stop × rr × gap × tp1)
+
+- **488/576 combos have 0 negative years** — extremely robust parameter surface
+- Grid winner: stop=2.0%, rr=2.5, gap=0.5%, tp1=0.5 (Calmar 25.97)
+- Anchor rank: #12/576 (Calmar 21.24)
+- Note: stop=2.0% is marginal (~5 ticks) per ES minimum stop floor rule. Anchor at 3.0% is safer.
+
+### Walk-Forward + Hold-out (all 4 configs GO)
+
+| Config | OOS R/yr | OOS Calmar | Holdout Sharpe | Holdout R | Verdict |
+|--------|----------|-----------|----------------|-----------|---------|
+| **Anchor (s3.0/rr2.0/g0.5/tp0.5)** | **22.2** | 2.21 | **3.60** | **31.1** | **GO** |
+| Grid #1 (s2.0/rr2.5/g0.5/tp0.5) | 19.4 | 2.28 | 3.47 | 35.5 | GO |
+| Grid #2 (s2.0/rr3.0/g0.5/tp0.4) | 19.7 | 2.29 | 3.15 | 32.3 | GO |
+| Grid #3 (s2.5/rr2.0/g0.5/tp0.6) | 21.2 | 2.12 | 3.88 | 36.3 | GO |
+
+- All 6 OOS folds (2019-2024) profitable for every config
+- All hold-outs (2025+) pass: Sharpe>0.5, PF>1.0, R>0
+- **Recommended config: R5 Anchor** (s3.0/rr2.0/g0.5/tp0.5) — safest stop floor, best OOS R/yr
+
+### Key Findings
+
+- **Long-only dominates**: Short side dragged performance in early rounds (2023:-2, 2024:-11 OOS). Removing shorts boosted Calmar from 16.69 to 20.88 with zero negative years.
+- **DOW Thursday exclusion**: Consistent +1-2 Calmar improvement across all anchors. Thursday is the weakest day for ES Asia longs.
+- **ATR 5 is optimal**: Shorter lookback captures recent volatility better for overnight sessions.
+- **Extended entry window (03:00)**: Asia session benefits from entries through the London open. Each hour added 01:00→03:00 improved Calmar monotonically.
+- **Flat start insensitive**: All values 04:00-06:45 are identical — trades close well before any flat time.
+- **Max gap points inert**: All values 20-100 and OFF are identical — gap sizes never reach these thresholds at 0.5% ATR floor.
+- **Parameter surface extremely robust**: 488/576 grid combos (85%) have zero negative years.

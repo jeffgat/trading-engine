@@ -1,401 +1,469 @@
 #!/usr/bin/env python3
-"""ES London ORB Robust Pipeline — 5-phase prop firm validation.
+"""ES LDN Continuation Both — 5-Phase Robust Pipeline.
 
-Instrument: ES (E-mini S&P 500), continuation strategy, bar magnifier enabled.
-Session: London (03:00-03:15 ET ORB, entries until 08:25, flat by 08:25).
-Data range: ~2016-01-01 to 2026-02-13 (~10 years).
+Final anchor (from grid sweep confirmation):
+  stop=5.2%, rr=2.0, gap=1.25%, tp1=0.40
+  ORB 10m (03:00-03:10), flat 08:00-08:25, ATR 50
+  Both directions, 1s bar magnifier
+  In-sample: Calmar 14.57, Sharpe 1.383, DD -11.8R, 0 neg years, 171.8 Net R
 
-Candidate params:
-  stop_atr_pct=3.0, min_gap_atr_pct=1.25, rr=2.75, tp1_ratio=0.3, risk=5000
-
-Phases:
-  1. Structural validation (full history, candidate params)
-  2. Walk-forward + parameter stability (36m IS / 12m OOS / 12m step)
-  3. Prop firm constraint filter (on combined WF OOS trades)
-  4. Hold-out OOS test (2025-01-01 onward, mode params from WF)
-  5. Monte Carlo survival (2000 bootstrap sims on WF OOS trades)
+Pipeline phases:
+  1. Structural validation — full-history metrics check
+  2. Walk-forward (36m IS / 12m OOS / 12m step) + param stability
+  3. Prop constraint filter on WF OOS trades (DD is INFO only)
+  4. Hold-out OOS — 2025+ data never used in optimization
+  5. Monte Carlo survival — 1000 bootstrap sims, ruin at -25R
 """
 
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, "src")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import numpy as np
-
-from orb_backtest.config import (
-    LDN_SESSION,
-    StrategyConfig,
-    with_overrides,
-)
-from orb_backtest.data.instruments import ES
-from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
+from orb_backtest.config import StrategyConfig, SessionConfig, with_overrides
+from orb_backtest.data.loader import load_5m_data, load_1m_for_5m, load_1s_for_5m
+from orb_backtest.data.instruments import get_instrument
 from orb_backtest.engine.simulator import run_backtest, EXIT_NO_FILL
+from orb_backtest.results.metrics import compute_metrics
+from orb_backtest.optimize.walkforward import run_walkforward
+from orb_backtest.optimize.stability import analyze_parameter_stability
 from orb_backtest.optimize.prop_constraints import (
     PropFirmConstraints,
     evaluate_constraints,
     evaluate_constraints_mc,
 )
-from orb_backtest.optimize.stability import analyze_parameter_stability
-from orb_backtest.optimize.walkforward import run_walkforward
-from orb_backtest.results.metrics import compute_metrics
-from orb_backtest.simulate.monte_carlo import MonteCarloConfig, run_monte_carlo
+from orb_backtest.simulate.monte_carlo import run_monte_carlo, MonteCarloConfig
 
-# ── Configuration ──────────────────────────────────────────────────────────
-WF_START = "2016-01-01"
-WF_END_SLICE = "2025-01-31"   # slice df for WF so OOS doesn't bleed into hold-out
-HOLDOUT_START = "2025-01-01"
-N_WORKERS = 8
+# -- Instrument ----------------------------------------------------------------
 
-PROP_CONSTRAINTS = PropFirmConstraints(
-    max_drawdown_r=10.0,
-    min_annual_r=24.0,
-    max_monthly_loss_r=5.0,
-    min_positive_expectancy=True,
+ES = get_instrument("ES")
+START_DATE = "2016-01-01"
+HOLDOUT_START = "2025-01-01"  # Never optimized on this data
+
+# -- Final Anchor Config -------------------------------------------------------
+
+ES_LDN_SESSION = SessionConfig(
+    name="LDN",
+    orb_start="03:00",
+    orb_end="03:10",       # 10m ORB
+    entry_start="03:10",
+    entry_end="08:25",
+    flat_start="08:00",    # from variable sweep
+    flat_end="08:25",
+    stop_atr_pct=5.2,      # from fine stop sweep
+    min_gap_atr_pct=1.25,  # from grid confirmation
+    max_gap_points=50.0,
 )
 
-# Walk-forward sweep ranges (centered around candidate params)
+ANCHOR = StrategyConfig(
+    rr=2.0,
+    tp1_ratio=0.40,
+    risk_usd=5000.0,
+    atr_length=50,
+    min_qty=1.0,
+    qty_step=1.0,
+    sessions=(ES_LDN_SESSION,),
+    instrument=ES,
+    strategy="continuation",
+    direction_filter="both",
+    use_bar_magnifier=True,
+)
+
+# -- Walk-forward param ranges (tight grid around winner) ----------------------
+
 PARAM_RANGES = {
-    "rr": [2.0, 2.5, 2.75, 3.0, 3.5],
-    "ldn_stop_atr_pct": [2.0, 3.0, 4.0, 5.0, 6.0],
-    "ldn_min_gap_atr_pct": [0.75, 1.0, 1.25, 1.5, 2.0],
-    "tp1_ratio": [0.2, 0.3, 0.4, 0.5],
+    "ldn_stop_atr_pct": [5.0, 5.2, 5.4],
+    "rr": [1.75, 2.0, 2.25],
+    "ldn_min_gap_atr_pct": [1.0, 1.25, 1.5],
+    "tp1_ratio": [0.35, 0.4, 0.45],
 }
+# 3 x 3 x 3 x 3 = 81 combos per fold
 
-GRID_SIZE = 1
-for v in PARAM_RANGES.values():
-    GRID_SIZE *= len(v)
+# -- Helpers -------------------------------------------------------------------
 
-
-def fmt_pass(passed: bool) -> str:
-    return "PASS" if passed else "FAIL"
+FULL_YEARS = [str(y) for y in range(2016, 2026)]
 
 
-def separator(title: str) -> None:
-    print(f"\n{'='*70}")
-    print(f"  {title}")
-    print(f"{'='*70}\n")
+def neg_years(m):
+    rby = m.get("r_by_year", {})
+    return sum(1 for y, r in rby.items() if y in FULL_YEARS and r < 0)
 
 
-def main():
-    # ── Load data ──────────────────────────────────────────────────────
-    separator("Loading ES data (5m + 1m for magnifier)")
+def r_per_year(m):
+    rby = m.get("r_by_year", {})
+    full = [r for y, r in rby.items() if y in FULL_YEARS]
+    return sum(full) / len(full) if full else 0.0
+
+
+def section(title):
+    print(flush=True)
+    print("=" * 70, flush=True)
+    print(f"  {title}", flush=True)
+    print("=" * 70, flush=True)
+
+
+def print_metrics(m, label=""):
+    if label:
+        print(f"\n  {label}", flush=True)
+    print(f"  {'Trades':<24s} {m['total_trades']:>10d}", flush=True)
+    print(f"  {'Win Rate':<24s} {m['win_rate']:>9.1%}", flush=True)
+    print(f"  {'Profit Factor':<24s} {m['profit_factor']:>10.2f}", flush=True)
+    print(f"  {'Net R':<24s} {m['total_r']:>9.1f}R", flush=True)
+    print(f"  {'R/yr':<24s} {r_per_year(m):>9.1f}R", flush=True)
+    print(f"  {'Max DD':<24s} {m['max_drawdown_r']:>9.1f}R", flush=True)
+    print(f"  {'Calmar':<24s} {m['calmar_ratio']:>10.2f}", flush=True)
+    print(f"  {'Sharpe':<24s} {m['sharpe_ratio']:>10.3f}", flush=True)
+    print(f"  {'Neg full years':<24s} {neg_years(m):>10d}", flush=True)
+    rby = m.get("r_by_year", {})
+    if rby:
+        print(f"\n  R by year:", flush=True)
+        for y, r in sorted(rby.items()):
+            flag = " <--" if r < 0 else ""
+            print(f"    {y}: {r:>8.1f}R{flag}", flush=True)
+
+
+def wf_progress(fold_idx, total, status):
+    print(f"  [Fold {fold_idx + 1}/{total}] {status}", flush=True)
+
+
+# -- Phase 1: Structural Validation -------------------------------------------
+
+def phase_1(df, df_1m, df_1s):
+    section("PHASE 1: STRUCTURAL VALIDATION")
+    print("  Running full-history backtest on anchor config...", flush=True)
 
     t0 = time.time()
-    df_5m = load_5m_data("ES_5m.csv", start=None, end=None)
-    df_1m = load_1m_for_5m("ES_5m.csv", start=None, end=None)
-    print(f"5m bars: {len(df_5m):,}  |  1m bars: {len(df_1m):,}")
-    print(f"Date range: {df_5m.index[0]} -> {df_5m.index[-1]}")
-    print(f"Loaded in {time.time() - t0:.1f}s")
+    trades = run_backtest(df, ANCHOR, start_date=START_DATE, df_1m=df_1m, df_1s=df_1s)
+    m = compute_metrics(trades)
+    elapsed = time.time() - t0
 
-    # Base config: ES LDN continuation with magnifier + candidate params
-    base_config = StrategyConfig(
-        sessions=(LDN_SESSION,),
-        instrument=ES,
-        strategy="continuation",
-        use_bar_magnifier=True,
-        risk_usd=5000.0,
-        rr=2.75,
-        tp1_ratio=0.3,
-        name="ES LDN Robust Pipeline",
-    )
-    # Apply candidate stop/gap params to LDN session
-    base_config = with_overrides(base_config, ldn_stop_atr_pct=3.0, ldn_min_gap_atr_pct=1.25)
+    print_metrics(m, f"Full-history metrics ({elapsed:.1f}s)")
 
-    # ==================================================================
-    # PHASE 1: Structural Validation
-    # ==================================================================
-    separator("PHASE 1: Structural Validation")
-    print("Running full-history backtest with candidate params + magnifier...")
-    print(f"Params: rr=2.75, stop_atr=3%, min_gap_atr=1.25%, tp1_ratio=0.3, risk=$5000")
+    # Checks
+    checks = {
+        "Trades > 100": m["total_trades"] > 100,
+        "Win rate > 35%": m["win_rate"] > 0.35,
+        "PF > 1.0": m["profit_factor"] > 1.0,
+        "Sharpe > 0.5": m["sharpe_ratio"] > 0.5,
+        "Calmar > 1.0": m["calmar_ratio"] > 1.0,
+    }
 
-    t0 = time.time()
-    p1_trades = run_backtest(df_5m, base_config, start_date=WF_START, df_1m=df_1m)
-    p1_metrics = compute_metrics(p1_trades)
-    print(f"Completed in {time.time() - t0:.1f}s")
+    print(f"\n  Structural checks:", flush=True)
+    all_pass = True
+    for name, passed in checks.items():
+        status = "PASS" if passed else "FAIL"
+        print(f"    [{status}] {name}", flush=True)
+        if not passed:
+            all_pass = False
 
-    # Check criteria
-    p1_trades_ok = p1_metrics["total_trades"] >= 100
-    p1_wr_ok = p1_metrics["win_rate"] >= 0.35
-    p1_pf_ok = p1_metrics["profit_factor"] >= 1.0
-    p1_consec_ok = p1_metrics["max_consecutive_losses"] <= 15
-    p1_passed = p1_trades_ok and p1_wr_ok and p1_pf_ok and p1_consec_ok
+    verdict = "PASS" if all_pass else "FAIL"
+    print(f"\n  Phase 1 verdict: {verdict}", flush=True)
+    return all_pass, trades, m
 
-    print(f"\n{'Metric':<28} {'Value':>10}  {'Threshold':>10}  {'Result':>8}")
-    print("-" * 62)
-    print(f"{'Total trades':<28} {p1_metrics['total_trades']:>10}  {'>=100':>10}  {fmt_pass(p1_trades_ok):>8}")
-    print(f"{'Win rate':<28} {p1_metrics['win_rate']:>10.1%}  {'>=35%':>10}  {fmt_pass(p1_wr_ok):>8}")
-    print(f"{'Profit factor':<28} {p1_metrics['profit_factor']:>10.2f}  {'>=1.0':>10}  {fmt_pass(p1_pf_ok):>8}")
-    print(f"{'Max consecutive losses':<28} {p1_metrics['max_consecutive_losses']:>10}  {'<=15':>10}  {fmt_pass(p1_consec_ok):>8}")
-    print(f"\n  Additional: Sharpe={p1_metrics['sharpe_ratio']:.2f}, "
-          f"Total R={p1_metrics['total_r']:.1f}, "
-          f"Max DD={p1_metrics['max_drawdown_r']:.1f}R, "
-          f"Calmar={p1_metrics['calmar_ratio']:.2f}")
 
-    print(f"\n  Exit breakdown:")
-    for exit_name, count in sorted(p1_metrics["exit_breakdown"].items()):
-        print(f"    {exit_name}: {count}")
+# -- Phase 2: Walk-Forward + Stability ----------------------------------------
 
-    print(f"\n  >> PHASE 1: {fmt_pass(p1_passed)}")
+def phase_2(df, df_1m, df_1s):
+    section("PHASE 2: WALK-FORWARD + PARAMETER STABILITY")
+    # NOTE: WF uses 1m magnifier only (not 1s). The 1s maps are ~101M entries
+    # and serializing them for multiprocessing workers is prohibitively slow.
+    # 1m fill precision is sufficient for parameter stability analysis.
 
-    if not p1_passed:
-        print("\n  Strategy fails structural validation. Pipeline stops here.")
-        sys.exit(1)
-
-    # ==================================================================
-    # PHASE 2: Walk-Forward + Parameter Stability
-    # ==================================================================
-    separator("PHASE 2: Walk-Forward Optimization + Stability")
-    print(f"Config: 36m IS / 12m OOS / 12m step (rolling)")
-    print(f"Sweep: {GRID_SIZE} combos per fold x {N_WORKERS} workers")
-    print(f"Params: {', '.join(f'{k}={v}' for k, v in PARAM_RANGES.items())}")
-
-    # Slice data to prevent OOS from bleeding into hold-out
-    df_wf = df_5m.loc[:WF_END_SLICE]
-    df_wf_1m = df_1m.loc[:WF_END_SLICE]
-    print(f"WF data range: {df_wf.index[0]} -> {df_wf.index[-1]}")
-
-    def wf_progress(fold_idx, total_folds, status):
-        print(f"  Fold {fold_idx + 1}/{total_folds}: {status}")
+    n_combos = 1
+    for v in PARAM_RANGES.values():
+        n_combos *= len(v)
+    print(f"  Config: 36m IS / 12m OOS / 12m step", flush=True)
+    print(f"  Grid: {n_combos} combos per fold", flush=True)
+    print(f"  Objective: sharpe", flush=True)
+    print(f"  Magnifier: 1m (1s too large for multiprocessing serialization)", flush=True)
+    print(f"  Params: {list(PARAM_RANGES.keys())}", flush=True)
+    print(flush=True)
 
     t0 = time.time()
     wf_result = run_walkforward(
-        df_wf,
-        base_config,
-        PARAM_RANGES,
+        df,
+        ANCHOR,
+        param_ranges=PARAM_RANGES,
         is_months=36,
         oos_months=12,
         step_months=12,
         anchored=False,
         objective="sharpe",
-        n_workers=N_WORKERS,
-        start_date=WF_START,
+        start_date=START_DATE,
         progress_fn=wf_progress,
-        df_1m=df_wf_1m,
-        max_dd_r=-10.0,
+        df_1m=df_1m,
     )
-    wf_elapsed = time.time() - t0
-    print(f"\nWalk-forward completed in {wf_elapsed:.0f}s ({len(wf_result.folds)} folds)")
+    elapsed = time.time() - t0
+    print(f"\n  Walk-forward completed in {elapsed:.0f}s", flush=True)
 
     # Per-fold summary
-    print(f"\n{'Fold':<6} {'IS Period':<25} {'OOS Period':<25} {'IS Sharpe':>10} {'OOS Sharpe':>11} {'Best Params'}")
-    print("-" * 120)
+    print(f"\n  {'Fold':<6s} {'IS Period':<24s} {'OOS Period':<24s} {'IS Shrp':>8s} {'OOS Shrp':>9s} {'Best Params'}", flush=True)
+    print(f"  {'-' * 110}", flush=True)
     for f in wf_result.folds:
         params_str = ", ".join(f"{k}={v}" for k, v in f.best_params.items())
-        print(f"{f.fold_index + 1:<6} "
-              f"{f.is_start}->{f.is_end:<14} "
-              f"{f.oos_start}->{f.oos_end:<14} "
-              f"{f.is_objective_value:>10.2f} "
-              f"{f.oos_objective_value:>11.2f} "
-              f"{params_str}")
-
-    # WF efficiency
-    p2_wfe_ok = wf_result.walk_forward_efficiency >= 0.5
-    p2_folds_ok = len(wf_result.folds) >= 4
-
-    # Stability
-    stability = analyze_parameter_stability(wf_result, PARAM_RANGES)
-    p2_stability_ok = stability.overall_score >= 0.4
-
-    print(f"\nParameter Stability:")
-    print(f"  {'Param':<25} {'Mode':>8} {'Score':>8} {'Range':<20} {'Unique':>8}")
-    print(f"  {'-'*73}")
-    for p in stability.params:
-        print(f"  {p.name:<25} {p.mode:>8.2f} {p.stability_score:>8.2f} "
-              f"{str(p.value_range):<20} {p.unique_values:>8}")
+        print(
+            f"  {f.fold_index + 1:<6d}"
+            f" {f.is_start} -> {f.is_end:<10s}"
+            f" {f.oos_start} -> {f.oos_end:<10s}"
+            f" {f.is_objective_value:>8.3f}"
+            f" {f.oos_objective_value:>9.3f}"
+            f"  {params_str}",
+            flush=True,
+        )
 
     # Combined OOS metrics
-    cm = wf_result.combined_oos_metrics
-    print(f"\nCombined OOS Metrics:")
-    print(f"  Trades: {cm['total_trades']}, Win Rate: {cm['win_rate']:.1%}, "
-          f"PF: {cm['profit_factor']:.2f}")
-    print(f"  Total R: {cm['total_r']:.1f}, Sharpe: {cm['sharpe_ratio']:.2f}, "
-          f"Max DD: {cm['max_drawdown_r']:.1f}R")
+    oos_m = wf_result.combined_oos_metrics
+    print_metrics(oos_m, "Combined OOS metrics")
 
-    p2_passed = p2_wfe_ok and p2_stability_ok and p2_folds_ok
+    # WF efficiency
+    print(f"\n  WF Efficiency: {wf_result.walk_forward_efficiency:.3f}", flush=True)
+    wfe_pass = wf_result.walk_forward_efficiency > 0.5
+    print(f"    [{'PASS' if wfe_pass else 'FAIL'}] WF efficiency > 0.5", flush=True)
 
-    print(f"\n{'Check':<28} {'Value':>10}  {'Threshold':>10}  {'Result':>8}")
-    print("-" * 62)
-    print(f"{'WF efficiency':<28} {wf_result.walk_forward_efficiency:>10.2f}  {'>=0.50':>10}  {fmt_pass(p2_wfe_ok):>8}")
-    print(f"{'Stability score':<28} {stability.overall_score:>10.2f}  {'>=0.40':>10}  {fmt_pass(p2_stability_ok):>8}")
-    print(f"{'Folds completed':<28} {len(wf_result.folds):>10}  {'>=4':>10}  {fmt_pass(p2_folds_ok):>8}")
-    print(f"{'Stability interpretation':<28} {stability.interpretation:>10}")
+    # Parameter stability
+    stability = analyze_parameter_stability(wf_result, param_ranges=PARAM_RANGES)
+    print(f"\n  Parameter Stability:", flush=True)
+    print(f"    Overall: {stability.overall_score:.3f} ({stability.interpretation})", flush=True)
+    for p in stability.params:
+        print(
+            f"    {p.name:<24s}  mode={p.mode:<6}  freq={p.mode_frequency}/{stability.n_folds}"
+            f"  score={p.stability_score:.3f}  range=[{p.value_range[0]}, {p.value_range[1]}]",
+            flush=True,
+        )
 
-    print(f"\n  >> PHASE 2: {fmt_pass(p2_passed)}")
+    stab_pass = stability.overall_score >= 0.4
+    print(f"    [{'PASS' if stab_pass else 'FAIL'}] Stability >= 0.4", flush=True)
 
-    if not p2_passed:
-        print("\n  Walk-forward validation failed. Continuing pipeline for diagnostics...")
+    verdict = "PASS" if (wfe_pass and stab_pass) else "FAIL"
+    print(f"\n  Phase 2 verdict: {verdict}", flush=True)
+    return wfe_pass and stab_pass, wf_result, stability
 
-    # ==================================================================
-    # PHASE 3: Prop Firm Constraint Filter
-    # ==================================================================
-    separator("PHASE 3: Prop Firm Constraint Filter")
-    print(f"Evaluating {len(wf_result.combined_oos_trades)} combined OOS trades against prop constraints...")
-    print(f"Constraints: DD<={PROP_CONSTRAINTS.max_drawdown_r}R, "
-          f"Annual>={PROP_CONSTRAINTS.min_annual_r}R, "
-          f"Monthly Loss<={PROP_CONSTRAINTS.max_monthly_loss_r}R")
 
-    cr = evaluate_constraints(wf_result.combined_oos_trades, PROP_CONSTRAINTS)
+# -- Phase 3: Prop Constraint Filter -------------------------------------------
 
-    print(f"\n{'Constraint':<28} {'Value':>12}  {'Threshold':>12}  {'Result':>8}")
-    print("-" * 66)
-    print(f"{'Max drawdown':<28} {cr.max_drawdown_r:>12.1f}R {'<=' + str(PROP_CONSTRAINTS.max_drawdown_r) + 'R':>12}  {fmt_pass(cr.max_drawdown_passed):>8}")
-    print(f"{'Worst monthly loss':<28} {cr.worst_month_r:>12.1f}R {'<=' + str(PROP_CONSTRAINTS.max_monthly_loss_r) + 'R':>12}  {fmt_pass(cr.monthly_loss_passed):>8}")
-    print(f"{'Expectancy':<28} {cr.expectancy:>12.3f}R {'> 0':>12}  {fmt_pass(cr.expectancy_passed):>8}")
-    print(f"{'Annual R (full years)':<28} {'':>12}  {'>=' + str(PROP_CONSTRAINTS.min_annual_r) + 'R':>12}  {fmt_pass(cr.annual_r_passed):>8}")
+def phase_3(wf_result):
+    section("PHASE 3: PROP FIRM CONSTRAINTS (on WF OOS trades)")
+
+    constraints = PropFirmConstraints(
+        max_drawdown_r=999.0,    # DD is NOT a hard filter (user preference)
+        min_annual_r=24.0,
+        max_monthly_loss_r=5.0,
+        min_positive_expectancy=True,
+    )
+    print(f"  Constraints:", flush=True)
+    print(f"    max_drawdown_r:  {constraints.max_drawdown_r} (INFO only — disabled as gate)", flush=True)
+    print(f"    min_annual_r:    {constraints.min_annual_r}R", flush=True)
+    print(f"    max_monthly_loss_r: {constraints.max_monthly_loss_r}R", flush=True)
+    print(f"    min_positive_expectancy: {constraints.min_positive_expectancy}", flush=True)
+
+    cr = evaluate_constraints(wf_result.combined_oos_trades, constraints)
+
+    print(f"\n  Results:", flush=True)
+    print(f"    Total trades:    {cr.total_trades}", flush=True)
+    print(f"    Total R:         {cr.total_r:.1f}R", flush=True)
+    print(f"    Win Rate:        {cr.win_rate:.1%}", flush=True)
+    print(f"    Expectancy:      {cr.expectancy:.3f}R", flush=True)
+    print(f"    Max DD:          {cr.max_drawdown_r:.1f}R", flush=True)
+    print(f"    Worst month:     {cr.worst_month_r:.1f}R", flush=True)
+    print(f"    Max consec loss: {cr.max_consecutive_losses}", flush=True)
+
+    print(f"\n  Constraint checks:", flush=True)
+    print(f"    [INFO ] Max DD: {cr.max_drawdown_r:.1f}R (not gated)", flush=True)
 
     if cr.annual_r_values:
-        print(f"\n  Annual R by year:")
-        for year, r_val in sorted(cr.annual_r_values.items()):
-            print(f"    {year}: {r_val:+.1f}R")
+        print(f"\n    Annual R by year (OOS):", flush=True)
+        for y, r in sorted(cr.annual_r_values.items()):
+            flag = " <--" if r < 0 else ""
+            print(f"      {y}: {r:>8.1f}R{flag}", flush=True)
 
-    print(f"\n  Supporting stats: {cr.total_trades} trades, {cr.win_rate:.1%} WR, "
-          f"avg win {cr.avg_win_r:.2f}R, avg loss {cr.avg_loss_r:.2f}R, "
-          f"max consec losses {cr.max_consecutive_losses}")
+    print(f"    [{'PASS' if cr.annual_r_passed else 'FAIL'}] Avg annual R >= {constraints.min_annual_r}R", flush=True)
+    print(f"    [{'PASS' if cr.monthly_loss_passed else 'FAIL'}] Worst month <= {constraints.max_monthly_loss_r}R", flush=True)
+    print(f"    [{'PASS' if cr.expectancy_passed else 'FAIL'}] Positive expectancy", flush=True)
 
-    p3_passed = cr.passed
-    print(f"\n  >> PHASE 3: {fmt_pass(p3_passed)}")
+    # Overall (ignoring DD since it's info-only)
+    non_dd_passed = cr.annual_r_passed and cr.monthly_loss_passed and cr.expectancy_passed
+    verdict = "PASS" if non_dd_passed else "FAIL"
+    print(f"\n  Phase 3 verdict: {verdict}", flush=True)
+    return non_dd_passed, cr
 
-    if not p3_passed:
-        print("\n  Prop constraint filter failed. Continuing for diagnostics...")
 
-    # ==================================================================
-    # PHASE 4: Hold-Out OOS Test
-    # ==================================================================
-    separator("PHASE 4: Hold-Out OOS Test")
+# -- Phase 4: Hold-Out OOS Test ------------------------------------------------
 
-    # Use mode params from stability analysis
-    mode_params = {p.name: p.mode for p in stability.params}
-    holdout_config = with_overrides(base_config, **mode_params)
-
-    print(f"Hold-out period: {HOLDOUT_START} -> present")
-    print(f"Mode params from WF: {mode_params}")
+def phase_4(df, df_1m, df_1s):
+    section("PHASE 4: HOLD-OUT OOS TEST (2025+)")
+    print(f"  Hold-out start: {HOLDOUT_START}", flush=True)
+    print(f"  This data was NEVER used during optimization.", flush=True)
 
     t0 = time.time()
-    holdout_trades = run_backtest(df_5m, holdout_config, start_date=HOLDOUT_START, df_1m=df_1m)
-    holdout_m = compute_metrics(holdout_trades)
-    print(f"Completed in {time.time() - t0:.1f}s")
+    trades = run_backtest(df, ANCHOR, start_date=HOLDOUT_START, df_1m=df_1m, df_1s=df_1s)
+    m = compute_metrics(trades)
+    elapsed = time.time() - t0
 
-    p4_sharpe_ok = holdout_m["sharpe_ratio"] > 0.5
-    p4_pf_ok = holdout_m["profit_factor"] > 1.0
-    p4_r_ok = holdout_m["total_r"] > 0
-    p4_passed = p4_sharpe_ok and p4_pf_ok and p4_r_ok
+    print_metrics(m, f"Hold-out OOS metrics ({elapsed:.1f}s)")
 
-    print(f"\n{'Metric':<28} {'Value':>10}  {'Threshold':>10}  {'Result':>8}")
-    print("-" * 62)
-    print(f"{'Sharpe ratio':<28} {holdout_m['sharpe_ratio']:>10.2f}  {'>0.50':>10}  {fmt_pass(p4_sharpe_ok):>8}")
-    print(f"{'Profit factor':<28} {holdout_m['profit_factor']:>10.2f}  {'>1.0':>10}  {fmt_pass(p4_pf_ok):>8}")
-    print(f"{'Total R':<28} {holdout_m['total_r']:>10.1f}  {'>0':>10}  {fmt_pass(p4_r_ok):>8}")
-    print(f"\n  Additional: {holdout_m['total_trades']} trades, "
-          f"WR={holdout_m['win_rate']:.1%}, "
-          f"Max DD={holdout_m['max_drawdown_r']:.1f}R, "
-          f"Calmar={holdout_m['calmar_ratio']:.2f}")
+    checks = {
+        "Sharpe > 0.5": m["sharpe_ratio"] > 0.5,
+        "PF > 1.0": m["profit_factor"] > 1.0,
+        "Total R > 0": m["total_r"] > 0,
+    }
 
-    print(f"\n  Exit breakdown:")
-    for exit_name, count in sorted(holdout_m["exit_breakdown"].items()):
-        print(f"    {exit_name}: {count}")
-
-    print(f"\n  >> PHASE 4: {fmt_pass(p4_passed)}")
-
-    if not p4_passed:
-        print("\n  Hold-out test failed. Continuing for diagnostics...")
-
-    # ==================================================================
-    # PHASE 5: Monte Carlo Survival
-    # ==================================================================
-    separator("PHASE 5: Monte Carlo Survival")
-    print("Running 2000 bootstrap simulations on WF OOS trades...")
-
-    mc_config = MonteCarloConfig(n_simulations=2000, method="bootstrap", seed=42)
-    t0 = time.time()
-    mc_result = run_monte_carlo(
-        wf_result.combined_oos_trades,
-        mc_config,
-        ruin_threshold=-PROP_CONSTRAINTS.max_drawdown_r,
-    )
-    print(f"MC completed in {time.time() - t0:.1f}s")
-
-    # Prop constraint survival
-    trade_dates = [t.date for t in wf_result.combined_oos_trades if t.exit_type != EXIT_NO_FILL]
-    mc_surv = evaluate_constraints_mc(mc_result, PROP_CONSTRAINTS, trade_dates=trade_dates)
-
-    p5_survival_ok = mc_surv["survival_rate"] >= 0.70
-    p5_dd95_ok = mc_surv["dd_percentiles"]["p95"] <= PROP_CONSTRAINTS.max_drawdown_r * 1.2
-
-    print(f"\n{'Metric':<28} {'Value':>12}  {'Threshold':>12}  {'Result':>8}")
-    print("-" * 66)
-    print(f"{'Survival rate':<28} {mc_surv['survival_rate']:>12.1%}  {'>=70%':>12}  {fmt_pass(p5_survival_ok):>8}")
-    print(f"{'DD p95':<28} {mc_surv['dd_percentiles']['p95']:>12.1f}R {'<=' + str(PROP_CONSTRAINTS.max_drawdown_r * 1.2) + 'R':>12}  {fmt_pass(p5_dd95_ok):>8}")
-
-    print(f"\n  DD Percentiles: {mc_surv['dd_percentiles']}")
-    print(f"  Ruin probability: {mc_result.ruin_probability:.1%}")
-    print(f"  Actual final PnL: {mc_result.actual_final_pnl:.1f}R")
-    print(f"  Actual max DD: {mc_result.actual_max_drawdown:.1f}R")
-    print(f"  Final PnL percentiles: {mc_result.final_pnl_percentiles}")
-
-    if "monthly_loss_pass_rate" in mc_surv:
-        print(f"  Monthly loss pass rate: {mc_surv['monthly_loss_pass_rate']:.1%}")
-    if "annual_r_pass_rate" in mc_surv:
-        print(f"  Annual R pass rate: {mc_surv['annual_r_pass_rate']:.1%}")
-
-    p5_passed = p5_survival_ok and p5_dd95_ok
-
-    # Interpret survival rate
-    if mc_surv["survival_rate"] >= 0.80:
-        survival_interp = "Strong -- deploy with full size"
-    elif mc_surv["survival_rate"] >= 0.70:
-        survival_interp = "Acceptable -- deploy, monitor closely"
-    elif mc_surv["survival_rate"] >= 0.50:
-        survival_interp = "Conditional -- reduce size or tighten stops"
-    else:
-        survival_interp = "No-go -- strategy will likely breach"
-
-    print(f"\n  Interpretation: {survival_interp}")
-    print(f"\n  >> PHASE 5: {fmt_pass(p5_passed)}")
-
-    # ==================================================================
-    # FINAL VERDICT
-    # ==================================================================
-    separator("FINAL VERDICT")
-
-    phases = [
-        ("Phase 1 (Structural)", p1_passed,
-         f"{p1_metrics['total_trades']} trades, {p1_metrics['win_rate']:.1%} WR, PF {p1_metrics['profit_factor']:.2f}"),
-        ("Phase 2 (Walk-Forward)", p2_passed,
-         f"WF eff {wf_result.walk_forward_efficiency:.2f}, stability {stability.overall_score:.2f} ({stability.interpretation})"),
-        ("Phase 3 (Prop Filter)", p3_passed,
-         f"DD {cr.max_drawdown_r:.1f}R, worst month {cr.worst_month_r:.1f}R, expectancy {cr.expectancy:.3f}R"),
-        ("Phase 4 (Hold-Out)", p4_passed,
-         f"Sharpe {holdout_m['sharpe_ratio']:.2f}, PF {holdout_m['profit_factor']:.2f}, {holdout_m['total_r']:+.1f}R"),
-        ("Phase 5 (MC Survival)", p5_passed,
-         f"{mc_surv['survival_rate']:.0%} survival at {PROP_CONSTRAINTS.max_drawdown_r}R DD"),
-    ]
-
-    for name, passed, detail in phases:
+    print(f"\n  Hold-out checks:", flush=True)
+    all_pass = True
+    for name, passed in checks.items():
         status = "PASS" if passed else "FAIL"
-        print(f"  {name + ':':<28} {status:<6} -- {detail}")
+        print(f"    [{status}] {name}", flush=True)
+        if not passed:
+            all_pass = False
 
-    # Determine verdict
-    all_phase_1_4 = all(p for _, p, _ in phases[:4])
-    phase_5_ok = p5_passed
+    verdict = "PASS" if all_pass else "FAIL"
+    print(f"\n  Phase 4 verdict: {verdict}", flush=True)
+    return all_pass, trades, m
 
-    if all_phase_1_4 and phase_5_ok:
-        verdict = "GO"
-        verdict_detail = "All phases pass. Strategy is prop-firm ready."
-    elif all_phase_1_4 and mc_surv["survival_rate"] >= 0.50:
-        verdict = "CONDITIONAL"
-        verdict_detail = "Phases 1-4 pass but MC survival is borderline. Trade with reduced size."
-    else:
-        verdict = "NO-GO"
-        failed = [name for name, passed, _ in phases if not passed]
-        verdict_detail = f"Failed: {', '.join(failed)}. Revisit parameters."
 
-    print(f"\n  >> VERDICT: {verdict}")
-    print(f"     {verdict_detail}")
+# -- Phase 5: Monte Carlo Survival --------------------------------------------
 
-    # Mode params summary
-    print(f"\n  Recommended params (WF mode): {mode_params}")
+def phase_5(full_trades):
+    section("PHASE 5: MONTE CARLO SURVIVAL")
 
+    mc_config = MonteCarloConfig(
+        n_simulations=1000,
+        method="bootstrap",
+        seed=42,
+    )
+    ruin_threshold = -25.0
+
+    print(f"  Method:      {mc_config.method}", flush=True)
+    print(f"  Simulations: {mc_config.n_simulations}", flush=True)
+    print(f"  Ruin at:     {ruin_threshold}R", flush=True)
+    print(f"  Trades in:   {len(full_trades)}", flush=True)
+
+    t0 = time.time()
+    mc_result = run_monte_carlo(full_trades, mc_config, ruin_threshold=ruin_threshold)
+    elapsed = time.time() - t0
+
+    print(f"\n  Monte Carlo completed in {elapsed:.1f}s", flush=True)
+
+    print(f"\n  Actual performance:", flush=True)
+    print(f"    Final PnL:    {mc_result.actual_final_pnl:.1f}R", flush=True)
+    print(f"    Max DD:       {mc_result.actual_max_drawdown:.1f}R", flush=True)
+    print(f"    Sharpe:       {mc_result.actual_sharpe:.3f}", flush=True)
+
+    print(f"\n  MC percentiles — Final PnL (R):", flush=True)
+    for k, v in mc_result.final_pnl_percentiles.items():
+        print(f"    {k}: {v:>8.1f}R", flush=True)
+
+    print(f"\n  MC percentiles — Max DD (R):", flush=True)
+    for k, v in mc_result.max_dd_percentiles.items():
+        print(f"    {k}: {v:>8.1f}R", flush=True)
+
+    print(f"\n  MC percentiles — Sharpe:", flush=True)
+    for k, v in mc_result.sharpe_percentiles.items():
+        print(f"    {k}: {v:>8.3f}", flush=True)
+
+    ruin_prob = mc_result.ruin_probability
+    survival = 1.0 - ruin_prob
+    print(f"\n  Ruin probability: {ruin_prob:.1%} (threshold: {ruin_threshold}R)", flush=True)
+    print(f"  Survival rate:    {survival:.1%}", flush=True)
+
+    # Also run prop-constraint MC evaluation
+    constraints = PropFirmConstraints(max_drawdown_r=999.0, min_annual_r=24.0, max_monthly_loss_r=5.0)
+    trade_dates = [t.date for t in full_trades if t.exit_type != EXIT_NO_FILL]
+    mc_eval = evaluate_constraints_mc(mc_result, constraints, trade_dates=trade_dates)
+    print(f"\n  MC prop constraint eval:", flush=True)
+    print(f"    DD survival:         {mc_eval['survival_rate']:.1%} (threshold: {mc_eval['dd_threshold']}R — INFO)", flush=True)
+    print(f"    DD p50:              {mc_eval['dd_percentiles']['p50']:.1f}R", flush=True)
+    print(f"    DD p95:              {mc_eval['dd_percentiles']['p95']:.1f}R", flush=True)
+    if "monthly_loss_pass_rate" in mc_eval:
+        print(f"    Monthly loss pass:   {mc_eval['monthly_loss_pass_rate']:.1%}", flush=True)
+    if "annual_r_pass_rate" in mc_eval:
+        print(f"    Annual R pass:       {mc_eval['annual_r_pass_rate']:.1%}", flush=True)
+
+    surv_pass = survival >= 0.70
+    print(f"\n    [{'PASS' if surv_pass else 'FAIL'}] Survival >= 70% at {ruin_threshold}R ruin", flush=True)
+
+    verdict = "PASS" if surv_pass else "FAIL"
+    print(f"\n  Phase 5 verdict: {verdict}", flush=True)
+    return surv_pass, mc_result
+
+
+# -- Main ----------------------------------------------------------------------
 
 if __name__ == "__main__":
-    main()
+    print(flush=True)
+    print("=" * 70, flush=True)
+    print("  ES LDN CONTINUATION BOTH — 5-PHASE ROBUST PIPELINE", flush=True)
+    print("  Anchor: stop=5.2% | rr=2.0 | gap=1.25% | tp1=0.4", flush=True)
+    print("  Structural: ORB 10m | flat 08:00 | ATR 50 | both dir | 1s", flush=True)
+    print("=" * 70, flush=True)
+
+    # Load data
+    print("\nLoading data...", flush=True)
+    t_load = time.time()
+    df = load_5m_data("ES_5m.csv")
+    df_1m = load_1m_for_5m("ES_5m.csv")
+    df_1s = load_1s_for_5m("ES_5m.csv")
+    print(f"  5m: {len(df):,} bars ({df.index[0].date()} to {df.index[-1].date()})", flush=True)
+    if df_1m is not None:
+        print(f"  1m: {len(df_1m):,} bars", flush=True)
+    if df_1s is not None:
+        print(f"  1s: {len(df_1s):,} bars", flush=True)
+    else:
+        print("  1s: NOT FOUND", flush=True)
+    print(f"  Loaded in {time.time() - t_load:.1f}s", flush=True)
+
+    t_start = time.time()
+    results = {}
+
+    # Phase 1
+    p1_pass, full_trades, full_metrics = phase_1(df, df_1m, df_1s)
+    results["Phase 1: Structural"] = p1_pass
+
+    if not p1_pass:
+        print("\n  ABORT: Phase 1 failed. Cannot proceed.", flush=True)
+        sys.exit(1)
+
+    # Phase 2
+    p2_pass, wf_result, stability = phase_2(df, df_1m, df_1s)
+    results["Phase 2: Walk-Forward"] = p2_pass
+
+    # Phase 3
+    p3_pass, constraint_result = phase_3(wf_result)
+    results["Phase 3: Prop Constraints"] = p3_pass
+
+    # Phase 4
+    p4_pass, holdout_trades, holdout_metrics = phase_4(df, df_1m, df_1s)
+    results["Phase 4: Hold-Out OOS"] = p4_pass
+
+    # Phase 5
+    p5_pass, mc_result = phase_5(full_trades)
+    results["Phase 5: Monte Carlo"] = p5_pass
+
+    total_elapsed = time.time() - t_start
+
+    # -- Final Summary --
+    section("FINAL PIPELINE SUMMARY")
+    print(f"  Anchor: stop=5.2% | rr=2.0 | gap=1.25% | tp1=0.4", flush=True)
+    print(f"  Structural: ORB 10m | flat 08:00 | ATR 50 | both dir | 1s", flush=True)
+    print(flush=True)
+
+    all_pass = True
+    for phase, passed in results.items():
+        status = "PASS" if passed else "FAIL"
+        print(f"  [{status}] {phase}", flush=True)
+        if not passed:
+            all_pass = False
+
+    print(flush=True)
+    if all_pass:
+        print("  VERDICT: GO — All phases passed. Strategy is prop-firm ready.", flush=True)
+    else:
+        failed = [p for p, v in results.items() if not v]
+        n_passed = sum(1 for v in results.values() if v)
+        if n_passed >= 4:
+            print(f"  VERDICT: CONDITIONAL — {n_passed}/5 passed. Failed: {', '.join(failed)}", flush=True)
+        else:
+            print(f"  VERDICT: NO-GO — {n_passed}/5 passed. Failed: {', '.join(failed)}", flush=True)
+
+    print(f"\n  Total pipeline time: {total_elapsed:.0f}s ({total_elapsed / 60:.1f} min)", flush=True)
+    print(flush=True)

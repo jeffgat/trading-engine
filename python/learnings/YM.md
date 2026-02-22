@@ -4,104 +4,64 @@
 - **Point value**: $5/point
 - **Min tick**: 1.0
 - **Commission**: $0.05/contract/side
-- **Data**: 2016-01 to 2026-02 (~10 years, 5m + 1m)
-- **Liquidity**: NY session tested. Continuation model (front-month continuous via Databento `YM.c.0`).
+- **Data**: 2016-01 to 2026-02 (~10 years, 5m + 1m + 1s)
 
 ## Strategies Tested
 
-### 1. Continuation NY both directions
-- **Status**: NO-GO
-- **Date tested**: 2026-02-17
-- **Pipeline results**:
+### 1. Asia Continuation Long-Only — NO-GO
+- **Script**: `run_ym_robust_directional.py --session Asia --direction long`
+- **Config**: Default Asia session params, 1s magnifier (structural), 1m magnifier (WF)
+- **Phase 1 (Structural)**: PASS — 1032 trades, 46% WR, PF 1.06, Sharpe 0.44, +34R, DD -25.6R, Calmar 1.33
+- **Phase 2 (Walk-Forward)**: FAIL — WF efficiency 0.28 (need ≥0.50), stability 0.75 (high). 3/6 OOS folds negative. Params unstable across folds (stop ranged 5-12.5%, rr 2.0-3.5).
+- **Phase 3 (Prop Filter)**: FAIL — Worst month -6.0R, avg annual R ~3.7R (need ≥24R). Years: 2019 +8.9R, 2020 -2.9R, 2021 +5.7R, 2022 +12.1R, 2023 -0.6R, 2024 -0.8R.
+- **Phase 4 (Hold-Out 2025)**: FAIL — 70 trades, WR 40%, Sharpe -1.20, PF 0.86, -6.1R, DD -14.8R.
+- **Phase 5 (MC)**: FAIL — DD p95 32.5R (exceeds 30R limit), ruin prob 15.3%.
+- **Mode params**: rr=2.0, stop=5.0%, gap=2.0%, tp1=0.6
+- **Conclusion**: Marginal structural edge but insufficient for prop firm. Walk-forward inconsistent, recent years (2023-2025) trending badly. Not enough R/year to justify.
 
-| Phase | Result | Detail |
-|-------|--------|--------|
-| 1. Structural | PASS | 1906 trades, 45.8% WR, PF 1.03, Sharpe 0.25 |
-| 2. Walk-Forward | FAIL | WF efficiency -1.52, stability 0.92 (vacuously high) |
-| 3. Prop Filter | FAIL | DD -47.8R, worst month -10.7R, expectancy -0.020R |
-| 4. Hold-Out | PASS | 218 trades, Sharpe 2.00, PF 1.32, +32.3R |
-| 5. Monte Carlo | FAIL | 0% survival at 10R DD |
+### 2. Asia Continuation Short-Only — NO-GO
+- **Script**: `run_ym_robust_directional.py --session Asia --direction short`
+- **Config**: Default Asia session params, 1s magnifier (structural), 1m magnifier (WF)
+- **Phase 1 (Structural)**: FAIL — 909 trades, 43.2% WR, PF 0.90, Sharpe -0.74, -49.3R, DD -81R.
+- **Phase 2 (Walk-Forward)**: FAIL — WF efficiency -3.83, combined OOS -40.1R. IS Sharpe often near zero or negative.
+- **Phase 3 (Prop Filter)**: FAIL — Negative expectancy (-0.089R). Massive losing years: 2019 -12.5R, 2022 -17.5R, 2024 -21.2R.
+- **Phase 4 (Hold-Out 2025)**: FAIL — Sharpe 0.46 (barely missed 0.5), PF 1.06, +2.5R. Surprising recent improvement but insufficient.
+- **Phase 5 (MC)**: FAIL — 94.2% ruin probability, DD p95 85.4R.
+- **Mode params**: rr=2.0, stop=5.0%, gap=1.5%, tp1=0.5
+- **Conclusion**: Structurally unprofitable. Do not revisit without a fundamentally different approach.
 
-### 2. Continuation NY short-only
-- **Status**: NO-GO
-- **Date tested**: 2026-02-17
-- **Rationale**: Short side showed Sharpe 0.76 vs long's 0.09 in structural check
-- **Pipeline results**:
+### 3. NY Continuation Long-Only — NO-GO
+- **Script**: `run_ym_robust_directional.py --session NY --direction long`
+- **Config**: Default NY session params, 1s magnifier (structural), 1m magnifier (WF)
+- **Phase 1 (Structural)**: FAIL — 895 trades, 45.5% WR, PF 1.02, Sharpe 0.17, +11.1R, DD -45.6R, Calmar 0.24. **Failed on max consec losses = 17 (>15)**.
+- **Phase 2 (Walk-Forward)**: PASS — WFE 0.56, stability 0.83 (high). 5/6 OOS folds positive. Stable mode params: rr=3.0, stop=7.5%, gap=1.0%, tp1=0.4.
+- **Phase 3 (Prop Filter)**: FAIL — Worst month -6.0R, avg annual R ~5R.
+- **Phase 4 (Hold-Out 2025)**: PASS — 110 trades, WR 50.9%, Sharpe 2.40, PF 1.40, +21.7R, DD -6.2R, Calmar 3.49.
+- **Phase 5 (MC)**: FAIL — DD p95 46.9R, ruin prob 45.5%.
+- **Mode params**: rr=3.0, stop=7.5%, gap=1.0%, tp1=0.4
+- **Optimization attempted** (variable sweeps R1-R2 + grid sweep):
+  - R1 sweep from WF mode anchor: adopted excl Tuesday (Calmar 0.35→0.65, neg years 2→0)
+  - R2 sweep with Tue exclusion: converged, no further adoptions
+  - Grid sweep (stop × rr × gap × tp1, 840 combos): best 0-neg-year config = stop=8.0%, rr=2.0, gap=0.75%, tp1=0.5 → Calmar 0.74, Sharpe 1.41, 7.4 R/yr, DD -10.0R
+  - Scripts: `run_ym_ny_variable_sweeps_1.py`, `run_ym_ny_variable_sweeps_2.py`, `run_ym_ny_grid_sweep_r1.py`
+- **Conclusion**: Optimization improved consistency (0 neg years, Calmar 0.74) but R/yr peaked at ~7.4. Not enough absolute return to justify as a standalone strategy. The edge is real but too small — YM's $5/pt value limits R generation per trade.
 
-| Phase | Result | Detail |
-|-------|--------|--------|
-| 1. Structural | PASS | 989 trades, 47.4% WR, PF 1.11, Sharpe 0.76 |
-| 2. Walk-Forward | FAIL | WF efficiency 0.26, stability 0.88 (high) |
-| 3. Prop Filter | FAIL | DD -19.0R, worst month -7.0R, 2019: -11.1R |
-| 4. Hold-Out | PASS | 115 trades, Sharpe 1.21, PF 1.18, +8.1R |
-| 5. Monte Carlo | FAIL | 0.4% survival, 99.6% ruin |
+### 4. NY Continuation Short-Only — NO-GO
+- **Script**: `run_ym_robust_directional.py --session NY --direction short`
+- **Config**: Default NY session params, 1s magnifier (structural), 1m magnifier (WF)
+- **Phase 1 (Structural)**: PASS — 857 trades, 47.6% WR, PF 1.11, Sharpe 0.77, +49.5R, DD -30.1R, Calmar 1.64.
+- **Phase 2 (Walk-Forward)**: FAIL — WFE -0.25, 4/6 OOS folds negative despite high stability (0.88). Combined OOS -13.3R. Edge is in-sample only.
+- **Phase 3 (Prop Filter)**: FAIL — Negative expectancy (-0.027R). 2019 -16.3R, 2020 -5.7R, 2021 -1.2R, 2022 -4.9R. Only recent folds (2023-2024) positive.
+- **Phase 4 (Hold-Out 2025)**: FAIL — WR 38.5%, Sharpe -0.67, PF 0.91, -5.6R.
+- **Phase 5 (MC)**: FAIL — DD p95 69R, ruin prob 79%.
+- **Mode params**: rr=3.0, stop=10.0%, gap=2.5%, tp1=0.5
+- **Conclusion**: Deceptive — strong structural metrics (+49.5R) but completely fails walk-forward. The full-history edge is overfit to specific regimes. 2019-2022 OOS folds all negative. Do not pursue.
 
-- **Mode params**: rr=2.0, ny_stop_atr_pct=7.5, ny_min_gap_atr_pct=2.25, tp1_ratio=0.4
-- **Note**: Best of the NY variants. Real stability (0.88) but WF efficiency only 0.26. Fold 1 (2019 OOS) was devastating (-2.05 OOS Sharpe). Fold 6 showed promise (1.39 OOS Sharpe with rr=2.0, stop=5.0, gap=1.0, tp1=0.4).
+## Key Findings
 
-### 3. Continuation Asia long-only
-- **Status**: NO-GO
-- **Date tested**: 2026-02-17
-- **Rationale**: Best Sharpe (0.84) and PF (1.12) of all structural screens
-- **Pipeline results**:
-
-| Phase | Result | Detail |
-|-------|--------|--------|
-| 1. Structural | FAIL | 1202 trades, 46.9% WR, PF 1.12, max consec losses=16 (>15) |
-| 2. Walk-Forward | FAIL | WF efficiency 0.11, stability 0.79 (high) |
-| 3. Prop Filter | FAIL | DD -13.8R, worst month -7.3R, 2023: -4.4R, 2024: -5.8R |
-| 4. Hold-Out | PASS | 58 trades, Sharpe 1.18, PF 1.17, +5.3R |
-| 5. Monte Carlo | FAIL | 3.2% survival, 96.8% ruin |
-
-- **Mode params**: rr=2.5, asia_stop_atr_pct=5.25, asia_min_gap_atr_pct=2.5, tp1_ratio=0.5
-- **Note**: Promising structural metrics but fails Phase 1 on consecutive losses. WF showed regime dependency — strong 2019-2022, weak 2023-2024. Combined OOS was positive (30.6R, PF 1.13, Sharpe 0.91) but DD -13.8R too deep for prop.
-
-### 4. Reversal (all sessions, all directions)
-- **Status**: NO-GO
-- **Date tested**: 2026-02-17
-- **Result**: Catastrophic across all 12 combinations (NY/Asia/LDN x both/long/short). PF range 0.23-0.53. Worst: NY both -1253.8R. YM does NOT mean-revert through FVGs.
-
-### 5. Inversion (all sessions, all directions)
-- **Status**: NO-GO
-- **Date tested**: 2026-02-17
-- **Result**: Negative across all 12 combinations. PF range 0.34-0.89. Best was LDN both (PF 0.87, Sharpe -1.02) — still a consistent loser. Unlike GC where inversion long was a GO, YM inversion does not work.
-
-## Comprehensive Screening Results (Phase 1 structural, 2016-2026)
-
-| Strategy | Session | Direction | Trades | WR | PF | Sharpe | Total R | Max DD |
-|----------|---------|-----------|--------|-----|------|--------|---------|--------|
-| continuation | NY | both | 1906 | 45.8% | 1.03 | 0.25 | +34.6R | -68.4R |
-| continuation | NY | long | 1068 | 45.4% | 1.01 | 0.09 | +7.1R | -56.6R |
-| **continuation** | **NY** | **short** | **989** | **47.4%** | **1.11** | **0.76** | **+54.4R** | **-31.2R** |
-| continuation | Asia | both | 2057 | 45.6% | 1.03 | 0.26 | +39.0R | -55.9R |
-| **continuation** | **Asia** | **long** | **1202** | **46.9%** | **1.12** | **0.84** | **+74.8R** | **-22.5R** |
-| continuation | Asia | short | 1073 | 44.0% | 0.94 | -0.44 | -34.0R | -78.1R |
-| continuation | LDN | both | 2407 | 46.4% | 1.01 | 0.12 | +19.4R | -46.7R |
-| continuation | LDN | long | 1498 | 46.8% | 1.02 | 0.17 | +16.4R | -34.0R |
-| continuation | LDN | short | 1382 | 45.6% | 1.00 | -0.01 | -1.1R | -40.8R |
-| reversal | all | all | - | 16-32% | 0.23-0.53 | -4.7 to -12.3 | catastrophic | - |
-| inversion | all | all | - | 21-43% | 0.34-0.89 | -0.8 to -8.6 | negative | - |
-
-## Key Insights
-
-1. **YM is not viable for the ORB+FVG strategy** in any form tested. Every combination of strategy (continuation/reversal/inversion), session (NY/Asia/LDN), and direction (both/long/short) produces NO-GO results.
-
-2. **The short side of NY continuation is the "least bad"** variant (Sharpe 0.76, PF 1.11) but still fails walk-forward and MC with -19R drawdown on WF OOS trades.
-
-3. **Asia long-only has the best raw metrics** (Sharpe 0.84, PF 1.12) but is regime-dependent — strong 2017-2022, degrading 2023-2024. Failed Phase 1 on consecutive losses.
-
-4. **Reversal is catastrophically bad** on YM — opposite of what the continuation strategy does is terrible. This confirms YM does trend through FVGs (continuation direction is correct), but the edge is too thin.
-
-5. **Inversion doesn't transfer from GC to YM** — the FVG invalidation pattern that works beautifully on gold does not work on the Dow.
-
-6. **All hold-out periods (2025) look good** but this is misleading — it's a single favorable regime. WF and MC consistently show the strategy can't survive realistic path variance.
-
-7. **The fundamental problem**: YM's ATR-scaled risk with default params leads to drawdowns 2-7x the prop firm limit. No param combination within reasonable ranges can solve this.
-
-## Recommendation
-
-Do not pursue the ORB+FVG strategy on YM for prop firm trading. The instrument may be better suited to:
-- Different entry logic entirely (e.g., range breakout without FVG requirement)
-- Much wider ORB windows (30+ min)
-- Different timeframes (15m or 1h bars)
-- Trend-following overlays rather than intraday mean-reversion setups
+- **Asia session is weak for YM**: Both directions fail all pipeline phases. Continuation strategy has no edge in Asia for this instrument.
+- **NY longs are the only viable direction**: Pass WF (0.56 efficiency) with high param stability and excellent 2025 holdout (Sharpe 2.40, +21.7R). All other direction/session combos fail WF.
+- **NY shorts are a trap**: Look great in-sample (PF 1.11, +49.5R) but WFE is -0.25. Classic overfitting — edge evaporates out of sample.
+- **R/year ceiling is ~7.4R** even after full optimization (variable sweeps + grid). The edge is consistent (0 neg years, Calmar 0.74) but the absolute return is too low. YM's $5/pt value limits per-trade R generation.
+- **Tuesday exclusion is the single biggest improvement**: Calmar nearly doubled (0.35→0.65), eliminated both negative years. Persistent across all anchor configs.
+- **YM is fully explored** — all 4 direction/session combos tested, NY longs optimized through grid sweep. No further strategies to pursue unless a fundamentally different approach (reversal, multi-session combo, or different entry logic) is considered.

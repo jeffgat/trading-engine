@@ -22,7 +22,7 @@ from orb_backtest.config import (
     with_overrides,
 )
 from orb_backtest.data.instruments import YM
-from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
+from orb_backtest.data.loader import load_5m_data, load_1m_for_5m, load_1s_for_5m
 from orb_backtest.engine.simulator import run_backtest, EXIT_NO_FILL
 from orb_backtest.optimize.prop_constraints import (
     PropFirmConstraints,
@@ -53,7 +53,7 @@ HOLDOUT_START = "2025-01-01"
 N_WORKERS = 8
 
 PROP_CONSTRAINTS = PropFirmConstraints(
-    max_drawdown_r=10.0,
+    max_drawdown_r=999.0,    # DD is NOT a hard filter (user preference)
     min_annual_r=24.0,
     max_monthly_loss_r=5.0,
     min_positive_expectancy=True,
@@ -73,7 +73,7 @@ def sep(title: str) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--session", required=True, choices=["NY", "Asia", "LDN"])
-    parser.add_argument("--direction", required=True, choices=["long", "short"])
+    parser.add_argument("--direction", required=True, choices=["long", "short", "both"])
     args = parser.parse_args()
 
     sess_name = args.session
@@ -99,7 +99,12 @@ def main():
     t0 = time.time()
     df_5m = load_5m_data("YM_5m.csv", start=None, end=None)
     df_1m = load_1m_for_5m("YM_5m.csv", start=None, end=None)
+    df_1s = load_1s_for_5m("YM_5m.csv", start=None, end=None)
     print(f"5m: {len(df_5m):,} bars  |  1m: {len(df_1m):,} bars  |  {time.time()-t0:.1f}s")
+    if df_1s is not None:
+        print(f"1s: {len(df_1s):,} bars")
+    else:
+        print("1s: NOT FOUND")
 
     base_config = StrategyConfig(
         sessions=SESSION_MAP[sess_name],
@@ -113,7 +118,7 @@ def main():
     # ── PHASE 1 ──────────────────────────────────────────────────────
     sep("PHASE 1: Structural Validation")
     t0 = time.time()
-    p1_trades = run_backtest(df_5m, base_config, start_date=WF_START, df_1m=df_1m)
+    p1_trades = run_backtest(df_5m, base_config, start_date=WF_START, df_1m=df_1m, df_1s=df_1s)
     p1_m = compute_metrics(p1_trades)
     print(f"Completed in {time.time()-t0:.1f}s")
 
@@ -139,10 +144,14 @@ def main():
 
     # ── PHASE 2 ──────────────────────────────────────────────────────
     sep("PHASE 2: Walk-Forward + Stability")
+    # NOTE: WF uses 1m magnifier only (not 1s). The 1s maps are too large
+    # and serializing them for multiprocessing workers is prohibitively slow.
+    # 1m fill precision is sufficient for parameter stability analysis.
     print(f"36m IS / 12m OOS / 12m step | {grid_size} combos x {N_WORKERS} workers")
+    print(f"Magnifier: 1m (1s too large for multiprocessing serialization)")
 
     df_wf = df_5m.loc[:WF_END_SLICE]
-    df_wf_1m = df_1m.loc[:WF_END_SLICE]
+    df_wf_1m = df_1m.loc[:WF_END_SLICE] if df_1m is not None else None
 
     def progress(fi, total, status):
         print(f"  Fold {fi+1}/{total}: {status}")
@@ -153,7 +162,6 @@ def main():
         is_months=36, oos_months=12, step_months=12,
         anchored=False, objective="sharpe", n_workers=N_WORKERS,
         start_date=WF_START, progress_fn=progress, df_1m=df_wf_1m,
-        max_dd_r=-10.0,
     )
     print(f"\nCompleted in {time.time()-t0:.0f}s ({len(wf.folds)} folds)")
 
@@ -211,7 +219,7 @@ def main():
     print(f"Period: {HOLDOUT_START} -> present | Mode params: {mode_params}")
 
     t0 = time.time()
-    ho_trades = run_backtest(df_5m, holdout_cfg, start_date=HOLDOUT_START, df_1m=df_1m)
+    ho_trades = run_backtest(df_5m, holdout_cfg, start_date=HOLDOUT_START, df_1m=df_1m, df_1s=df_1s)
     ho_m = compute_metrics(ho_trades)
     print(f"Completed in {time.time()-t0:.1f}s")
 
@@ -231,15 +239,16 @@ def main():
     sep("PHASE 5: Monte Carlo Survival")
     mc_cfg = MonteCarloConfig(n_simulations=2000, method="bootstrap", seed=42)
     t0 = time.time()
+    MC_RUIN_THRESHOLD = -25.0  # standalone ruin threshold, not tied to prop DD
     mc = run_monte_carlo(wf.combined_oos_trades, mc_cfg,
-                         ruin_threshold=-PROP_CONSTRAINTS.max_drawdown_r)
+                         ruin_threshold=MC_RUIN_THRESHOLD)
     print(f"2000 bootstrap sims in {time.time()-t0:.1f}s")
 
     dates = [t.date for t in wf.combined_oos_trades if t.exit_type != EXIT_NO_FILL]
     mc_surv = evaluate_constraints_mc(mc, PROP_CONSTRAINTS, trade_dates=dates)
 
     p5_surv = mc_surv["survival_rate"] >= 0.70
-    p5_dd95 = mc_surv["dd_percentiles"]["p95"] <= PROP_CONSTRAINTS.max_drawdown_r * 1.2
+    p5_dd95 = mc_surv["dd_percentiles"]["p95"] <= abs(MC_RUIN_THRESHOLD) * 1.2
     p5_passed = p5_surv and p5_dd95
 
     print(f"\n  Survival: {mc_surv['survival_rate']:.1%} ({fmt(p5_surv)})")

@@ -39,6 +39,7 @@ from .simulator import (
     EXIT_NAMES,
     _simulate_single_trade,
     _simulate_single_trade_magnifier,
+    _simulate_single_trade_hierarchical,
     _scan_fill_bar,
     _scan_fill_bar_magnifier,
     _precompute_day_boundaries,
@@ -908,6 +909,7 @@ def run_backtest_no_orb(
     start_date: str | None = None,
     end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
+    df_1s: pd.DataFrame | None = None,
 ) -> list[TradeResult]:
     """Run backtest with no-ORB liquidity sweep inversion logic.
 
@@ -921,11 +923,38 @@ def run_backtest_no_orb(
     timestamps = df.index
     n = len(df)
 
-    use_magnifier = config.use_bar_magnifier and df_1m is not None
+    has_1s = df_1s is not None
+    use_hierarchical = config.use_bar_magnifier and df_1m is not None and has_1s
+    use_magnifier = config.use_bar_magnifier and df_1m is not None and not use_hierarchical
+
     bar_map = None
     high_1m = low_1m = close_1m = None
     map_1m_to_5m = None
-    if use_magnifier:
+    map_5m_1m_arr = None
+    map_1m_1s_arr = np.empty((0, 2), dtype=np.int64)
+    high_1s = np.empty(0, dtype=np.float64)
+    low_1s = np.empty(0, dtype=np.float64)
+    close_1s = np.empty(0, dtype=np.float64)
+    # No 30s support in no-ORB path
+    map_1m_30s_arr = np.empty((0, 2), dtype=np.int64)
+    map_30s_1s_arr = np.empty((0, 2), dtype=np.int64)
+    high_30s = np.empty(0, dtype=np.float64)
+    low_30s = np.empty(0, dtype=np.float64)
+    close_30s = np.empty(0, dtype=np.float64)
+    has_30s = False
+
+    if use_hierarchical:
+        from ..data.bar_mapping import build_5m_to_1m_map, build_1m_to_1s_map
+        bar_map = build_5m_to_1m_map(df, df_1m)
+        map_5m_1m_arr = bar_map
+        high_1m = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
+        low_1m = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
+        close_1m = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
+        high_1s = np.ascontiguousarray(df_1s["high"].values, dtype=np.float64)
+        low_1s = np.ascontiguousarray(df_1s["low"].values, dtype=np.float64)
+        close_1s = np.ascontiguousarray(df_1s["close"].values, dtype=np.float64)
+        map_1m_1s_arr = build_1m_to_1s_map(df_1m, df_1s)
+    elif use_magnifier:
         from ..data.bar_mapping import build_5m_to_1m_map, map_1m_to_5m as _map_1m_to_5m
         bar_map = build_5m_to_1m_map(df, df_1m)
         high_1m = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
@@ -1041,7 +1070,22 @@ def run_backtest_no_orb(
             sd_groups[pc.sd].append(pc)
 
         def _simulate_and_append(pc: _PreparedCandidate) -> None:
-            if use_magnifier and pc.entry_start_1m >= 0:
+            if use_hierarchical:
+                fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade_hierarchical(
+                    high, low, close,
+                    pc.entry_bar_start, pc.entry_bar_end,
+                    pc.flat_bar_start, pc.last_bar,
+                    high_1m, low_1m, close_1m,
+                    high_30s, low_30s, close_30s,
+                    high_1s, low_1s, close_1s,
+                    map_5m_1m_arr, map_1m_30s_arr, map_30s_1s_arr, map_1m_1s_arr,
+                    has_30s, has_1s,
+                    pc.direction, pc.entry_price, pc.stop_price,
+                    pc.tp1_price, pc.tp2_price, pc.be_price,
+                    pc.is_single, pc.qty, pc.half_qty,
+                    config.point_value, config.commission_per_contract,
+                )
+            elif use_magnifier and pc.entry_start_1m >= 0:
                 fill_bar_1m, exit_type, exit_bar_1m, pnl_pts, _, _ = _simulate_single_trade_magnifier(
                     high_1m, low_1m, close_1m,
                     pc.entry_start_1m, pc.entry_end_1m,

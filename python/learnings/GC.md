@@ -78,9 +78,11 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 - v1 (1m magnifier): INVALID — 1m data inflated performance
 
 ### Reversal (bullish FVG -> short, bearish FVG -> long)
-- **Status**: NO-GO (tested on old data, expected same conclusion on new data — all continuation signals go long)
-- **Result**: -292.8R over 10 years with defaults. Best of 140 param combos still -114R, PF 0.80. Every single year negative.
-- **Conclusion**: GC does not mean-revert through FVGs. The continuation direction captures the trend; reversals fight it. Do not revisit.
+- **Status**: NO-GO — confirmed on clean 1s data (2026-02-21), both directions, long-only raw, and long-only with inversion
+- **Old result (both dirs, corrupted data)**: -292.8R over 10 years, best of 140 combos -114R, PF 0.80. Every year negative.
+- **Raw reversal longs (clean 1s, strategy="reversal")**: 667 trades, **8.8% WR, -495.2R**. 91% SL hits. No parameter config positive across 8 dimensions.
+- **Inversion reversal longs (clean 1s, strategy="inversion")**: 261 trades, **6.5% WR, -211.0R**. 93.5% SL hits. Inversion confirmation doesn't help — even with FVG invalidation, price continues down after ORB breakdown. 8 dimensions swept, zero positive configs. Best: stop=12% at -45.8R (still all years negative).
+- **Conclusion**: ORB reversal longs are structurally broken on GC in every variant tested. After ORB low breakdown, price continues down — bearish FVGs don't reverse. Do not revisit.
 
 ### Inversion Longs (wait for FVG invalidation, then enter long)
 - **Status**: ⚠️ INVALID — results were from incomplete data. Re-tested on new data → NO EDGE.
@@ -116,21 +118,84 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 - **Status**: NO-GO
 - **Result**: 127 trades, 173.2R net, but -65.0R max DD. 2023 alone was -63.4R. Do not revisit.
 
-### Continuation Shorts
-- **Status**: NO-GO
-- **Result**: -98R over 10 years, 28% win rate. Structurally broken — every param combo negative. Do not revisit.
+### Continuation Shorts — CONDITIONAL GO (pipeline validated 2026-02-21)
+
+- **Prior status (old data)**: NO-GO (-98R, 28% WR on corrupted data). **OVERTURNED on clean 1s data.**
+- **Scripts**: `run_gc_cont_shorts_diagnostic.py`, `run_gc_cont_shorts_sweeps{,_r2,_r3,_r4}.py`, `run_gc_cont_shorts_grid_r{1,2}.py`, `run_gc_cont_shorts_pipeline.py`
+
+**Converged anchor config (R4, post-grid R2):**
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| direction | short only |
+| rr | 7.0 |
+| tp1_ratio | 0.6 |
+| atr_length | 10 |
+| ny_stop_atr_pct | 2.5% |
+| ny_min_gap_atr_pct | 5.5% |
+| ny_max_gap_atr_pct | 25.0% |
+| ny_max_gap_points | 25.0 |
+| ORB window | 09:30-09:45 (15m) |
+| entry_end | 15:00 |
+| flat_start | 15:50 |
+| excluded_dates | FOMC_DATES |
+| magnifier | 1s |
+
+**WF mode params (use for live trading):** rr=5.5, tp1=0.6, stop=2.5%, min_gap=5.5%
+
+**Phase 1** (full history 2016-2026): 621 trades, 26.1% WR, 219.0R net, Sharpe 2.290, Calmar 14.52, Max DD -15.1R, 0 neg full years
+- Yearly: 2016 +23.6 | 2017 +15.2 | 2018 +24.2 | 2019 +28.4 | 2020 +54.8 | 2021 +18.9 | 2022 +17.9 | 2023 +1.4 | 2024 +0.1 | 2025 +37.8
+
+**Phase 2 WF** (36m IS/12m OOS/12m step, 5 folds, 90 combos/fold):
+- OOS: 295 trades, 27.5% WR, 100.3R net, Sharpe 2.276, Calmar 7.94, PF 1.46, DD -12.6R
+- **WF Efficiency: 0.28 (FAIL — threshold 0.30, missed by 0.02)**
+- Stability: 0.85 (HIGH) — tp1=0.6, stop=2.5%, gap=5.5% all at 1.00. rr mode=5.5 (0.40 stability)
+- OOS years: 2019 +13.9R, 2020 +55.4R, 2021 +12.5R, 2022 +17.3R, 2023 +1.2R (all positive)
+
+**Phase 3 Prop Firm**: PASS — 20.1R/yr avg (threshold 12.0), expectancy +0.340.
+
+**Phase 4 Hold-out** (2025-01 to 2026-02, mode params rr=5.5): 63 trades, 33.3% WR, 30.9R, Sharpe 3.447, PF 1.75. 2025: +34.5R, 2026 YTD: -3.5R.
+
+**Phase 5 Monte Carlo**: **47.9% survival at -25R ruin (FAIL — threshold 60%)**. Median final PnL 219.0R, median DD -25.3R. Low win rate (26%) creates deep drawdown sequences.
+
+**Verdict: CONDITIONAL GO** — Strong structural edge (Calmar 14.52, 0 neg years), all OOS folds profitable, holdout excellent (Sharpe 3.447). Two borderline failures:
+1. WF efficiency 0.28 (missed by 0.02, fold 5/2023 OOS flat at Calmar 0.102)
+2. MC survival 47.9% (position sizing concern — reduce risk_usd for shallower dollar DD)
+
+**Key structural differences vs continuation longs:**
+- ORB 15m (vs 10m for longs) — larger ORB range needed before shorting breakdown
+- entry→15:00 (vs 11:00 for longs) — shorts benefit from afternoon continuation
+- rr=7.0 (vs 4.0 for longs) — breakdowns extend much further
+- min_gap=5.5% (vs 3.5% for longs) — only large FVGs produce reliable short entries
+- stop=2.5% (vs 4.0% for longs) — tighter stops work because breakdown momentum is sharper
+
+#### Anchor evolution (R1→R4)
+
+| Round | Calmar | Change |
+|-------|--------|--------|
+| R1 diagnostic | 0.23 | Initial scan with longs anchor params |
+| R1 compound | 0.48 | rr=5.0 + gap=5.0% compound |
+| R1 sweeps | 0.48 | ORB 15m, entry→15:00 adopted |
+| R2 sweeps | 0.73 | All confirmed (143.4R, Sharpe 1.825) |
+| Grid R1 (450 combos) | 10.94 | stop=3.0, rr=6.0, gap=5.5, tp1=0.6 — 100% positive |
+| R3 sweeps | 10.94 | rr/tp1 beyond grid range identified |
+| Grid R2 (378 combos) | 14.52 | stop=2.5, rr=7.0, gap=5.5, tp1=0.6 — 100% positive |
+| R4 sweeps | 14.52 | All 10 dimensions confirmed — converged |
 
 ### Inversion Shorts (with Qualifying Move Gate)
 - **Status**: NO-GO
 - **Best case**: QM=100%, 28 trades in 10 years (~3/year) — too few for statistical confidence. Do not revisit.
 
 ### No-ORB Liquidity Sweep Inversions (incl. Clean Air)
-- **Status**: NO-GO — confirmed on new complete data (2026-02-20)
+- **Status**: NO-GO — confirmed on clean 1s data (2026-02-21), previously on 1m-only (2026-02-20)
 - **Script**: `run_gc_inv_no_orb_cleanair_1s.py`
-- **Unfiltered base**: 1009 trades, 37.0% WR, **-281.6R net**, Sharpe -4.484. Massively negative.
-- **Clean air N=1** (best filter): 190 trades, 42.1% WR, **-28.9R**, -45.3R DD, Sharpe -2.218. Every lookback N negative.
+- **1s magnifier unfiltered**: 1069 trades, 37.7% WR, **-243.5R net**, -249.9R DD, Sharpe -3.184. Massively negative.
+- **1s magnifier clean air N=1**: 202 trades, 44.1% WR, **-23.2R**, -31.5R DD, Sharpe -1.546. Every lookback N ≤ 5 negative; N=10 marginal (+5.6R, 81 trades, 5 neg years).
+- **Prior 1m-only results** (2026-02-20): Unfiltered -281.6R (1009 trades), Clean air N=1 -28.9R (190 trades).
+- **1s vs 1m delta**: 1s magnifier is slightly less negative (unf: -243.5R vs -281.6R, N=1: -23.2R vs -28.9R) — more accurate fills reduce phantom SL hits, but not enough to change the verdict.
 - **Old results (Sharpe 5.0+, 59.5R)**: Entirely an artifact of incomplete data. Sparse bars masked SL exits and reduced signal count from ~100/yr to ~12/yr.
-- **Conclusion**: No-ORB liquidity sweep inversions have NO EDGE on GC with complete data, with or without clean air filtering. Do not revisit.
+- **Conclusion**: No-ORB liquidity sweep inversions have NO EDGE on GC with complete data, with or without clean air filtering. Confirmed on both 1m and 1s magnifier. Do not revisit.
 
 ### Stacked GC Strategy: v9 Regime-Sized + Clean Air No-ORB
 - **Status**: NO-GO — both components invalid. v9 was bad data; clean air re-tested 2026-02-20 → NO EDGE (-28.9R at best).
@@ -381,18 +446,19 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **Large min_gap (3.5% ATR)** — Filters out low-quality small FVGs. Clean data grid sweep: 18/20 top combos use min_gap=3.5%.
 - **Entry window capped at 11:00** — Critical. entry_end=11:00 adopted in Round 3 (+1.84 Calmar). Later entries are lower quality.
 - **FOMC dates excluded** — FOMC fill avg R = -0.046 (negative expectancy). Only ~8 dates/year, mechanically sound reason (Fed announcements cause gold whipsaw). Use `news_dates.FOMC_DATES`.
-- **Long-only** — No edge in continuation shorts. GC shorts are structurally broken.
+- **Continuation shorts (CONDITIONAL)** — ORB breakdown continuation works on the short side too. rr=7.0, stop=2.5%, gap=5.5%, 15m ORB, entry→15:00. Calmar 14.52, 0 neg full years. Lower win rate (26% vs 43% longs) but higher R multiples on winners. Position sizing needed for MC survival.
+- **Long-only for longs** — Continuation longs are the cleanest edge. Shorts are conditional (see above).
 - **1s magnifier required** — Do not run GC optimization without `GC_1s.parquet`. 1m data inflates win rate and Calmar artificially.
 
 ### What doesn't work on GC
 - **Inversion longs** — NO EDGE on complete data. 1411 signals, -40.6R net.
-- **Reversal strategy** — No edge. GC trends after ORB breakout, doesn't revert.
-- **Continuation shorts** — -98R over 10 years. Every param combo negative.
+- **Reversal strategy** — No edge in any variant (raw, inversion-confirmed). Reversal longs: 8.8% WR / -495R (raw), 6.5% WR / -211R (inversion). GC breakdowns don't reverse.
+- **Continuation shorts** — ~~-98R old data~~ OVERTURNED: CONDITIONAL GO. Full-history Calmar 14.52, 219R, 0 neg years. Pipeline borderline on WF efficiency (0.28 vs 0.30) and MC survival (47.9% vs 60%). Tradeable with reduced position sizing.
 - **Inversion shorts** — Structural breakdown. Best case 28 trades in 10 years at QM=100%.
 - **ORB reclaims** — Without FVG filter, -65R DD in 2023 alone. Untradeable.
 - **CISD** — Good WR (50%) but DD exceeds 10R in every config.
 - **Asia/London sessions** — Too illiquid (~1 bar/hour).
-- **No-ORB clean air inversions** — Re-tested 2026-02-20 on complete data. 1009 unfiltered trades = -281.6R. Best clean air filter (N=1) = -28.9R. Old Sharpe 5.0+ was entirely from sparse data masking SL hits.
+- **No-ORB clean air inversions** — Re-tested on 1s magnifier (2026-02-21): 1069 unfiltered = -243.5R, N=1 = -23.2R. Prior 1m-only (2026-02-20): -281.6R / -28.9R. 1s slightly less negative but still firmly NO-GO.
 - **Stacked strategy (v9 + clean air)** — Both components confirmed NO-GO on complete data.
 - **Long ATR (50+)** — Dramatically underperforms short ATR. Do not use ATR 50 as default for GC.
 - **Max gap points filter** — Insensitive. GC natural ATR-based filters already limit gap size effectively.
@@ -409,6 +475,17 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **flat_start**: Completely insensitive. All values 14:00+ give identical results — all GC entries happen before noon.
 - **max_gap_points**: Insensitive. All values 20-30 identical. ATR-based filters (min_gap_atr, max_gap_atr) are the effective levers.
 - **excluded_dates**: FOMC dates excluded (mechanically sound). DOW exclusion rejected every round — shifts which day is "best" (Mon+Fri → Wed → Wed → Fri), classic data-mining signature.
+
+### Prop firm considerations (continuation shorts — CONDITIONAL GO)
+- **OOS Max DD -12.6R** (5-fold WF combined OOS). MC p50 max DD -25.3R, p5 max DD -42.2R.
+- **Sizing**: Low win rate (26%) with high rr (7.0) creates deep drawdown sequences. Must size conservatively.
+  - For a $50K DD ceiling: risk_usd ~$1,000-1,200/trade (MC p5 DD is -42.2R)
+  - MC survival at -25R: 47.9% — use higher ruin threshold or smaller size
+- **Win rate ~27%** (WF OOS) / ~26% (full history) — expect frequent 5-8 loss streaks. Normal for rr=7.0.
+- **Hold-out 2025-2026**: 30.9R in ~14 months with WF mode params (rr=5.5). Excellent recent edge.
+- **Annual R expectation**: ~20.1R/year (WF OOS avg). Comfortably above 12.0R threshold.
+- **2023 structural flat year**: OOS Calmar 0.102 in 2023 fold. Full-history 2023: +1.4R, 2024: +0.1R. Gold was range-bound in these years.
+- **Longs + shorts stacking**: Both strategies are short-only and long-only respectively. Could stack for combined coverage, though they share some dates. Different ORB windows (10m vs 15m) and entry horizons (11:00 vs 15:00).
 
 ### Prop firm considerations (continuation longs R2 clean data — current)
 - **OOS Max DD -13.0R** (5-fold WF combined OOS). MC p50 max DD -15.1R, p5 max DD -25.2R.

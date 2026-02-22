@@ -45,7 +45,7 @@ HOLDOUT_START = "2025-01-01"
 N_WORKERS = 8
 
 PROP_CONSTRAINTS = PropFirmConstraints(
-    max_drawdown_r=10.0,
+    max_drawdown_r=999.0,    # DD is NOT a hard filter (user preference)
     min_annual_r=24.0,
     max_monthly_loss_r=5.0,
     min_positive_expectancy=True,
@@ -163,7 +163,6 @@ def main():
         start_date=WF_START,
         progress_fn=wf_progress,
         df_1m=df_wf_1m,
-        max_dd_r=-10.0,
     )
     wf_elapsed = time.time() - t0
     print(f"\nWalk-forward completed in {wf_elapsed:.0f}s ({len(wf_result.folds)} folds)")

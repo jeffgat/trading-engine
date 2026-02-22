@@ -124,14 +124,13 @@ def _simulate_single_trade(
     if fill_bar == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
-    # Phase 2: Simulate exit
+    # Phase 2: Simulate exit (includes fill bar — price can hit SL/TP on same bar)
     tp1_hit = False
     current_stop = stop_price
     remaining_qty = qty
     pnl_points = 0.0
 
-    # Start checking from the bar AFTER fill
-    scan_start = fill_bar + 1
+    scan_start = fill_bar
 
     for i in range(scan_start, last_bar + 1):
         # Check if we've entered flat window
@@ -161,6 +160,7 @@ def _simulate_single_trade(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low[i] <= current_stop
                 if tp2_trigger:
                     pnl_points = tp2_price - entry_price
                     return fill_bar, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
@@ -181,6 +181,9 @@ def _simulate_single_trade(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return fill_bar, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
                 if tp1_hit:
@@ -212,6 +215,7 @@ def _simulate_single_trade(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high[i] >= current_stop
                 if tp2_trigger:
                     pnl_points = entry_price - tp2_price
                     return fill_bar, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
@@ -229,6 +233,9 @@ def _simulate_single_trade(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return fill_bar, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
                 if tp1_hit:
@@ -304,7 +311,8 @@ def _simulate_exit_magnifier(
     remaining_qty = qty
     pnl_points = 0.0
 
-    scan_start = fill_bar_1m + 1
+    # Include fill bar in exit scanning (price can hit SL/TP on same bar)
+    scan_start = fill_bar_1m
 
     for i in range(scan_start, last_bar_1m + 1):
         is_flat_bar = i >= flat_start_1m
@@ -330,6 +338,7 @@ def _simulate_exit_magnifier(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points = tp2_price - entry_price
                     return EXIT_TP2_SINGLE, i, pnl_points
@@ -347,6 +356,9 @@ def _simulate_exit_magnifier(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low_1m[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return EXIT_TP1_BE, i, pnl_points
                     continue
 
                 if tp1_hit:
@@ -378,6 +390,7 @@ def _simulate_exit_magnifier(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points = entry_price - tp2_price
                     return EXIT_TP2_SINGLE, i, pnl_points
@@ -395,6 +408,9 @@ def _simulate_exit_magnifier(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high_1m[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return EXIT_TP1_BE, i, pnl_points
                     continue
 
                 if tp1_hit:
@@ -539,6 +555,7 @@ def _drill_down_1s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low_1s[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -555,6 +572,9 @@ def _drill_down_1s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low_1s[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
                 if tp1_hit:
                     if sl_hit:
@@ -576,6 +596,7 @@ def _drill_down_1s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high_1s[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -591,6 +612,9 @@ def _drill_down_1s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high_1s[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
                 if tp1_hit:
                     if sl_hit:
@@ -649,6 +673,7 @@ def _drill_down_30s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low_30s[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -680,6 +705,9 @@ def _drill_down_30s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low_30s[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
@@ -703,6 +731,7 @@ def _drill_down_30s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high_30s[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -734,6 +763,9 @@ def _drill_down_30s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high_30s[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
@@ -812,6 +844,7 @@ def _drill_down_1m(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -858,6 +891,9 @@ def _drill_down_1m(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low_1m[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
@@ -888,6 +924,7 @@ def _drill_down_1m(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
                     return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -934,6 +971,9 @@ def _drill_down_1m(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high_1m[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
@@ -1038,15 +1078,15 @@ def _simulate_single_trade_hierarchical(
                     fill_bar_1m = j
                     break
 
-        if fill_bar_1m >= 0 and fill_bar_1m + 1 < e1m:
-            # Scan remaining 1m bars inside the fill bar for exits
+        if fill_bar_1m >= 0 and fill_bar_1m < e1m:
+            # Include fill bar in exit scanning (SL/TP can hit on same bar as fill)
             res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1m(
                 high_1m, low_1m, close_1m,
                 high_30s, low_30s, close_30s,
                 high_1s, low_1s, close_1s,
                 map_1m_30s, map_30s_1s, map_1m_1s,
                 has_30s, has_1s,
-                fill_bar_1m + 1, e1m,
+                fill_bar_1m, e1m,
                 flat_start_1m,
                 direction, entry_price, current_stop,
                 tp1_price, tp2_price, be_price,
@@ -1080,6 +1120,7 @@ def _simulate_single_trade_hierarchical(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = low_5m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
                     return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
@@ -1121,6 +1162,9 @@ def _simulate_single_trade_hierarchical(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if low_5m[i] <= be_price:
+                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
                 if tp1_hit:
@@ -1152,6 +1196,7 @@ def _simulate_single_trade_hierarchical(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    sl_hit = high_5m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
                     return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
@@ -1191,6 +1236,9 @@ def _simulate_single_trade_hierarchical(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
+                    if high_5m[i] >= be_price:
+                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
                 if tp1_hit:

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Re-validate GC no-ORB clean air inversions on new complete 1s data.
+"""Re-validate GC no-ORB clean air inversions with clean 1s magnifier data.
 
-All prior clean air results were on incomplete GC data (old sparse CSV).
-This script re-tests the clean air signal from scratch on the new complete
-dataset (777k+ bars, 2016-2026).
+Prior test (2026-02-20) used 1m magnifier only and showed NO-GO (-281.6R
+unfiltered, -28.9R best clean air). This re-test uses the clean 1s data
+(available 2026-02-21) via hierarchical 5m→1m→1s magnifier to validate
+whether higher-resolution fill/exit changes the result.
 
 Strategy: No-ORB liquidity sweep inversion (longs only)
 - No ORB anchor — qualifying sweep measured from session extremes
@@ -26,7 +27,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from orb_backtest.config import StrategyConfig, SessionConfig
-from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
+from orb_backtest.data.loader import load_5m_data, load_1m_for_5m, load_1s_for_5m
 from orb_backtest.data.instruments import get_instrument
 from orb_backtest.engine.qualifying_move import run_backtest_no_orb
 from orb_backtest.engine.simulator import EXIT_NO_FILL
@@ -133,21 +134,24 @@ def stats(trades):
 
 def main():
     print("=" * 110)
-    print("GC NO-ORB CLEAN AIR INVERSIONS — RE-VALIDATION ON NEW COMPLETE DATA")
+    print("GC NO-ORB CLEAN AIR INVERSIONS — RE-VALIDATION ON CLEAN 1s DATA")
     print("=" * 110)
     print("Config: QM=100%, stop=12%, rr=5.0, tp1=0.2, ATR 50, entry→16:45, longs only")
-    print("Magnifier: 1m (adequate for 12% ATR stop)")
+    print("Magnifier: hierarchical 5m→1m→1s")
     print()
 
     df = load_5m_data("GC_5m.csv")
     df_1m = load_1m_for_5m("GC_5m.csv")
-    print(f"Loaded {len(df):,} 5m bars, {len(df_1m):,} 1m bars\n")
+    df_1s = load_1s_for_5m("GC_5m.csv")
+    bars_1m = f"{len(df_1m):,} 1m" if df_1m is not None else "no 1m"
+    bars_1s = f"{len(df_1s):,} 1s" if df_1s is not None else "no 1s"
+    print(f"Loaded {len(df):,} 5m bars, {bars_1m} bars, {bars_1s} bars\n")
 
     fvg_by_date = build_bullish_fvgs(df)
     session_lows = build_session_lows(df)
 
     t0 = time.time()
-    trades = run_backtest_no_orb(df, make_config(), start_date="2016-01-01", df_1m=df_1m)
+    trades = run_backtest_no_orb(df, make_config(), start_date="2016-01-01", df_1m=df_1m, df_1s=df_1s)
     filled = [t for t in trades if t.exit_type != EXIT_NO_FILL]
     elapsed = time.time() - t0
     print(f"Base (unfiltered): {len(filled)} filled trades  ({elapsed:.0f}s)\n")
@@ -223,7 +227,8 @@ def main():
     print("REFERENCE COMPARISON")
     print(f"{'='*80}")
     print(f"  GC Cont Longs R6:  561 trades, 39.6% WR, 158.0R, -11.2R DD, Calmar 14.10, Sharpe 2.570")
-    print(f"  Old clean air N=1: 121 trades, ?.?% WR,  59.5R,  -6.5R DD, Sharpe 4.978 ← INVALID (old data)")
+    print(f"  Prior 1m-only unf: -281.6R (2026-02-20, 1m magnifier)")
+    print(f"  Prior 1m-only N=1:  -28.9R best clean air (2026-02-20, 1m magnifier)")
     if results and 1 in results:
         _, m1 = results[1]
         dd1 = round(m1["max_drawdown_r"], 1)

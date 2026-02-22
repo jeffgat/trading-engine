@@ -283,8 +283,70 @@ Key findings:
 - No-Thursday gate still needs to be applied and re-confirmed with ICF config
 - **DB entry**: `bt-nq-asia-v3-icf-optimized-4d86d0`
 
-### Asia Continuation R4 Final (10m ORB, both, 1s magnifier) — GO
-- **Status**: GO — fixed-param WF 6/6 folds profitable, hold-out PASS
+### Asia Continuation R5 Final (10m ORB, both, 1s magnifier) — GO (post same-candle SL/TP bug fix)
+- **Status**: GO — fixed-param WF 6/6 folds profitable, hold-out PASS. Supersedes R4 Final.
+- **Config** (R1-R5 optimization post bug fix, 2016 start):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 10m (20:00-20:10 ET) |
+| entry_start | 20:10 |
+| entry_end | 00:00 |
+| flat_start | 01:00 |
+| flat_end | 07:00 |
+| direction | both |
+| rr | 1.75 |
+| tp1_ratio | 0.10 |
+| stop_atr_pct | 3.7% |
+| min_gap_atr_pct | 0.90% |
+| max_gap_atr_pct | 5.0% |
+| max_gap_points | 0 |
+| atr_length | 5 |
+| magnifier | 1s |
+| gate | no-Thursday |
+| impulse_close_filter | OFF |
+
+- **Full-history performance** (2016-2026): 1,510 trades, 94.5% WR, PF 2.98, 165.1R total (16.5 R/yr), Max DD -2.7R, Calmar 60.19, Sharpe 4.70, **0 negative full years**
+- **R by year**: 2016:+19  2017:+17  2018:+20  2019:+22  2020:+14  2021:+21  2022:+13  2023:+12  2024:+12  2025:+12  2026:+3
+
+#### Fixed-param Walk-Forward (6 folds, OOS 2019-2024)
+
+| Fold | OOS Period | Trades | WR | Sharpe | R | DD |
+|------|-----------|--------|-----|--------|---|-----|
+| 1 | 2019 | 156 | 96.8% | 6.66 | +22.2 | -1.0 |
+| 2 | 2020 | 149 | 93.3% | 3.89 | +14.3 | -2.7 |
+| 3 | 2021 | 150 | 96.7% | 6.47 | +20.8 | -1.0 |
+| 4 | 2022 | 144 | 95.1% | 4.39 | +13.2 | -1.6 |
+| 5 | 2023 | 141 | 92.9% | 3.59 | +11.9 | -2.3 |
+| 6 | 2024 | 128 | 93.8% | 3.98 | +12.2 | -2.6 |
+
+- **Combined OOS**: 868 trades, 94.8% WR, PF 3.13, Sharpe 4.82, +94.6R (15.8 R/yr), DD -2.7R, Calmar 5.74
+- **Hold-out (2025+)**: 161 trades, 95.0% WR, PF 2.83, Sharpe 4.35, +15.0R, DD -2.5R — PASS
+- **Verdict**: GO — all 6 folds profitable, hold-out strong, combined OOS Calmar 5.74
+
+#### R5 Optimization History (R1-R5, post bug fix)
+- **Context**: Simulator bug fix — stops and take-profits on the entry candle are now correctly counted. R4 Final (Calmar 23.85) became R5 Baseline (Calmar 34.77) with identical config — bug fix improved all metrics.
+- **R5 Baseline**: Same R4 params post-bugfix: 1,593 trades, 70.4% WR, Sharpe 3.29, 258.1R (25.8 R/yr), DD -7.4R, Calmar 34.77. DB: `bt-nq-asia-r5-baseline-post-bugfix-bd0788`.
+- **R1**: Swept 12 dimensions. Adopted: entry_end=00:00 (+0.97), tp1=0.20 (+17.26). tp1 shift from 0.35→0.20 is the biggest single change — bug fix made early TP1 exits much more reliable.
+- **R2**: entry_end=00:00, tp1=0.20. Calmar 52.44. Adopted: flat_start=01:00 (+0.91).
+- **R3**: flat_start=01:00. Calmar 53.35. Adopted: tp1=0.10 (+6.83). tp1 continued pulling lower.
+- **R4**: tp1=0.10. Calmar 60.19. Three changes passed threshold: entry_end=01:00 (+4.14), maxgap=7.0 (+2.91), DOW=none (+13.12).
+- **R5**: All 3 R4 changes applied → **Calmar crashed from 60.19 to 35.16**. Destructive interaction (exact same pattern as original R3). Reset to R4 anchor (Calmar 60.19).
+- **Grid sweep**: 2,016 combos (8 stops × 7 rrs × 6 gaps × 6 tp1s). 1,925/2,016 (95.5%) have 0 neg years — extremely flat surface. R5 anchor is **#7 overall AND #7 among zero-neg-year configs**. Grid winner (stop=4.0/rr=2.0/gap=0.90/tp1=0.05, Calmar 64.93) is only +7.9% better but with -27% R/yr.
+- **DB entry**: `bt-nq-asia-r5-final-25e2c0`
+
+#### Key differences from R4 (pre-bug-fix)
+- **tp1 shifted from 0.35 → 0.10**: The dominant change. The bug fix made entry-candle TP1 exits count correctly, so taking profits very early (10% of the way to TP2) is now extremely reliable — 94.5% WR. This converts the strategy from a moderate WR/moderate RR profile to an ultra-high WR scalper.
+- **entry_end shifted from 01:00 → 00:00**: Late entries past midnight are less productive post-bugfix (they were previously miscounted as EOD wins).
+- **flat_start shifted from 00:00 → 01:00**: With entry_end=00:00, flat_start can extend to 01:00 to give remaining positions more time.
+- **DD collapsed from -8.9R → -2.7R**: The ultra-early TP1 (10%) means most winning trades only risk a tiny portion before taking profit, dramatically reducing drawdowns.
+- **R/yr dropped from 21.1 → 16.5**: Trade-off for much lower DD. Calmar improved from 23.85 → 60.19 (+152%).
+- **Exit profile change**: SL 25.5%, TP1_TP2 22.8%, TP1_BE 42.1%, TP1_EOD 2.0%, EOD 7.7% — the TP1_BE category dominates because TP1 hits early on the same candle, then the remaining position runs to breakeven.
+
+### Asia Continuation R4 Final (10m ORB, both, 1s magnifier) — SUPERSEDED by R5
+- **Status**: SUPERSEDED — R5 Final (post bug fix) achieved Calmar 60.19 vs R4's 23.85
 - **Config** (R1-R4 optimization with 1s magnifier, 2016 start):
 
 | Param | Value |
@@ -546,8 +608,9 @@ Key findings:
 ## Key Findings
 
 ### Asia Session
-- **R4 Final is the GO config**: stop=3.7%, rr=1.75, gap=0.90%, tp1=0.35, ORB=10m, entry_end=01:00, flat=00:00, ATR=5, both, no-Thu, ICF=OFF, 1s magnifier → Calmar 23.85, 21.1 R/yr, DD -8.9R, 0 neg years. Fixed-param WF 6/6 folds profitable. DB: `bt-nq-asia-r4-final-69df58`.
-- **entry_end=01:00 is the single biggest lever discovered in R1-R4**: Extending past midnight from 23:00→01:00 jumped Calmar from 16.72→23.85. The entry_end + flat_start interaction is critical — entries 00:00-01:00 are short-duration trades that work if TP1 fills fast.
+- **R5 Final is the GO config** (post same-candle SL/TP bug fix): stop=3.7%, rr=1.75, gap=0.90%, tp1=0.10, ORB=10m, entry_end=00:00, flat=01:00, ATR=5, both, no-Thu, ICF=OFF, 1s magnifier → Calmar 60.19, 16.5 R/yr, DD -2.7R, 0 neg years. Fixed-param WF 6/6 folds profitable, combined OOS Calmar 5.74. Hold-out Sharpe 4.35. DB: `bt-nq-asia-r5-final-25e2c0`. Supersedes R4 Final.
+- **Bug fix fundamentally changed the optimal tp1**: From 0.35 → 0.10. Entry-candle SL/TP now counted correctly, making ultra-early profit-taking (10%) extremely reliable (94.5% WR). The strategy transformed from moderate-WR/moderate-RR to ultra-high-WR scalper profile.
+- **entry_end=00:00 replaced 01:00**: Post-bugfix, entries past midnight are less productive. The entry_end + flat_start interaction shifted: flat_start=01:00 gives remaining positions more room.
 - **Destructive parameter interaction warning**: In R3, adopting 5 changes simultaneously crashed Calmar from 20.18→11.97 (-41%). Never adopt more than 2-3 changes at once. The safe approach is resetting to the best-proven config when oscillation is detected.
 - **Asia session produces high trade counts** (~160/year) with good win rates (67%), and the R4 config has strong edge per trade (~0.13R avg).
 - **10m ORB is definitively better than 15m** for NQ Asia — confirmed across v2, v3, and R4 optimizations. ORB oscillated (10m→15m→10m) across R1-R2 due to interaction with entry_end. At entry_end=01:00, 10m is dominant.
@@ -563,7 +626,7 @@ Key findings:
 - **flat_start=00:00 (midnight close) is critical**: Removes overnight drift risk from trades that haven't hit TP2. Smooth peak confirmed with 30-min step resolution. No-Tuesday exclusion does NOT stack (they fix the same problem).
 - **Gap dimension has two peaks with a dead zone**: gap=0.90% and gap=1.20% are local maxima. gap=1.00–1.10% is a valley. At the R4 anchor, gap=0.90% is dominant.
 - **2022 is the structural weak spot** — +8.9R in WF fold 4. Still profitable but the lowest fold. R4 anchor survives it cleanly unlike v1/v2.
-- **ICF is anchor-dependent**: Positive at v3 anchor (entry_end=23:00) but not beneficial at R4 anchor (entry_end=01:00). The entry_end shift changes the trade mix enough to invalidate v3+ICF findings.
+- **ICF ruled out for Asia — confirmed across full parameter space**: 378-combo grid sweep (stop 2-6%, rr 1.0-3.5, gap 0.5-2.0%) with ICF=ON: best clean config is stop=4.0/rr=2.0/gap=1.0 at Calmar 20.95 — still 2.91 points below R4 ICF=OFF (23.85). ICF shifts optimal params (stop 3.7→4.0, rr 1.75→2.0, gap 0.90→1.0) but can't compensate. Was positive at v3 anchor (entry_end=23:00) but not at R4 (entry_end=01:00) — and now confirmed not viable at any point in the grid.
 
 ### NY Session
 - **Both directions viable at the right params** — R16-R20 optimization with 1s magnifier found that both directions (Calmar 16.36) beats long-only (Calmar 11.51) at the R20 anchor. The key was wider entry window (15:30 vs 13:00) and lower RR (2.625 vs 3.2). Earlier rounds found long-only essential, but that was anchor-specific — at different stop/rr/gap combinations, shorts add value.
@@ -574,5 +637,64 @@ Key findings:
 - **Parameter surface is noisy for adaptive WF** — the adaptive walk-forward (re-optimizing each fold) failed with efficiency 0.49. Mode params drifted significantly from the candidate. But the fixed-param WF showed 6/6 folds profitable. This means the surface has multiple local optima that shift with regime, but our specific point (8.75/2.625/2.25/0.3) is robust across time.
 - **DOW exclusion is a data-mining artifact** — shifted every round (Th+F in R16-R17, Tue in R18, different again in R19). Do not use.
 - **2022-2023 are the weak years** — +9.1R and +3.9R in fixed-param WF. Still positive but lowest folds. Every other year strong.
+- **ICF is strongly detrimental for NQ NY — confirmed across full parameter space** — at R20 anchor: ICF=ON drops Calmar from 16.36→7.13 (Δ=-9.23), introduces 2 new negative years (2018, 2023), hurts both directions (longs Δ=-2.53, shorts Δ=-4.10). Broader 288-combo grid sweep (stop 5-12%, rr 1.5-4.0, gap 1.0-3.5%) with ICF=ON: best clean config is stop=9/rr=4.0/gap=3.5 at Calmar 12.46 — still 3.9 points below R20 ICF=OFF (16.36). ICF pushes optimal RR to 4.0 and WR to 49% but can't compensate. Only 28/288 configs (10%) have 0 neg years. NQ NY should always run with ICF=OFF.
 - **1s magnifier impact**: For the Long 30m ICF config, 1s magnifier made zero difference (0 trades changed). For the R20 config, 1s is used throughout but the delta vs 1m was not isolated.
 - **Reversal and inversion strategies are dead** on NQ NY — tested in Round 3 (ORB-based) and no-ORB inversion sweep (864 combos across short/long/both, QM 50-200%, stop 7-13%, RR 2-5, TP1 0.2-0.6). Every single config has negative Calmar. The GC no-ORB inversion concept does not transfer to NQ.
+
+### LDN Session
+- **NQ LDN continuation is marginal** — best achievable Calmar ~1.13 (full-history) vs NY 16.36 and Asia 23.85. Orders of magnitude weaker.
+- **Only 1 of 3 walk-forward candidates passed GO** — and barely (hold-out Sharpe 0.58, just above 0.5 threshold). Two other candidates had stronger OOS R/yr but failed hold-out Sharpe.
+- **2016 is the persistent negative year** — appears in every config tested, cannot be eliminated.
+- **ICF=ON and max_gap_points=20 were the only two adoptions** across R1-R2 variable sweeps (12 dimensions each). Most dimensions showed no meaningful improvement from the weak anchor.
+- **Many promising dimensions blocked by new negative years** — ORB 10m (Calmar 2.72 but adds 2020), excl Mon (2.14 but adds 2023), ATR 30 (1.86 but adds 2024), long-only (1.47 but adds 2018). The strategy doesn't have enough edge to support structural changes.
+- **Grid sweep (576 combos) barely moved the anchor** — best ≤1-neg-year combo: stop=8.0/rr=2.5/gap=1.5/tp1=0.5 (Calmar 1.13 vs anchor 1.12, Δ=+0.01).
+- **OOS performance is thin** — grid #2 (stop=8.0/rr=2.25/gap=1.5/tp1=0.6) passed WF with all 6 folds profitable but 2024 was +0.2R and 2019 was +1.8R. Combined OOS: 10.3 R/yr, Calmar 0.41.
+
+### LDN Continuation R2 Final (15m ORB, both, 1s magnifier) — MARGINAL GO
+- **Status**: MARGINAL GO — fixed-param WF 6/6 folds profitable, hold-out PASS (barely)
+- **Config** (R1-R2 optimization + grid sweep):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | LDN |
+| ORB window | 15m (03:00-03:15 ET) |
+| entry_start | 03:15 |
+| entry_end | 08:25 |
+| flat_start | 08:20 |
+| flat_end | 08:25 |
+| direction | both |
+| rr | 2.25 |
+| tp1_ratio | 0.6 |
+| stop_atr_pct | 8.0% |
+| min_gap_atr_pct | 1.5% |
+| max_gap_points | 20 |
+| max_gap_atr_pct | 0 (no limit) |
+| atr_length | 14 |
+| magnifier | 1s |
+| impulse_close_filter | ON |
+
+- **Full-history performance** (2016-2026): 2,034 trades, 44.8% WR, PF 1.05, 51.4R total (5.1 R/yr), Max DD -45.6R, Calmar 1.13, Sharpe 0.35, 1 neg year (2016)
+- **R by year**: 2016:-41  2017:+14  2018:+7  2019:+2  2020:+14  2021:+10  2022:+20  2023:+16  2024:+0  2025:+13  2026:-4
+
+#### Fixed-param Walk-Forward (6 folds, OOS 2019-2024)
+
+| Fold | OOS Period | Trades | WR | PF | Sharpe | R | DD |
+|------|-----------|--------|-----|-----|--------|---|-----|
+| 1 | 2019 | 204 | 45.6% | 1.01 | 0.13 | +1.8 | -15.6 |
+| 2 | 2020 | 196 | 45.9% | 1.14 | 0.94 | +13.7 | -10.5 |
+| 3 | 2021 | 211 | 46.0% | 1.09 | 0.66 | +10.1 | -10.0 |
+| 4 | 2022 | 201 | 47.3% | 1.20 | 1.36 | +20.4 | -12.3 |
+| 5 | 2023 | 201 | 45.3% | 1.15 | 1.03 | +15.8 | -25.2 |
+| 6 | 2024 | 196 | 43.9% | 1.01 | 0.01 | +0.2 | -22.0 |
+
+- **Combined OOS**: 1,209 trades, 45.7% WR, PF 1.10, Sharpe 0.70, +62.0R (10.3 R/yr), DD -25.2R, Calmar 0.41
+- **Hold-out (2025+)**: 216 trades, 46.8% WR, PF 1.09, Sharpe 0.58, +9.1R, DD -17.9R — PASS (barely)
+- **Verdict**: MARGINAL GO — all 6 folds profitable but folds 1 and 6 are razor-thin (+1.8R, +0.2R). Hold-out Sharpe just barely clears 0.5 threshold. Not recommended for primary allocation.
+
+#### R1-R2 Optimization History
+- **R1**: Fresh start with LDN defaults (stop=10%, rr=2.0, tp1=0.5, gap=1.0%, max_gap=50, ICF=OFF). Calmar 0.09 (very weak anchor, 4 neg years). Only 2 of 12 dimensions adopted: max_gap_points=20 (Δ+0.32) and ICF=ON (Δ+0.64). All other promising dimensions blocked by new negative years.
+- **R2**: max_gap=20 + ICF=ON applied. Calmar jumped to 1.12 (1 neg year: 2016). **Fully converged — every dimension Δ=0** (no adoptions pass threshold without new neg years).
+- **Grid sweep**: 576 combos (6 stops × 6 rrs × 4 gaps × 4 tp1s). Best ≤1 neg year: stop=8.0/rr=2.5/gap=1.5/tp1=0.5 (Calmar 1.13). Anchor barely moved. No fine-tune needed.
+- **Walk-forward**: Tested 3 candidates. Only grid #2 (stop=8.0/rr=2.25/gap=1.5/tp1=0.6) passed — marginal GO.
+- **DB entry**: `bt-nq-ldn-r2-final-e132b8`
