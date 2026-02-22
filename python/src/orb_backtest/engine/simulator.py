@@ -818,7 +818,7 @@ def _drill_down_1m(
       - Falls back to direct 1s (if has_1s but no 30s).
       - Falls back to pessimistic SL if neither resolves it.
 
-    Returns (resolved, exit_type, pnl_points, tp1_hit, current_stop, remaining_qty).
+    Returns (resolved, exit_type, exit_bar_1m, pnl_points, tp1_hit, current_stop, remaining_qty).
     """
     for i in range(start_1m, end_1m):
         is_flat = i >= flat_start_1m
@@ -831,14 +831,14 @@ def _drill_down_1m(
             if is_flat and not sl_hit:
                 if tp1_hit:
                     pnl_points += (close_1m[i] - entry_price) * (remaining_qty / qty)
-                    return True, EXIT_TP1_EOD, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP1_EOD, i, pnl_points, tp1_hit, current_stop, remaining_qty
                 else:
                     pnl_points += close_1m[i] - entry_price
-                    return True, EXIT_EOD, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_EOD, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
             if sl_hit and not tp1_hit:
                 pnl_points += current_stop - entry_price
-                return True, EXIT_SL, pnl_points, tp1_hit, current_stop, remaining_qty
+                return True, EXIT_SL, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
             if is_single:
                 if tp1_trigger:
@@ -847,10 +847,10 @@ def _drill_down_1m(
                     sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
-                    return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP2_SINGLE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                 if sl_hit and tp1_hit:
                     pnl_points += current_stop - entry_price
-                    return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
             else:
                 if sl_hit and tp1_trigger:
                     # Ambiguous at 1m — try 30s first, then direct 1s fallback
@@ -868,7 +868,7 @@ def _drill_down_1m(
                                 remaining_qty, pnl_points,
                             )
                             if res:
-                                return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
+                                return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     elif has_1s and i < len(map_1m_1s):
                         s1s = map_1m_1s[i, 0]
                         e1s = map_1m_1s[i, 1]
@@ -881,10 +881,10 @@ def _drill_down_1m(
                                 remaining_qty, pnl_points,
                             )
                             if res:
-                                return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
+                                return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     # Fallback: pessimistic
                     pnl_points += current_stop - entry_price
-                    return True, EXIT_SL, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_SL, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
                 if tp1_trigger:
                     pnl_points += (tp1_price - entry_price) * (half_qty / qty)
@@ -893,16 +893,16 @@ def _drill_down_1m(
                     remaining_qty -= half_qty
                     if low_1m[i] <= be_price:
                         pnl_points += (be_price - entry_price) * (remaining_qty / qty)
-                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
-                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     if tp2_trigger:
                         pnl_points += (tp2_price - entry_price) * (remaining_qty / qty)
-                        return True, EXIT_TP1_TP2, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_TP2, i, pnl_points, tp1_hit, current_stop, remaining_qty
         else:
             sl_hit = high_1m[i] >= current_stop
             tp1_trigger = low_1m[i] <= tp1_price and not tp1_hit
@@ -911,14 +911,14 @@ def _drill_down_1m(
             if is_flat and not sl_hit:
                 if tp1_hit:
                     pnl_points += (entry_price - close_1m[i]) * (remaining_qty / qty)
-                    return True, EXIT_TP1_EOD, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP1_EOD, i, pnl_points, tp1_hit, current_stop, remaining_qty
                 else:
                     pnl_points += entry_price - close_1m[i]
-                    return True, EXIT_EOD, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_EOD, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
             if sl_hit and not tp1_hit:
                 pnl_points += entry_price - current_stop
-                return True, EXIT_SL, pnl_points, tp1_hit, current_stop, remaining_qty
+                return True, EXIT_SL, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
             if is_single:
                 if tp1_trigger:
@@ -927,10 +927,10 @@ def _drill_down_1m(
                     sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
-                    return True, EXIT_TP2_SINGLE, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP2_SINGLE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                 if sl_hit and tp1_hit:
                     pnl_points += entry_price - current_stop
-                    return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
             else:
                 if sl_hit and tp1_trigger:
                     # Ambiguous at 1m — try 30s first, then direct 1s fallback
@@ -948,7 +948,7 @@ def _drill_down_1m(
                                 remaining_qty, pnl_points,
                             )
                             if res:
-                                return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
+                                return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     elif has_1s and i < len(map_1m_1s):
                         s1s = map_1m_1s[i, 0]
                         e1s = map_1m_1s[i, 1]
@@ -961,10 +961,10 @@ def _drill_down_1m(
                                 remaining_qty, pnl_points,
                             )
                             if res:
-                                return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
+                                return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     # Fallback: pessimistic
                     pnl_points += entry_price - current_stop
-                    return True, EXIT_SL, pnl_points, tp1_hit, current_stop, remaining_qty
+                    return True, EXIT_SL, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
                 if tp1_trigger:
                     pnl_points += (entry_price - tp1_price) * (half_qty / qty)
@@ -973,18 +973,18 @@ def _drill_down_1m(
                     remaining_qty -= half_qty
                     if high_1m[i] >= be_price:
                         pnl_points += (entry_price - be_price) * (remaining_qty / qty)
-                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
-                        return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     if tp2_trigger:
                         pnl_points += (entry_price - tp2_price) * (remaining_qty / qty)
-                        return True, EXIT_TP1_TP2, pnl_points, tp1_hit, current_stop, remaining_qty
+                        return True, EXIT_TP1_TP2, i, pnl_points, tp1_hit, current_stop, remaining_qty
 
-    return False, -1, pnl_points, tp1_hit, current_stop, remaining_qty
+    return False, -1, -1, pnl_points, tp1_hit, current_stop, remaining_qty
 
 
 @nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
@@ -1029,12 +1029,12 @@ def _simulate_single_trade_hierarchical(
     objectives (e.g. entry+SL, SL+TP1), we drill into the 1m sub-bars of that
     specific bar. If the conflict persists at 1m, we drill into 1s.
 
-    Returns (fill_bar_5m, exit_type, exit_bar_5m, pnl_points, 0.0, 0.0).
+    Returns (fill_bar_5m, exit_type, exit_bar_5m, pnl_points, fill_1m_idx, exit_1m_idx).
     Same tuple shape as _simulate_single_trade for drop-in compatibility.
     """
     risk_pts = abs(entry_price - stop_price)
     if risk_pts <= 0:
-        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+        return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
 
     # Phase 1: Scan for fill at 5m level
     fill_bar_5m = -1
@@ -1049,7 +1049,7 @@ def _simulate_single_trade_hierarchical(
                 break
 
     if fill_bar_5m == -1:
-        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+        return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
 
     # State
     tp1_hit = False
@@ -1080,7 +1080,7 @@ def _simulate_single_trade_hierarchical(
 
         if fill_bar_1m >= 0 and fill_bar_1m < e1m:
             # Include fill bar in exit scanning (SL/TP can hit on same bar as fill)
-            res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1m(
+            res, et, exit_1m, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1m(
                 high_1m, low_1m, close_1m,
                 high_30s, low_30s, close_30s,
                 high_1s, low_1s, close_1s,
@@ -1093,7 +1093,7 @@ def _simulate_single_trade_hierarchical(
                 tp1_hit, is_single, qty, half_qty, remaining_qty, pnl_points,
             )
             if res:
-                return fill_bar_5m, et, fill_bar_5m, pnl_points, 0.0, 0.0
+                return fill_bar_5m, et, fill_bar_5m, pnl_points, float(fill_bar_1m), float(exit_1m)
 
     # Phase 2b: Scan subsequent 5m bars
     for i in range(fill_bar_5m + 1, last_bar + 1):
@@ -1107,14 +1107,14 @@ def _simulate_single_trade_hierarchical(
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
                     pnl_points += (close_5m[i] - entry_price) * (remaining_qty / qty)
-                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, -1.0, -1.0
                 else:
                     pnl_points += close_5m[i] - entry_price
-                    return fill_bar_5m, EXIT_EOD, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_EOD, i, pnl_points, -1.0, -1.0
 
             if sl_hit and not tp1_hit:
                 pnl_points += current_stop - entry_price
-                return fill_bar_5m, EXIT_SL, i, pnl_points, 0.0, 0.0
+                return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
 
             if is_single:
                 if tp1_trigger:
@@ -1123,10 +1123,10 @@ def _simulate_single_trade_hierarchical(
                     sl_hit = low_5m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
-                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, -1.0, -1.0
                 if sl_hit and tp1_hit:
                     pnl_points += current_stop - entry_price
-                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
             else:
                 if sl_hit and tp1_trigger:
                     # Ambiguous 5m bar — drill to 1m
@@ -1134,7 +1134,7 @@ def _simulate_single_trade_hierarchical(
                         s1m = map_5m_1m[i, 0]
                         e1m = map_5m_1m[i, 1]
                         if e1m > s1m:
-                            res, et, pnl_out, tp1_out, cs_out, rq_out = _drill_down_1m(
+                            res, et, _exit_1m, pnl_out, tp1_out, cs_out, rq_out = _drill_down_1m(
                                 high_1m, low_1m, close_1m,
                                 high_30s, low_30s, close_30s,
                                 high_1s, low_1s, close_1s,
@@ -1151,11 +1151,11 @@ def _simulate_single_trade_hierarchical(
                             current_stop = cs_out
                             remaining_qty = rq_out
                             if res:
-                                return fill_bar_5m, et, i, pnl_points, 0.0, 0.0
+                                return fill_bar_5m, et, i, pnl_points, -1.0, -1.0
                             continue
                     # No 1m data for this bar — pessimistic
                     pnl_points += current_stop - entry_price
-                    return fill_bar_5m, EXIT_SL, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
 
                 if tp1_trigger:
                     pnl_points += (tp1_price - entry_price) * (half_qty / qty)
@@ -1164,16 +1164,16 @@ def _simulate_single_trade_hierarchical(
                     remaining_qty -= half_qty
                     if low_5m[i] <= be_price:
                         pnl_points += (be_price - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
                     if tp2_trigger:
                         pnl_points += (tp2_price - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, -1.0, -1.0
 
         else:  # SHORT
             sl_hit = high_5m[i] >= current_stop
@@ -1183,14 +1183,14 @@ def _simulate_single_trade_hierarchical(
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
                     pnl_points += (entry_price - close_5m[i]) * (remaining_qty / qty)
-                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, -1.0, -1.0
                 else:
                     pnl_points += entry_price - close_5m[i]
-                    return fill_bar_5m, EXIT_EOD, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_EOD, i, pnl_points, -1.0, -1.0
 
             if sl_hit and not tp1_hit:
                 pnl_points += entry_price - current_stop
-                return fill_bar_5m, EXIT_SL, i, pnl_points, 0.0, 0.0
+                return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
 
             if is_single:
                 if tp1_trigger:
@@ -1199,17 +1199,17 @@ def _simulate_single_trade_hierarchical(
                     sl_hit = high_5m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
-                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, -1.0, -1.0
                 if sl_hit and tp1_hit:
                     pnl_points += entry_price - current_stop
-                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
             else:
                 if sl_hit and tp1_trigger:
                     if i < len(map_5m_1m):
                         s1m = map_5m_1m[i, 0]
                         e1m = map_5m_1m[i, 1]
                         if e1m > s1m:
-                            res, et, pnl_out, tp1_out, cs_out, rq_out = _drill_down_1m(
+                            res, et, _exit_1m, pnl_out, tp1_out, cs_out, rq_out = _drill_down_1m(
                                 high_1m, low_1m, close_1m,
                                 high_30s, low_30s, close_30s,
                                 high_1s, low_1s, close_1s,
@@ -1226,10 +1226,10 @@ def _simulate_single_trade_hierarchical(
                             current_stop = cs_out
                             remaining_qty = rq_out
                             if res:
-                                return fill_bar_5m, et, i, pnl_points, 0.0, 0.0
+                                return fill_bar_5m, et, i, pnl_points, -1.0, -1.0
                             continue
                     pnl_points += entry_price - current_stop
-                    return fill_bar_5m, EXIT_SL, i, pnl_points, 0.0, 0.0
+                    return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
 
                 if tp1_trigger:
                     pnl_points += (entry_price - tp1_price) * (half_qty / qty)
@@ -1238,23 +1238,23 @@ def _simulate_single_trade_hierarchical(
                     remaining_qty -= half_qty
                     if high_5m[i] >= be_price:
                         pnl_points += (entry_price - be_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
                     if tp2_trigger:
                         pnl_points += (entry_price - tp2_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, 0.0, 0.0
+                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, -1.0, -1.0
 
     # Reached end without exit
     if direction == 1:
         pnl_points += close_5m[last_bar] - entry_price
     else:
         pnl_points += entry_price - close_5m[last_bar]
-    return fill_bar_5m, EXIT_EOD, last_bar, pnl_points, 0.0, 0.0
+    return fill_bar_5m, EXIT_EOD, last_bar, pnl_points, -1.0, -1.0
 
 
 @dataclass
@@ -1886,6 +1886,7 @@ def build_maps(
         "high_1m":  empty1, "low_1m":  empty1, "close_1m":  empty1,
         "high_30s": empty1, "low_30s": empty1, "close_30s": empty1,
         "high_1s":  empty1, "low_1s":  empty1, "close_1s":  empty1,
+        "timestamps_1m": np.empty(0, dtype="datetime64[ns]"),
     }
 
     if has_1m:
@@ -1893,6 +1894,7 @@ def build_maps(
         maps["high_1m"]    = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
         maps["low_1m"]     = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
         maps["close_1m"]   = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
+        maps["timestamps_1m"] = df_1m.index.values.astype("datetime64[ns]")
 
     if has_30s:
         maps["map_1m_30s"] = build_1m_to_30s_map(df_1m, df_30s)
@@ -2057,6 +2059,25 @@ def build_signal_cache(
 
 
 # ---------------------------------------------------------------------------
+# Timestamp resolution helper
+# ---------------------------------------------------------------------------
+
+def _resolve_time(
+    timestamps_5m: pd.DatetimeIndex,
+    bar_5m: int,
+    timestamps_1m: np.ndarray,
+    bar_1m_f: float,
+) -> str:
+    """Pick the best-resolution timestamp for a trade event."""
+    bar_1m = int(bar_1m_f) if bar_1m_f >= 0 else -1
+    if bar_1m >= 0 and bar_1m < len(timestamps_1m):
+        return str(pd.Timestamp(timestamps_1m[bar_1m]).isoformat())
+    if bar_5m >= 0:
+        return timestamps_5m[bar_5m].isoformat()
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Main simulation orchestrator
 # ---------------------------------------------------------------------------
 
@@ -2147,6 +2168,7 @@ def run_backtest(
         high_1s          = _maps["high_1s"]
         low_1s           = _maps["low_1s"]
         close_1s         = _maps["close_1s"]
+        timestamps_1m    = _maps["timestamps_1m"]
         bar_map          = map_5m_1m_arr
         map_1m_to_5m     = None  # only used in legacy magnifier path
 
@@ -2169,6 +2191,7 @@ def run_backtest(
         high_1s   = np.empty(0, dtype=np.float64)
         low_1s    = np.empty(0, dtype=np.float64)
         close_1s  = np.empty(0, dtype=np.float64)
+        timestamps_1m = np.empty(0, dtype="datetime64[ns]")
 
         if use_hierarchical:
             from ..data.bar_mapping import (
@@ -2180,6 +2203,7 @@ def run_backtest(
             high_1m   = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
             low_1m    = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
             close_1m  = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
+            timestamps_1m = df_1m.index.values.astype("datetime64[ns]")
             map_1m_to_5m = _map_1m_to_5m
 
         if has_30s:
@@ -2363,7 +2387,7 @@ def run_backtest(
             if use_hierarchical:
                 # Hierarchical: 5m primary, 1m drill-down on ambiguous bars,
                 # 30s on ambiguous 1m bars (when available), 1s on ambiguous 30s bars
-                fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade_hierarchical(
+                fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f = _simulate_single_trade_hierarchical(
                     high, low, close,
                     pc.entry_bar_start, pc.entry_bar_end,
                     pc.flat_bar_start, pc.last_bar,
@@ -2416,8 +2440,8 @@ def run_backtest(
                 exit_bar=exit_bar, pnl_points=pnl_pts, pnl_usd=pnl_usd,
                 r_multiple=r_multiple, qty=pc.qty, half_qty=pc.half_qty,
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
-                fill_time=timestamps[fill_bar].isoformat() if fill_bar >= 0 else "",
-                exit_time=timestamps[exit_bar].isoformat() if exit_bar >= 0 else "",
+                fill_time=_resolve_time(timestamps, fill_bar, timestamps_1m, fill_1m_f if use_hierarchical else -1.0),
+                exit_time=_resolve_time(timestamps, exit_bar, timestamps_1m, exit_1m_f if use_hierarchical else -1.0),
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""NQ Asia Continuation — Variable Sweeps Round 5.
+"""NQ Asia Continuation — Variable Sweeps Round 2 (RESTART).
 
-R5 anchor (R4 + orb/gap adoptions):
-  ORB: 20:00-20:30, entry until 03:00, flat 06:45-07:00
-  stop=5.25%, min_gap_atr=1.0%, max_gap_pts=50.0, max_gap_atr=0.0
-  rr=2.5, tp1=0.05, ATR=7, direction=both, ICF=OFF, continuation, 1s magnifier
+R2 anchor (R1 + rr=4.0, flat=23:00):
+  ORB: 20:00-20:15, entry until 23:15, flat 23:00-07:00
+  stop=5.25%, min_gap_atr=0.9%, max_gap_pts=50.0, max_gap_atr=0.0
+  rr=4.0, tp1=0.5, ATR=14, direction=both, ICF=OFF, continuation, 1s magnifier
   DOW gate: none
 
-R4 adoptions applied: orb: 15m -> 30m (+1.71), gap: 0.9% -> 1.0% (+4.36)
-  entry_end=23:15 deferred (borderline Δ+0.48, will be retested at new ORB)
+R1 adoptions applied: rr: 2.5 -> 4.0 (+2.24), flat: 06:45 -> 23:00 (+1.28)
+  Deferred: excl Tue (+1.33, DOW needs 2-round persistence), tp1=0.7 (+1.11),
+  atr=5 (+1.10), orb=5m (+1.04), ICF=ON (+0.79), dir=long (+0.69)
 
 Adoption rule: Calmar delta > +0.3 AND no NEW negative full years AND trades > 100.
 """
@@ -29,21 +30,23 @@ from orb_backtest.results.metrics import compute_metrics
 
 INSTRUMENT_NAME = "NQ"
 SESSION_NAME = "Asia"
-SWEEP_ROUND = 5
+SWEEP_ROUND = 2
 
 START_DATE = "2016-01-01"
 DATA_YEARS = 10
 
+MIN_TP1_RATIO = 0.2  # minimum tp1 — values below this produce degenerate WR
+
 ANCHOR_SESSION = SessionConfig(
     name="Asia",
     orb_start="20:00",
-    orb_end="20:30",
-    entry_start="20:30",
-    entry_end="03:00",
-    flat_start="06:45",
+    orb_end="20:15",
+    entry_start="20:15",
+    entry_end="23:15",
+    flat_start="23:00",
     flat_end="07:00",
     stop_atr_pct=5.25,
-    min_gap_atr_pct=1.0,
+    min_gap_atr_pct=0.9,
     max_gap_points=50.0,
     max_gap_atr_pct=0.0,
 )
@@ -55,11 +58,11 @@ ANCHOR = StrategyConfig(
     use_bar_magnifier=True,
     risk_usd=5000.0,
     direction_filter="both",
-    rr=2.5,
-    tp1_ratio=0.05,
-    atr_length=7,
+    rr=4.0,
+    tp1_ratio=0.5,
+    atr_length=14,
     impulse_close_filter=False,
-    name="NQ Asia R5 Anchor",
+    name="NQ Asia R2 Anchor (restart)",
 )
 
 ANCHOR_DOW_EXCL = set()
@@ -135,13 +138,14 @@ def check_adopt(label, m, anchor_calmar, anchor_neg):
 # -- Main ----------------------------------------------------------------------
 
 def main():
-    print(f"{INSTRUMENT_NAME} {SESSION_NAME} ORB — Variable Sweeps Round {SWEEP_ROUND}")
+    print(f"{INSTRUMENT_NAME} {SESSION_NAME} ORB — Variable Sweeps Round {SWEEP_ROUND} (RESTART)")
     print("=" * 90)
     print(f"Anchor: rr={ANCHOR.rr}, tp1={ANCHOR.tp1_ratio}, stop={ANCHOR_SESSION.stop_atr_pct}%, "
           f"gap={ANCHOR_SESSION.min_gap_atr_pct}%")
     print(f"ORB={ANCHOR_SESSION.orb_start}-{ANCHOR_SESSION.orb_end}, entry<={ANCHOR_SESSION.entry_end}, "
           f"flat={ANCHOR_SESSION.flat_start}, ATR={ANCHOR.atr_length}, dir={ANCHOR.direction_filter}, "
           f"DOW excl={ANCHOR_DOW_EXCL or 'none'}, ICF={'ON' if ANCHOR.impulse_close_filter else 'OFF'}")
+    print(f"MIN_TP1_RATIO={MIN_TP1_RATIO}")
 
     print("\nLoading data...", flush=True)
     t0 = time.time()
@@ -285,9 +289,9 @@ def main():
     if ok:
         adoptions.append(("rr", best_lbl, delta))
 
-    # -- 8. TP1 RATIO ----------------------------------------------------------
-    tp1_vals = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
-    print_header(f"8. TP1 RATIO (anchor={ANCHOR.tp1_ratio})")
+    # -- 8. TP1 RATIO (minimum 0.2) -------------------------------------------
+    tp1_vals = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    print_header(f"8. TP1 RATIO (anchor={ANCHOR.tp1_ratio}, min={MIN_TP1_RATIO})")
     best_cal, best_lbl, best_m = anc_cal, "anchor", m_anc
     for i, tp1 in enumerate(tp1_vals, 1):
         cfg = replace(ANCHOR, tp1_ratio=tp1)
@@ -374,7 +378,7 @@ def main():
     # ══════════════════════════════════════════════════════════════════════════
     elapsed = time.time() - t0
     print(f"\n{'='*90}")
-    print(f"  SUMMARY — Round {SWEEP_ROUND}")
+    print(f"  SUMMARY — Round {SWEEP_ROUND} (RESTART, tp1 >= {MIN_TP1_RATIO})")
     print(f"  Anchor Calmar: {anc_cal:.2f} | Neg years: {sorted(anc_neg) if anc_neg else 'none'}")
     print(f"  Runtime: {elapsed:.0f}s ({elapsed/60:.1f}m)")
     print(f"{'='*90}")
