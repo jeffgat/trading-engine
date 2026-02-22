@@ -346,10 +346,14 @@ def main():
         adoptions.append(("rr", best_lbl, delta))
 
     # -- 8. TP1 RATIO ----------------------------------------------------------
-    tp1_vals = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]
+    MIN_TP1 = 0.2  # hard constraint — never test tp1 below 0.2
+    tp1_vals = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 1.0]
     print_header(f"8. TP1 RATIO (anchor={ANCHOR.tp1_ratio})")
     best_cal, best_lbl, best_m = anc_cal, "anchor", m_anc
     for i, tp1 in enumerate(tp1_vals, 1):
+        if tp1 < MIN_TP1:
+            print(f"    {i:>3} {'tp1=' + str(tp1):>24}  SKIP (tp1_ratio < {MIN_TP1})")
+            continue
         cfg = replace(ANCHOR, tp1_ratio=tp1)
         _, m = run_and_metric(df_5m, df_1m, df_1s, cfg)
         print_row(i, f"tp1={tp1}", m, is_base=(abs(tp1 - ANCHOR.tp1_ratio) < 0.01))

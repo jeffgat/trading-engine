@@ -76,6 +76,7 @@ print(f"Grid size: {len(GRID)} combos ({len(STOPS)}x{len(RRS)}x{len(GAPS)}x{len(
 
 
 MIN_STOP_TICKS = 10  # reject configs with median stop < 10 ticks
+MIN_TP1 = 0.2        # reject configs with tp1_ratio < 0.2
 
 
 def median_stop_ticks(trades):
@@ -114,6 +115,8 @@ def main():
     t_start = time.time()
 
     for i, (stop, rr, gap, tp1) in enumerate(GRID):
+        if tp1 < MIN_TP1:
+            continue  # skip configs with tp1_ratio < 0.2
         sess = replace(ANCHOR_SESSION, stop_atr_pct=stop, min_gap_atr_pct=gap)
         cfg = replace(ANCHOR, sessions=(sess,), rr=rr, tp1_ratio=tp1)
         trades = run_backtest(df_5m, cfg, start_date=START_DATE, df_1m=df_1m, df_1s=df_1s)

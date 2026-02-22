@@ -68,6 +68,14 @@ Single source of truth for all thresholds, criteria, and decision logic used in 
 - In sweep scripts, skip the variant and print `SKIP (median stop < 10 ticks)` instead of metrics
 - In grid sweeps, filter out combos with median stop < 10 ticks before ranking
 
+## Minimum TP1 Ratio (0.2 Rule)
+
+- **Never test or adopt a config with `tp1_ratio < 0.2`**
+- A TP1 ratio below 0.2 takes too little off the table at the first target, leaving nearly all risk on for the full R:R move
+- This applies to: variable sweep TP1 dimension, grid sweep TP1 axis
+- In sweep scripts, skip the variant and print `SKIP (tp1_ratio < 0.2)` instead of metrics
+- In grid sweeps, skip combos with tp1 < 0.2 before running the backtest (saves compute)
+
 ## DOW Filter Rules
 
 - DOW exclusion is tested as a variable sweep dimension (excluded_days)

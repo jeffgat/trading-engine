@@ -18,6 +18,8 @@ Orchestrates `multi-phase-backtest` sweep discipline with `robust-pipeline` vali
 
 **HARD CONSTRAINT — 10-Tick Minimum Stop**: Never test, adopt, or save a config where the median stop is less than 10 ticks. Stops below 10 ticks are unrealistic — slippage eats the edge. Compute as `median(t.risk_points / instrument.tick_size for filled trades)`. Skip and print `SKIP (median stop < 10 ticks)` for any variant that fails this check. This applies at EVERY step: baseline, sweeps, grid, pipeline, and save.
 
+**HARD CONSTRAINT — Minimum TP1 Ratio 0.2**: Never test, adopt, or save a config with `tp1_ratio < 0.2`. A TP1 ratio below 0.2 takes too little off the table at the first target, leaving nearly all risk on for the full R:R move. Skip and print `SKIP (tp1_ratio < 0.2)` for any variant that fails this check. This applies at EVERY step: sweeps, grid, and save.
+
 ## Before Starting
 
 Gather from the user:
@@ -94,7 +96,7 @@ Sweep 12 dimensions in this fixed order, one at a time, all others held at ancho
 | 5 | Flat time | `flat_start` | Session-appropriate times |
 | 6 | Direction | `direction_filter` | both, long, short |
 | 7 | R:R ratio | `rr` | 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0 |
-| 8 | TP1 ratio | `tp1_ratio` | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 |
+| 8 | TP1 ratio | `tp1_ratio` | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 (min 0.2 — hard constraint) |
 | 9 | Min gap ATR % | `min_gap_atr_pct` | 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0 |
 | 10 | DOW exclusion | post-backtest filter | none, Mon, Tue, Wed, Thu, Fri, M+F, Th+F |
 | 11 | Max gap ATR % | `max_gap_atr_pct` | OFF, 20, 50, 75, 100, 150 |
@@ -265,7 +267,8 @@ Every generated script must follow these rules:
 8. **Imports**: Use direct import like `from orb_backtest.data.instruments import ES` (not `get_instrument()`).
 9. **Working directory**: Scripts run from `python/` via `cd python && uv run python scripts/{script}.py`.
 10. **10-tick minimum stop**: Every generated script must include a `median_stop_ticks()` helper that computes `median(t.risk_points / instrument.tick_size)` for filled trades. Any config with median stop < 10 ticks must be skipped (sweeps/grids) or flagged as FAIL (baseline/pipeline). This is a hard constraint — no exceptions.
-11. **Progress tracking**: Every optimization maintains a `python/{asset}_{session}_progress.md` file. Read it at the start of every step. Update it after every significant result. Delete it after Step 6. This file survives context compaction and is the single source of truth for workflow state.
+11. **Minimum TP1 ratio 0.2**: Never test or adopt a config with `tp1_ratio < 0.2`. In sweep scripts, skip values below 0.2. In grid sweeps, exclude tp1 values below 0.2 from the grid. This is a hard constraint — no exceptions.
+12. **Progress tracking**: Every optimization maintains a `python/{asset}_{session}_progress.md` file. Read it at the start of every step. Update it after every significant result. Delete it after Step 6. This file survives context compaction and is the single source of truth for workflow state.
 
 ## Relationship to Other Skills
 
