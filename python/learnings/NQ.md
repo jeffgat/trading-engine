@@ -345,6 +345,139 @@ Key findings:
 - **R/yr dropped from 21.1 → 16.5**: Trade-off for much lower DD. Calmar improved from 23.85 → 60.19 (+152%).
 - **Exit profile change**: SL 25.5%, TP1_TP2 22.8%, TP1_BE 42.1%, TP1_EOD 2.0%, EOD 7.7% — the TP1_BE category dominates because TP1 hits early on the same candle, then the remaining position runs to breakeven.
 
+### Asia Continuation R9 Restart Final (15m ORB, long, 1s magnifier) — GO (tp1>=0.2 restart)
+- **Status**: GO — All 5 phases passed. Supersedes R5 Final (which had degenerate tp1=0.10 producing 94.5% WR).
+- **Note**: R5 Final's tp1=0.10 placed TP1 at only 12.5% of stop distance (~6 NQ points), producing mechanically correct but meaningless "wins" of +0.0625R. Minimum tp1_ratio=0.2 rule was established and the entire optimization was restarted from baseline.
+- **Config** (R1-R9 restart optimization, 2016 start):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 15m (20:00-20:15 ET) |
+| entry_start | 20:15 |
+| entry_end | 22:30 |
+| flat_start | 04:00 |
+| flat_end | 07:00 |
+| direction | long |
+| rr | 3.0 |
+| tp1_ratio | 0.6 |
+| stop_atr_pct | 4.0% |
+| min_gap_atr_pct | 0.90% |
+| max_gap_points | 75 |
+| max_gap_atr_pct | 0 |
+| atr_length | 5 |
+| magnifier | 1s |
+| gate | excl Tuesday |
+| impulse_close_filter | ON |
+
+- **Full-history performance** (2016-2026): 770 trades, 45.5% WR, PF 1.42, 176.2R total (17.6 R/yr), Max DD -11.3R, Calmar 15.64, Sharpe 2.52, **0 negative full years**
+- **R by year**: 2016:+12  2017:+26  2018:+22  2019:+19  2020:+19  2021:+3  2022:+21  2023:+8  2024:+23  2025:+17  2026:+7
+
+#### 5-Phase Robust Pipeline Results
+
+| Phase | Result | Key Metrics |
+|-------|--------|-------------|
+| 1. Structural | PASS | 770 trades, 45.5% WR, PF 1.42, Calmar 15.64 |
+| 2. Walk-Forward | PASS | WF efficiency 0.797, stability 0.964 (high), 7 folds |
+| 3. Prop Constraints | PASS | Avg annual R 14.3, worst month -5.0R, positive expectancy |
+| 4. Hold-Out OOS | PASS | 2025+: 89 trades, Sharpe 2.77, PF 1.49, +23.2R |
+| 5. Monte Carlo | PASS | 91.7% survival at -25R ruin, p50 DD -16.5R |
+
+- **WF Parameter Stability**: gap=0.9 stable 7/7 folds (1.000), rr mode=3.0 (1.000), stop mode=3.5 (0.857), tp1 mode=0.7 (1.000). Overall 0.964 (high).
+- **MC percentiles**: Final PnL p5=110R, p50=175R, p95=241R. Max DD p5=-27R, p50=-16.5R.
+- **Verdict**: GO — All 5 phases passed. Strategy is prop-firm ready.
+- **DB entry**: `bt-nq-asia-cont-long-2016-2026-final-r9-res-4489d8`
+
+#### R9 Restart Optimization History
+- **Context**: R5 Final's tp1=0.10 produced degenerate 94.5% WR (each TP1_BE win earned only +0.0625R). User established minimum tp1_ratio=0.2 rule. Entire optimization restarted from baseline.
+- **R1 restart**: Baseline anchor (default params, tp1>=0.2). Calmar 2.94. Adopted: rr=4.0 (+2.24), flat=23:00 (+1.28).
+- **R2 restart**: Calmar 4.20, 1 neg year (2022). **Converged** — 0 adoptions.
+- **Grid Sweep R1**: 625 combos (stop×rr×gap×tp1). Winner: stop=5.0/rr=3.0/gap=0.9/tp1=0.6 (Calmar 7.03). Delta +2.83 > 0.5 → back to sweeps. Adopted #5: stop=4.0/rr=3.0/gap=0.9/tp1=0.6 (Calmar 6.18, 1 neg year).
+- **R3 restart**: Grid winner anchor. Adopted: dir=long (+0.84), ICF=ON (+2.72). dir=long eliminated 2022 neg year.
+- **R4 restart**: Calmar 8.28, 0 neg years. Adopted: atr=5 (+3.49), flat=02:00 (+1.31).
+- **R5 restart**: Calmar 12.85. Adopted: entry_end=23:00 (+0.35), maxgap=75pts (+0.62).
+- **R6 restart**: Calmar 13.23. Adopted: DOW excl Tue (+0.98).
+- **R7 restart**: Calmar 14.21. Adopted: flat=04:00 (+0.46). DOW excl Tue persisted (confirmed stable).
+- **R8 restart**: Calmar 14.68. Adopted: entry_end=22:30 (+0.97).
+- **R9 restart**: Calmar 15.64. **Converged** — 0 adoptions across all 12 dimensions.
+- **Grid Sweep R2**: 500 combos. Anchor ranked #2/500 (Calmar 15.64). Winner: stop=4.0/rr=3.5/gap=0.9/tp1=0.5 (Calmar 16.07). Delta +0.43 < 0.5 → **Grid confirms anchor**.
+- 135/500 combos (27%) have 0 negative years. No boundary warnings.
+
+#### Key differences from R5 Final (degenerate tp1)
+- **tp1 shifted from 0.10 → 0.6**: The minimum tp1=0.2 rule eliminated degenerate micro-scalp configs. Higher tp1 means larger TP1 target (60% of full R:R), producing real wins with meaningful R.
+- **Direction: both → long**: Shorts eliminated 2022 negative year (longs +21R vs shorts -34R in 2022).
+- **ICF: OFF → ON**: Massive impact (+2.72 Calmar at R3 adoption). ICF captures more FVGs.
+- **ORB: 10m → 15m**: 15m was the anchor default and was never displaced at any of the 9 restart sweeps.
+- **rr: 1.75 → 3.0**: Higher R:R with higher tp1 — trades run further.
+- **WR: 94.5% → 45.5%**: Realistic win rate. R5's 94.5% was mechanically correct but misleading.
+- **Calmar: 60.19 → 15.64**: R5's Calmar was inflated by artificially tiny drawdowns from the degenerate tp1.
+
+### Asia Continuation Short (10m ORB, short, 1s magnifier) — NO-GO
+- **Status**: NO-GO — robust pipeline passed 2/5 phases (Structural + Hold-Out). Failed WF, Prop, MC.
+- **Config** (R4-R6 optimization + Grid Sweep R2 confirmation):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 10m (20:00-20:10 ET) |
+| entry_start | 20:10 |
+| entry_end | 01:00 |
+| flat_start | 23:00 |
+| flat_end | 07:00 |
+| direction | short |
+| rr | 3.75 |
+| tp1_ratio | 0.6 |
+| stop_atr_pct | 3.5% |
+| min_gap_atr_pct | 1.0% |
+| max_gap_points | 0 |
+| max_gap_atr_pct | 0 |
+| atr_length | 30 |
+| magnifier | 1s |
+| gate | excl Thursday |
+| impulse_close_filter | ON |
+
+- **Full-history performance** (2016-2026): 874 trades, 40.7% WR, PF 1.24, 108.0R total (10.8 R/yr), Max DD -17.1R, Calmar 6.30, Sharpe 1.40, 2 neg years (2022, 2023)
+- **R by year**: 2016:+29  2017:+8  2018:+8  2019:+15  2020:+4  2021:+35  2022:-5  2023:-2  2024:+6  2025:+9  2026:+2
+
+#### 5-Phase Robust Pipeline Results
+
+| Phase | Result | Key Metrics |
+|-------|--------|-------------|
+| 1. Structural | PASS | 874 trades, 40.7% WR, PF 1.24, Calmar 6.30, Sharpe 1.40 |
+| 2. Walk-Forward | FAIL | WFE 0.467 < 0.5 (stability 0.821 high), OOS Calmar 1.76 |
+| 3. Prop Constraints | FAIL | OOS avg annual R 6.3 < 12.0, worst month -9.9R |
+| 4. Hold-Out OOS | PASS | 2025+: 95 trades, Sharpe 1.36, PF 1.24, +11.0R |
+| 5. Monte Carlo | FAIL | 62.9% survival at -25R ruin (need 70%) |
+
+- **WF fold-level**: 2019 OOS strong (+10R, Sharpe 1.42), 2021 outstanding (+40.9R, Sharpe 4.41), but 2020 (-1.9R), 2022 (-7.6R), 2023 (-4.9R) all negative. Parameters shifted across folds (stop→3.0, rr→4.0, gap→varied).
+- **Verdict**: NO-GO — The in-sample structural metrics look strong (Calmar 6.30) but walk-forward reveals the parameters are not stable across regimes. 2022-2023 are structurally negative for NQ Asia shorts — no parameter combo tested (0/500 in grid) has 0 negative full years. MC survival of 62.9% confirms the drawdown tail risk is too high.
+- **DB entry**: `bt-nq-asia-cont-short-2016-2026-no-go-e72618`
+
+#### Optimization History
+- **Baseline exploration**: Combined best: ATR=30, ICF=ON, flat=23:00, gap=1.0% → Calmar 1.39
+- **R1**: 1 adoption: ORB 15m→10m (Δ+0.44). Calmar 1.80.
+- **R2**: Bug in DOW adoption logic (only checked absolute best, missed excl-Thu which passed all criteria). Manual adoption: excl-Thu (Δ+2.25). Calmar 4.05.
+- **R3**: Converged (0 adoptions). Calmar 4.05.
+- **Grid Sweep R1**: 500 combos. Winner: stop=3.5/rr=3.0/gap=1.0/tp1=0.6 (Calmar 4.69). Delta +0.64 > 0.5 → back to sweeps. Both stop=3.5 and rr=3.0 at grid boundary.
+- **R4**: 2 adoptions: entry_end 23:00→01:00 (Δ+0.37), rr 3.0→3.5 (Δ+0.91). Calmar 5.85.
+- **R5**: 1 adoption: rr 3.5→3.75 (Δ+0.45). Calmar 6.30.
+- **R6**: Converged (0 adoptions). Calmar 6.30.
+- **Grid Sweep R2**: 500 combos. Anchor ranked #1/500 (Calmar 6.30). Confirmed.
+
+#### Key Findings — Shorts vs Longs
+- **Shorts need completely different params**: ATR=30 (longs=5), flat=23:00 (longs=04:00), ORB=10m (longs=15m), rr=3.75 (longs=3.0), stop=3.5% (longs=4.0%), excl-Thu (longs=excl-Tue). Every major dimension differs.
+- **2021 is the standout year for shorts**: +35R, vs longs' +3R in 2021. Shorts hedge longs' weakest year.
+- **2022-2023 are structurally negative for shorts**: No parameter combo achieves 0 negative years. This is a fundamental limitation.
+- **Combined L+S portfolio**: Adding shorts to the R9 Restart Long config yields 1,644 trades, ~286R total, but the standalone short is too weak to justify — better to trade longs-only with lower DD risk.
+
+#### Scripts Generated
+- `run_nq_asia_short_baseline.py`
+- `run_nq_asia_short_variable_sweeps_1.py` through `run_nq_asia_short_variable_sweeps_6.py`
+- `run_nq_asia_short_grid_sweep_r1.py`, `run_nq_asia_short_grid_sweep_r2.py`
+- `run_nq_asia_short_robust_pipeline.py`
+
 ### Asia Continuation R4 Final (10m ORB, both, 1s magnifier) — SUPERSEDED by R5
 - **Status**: SUPERSEDED — R5 Final (post bug fix) achieved Calmar 60.19 vs R4's 23.85
 - **Config** (R1-R4 optimization with 1s magnifier, 2016 start):
@@ -402,8 +535,131 @@ Key findings:
 - **ICF is OFF**: Unlike v3+ICF optimization which showed +29% Calmar, ICF was not beneficial at the R4 anchor (entry_end=01:00 changes the trade mix).
 - **Calmar improved 20.14 → 23.85 (+18%)** despite losing 2015 data year.
 
-### NY Continuation R20 (20m ORB, both, 1s magnifier) — GO
-- **Status**: GO — fixed-param WF 6/6 folds profitable, hold-out PASS
+### NY Continuation Short (20m ORB, short-only, 1s magnifier) — NO-GO
+- **Status**: NO-GO — best achievable config has 4 negative years, Calmar 1.40, PF 1.10. Edge is marginal and fragile to slippage.
+- **DB entry**: `bt-nq-ny-short-no-go-final-327490`
+- **Best config found**:
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | NY |
+| direction | short |
+| ORB window | 20m (09:30-09:50) |
+| entry_end | 15:00 |
+| flat_start | 15:50 |
+| stop_orb_pct | 15.0% |
+| min_gap_orb_pct | 7.0% |
+| stop_atr_pct | 5.0% |
+| min_gap_atr_pct | 2.0% |
+| min_stop_points | 10.0 |
+| min_tp1_points | 10.0 |
+| rr | 3.0 |
+| tp1_ratio | 0.3 |
+| atr_length | 14 |
+| magnifier | 1s |
+
+- **Full-history performance** (2016-2026): 967 trades, 61.5% WR, PF 1.10, Sharpe 0.67, 37.3R (3.7 R/yr), Max DD -26.6R, Calmar 1.40, 4 negative years
+- **R by year**: 2016:-5  2017:-3  2018:+5  2019:-4  2020:+4  2021:+15  2022:+5  2023:-4  2024:+7  2025:+13  2026:+4
+
+#### Investigation Summary
+
+##### The tp1=0.2 Trap
+Variable sweeps (R1-R10) converged on configs with 88% win rate, but diagnostic analysis revealed:
+- Median stop was only **8.2 points** (33 ticks) — 32.7% of trades had stops < 5 points
+- TP1 target was just **3.3 points** median (0.4× the already-tiny stop) — any noise triggers TP1
+- **87.7% of trades were tp1_be exits** earning exactly +0.2R, with only 2/624 ever reaching TP2
+- Average R per trade: **0.056R** — slippage of 1-3 points (typical NQ) would consume 30-90% of the TP1 target
+- The "edge" is mechanical: trivial retracement → TP1 → breakeven stop → scratch. Not viable in live execution.
+
+##### Engine Fix: Dual Floors (min_stop_points + min_tp1_points)
+Implemented engine-level minimum floors on `SessionConfig` to prevent the tp1 trap:
+- `min_stop_points=10.0`: `stop_dist = max(computed_stop, 10.0)` — prevents unrealistically tight stops
+- `min_tp1_points=10.0`: `tp1_dist = max(computed_tp1, 10.0)` — prevents trivial TP1 targets
+- These are per-session, NQ-specific values (10pt = 40 ticks). Other instruments should use different values appropriate to their tick size.
+
+##### With Dual Floors: ORB vs ATR Comparison
+Comprehensive comparison with both 10pt floors active (`diagnose_nq_ny_short_orb_vs_atr.py`):
+
+| Stop Method | Best Calmar | Config | Net R | Neg Years | Median Stop |
+|-------------|-------------|--------|-------|-----------|-------------|
+| **ORB 15%** | **1.40** | rr=3.0, tp1=0.3 | 37.3R | 4 | 10.0pt |
+| ORB 10% | 1.11 | rr=3.0, tp1=0.3 | 26.2R | 4 | 10.0pt (floor-binding) |
+| ORB 20% | 1.08 | rr=3.0, tp1=0.3 | 29.3R | 4 | 11.2pt |
+| ATR 5% | 0.19 | rr=2.5, tp1=0.3 | 4.3R | 5 | 10.0pt (all floor-binding) |
+| ATR 7.5% | 1.05 | rr=4.0, tp1=0.5 | 39.4R | 5 | 14.6pt |
+| ATR 10% | 1.19 | rr=4.0, tp1=0.6 | 53.3R | 3 | 19.5pt (DD: -45R) |
+| ATR 12.5% | 1.01 | rr=4.0, tp1=0.6 | 42.4R | 3 | 24.4pt (DD: -42R) |
+
+- ORB orbstop=15% is the best stop mechanism — naturally sizes to ORB range, avoids floor-binding
+- ATR-based stops only viable at extreme rr=4.0 with massive drawdowns (-42 to -45R)
+- Floor-binding (ORB 10%, ATR 5%) produces near-zero edge
+
+##### Variable Sweep Oscillation (R1-R8, ATR-based)
+8 rounds of ATR-based sweeps never converged:
+- ATR length oscillated: 14→20→14→20→5→14
+- Gap oscillated: 1.0→4.0→3.5→2.0→4.0→2.0→4.0
+- DOW exclusion shifted every round: none→Thu→Fri→Fri→Fri→Tue→none→Tue
+- ORB window wandered: 20m→25m→30m→25m→15m→25m→30m
+- Root cause: tp1=0.2 creates an ultra-flat parameter landscape where everything looks similar within noise
+
+##### ORB-Based Stop Approach (R9-R10)
+Attempted switching from ATR-based to ORB-based stops to reduce parameter instability:
+- R9 (ORB-based): 2 adoptions, more stable than ATR rounds — but still the tp1=0.2 artifact
+- R10: 6 adoptions, instability returned even with ORB-based params
+
+#### Conclusion
+The NO-GO config above (Calmar 1.40, 4 neg years) was from diagnostic grids only — never properly optimized with dual floors. A full re-optimization from scratch with dual floors active may find a better config. See "Next Tests" below.
+
+#### Next Tests — Re-Optimization with Dual Floors (High Priority)
+
+The previous 10 rounds of variable sweeps were all corrupted by the tp1=0.2 artifact (no floors). Now that `min_stop_points=10` and `min_tp1_points=10` are engine-level constraints, a clean re-optimization should be run from scratch. The parameter landscape will be fundamentally different with floors enforcing realistic stop/TP1 distances.
+
+**What to do**: Run `/full-optimization NQ NY Short` with dual floors baked into the SessionConfig from Step 1.
+
+**Key differences from previous attempt**:
+1. **Dual floors active from the start** — `min_stop_points=10.0`, `min_tp1_points=10.0` on SessionConfig. No tp1=0.2 artifact possible.
+2. **tp1_ratio sweep range**: With min_tp1=10pt, low tp1 ratios at low rr will be floor-binding anyway. Sweep 0.3-0.7 (not 0.2).
+3. **Variable sweeps should converge** — the previous oscillation (8 rounds) was caused by the flat parameter landscape from tp1=0.2. With floors, the landscape should have real gradients.
+
+**Dimensions with highest potential for improvement** (not yet swept with floors):
+- **ORB window**: Only 20m tested with floors. 10m, 15m, 25m, 30m could shift the stop distribution significantly since orbstop is ORB-relative.
+- **Entry end**: Only 15:00 tested. Pre-fix data suggested 15:30 was a massive lever.
+- **Flat time**: Only 15:50 tested. Earlier flats could cut losing EOD trades.
+- **ATR length**: Only 14 tested with floors. Asia found ATR 5 dramatically better — may apply to NY shorts too.
+- **Stop mechanism**: ORB 15% was best in diagnostic, but the optimal orbstop% may shift when other params change. Also test mixed ORB+ATR (both nonzero).
+- **Gap parameters**: orbgap=7% was inherited from R9-R10 (tp1=0.2 era). Completely untested with floors.
+- **DOW exclusion**: Previously oscillated due to flat landscape. With floors, DOW effects may be real and stable.
+- **ICF**: Not tested with floors at all. Was detrimental pre-fix for NY but that was a different config.
+- **Direction**: Could test `both` instead of `short` — longs may contribute enough to stabilize the equity curve and eliminate negative years.
+
+**Risk assessment**: Even with full optimization, NQ NY shorts are structurally weaker than longs (consistent across all testing). Realistic expectation is Calmar 2-4 if optimization finds a good region, but may still be NO-GO. The key question is whether proper optimization can eliminate the 4 negative years (2016, 2017, 2019, 2023).
+
+**Alternative high-potential test**: NQ NY continuation `both` directions with dual floors — this hasn't been tested post-fix at all. The corrupt R20 config (both, rr=2.625, tp1=0.3) showed strong pre-fix metrics. Re-optimizing `both` with dual floors could find a config where longs carry the years that shorts lose.
+
+#### Scripts Generated
+- `run_nq_ny_short_baseline.py` (Step 1)
+- `run_nq_ny_short_variable_sweeps_1.py` through `run_nq_ny_short_variable_sweeps_10.py` (Step 2)
+- `diagnose_nq_ny_short_stops.py` (stop distance diagnostic)
+- `diagnose_nq_ny_short_wide_stops.py` (wide stop / realistic tp1 diagnostic)
+- `diagnose_nq_ny_short_min_stop_floor.py` (min_stop_points=10 testing)
+- `diagnose_nq_ny_short_82pct_wr.py` (floor-binding vs organic trade analysis)
+- `diagnose_nq_ny_short_dual_floor.py` (both min_stop=10 + min_tp1=10)
+- `diagnose_nq_ny_short_orb_vs_atr.py` (ORB vs ATR stop comparison with dual floors)
+- `save_nq_ny_short_final.py` (DB save)
+
+### CORRUPTION NOTICE — All NY Results Pre-Fix (commit 6079ad4)
+
+> **Root cause**: The TP1+BE same-bar exit bug allowed trades to survive bars where TP1 was hit and the stop should have moved to breakeven on the same candle. This inflated r_multiples for all configs, especially those with tp1_ratio <= 0.3 where TP1 is close to entry and same-bar TP1+BE events are frequent.
+>
+> **Impact**: NQ NY R20 (tp1=0.3) went from 247.9R → 84.6R (66% drop), Calmar 20.31 → 3.86 on the fixed engine. All metrics, WF results, and pipeline verdicts below are **unreliable**.
+>
+> **What's preserved**: Optimization history (parameter interaction lessons, DOW instability findings, structural conclusions about ORB windows, etc.) remains valid as directional guidance. Only the specific metric values are corrupt.
+>
+> **Action**: Full NQ NY longs-only re-optimization underway on the fixed engine.
+
+### NY Continuation R20 (20m ORB, both, 1s magnifier) — CORRUPT (was GO)
+- **Status**: CORRUPT — all metrics pre-date TP1+BE same-bar exit bug fix (commit 6079ad4). tp1=0.3 makes this config heavily affected.
 - **Config** (R16-R20 optimization with 1s magnifier):
 
 | Param | Value |
@@ -457,8 +713,8 @@ Key findings:
 - **R20**: Re-swept structural vars on new anchor → all converged (every dimension had Δ=0).
 - **Grid sweep R20**: 1,920 combos (broader ranges). Current anchor ranked #2 overall (Calmar 16.36). #1 was stop=7.0/rr=3.5 (Calmar 16.50) but at grid edge with 46% WR and -17.2R DD — rejected as less robust.
 
-### NY Continuation Long 30m ICF — INVALIDATED
-- **Status**: INVALIDATED — original data (2015-2026) no longer available. Rerun on current data (2016-2026) shows degraded performance.
+### NY Continuation Long 30m ICF — CORRUPT + INVALIDATED
+- **Status**: CORRUPT + INVALIDATED — pre-dates TP1+BE bug fix AND original data (2015-2026) no longer available. Rerun on current data (2016-2026) shows degraded performance.
 - **Original DB entry**: `NQ NY Long 30m ICF Pipeline Validated` (ID 9742)
 - **Original performance**: 1,144 trades, 51.5% WR, Sharpe 2.10, PF 1.36, 192.2R, Calmar 17.26, 0 neg years
 - **Rerun on current data**: 829 trades, 50.2% WR, Sharpe 2.00, PF 1.33, 134.6R, Calmar 11.10, **2 negative years** (2016: -8R, 2025: -6R)
@@ -466,8 +722,8 @@ Key findings:
 - **Root cause**: Current parquet data starts 2016-01 vs original CSV starting 2015-01. Missing 2015 data (~315 trades) accounts for the degradation. 2016 is now negative without the warm-up from 2015.
 - **Conclusion**: Superseded by R20 Final (Calmar 16.36 vs 11.10 on same data, 0 neg years vs 2).
 
-### NY Continuation (20m ORB, long-only, magnifier) — CONDITIONAL (superseded by R20)
-- **Status**: CONDITIONAL — superseded by R20 Final which uses both directions and achieves better Calmar on current data
+### NY Continuation (20m ORB, long-only, magnifier) — CORRUPT (was CONDITIONAL, superseded by R20)
+- **Status**: CORRUPT — pre-dates TP1+BE bug fix. Was CONDITIONAL, superseded by R20 Final.
 - **Accepted config** (WF mode params from Sharpe-objective run):
 
 | Param | Value | Notes |
@@ -502,7 +758,7 @@ Key findings:
 - **Year breakdown** (in-sample, rr=2.25): 2015:+28  2016:+17  2017:+22  2018:+13  2019:+19  2020:+19  2021:+17  2022:+9  2023:-2  2024:+12  2025:+21  2026:+8
 - **Note**: WF OOS degrades ~74% from in-sample Calmar (17.17 → 4.41). 2023 is the persistent weak spot.
 
-#### NY Variable Sweep History (Rounds 1-12)
+#### NY Variable Sweep History (Rounds 1-12) — CORRUPT METRICS, directional findings preserved
 
 **Round 1** — Baseline variable sweeps (6 dimensions)
 - Base: WF mode params (rr=2.0, tp1=0.5, stop=10%, gap=1.5%, both direction, 15m ORB)
@@ -608,41 +864,86 @@ Key findings:
 ## Key Findings
 
 ### Asia Session
-- **R5 Final is the GO config** (post same-candle SL/TP bug fix): stop=3.7%, rr=1.75, gap=0.90%, tp1=0.10, ORB=10m, entry_end=00:00, flat=01:00, ATR=5, both, no-Thu, ICF=OFF, 1s magnifier → Calmar 60.19, 16.5 R/yr, DD -2.7R, 0 neg years. Fixed-param WF 6/6 folds profitable, combined OOS Calmar 5.74. Hold-out Sharpe 4.35. DB: `bt-nq-asia-r5-final-25e2c0`. Supersedes R4 Final.
-- **Bug fix fundamentally changed the optimal tp1**: From 0.35 → 0.10. Entry-candle SL/TP now counted correctly, making ultra-early profit-taking (10%) extremely reliable (94.5% WR). The strategy transformed from moderate-WR/moderate-RR to ultra-high-WR scalper profile.
-- **entry_end=00:00 replaced 01:00**: Post-bugfix, entries past midnight are less productive. The entry_end + flat_start interaction shifted: flat_start=01:00 gives remaining positions more room.
+- **R9 Restart Final is the current GO config**: stop=4.0%, rr=3.0, gap=0.90%, tp1=0.6, ORB=15m (20:00-20:15), entry_end=22:30, flat=04:00, ATR=5, long-only, excl-Tue, ICF=ON, 1s magnifier, max_gap_points=75 → 770 trades, 45.5% WR, PF 1.42, Sharpe 2.52, 176.2R (17.6 R/yr), DD -11.3R, Calmar 15.64, 0 neg years. WF efficiency 0.797, stability 0.964. Hold-out Sharpe 2.77. MC 91.7% survival. DB: `bt-nq-asia-cont-long-2016-2026-final-r9-res-4489d8`. Supersedes R5 Final (which had degenerate tp1=0.10).
+- **Asia Continuation Short is NO-GO**: stop=3.5%, rr=3.75, gap=1.0%, tp1=0.6, ATR=30, 10m ORB, entry<=01:00, flat=23:00, excl-Thu, ICF=ON → 874 trades, Calmar 6.30. Robust pipeline 2/5 (WF, Prop, MC all failed). 2022-2023 are structurally negative for shorts — 0/500 grid combos have 0 neg years. Shorts need completely different optimal params than longs (every major dimension differs). Not viable standalone or as a hedge.
+- **R5 Final's tp1=0.10 was degenerate**: Post-bugfix optimization converged to tp1=0.10 (94.5% WR, Calmar 60.19) but each TP1_BE win earned only +0.0625R. The strategy was a micro-scalper masquerading as a normal strategy. R9 Restart enforced tp1>=0.2 minimum and found a fundamentally different, healthier profile at tp1=0.6.
+- **R9 Restart is a completely different strategy profile than R5**: Long-only (was both), 15m ORB (was 10m), ICF=ON (was OFF), excl-Tue (was excl-Thu), entry_end=22:30 (was 00:00), flat=04:00 (was 01:00), rr=3.0 (was 1.75). Every major structural dimension changed when the tp1 floor was imposed.
 - **Destructive parameter interaction warning**: In R3, adopting 5 changes simultaneously crashed Calmar from 20.18→11.97 (-41%). Never adopt more than 2-3 changes at once. The safe approach is resetting to the best-proven config when oscillation is detected.
-- **Asia session produces high trade counts** (~160/year) with good win rates (67%), and the R4 config has strong edge per trade (~0.13R avg).
-- **10m ORB is definitively better than 15m** for NQ Asia — confirmed across v2, v3, and R4 optimizations. ORB oscillated (10m→15m→10m) across R1-R2 due to interaction with entry_end. At entry_end=01:00, 10m is dominant.
-- **Thursday is negative EV** on NQ Asia continuation. Removing it improved all metrics across every optimization round.
+- **DOW exclusion instability**: excl-Thu was optimal in R4/R5, excl-Tue emerged in R9 Restart. DOW exclusions shift with the anchor — treat with caution but R9's excl-Tue passed 2-round persistence test.
 - **SMA trend gate hurts NQ Asia** — opposite of CL where it doubled Sharpe. Both trend directions are profitable; filtering halves trade count without improving edge.
-- **atr_length=5 beats 14 for walk-forward** — ATR 14 shows better in-sample Sharpe in pre-sweeps but performs worse OOS (WF efficiency 0.311 vs 0.59 for ATR 5). Use ATR 5 for pipeline validation.
-- **Two distinct strategy zones exist** for NQ Asia continuation:
-  - **Zone A** (stop≈3.5–4.5%, rr≈1.75–3.0): ~65–73% WR, 10–21 R/yr, DD -9–16R. R4 Final lives here at the optimal point.
-  - **Zone B** (stop≈5.5–6.5%, rr≈1.0–1.5): ~78–82% WR, 6–9 R/yr, DD -9–12R. v2 CONDITIONAL lived here.
-  - The dead zone between (~4.5–5.5%) has no consistent winner — avoid it.
-- **stop=3.7% is the anchor for Zone A** — confirmed as Calmar peak by broad, fine, and R4 grid sweeps. The R4 grid (2,016 combos) showed stop=3.7% configs dominating both overall and zero-neg-year rankings.
-- **Both directions required** — unlike NY where long-only dominates at some anchors. NQ Asia shorts contribute positively. Long-only has higher Sharpe but a bad 2022.
-- **flat_start=00:00 (midnight close) is critical**: Removes overnight drift risk from trades that haven't hit TP2. Smooth peak confirmed with 30-min step resolution. No-Tuesday exclusion does NOT stack (they fix the same problem).
-- **Gap dimension has two peaks with a dead zone**: gap=0.90% and gap=1.20% are local maxima. gap=1.00–1.10% is a valley. At the R4 anchor, gap=0.90% is dominant.
-- **2022 is the structural weak spot** — +8.9R in WF fold 4. Still profitable but the lowest fold. R4 anchor survives it cleanly unlike v1/v2.
-- **ICF ruled out for Asia — confirmed across full parameter space**: 378-combo grid sweep (stop 2-6%, rr 1.0-3.5, gap 0.5-2.0%) with ICF=ON: best clean config is stop=4.0/rr=2.0/gap=1.0 at Calmar 20.95 — still 2.91 points below R4 ICF=OFF (23.85). ICF shifts optimal params (stop 3.7→4.0, rr 1.75→2.0, gap 0.90→1.0) but can't compensate. Was positive at v3 anchor (entry_end=23:00) but not at R4 (entry_end=01:00) — and now confirmed not viable at any point in the grid.
+- **atr_length=5 beats 14 for walk-forward** — ATR 14 shows better in-sample Sharpe in pre-sweeps but performs worse OOS (WF efficiency 0.311 vs 0.59 for ATR 5). Use ATR 5 for pipeline validation. Confirmed again in R9 Restart.
+- **Two distinct strategy profiles discovered across optimization rounds**:
+  - **R5 Final profile** (tp1=0.10, rr=1.75, both, 10m ORB, ICF=OFF): Ultra-high WR scalper (94.5%), Calmar 60.19, but degenerate edge per win (+0.0625R). Not recommended.
+  - **R9 Restart profile** (tp1=0.6, rr=3.0, long, 15m ORB, ICF=ON): Moderate WR (45.5%), higher edge per win, Calmar 15.64. Recommended — healthy risk/reward profile.
+- **Gap dimension stable at 0.90%**: Confirmed across R4, R5, and R9 Restart. gap=0.9 was stable 7/7 WF folds in R9 pipeline.
+- **ICF flipped from OFF to ON**: At the R5 anchor (tp1=0.10, both directions, 10m ORB) ICF was detrimental. At the R9 Restart anchor (tp1=0.6, long-only, 15m ORB, rr=3.0) ICF became beneficial. This is a clear example of parameter interactions — the same filter can be positive or negative depending on the full config.
+- **max_gap_points=75 is a new dimension**: Adopted in R9 Restart R5 sweep. Caps absolute gap size in points, complementing the ATR-relative gap filter.
 
 ### NY Session
-- **Both directions viable at the right params** — R16-R20 optimization with 1s magnifier found that both directions (Calmar 16.36) beats long-only (Calmar 11.51) at the R20 anchor. The key was wider entry window (15:30 vs 13:00) and lower RR (2.625 vs 3.2). Earlier rounds found long-only essential, but that was anchor-specific — at different stop/rr/gap combinations, shorts add value.
-- **20m ORB (09:30-09:50) is the optimal window** for NY — confirmed across R16-R20 sweeps. 25m oscillated (adopted in R17, reverted in R18). 15m and 30m consistently worse.
-- **Entry end 15:30 is optimal** — R17 showed entry_end=15:30 was a massive lever (Δ+4.08 Calmar). Late entries are productive. Confirmed stable through R20.
-- **ATR=12 is optimal** — shifted from 14 in earlier rounds. Confirmed in R17, stable through R20.
-- **Stop ATR interacts strongly with RR AND reshuffles the entire optimal surface** — this lesson confirmed again in R19-R20. stop=9% emerged as massive winner in R19 (Δ+3.67), triggering full grid re-sweep. Fine-tune then moved to 8.75%. The grid sweep R20 showed stop=7.0/rr=3.5 at the top but at grid edge — interior configs (8.75/2.625) are more robust.
-- **Parameter surface is noisy for adaptive WF** — the adaptive walk-forward (re-optimizing each fold) failed with efficiency 0.49. Mode params drifted significantly from the candidate. But the fixed-param WF showed 6/6 folds profitable. This means the surface has multiple local optima that shift with regime, but our specific point (8.75/2.625/2.25/0.3) is robust across time.
-- **DOW exclusion is a data-mining artifact** — shifted every round (Th+F in R16-R17, Tue in R18, different again in R19). Do not use.
-- **2022-2023 are the weak years** — +9.1R and +3.9R in fixed-param WF. Still positive but lowest folds. Every other year strong.
-- **ICF is strongly detrimental for NQ NY — confirmed across full parameter space** — at R20 anchor: ICF=ON drops Calmar from 16.36→7.13 (Δ=-9.23), introduces 2 new negative years (2018, 2023), hurts both directions (longs Δ=-2.53, shorts Δ=-4.10). Broader 288-combo grid sweep (stop 5-12%, rr 1.5-4.0, gap 1.0-3.5%) with ICF=ON: best clean config is stop=9/rr=4.0/gap=3.5 at Calmar 12.46 — still 3.9 points below R20 ICF=OFF (16.36). ICF pushes optimal RR to 4.0 and WR to 49% but can't compensate. Only 28/288 configs (10%) have 0 neg years. NQ NY should always run with ICF=OFF.
-- **1s magnifier impact**: For the Long 30m ICF config, 1s magnifier made zero difference (0 trades changed). For the R20 config, 1s is used throughout but the delta vs 1m was not isolated.
-- **Reversal and inversion strategies are dead** on NQ NY — tested in Round 3 (ORB-based) and no-ORB inversion sweep (864 combos across short/long/both, QM 50-200%, stop 7-13%, RR 2-5, TP1 0.2-0.6). Every single config has negative Calmar. The GC no-ORB inversion concept does not transfer to NQ.
+- **R11 Final is the current CONDITIONAL config** (post-fix): stop=7.0%, rr=3.5, gap=2.5%, tp1=0.4, ATR=12, 20m ORB, entry<=12:00, flat=15:30, ICF=OFF, long-only, excl-Fri, 1s magnifier → 561 trades, 53.3% WR, PF 1.51, Sharpe 2.90, 135.0R, DD -6.0R, Calmar 22.51, 0 neg years. WF stability 1.000 (high), WF eff 0.551. MC 99.1% survival. Phase 3 failed on avg annual R (8.1 < 12.0). DB: `bt-nq-ny-cont-long-r11-final-2016-2026-c3bcc0`.
 
-### LDN Session
-- **NQ LDN continuation is marginal** — best achievable Calmar ~1.13 (full-history) vs NY 16.36 and Asia 23.85. Orders of magnitude weaker.
+> **All previous NY metrics below were computed before the TP1+BE same-bar exit bug fix (commit 6079ad4).** Specific Calmar/R/Sharpe/DD numbers are unreliable. Directional findings (which params are better/worse relative to each other) are still useful as starting hypotheses.
+
+- **All previous NY configs (R20, Long 30m ICF, Long-only CONDITIONAL, LDN R2) are CORRUPT** — R11 Final above is the post-fix replacement.
+- **NQ NY continuation shorts are NO-GO** — tested post-fix on the fixed engine. The only positive configs relied on the tp1=0.2 micro-scalp artifact (88% WR but median TP1 target only 3.3 points). With realistic stops (≥10 pts) and tp1≥0.4, every configuration is negative. NQ shorts have no structural edge in the NY session.
+- **20m ORB (09:30-09:50) is likely the optimal window** for NY — confirmed across R16-R20 sweeps pre-fix. Starting hypothesis for re-optimization.
+- **Entry end 15:30 is likely optimal** — R17 showed entry_end=15:30 was a massive lever. Starting hypothesis for re-optimization.
+- **ATR=12 is likely optimal** — shifted from 14 in earlier rounds. Starting hypothesis for re-optimization.
+- **Stop ATR interacts strongly with RR** — this lesson confirmed in R19-R20 pre-fix. stop changes reshuffle the entire optimal surface. Always re-run full grid after finding a new stop anchor.
+- **DOW exclusion is a data-mining artifact** — shifted every round pre-fix (Th+F in R16-R17, Tue in R18, different again in R19). Do not use.
+- **2022-2023 are likely the weak years** — consistent across all pre-fix configs. Expect this to persist post-fix.
+- **ICF is likely detrimental for NQ NY** — pre-fix finding across full parameter space. Will re-verify in sweeps.
+- **Reversal and inversion strategies are dead** on NQ NY — tested pre-fix but this is a structural finding unlikely to change with the bug fix.
+
+### NY Continuation Long R11 Final (20m ORB, long-only, 1s magnifier) — CONDITIONAL
+- **Status**: CONDITIONAL — 4/5 pipeline phases passed. Phase 3 (Prop Constraints) failed on avg annual R.
+- **Config** (fresh optimization on fixed engine, 11 rounds + 3 grid sweeps):
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | NY |
+| ORB window | 20m (09:30-09:50) |
+| entry_start | 09:50 |
+| entry_end | 12:00 |
+| flat_start | 15:30 |
+| flat_end | 16:00 |
+| direction | long |
+| rr | 3.5 |
+| tp1_ratio | 0.4 |
+| stop_atr_pct | 7.0% |
+| min_gap_atr_pct | 2.5% |
+| atr_length | 12 |
+| ICF | OFF |
+| DOW excl | Fri (post-backtest) |
+| magnifier | 1s |
+
+- **Full-history (2016-2026)**: 561 trades, 53.3% WR, PF 1.51, 135.0R (13.5 R/yr), DD -6.0R, Calmar 22.51, Sharpe 2.90, **0 negative full years**
+- **R by year**: 2016:+8, 2017:+24, 2018:+22, 2019:+22, 2020:+14, 2021:+12, 2022:+6, 2023:+3, 2024:+11, 2025:+9, 2026:+4
+- **Median stop**: 54.2 ticks
+
+#### Robust Pipeline Results
+- **Phase 1 (Structural)**: PASS — 561 trades, 53.3% WR, PF 1.51, Calmar 22.51, 54.2 tick stop
+- **Phase 2 (Walk-Forward)**: PASS — WF efficiency 0.551, stability 1.000 (high), 7 folds. stop=7.0 chosen 6/7 folds, rr=3.5 in 4/7. Combined OOS: 387 trades, 51.2% WR, PF 1.30, 56.8R, Sharpe 1.83, DD -8.9R, Calmar 6.36. 2023 OOS fold: -2.9R (only negative year).
+- **Phase 3 (Prop Constraints)**: FAIL — avg annual R 8.1R (threshold 12.0R). Worst month -4.6R (PASS). Positive expectancy +0.147R (PASS). 2023 OOS: -2.9R dragged average below threshold.
+- **Phase 4 (Hold-Out 2025+)**: PASS — 54 trades, 53.7% WR, PF 1.52, Sharpe 2.90, +13.1R, DD -4.0R
+- **Phase 5 (Monte Carlo)**: PASS — 99.1% survival at -25R ruin. p50 DD -12.4R, p5 PnL 83.5R, p5 Sharpe 1.82
+- **Verdict**: CONDITIONAL — size position conservatively. Phase 3 fails because long-only NY generates ~56 trades/year, limiting absolute R accumulation. Edge per trade (+0.24R) is solid but frequency is the bottleneck.
+- **DB entry**: `bt-nq-ny-cont-long-r11-final-2016-2026-c3bcc0`
+
+#### Optimization History
+- **R1-R7**: 7 rounds of variable sweeps. R2 adopted 5 changes simultaneously — destructive (crashed Calmar). R3 reverted all 5. Lesson: max 2-3 adoptions at once. **R7 CONVERGED** at Calmar 14.45.
+- **Grid R1**: 540 combos. Winner: stop=7.0, rr=3.25, gap=2.5, tp1=0.45 (Calmar 16.45, +2.00). Adopted.
+- **R8-R9**: Post-grid sweeps. R8 adopted ATR 20→12. **R9 CONVERGED** at Calmar 16.50. tp1=0.4 blocked individually (2023 neg), but works with higher rr.
+- **Grid R2**: 375 combos. Winner: stop=7.0, rr=3.5, gap=2.5, tp1=0.4 (Calmar 20.73, +4.23). Key interaction: tp1=0.4 blocked at rr=3.25 but viable at rr=3.5. Adopted.
+- **R10-R11**: Post-grid sweeps. R10 adopted ICF ON→OFF (+1.78). **R11 CONVERGED** at Calmar 22.51.
+- **Grid R3**: 375 combos. **Anchor ranked #1/375 overall and #1/66 (0-neg)**. Delta +0.00 — perfect convergence.
+- **ICF oscillation**: OFF→ON→OFF→OFF→OFF→ON→ON→ON→ON→OFF. Context-dependent. Settled at OFF for this anchor.
+- **2023 is the persistent weak year**: +2.8R in full-history. Drives Phase 3 failure in WF (2023 OOS = -2.9R). Cannot be eliminated without overfitting.
+- **Scripts**: `run_nq_ny_long_variable_sweeps_{1-11}.py`, `run_nq_ny_long_grid_sweep_r{1-3}.py`, `run_nq_ny_long_robust_pipeline.py`, `save_nq_ny_long_r11_final.py`
+
+### LDN Session — CORRUPT (pre-fix metrics, directional findings preserved)
+- **NQ LDN continuation is marginal** — best achievable Calmar ~1.13 pre-fix (full-history). Orders of magnitude weaker than Asia.
 - **Only 1 of 3 walk-forward candidates passed GO** — and barely (hold-out Sharpe 0.58, just above 0.5 threshold). Two other candidates had stronger OOS R/yr but failed hold-out Sharpe.
 - **2016 is the persistent negative year** — appears in every config tested, cannot be eliminated.
 - **ICF=ON and max_gap_points=20 were the only two adoptions** across R1-R2 variable sweeps (12 dimensions each). Most dimensions showed no meaningful improvement from the weak anchor.
@@ -650,8 +951,8 @@ Key findings:
 - **Grid sweep (576 combos) barely moved the anchor** — best ≤1-neg-year combo: stop=8.0/rr=2.5/gap=1.5/tp1=0.5 (Calmar 1.13 vs anchor 1.12, Δ=+0.01).
 - **OOS performance is thin** — grid #2 (stop=8.0/rr=2.25/gap=1.5/tp1=0.6) passed WF with all 6 folds profitable but 2024 was +0.2R and 2019 was +1.8R. Combined OOS: 10.3 R/yr, Calmar 0.41.
 
-### LDN Continuation R2 Final (15m ORB, both, 1s magnifier) — MARGINAL GO
-- **Status**: MARGINAL GO — fixed-param WF 6/6 folds profitable, hold-out PASS (barely)
+### LDN Continuation R2 Final (15m ORB, both, 1s magnifier) — CORRUPT (was MARGINAL GO)
+- **Status**: CORRUPT — pre-dates TP1+BE bug fix. tp1=0.6 means less affected than NY R20, but all metrics are still unreliable. Was MARGINAL GO — fixed-param WF 6/6 folds profitable, hold-out PASS (barely).
 - **Config** (R1-R2 optimization + grid sweep):
 
 | Param | Value |

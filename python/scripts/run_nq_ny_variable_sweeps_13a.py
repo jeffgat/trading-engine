@@ -37,8 +37,6 @@ ANCHOR = dict(
     flat_end="16:00",
     stop_atr_pct=9.0,
     min_gap_atr_pct=3.0,
-    max_gap_atr_pct=0.0,
-    max_gap_points=100.0,
 )
 
 
@@ -58,8 +56,6 @@ def make_config(orb_end="09:50", entry_start=None, entry_end="15:00",
         flat_end=flat_end,
         stop_atr_pct=stop,
         min_gap_atr_pct=gap,
-        max_gap_points=max_gap_pts,
-        max_gap_atr_pct=max_gap_atr,
     )
     return StrategyConfig(
         sessions=(sess,),

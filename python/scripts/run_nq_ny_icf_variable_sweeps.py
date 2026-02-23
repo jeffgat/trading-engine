@@ -38,7 +38,6 @@ BASE_SESSION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=9.0,
     min_gap_atr_pct=3.5,
-    max_gap_points=100.0,
 )
 
 BASE = StrategyConfig(

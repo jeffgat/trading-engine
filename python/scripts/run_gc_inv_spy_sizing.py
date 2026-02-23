@@ -104,7 +104,6 @@ def main():
         entry_start="09:35", entry_end="15:00",
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=9.0, min_gap_atr_pct=1.0,
-        max_gap_points=25.0, qualifying_move_atr_pct=10.0,
     )
     config = StrategyConfig(
         rr=3.5, tp1_ratio=0.2, risk_usd=5000.0, atr_length=50,

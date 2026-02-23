@@ -48,8 +48,6 @@ RTY_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=3.0,       # Min allowed (user constraint)
     min_gap_atr_pct=1.0,    # Fine-tune grid winner
-    max_gap_points=50.0,
-    max_gap_atr_pct=0.0,
 )
 
 BASE_CONFIG = StrategyConfig(

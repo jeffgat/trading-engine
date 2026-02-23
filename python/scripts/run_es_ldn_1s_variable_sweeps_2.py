@@ -50,7 +50,6 @@ ES_LDN_ANCHOR = SessionConfig(
     flat_end="08:25",
     stop_atr_pct=5.0,       # fine-tune winner
     min_gap_atr_pct=1.25,   # fine-tune winner
-    max_gap_points=50.0,
 )
 
 ANCHOR = StrategyConfig(

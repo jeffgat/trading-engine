@@ -43,7 +43,6 @@ ES_LDN_SESSION = SessionConfig(
     flat_end="08:25",
     stop_atr_pct=1.5,       # swept in grid
     min_gap_atr_pct=1.25,   # swept in grid
-    max_gap_points=50.0,
 )
 
 BASE_CONFIG = StrategyConfig(
@@ -139,7 +138,6 @@ def main():
                     flat_end="08:25",
                     stop_atr_pct=stop,
                     min_gap_atr_pct=gap,
-                    max_gap_points=50.0,
                 )
                 cfg = with_overrides(BASE_CONFIG, rr=rr, sessions=(sess,))
 

@@ -49,7 +49,6 @@ LDN_ORB30 = replace(
     entry_start="03:30",
     stop_atr_pct=15.0,
     min_gap_atr_pct=1.0,
-    max_gap_points=50.0,
 )
 
 BASE_CONFIG = StrategyConfig(

@@ -81,7 +81,6 @@ def session_from_window(name, orb_s, orb_e, entry_s, entry_e, flat_s, flat_e, qm
         entry_start=entry_s, entry_end=entry_e,
         flat_start=flat_s, flat_end=flat_e,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP_PTS, qualifying_move_atr_pct=qm,
     )
 
 
@@ -122,7 +121,6 @@ def main():
                 entry_start=entry_s, entry_end=entry_e,
                 flat_start=flat_s, flat_end=flat_e,
                 stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-                max_gap_points=MAX_GAP_PTS, qualifying_move_atr_pct=qm,
             )
             m, filled = run_and_stats(df, df_1m, (session,), qm)
             if m is None:
@@ -161,14 +159,12 @@ def main():
             entry_start="03:15", entry_end="08:20",
             flat_start="08:20", flat_end="08:25",
             stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-            max_gap_points=MAX_GAP_PTS, qualifying_move_atr_pct=qm,
         )
         ny = SessionConfig(
             name="NY", orb_start="09:30", orb_end="09:35",
             entry_start="09:35", entry_end="15:00",
             flat_start="15:50", flat_end="16:00",
             stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-            max_gap_points=MAX_GAP_PTS, qualifying_move_atr_pct=qm,
         )
         m, filled = run_and_stats(df, df_1m, (ldn, ny), qm)
         if m is None:

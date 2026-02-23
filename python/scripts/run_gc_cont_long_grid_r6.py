@@ -46,7 +46,6 @@ def make_session(stop, min_gap):
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=stop,
         min_gap_atr_pct=min_gap,
-        max_gap_points=25.0,
     )
 
 

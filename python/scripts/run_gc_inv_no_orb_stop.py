@@ -38,7 +38,6 @@ def make_config(stop):
         entry_start="09:35", entry_end="20:00",
         flat_start="20:00", flat_end="20:05",
         stop_atr_pct=stop, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     return StrategyConfig(
         rr=RR, tp1_ratio=TP1, risk_usd=5000.0,

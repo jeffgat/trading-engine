@@ -53,7 +53,6 @@ GC_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,         # overridden per combo
     min_gap_atr_pct=1.0,      # overridden per combo
-    max_gap_points=25.0,
 )
 
 BASE = StrategyConfig(
@@ -95,7 +94,6 @@ def _worker(args):
         flat_end="16:00",
         stop_atr_pct=stop,
         min_gap_atr_pct=gap,
-        max_gap_points=25.0,
     )
     cfg = with_overrides(BASE, rr=rr, tp1_ratio=tp1, sessions=(sess,))
     trades = run_backtest(df_g, cfg, start_date=START_DATE, df_1m=df_1m_g)

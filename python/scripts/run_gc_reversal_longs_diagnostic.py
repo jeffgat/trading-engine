@@ -34,8 +34,6 @@ HALF_DAYS = ("20250703", "20251128", "20251224", "20250109", "20260119")
 def make_config(
     stop_atr_pct=4.0,
     min_gap_atr_pct=3.5,
-    max_gap_atr_pct=30.0,
-    max_gap_points=25.0,
     rr=4.0,
     tp1_ratio=0.5,
     atr_length=10,
@@ -51,8 +49,6 @@ def make_config(
         flat_start=flat_start, flat_end="16:00",
         stop_atr_pct=stop_atr_pct,
         min_gap_atr_pct=min_gap_atr_pct,
-        max_gap_points=max_gap_points,
-        max_gap_atr_pct=max_gap_atr_pct,
     )
     return StrategyConfig(
         rr=rr, tp1_ratio=tp1_ratio, risk_usd=5000.0,

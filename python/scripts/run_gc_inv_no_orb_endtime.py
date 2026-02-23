@@ -51,7 +51,6 @@ def make_config(entry_end, flat_start, flat_end):
         entry_start="09:35", entry_end=entry_end,
         flat_start=flat_start, flat_end=flat_end,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     return StrategyConfig(
         rr=RR, tp1_ratio=TP1, risk_usd=5000.0,

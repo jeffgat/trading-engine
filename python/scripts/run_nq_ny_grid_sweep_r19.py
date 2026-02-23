@@ -46,7 +46,6 @@ BASE_SESSION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=9.0,       # Placeholder — overridden in grid
     min_gap_atr_pct=1.5,     # Placeholder — overridden in grid
-    max_gap_points=100.0,
 )
 
 BASE_CONFIG = StrategyConfig(

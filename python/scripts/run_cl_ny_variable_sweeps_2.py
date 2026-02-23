@@ -50,7 +50,6 @@ CL_NY_ANCHOR = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,      # was 7.5
     min_gap_atr_pct=1.0,   # was 2.25
-    max_gap_points=100.0,
 )
 
 ANCHOR = StrategyConfig(
@@ -404,7 +403,6 @@ def run_grid():
                         flat_end="16:00",
                         stop_atr_pct=stop,
                         min_gap_atr_pct=gap,
-                        max_gap_points=100.0,
                     )
                     cfg = with_overrides(ANCHOR, rr=rr, tp1_ratio=tp1, sessions=(sess,))
 

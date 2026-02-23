@@ -44,7 +44,6 @@ GC_NY_CONTINUATION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=9.0,
     min_gap_atr_pct=1.0,
-    max_gap_points=25.0,
 )
 
 BASE_CONFIG = StrategyConfig(

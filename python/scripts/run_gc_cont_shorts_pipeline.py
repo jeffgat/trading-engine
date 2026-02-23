@@ -57,8 +57,6 @@ GC_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=2.5,
     min_gap_atr_pct=5.5,
-    max_gap_points=25.0,
-    max_gap_atr_pct=25.0,
 )
 
 BASE_CONFIG = StrategyConfig(

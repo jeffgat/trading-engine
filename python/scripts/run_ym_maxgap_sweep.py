@@ -30,7 +30,6 @@ def make_config(entry_end, max_gap_points):
         flat_end="16:00",
         stop_atr_pct=4.0,
         min_gap_atr_pct=1.5,
-        max_gap_points=max_gap_points,
     )
     return StrategyConfig(
         rr=4.0,

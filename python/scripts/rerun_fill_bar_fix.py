@@ -64,7 +64,6 @@ def run_es_asia():
         entry_start="20:10", entry_end="03:00",
         flat_start="06:45", flat_end="07:00",
         stop_atr_pct=3.0, min_gap_atr_pct=0.5,
-        max_gap_points=50.0, max_gap_atr_pct=0.0,
     )
     config = StrategyConfig(
         sessions=(sess,), instrument=ES, strategy="continuation",
@@ -98,7 +97,6 @@ def run_gc_shorts():
         entry_start="09:45", entry_end="15:00",
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=2.5, min_gap_atr_pct=5.5,
-        max_gap_points=25.0, max_gap_atr_pct=25.0,
     )
     config = StrategyConfig(
         rr=7.0, tp1_ratio=0.6, risk_usd=5000.0, atr_length=10,
@@ -134,7 +132,6 @@ def run_nq_asia():
         entry_start="20:10", entry_end="01:00",
         flat_start="00:00", flat_end="07:00",
         stop_atr_pct=3.7, min_gap_atr_pct=0.90,
-        max_gap_points=0.0, max_gap_atr_pct=5.0,
     )
     config = StrategyConfig(
         sessions=(sess,), instrument=NQ, strategy="continuation",
@@ -168,7 +165,6 @@ def run_nq_ny():
         entry_start="09:50", entry_end="15:30",
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=8.75, min_gap_atr_pct=2.25,
-        max_gap_points=100.0,
     )
     config = StrategyConfig(
         sessions=(sess,), instrument=NQ, strategy="continuation",
@@ -201,7 +197,6 @@ def run_es_ldn():
         entry_start="03:10", entry_end="08:25",
         flat_start="08:00", flat_end="08:25",
         stop_atr_pct=5.2, min_gap_atr_pct=1.25,
-        max_gap_points=50.0,
     )
     config = StrategyConfig(
         rr=2.0, tp1_ratio=0.40, risk_usd=5000.0, atr_length=50,
@@ -235,7 +230,6 @@ def run_gc_longs():
         entry_start="09:40", entry_end="11:00",
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=3.0, min_gap_atr_pct=3.5,
-        max_gap_points=25.0, max_gap_atr_pct=30.0,
     )
     config = StrategyConfig(
         rr=4.5, tp1_ratio=0.5, risk_usd=5000.0, atr_length=10,

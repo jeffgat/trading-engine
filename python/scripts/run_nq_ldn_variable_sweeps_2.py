@@ -42,7 +42,6 @@ ANCHOR_SESSION = SessionConfig(
     stop_atr_pct=10.0,
     min_gap_atr_pct=1.0,
     max_gap_points=20.0,     # R1 adopted (was 50)
-    max_gap_atr_pct=0.0,
 )
 
 ANCHOR = StrategyConfig(

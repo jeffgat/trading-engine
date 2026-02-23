@@ -42,8 +42,6 @@ FULL_YEARS = [str(y) for y in range(2015, 2026)]
 ANCHOR = dict(
     stop_atr_pct=3.7,
     min_gap_atr_pct=0.90,
-    max_gap_atr_pct=5.0,
-    max_gap_points=0.0,
     orb_end="20:10",
     entry_start="20:10",
     entry_end="23:00",
@@ -65,7 +63,6 @@ def build_cfg(
     rr=1.75,
     tp1_ratio=0.35,
     direction_filter="both",
-    max_gap_points=0.0,
 ):
     asia = replace(
         ASIA_SESSION,
@@ -75,8 +72,6 @@ def build_cfg(
         flat_start=flat_start,
         stop_atr_pct=ANCHOR["stop_atr_pct"],
         min_gap_atr_pct=ANCHOR["min_gap_atr_pct"],
-        max_gap_atr_pct=ANCHOR["max_gap_atr_pct"],
-        max_gap_points=max_gap_points,
     )
     cfg = default_config(NQ)
     return with_overrides(

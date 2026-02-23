@@ -37,8 +37,6 @@ ANCHOR_SESSION = SessionConfig(
     flat_end="07:00",
     stop_atr_pct=4.0,
     min_gap_atr_pct=0.9,
-    max_gap_points=50.0,
-    max_gap_atr_pct=0.0,
 )
 
 ANCHOR = StrategyConfig(

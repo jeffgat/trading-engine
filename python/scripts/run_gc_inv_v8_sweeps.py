@@ -49,7 +49,6 @@ def build_session(orb_end="09:35", entry_end="15:00", flat_start="15:50",
         flat_end="16:00",
         stop_atr_pct=stop_atr_pct,
         min_gap_atr_pct=min_gap_atr_pct,
-        max_gap_points=max_gap_points,
         qualifying_move_atr_pct=qualifying_move_atr_pct,
     )
 

@@ -49,7 +49,6 @@ GC_NY_ANCHOR = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,
     min_gap_atr_pct=1.0,
-    max_gap_points=25.0,
 )
 
 ANCHOR = StrategyConfig(
@@ -174,7 +173,6 @@ def sweep_orb_window():
             flat_end="16:00",
             stop_atr_pct=4.0,
             min_gap_atr_pct=1.0,
-            max_gap_points=25.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)
@@ -228,7 +226,6 @@ def sweep_entry_end():
             flat_end="16:00",
             stop_atr_pct=4.0,
             min_gap_atr_pct=1.0,
-            max_gap_points=25.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)
@@ -259,7 +256,6 @@ def sweep_flat_start():
             flat_end="16:00",
             stop_atr_pct=4.0,
             min_gap_atr_pct=1.0,
-            max_gap_points=25.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)
@@ -340,7 +336,6 @@ def sweep_max_gap_points():
             flat_end="16:00",
             stop_atr_pct=4.0,
             min_gap_atr_pct=1.0,
-            max_gap_points=float(v) if v > 0 else 0.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)

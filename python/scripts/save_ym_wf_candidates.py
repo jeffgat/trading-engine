@@ -33,7 +33,6 @@ def make_config(orb_end, entry_end, name, notes):
         flat_end="16:00",
         stop_atr_pct=4.0,
         min_gap_atr_pct=1.5,
-        max_gap_points=100.0,
     )
     return StrategyConfig(
         rr=4.0,

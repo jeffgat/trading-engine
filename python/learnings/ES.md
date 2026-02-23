@@ -34,6 +34,39 @@
 - **Key insight**: Edge is genuine (WF stability 0.88). DD is structural — 2022/2023 were weak years (+13R, +9.8R). 2025 hold-out is exceptional (+61.2R, Sharpe 2.27). Accepted as conditional GO.
 - **DB entries**: `bt-es-ldn-2016-2026-robust-pipeline-no-go-802f28`, `opt-es-ldn.gap-ldn.stop-rr-tp1-1296c-463110`, `ES LDN 2016-2026 Continuation Both WF Mode`
 
+### London ORB Continuation — Both Directions (Fresh Full Optimization, 2026-02-22)
+- **Status**: NO-GO (2/5 phases passed at best — overfit)
+- **Workflow**: Full optimization skill — baseline → 12 rounds variable sweeps → 2 grid sweeps → robust pipeline
+- **Converged anchor** (R11): stop=6.0%, rr=4.0, gap=1.0%, tp1=0.5, ATR=14, max_gap=20%ATR, ORB 10m, flat 08:20, entry 08:25, DOW excl Mon, ICF off, 1s mag
+  - In-sample: Calmar 9.18, Sharpe 1.168, 191.5R net, -20.9R DD, 0 neg years
+  - R by year: 2016:+4, 2017:+12, 2018:+34, 2019:+28, 2020:+30, 2021:+34, 2022:+0, 2023:+15, 2024:+29, 2025:+5
+- **R11 Pipeline result (rr=4.0 anchor)**: NO-GO 1/5
+  - Phase 1 PASS: Calmar 9.18, 0 neg years
+  - Phase 2 FAIL: WFE 0.441, stability 0.928 (high). OOS negative in 2021 (-6R), 2022 (-1.8R), 2025 (-0.3R)
+  - Phase 3 FAIL: Avg annual R 11.6R (need 12.0), worst month -11.9R
+  - Phase 4 FAIL: 2025 holdout Sharpe 0.306, only 5.4R
+  - Phase 5 FAIL: 81% ruin at -25R, 19% survival
+- **R12 refinement**: DD reduction sweep → TP1 0.5→0.75, flat 08:20→08:00 improved Calmar 9.18→10.18
+  - In-sample: Calmar 10.18, Sharpe 1.127, 206.7R net, -20.3R DD, 1 neg year (2016:-0.8R)
+  - R by year: 2016:-1, 2017:+17, 2018:+31, 2019:+30, 2020:+40, 2021:+23, 2022:+0, 2023:+22, 2024:+39, 2025:+2
+- **R12 Pipeline result**: NO-GO 2/5 (improved from 1/5)
+  - Phase 1 PASS: Calmar 10.18, WR 33.9%, PF 1.19
+  - Phase 2 PASS: WFE 0.591, stability 0.857 (high). WF mode: rr=3.5, tp1=0.6, stop=6.0, gap=1.0
+  - Phase 3 FAIL: Worst month -8.9R (limit 5.0R). Avg annual R 16.4R passes.
+  - Phase 4 FAIL: 2025 holdout Sharpe 0.214, only +4.1R
+  - Phase 5 FAIL: 91.8% ruin at -25R, 8.2% survival. MC p50 DD -36.1R
+- **Key findings**:
+  - ATR oscillated (3↔20) across rounds, resolved by grid sweep (landed at 7→10→14)
+  - Grid sweeps found high Calmars (8.47-9.18) but only 2-3% of combos had 0 neg years — fragile surface
+  - Stop=6.0% is a very narrow peak — 0.1% change in either direction introduces negative years
+  - DD is structural and irreducible: swept TP1, RR, flat, entry end, direction, DOW, gap — nothing materially moves DD
+  - Strategy produces attractive in-sample metrics but does NOT generalize: MC p50 DD is -36R vs in-sample -20R
+  - 2022 and 2025 are consistently weak in OOS across all anchors
+  - Higher TP1 (0.75) improved WFE (0.441→0.591) and earned Phase 2 PASS, but MC survival worsened (19%→8%)
+  - Min stop floor: 10 ticks (5.0% ATR) for ES, but optimal was 6% in this optimization
+- **DB**: `bt-es-ldn-continuation-both-2016-2026-full-f75b08` (R11), `bt-es-ldn-continuation-both-2016-2026-full-bf6270` (R12)
+- **Scripts**: `run_es_ldn_baseline.py`, `run_es_ldn_variable_sweeps_{1-12}.py`, `run_es_ldn_grid_sweep_r{1-2}.py`, `run_es_ldn_robust_pipeline.py`, `run_es_ldn_stop_sweep.py`, `run_es_ldn_dd_sweep.py`
+
 ### London ORB Continuation — Long Only
 - **Status**: NO-GO
 - **Candidate params**: stop=1.5%, gap=1.25%, rr=3.0, tp1=0.3, risk=$5K, direction=long
@@ -79,7 +112,8 @@
 - **Conclusion**: CISD pattern is catastrophic on ES London. Do not revisit.
 
 ## Overall Conclusion for ES London ORB
-- Continuation (both): **CONDITIONAL GO** — rr=3.0, stop=1.5%, gap=1.25%, tp1=0.5, be=0. Edge confirmed, DD structural (~20-24R OOS), 2025 hold-out exceptional.
+- Continuation (both, 1m magnifier): **CONDITIONAL GO** — rr=3.0, stop=1.5%, gap=1.25%, tp1=0.5, be=0. Edge confirmed, DD structural (~20-24R OOS), 2025 hold-out exceptional.
+- Continuation (both, 1s magnifier full optimization): **NO-GO** — best in-sample Calmar 10.18 (R12) but 2/5 pipeline phases pass. MC ruin 92%, holdout Sharpe 0.21. Edge does not generalize.
 - Continuation (long-only): NO-GO (OOS DD -19.8R, 4.5% MC survival, hold-out only +2.1R)
 - Inversion (long + short): NO-GO (PF < 1.0 across all 1,500 combos — do not revisit)
 

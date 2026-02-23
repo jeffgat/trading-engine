@@ -42,7 +42,6 @@ BASE_SESSION = SessionConfig(
     flat_end="08:25",
     stop_atr_pct=5.0,      # placeholder, overridden per combo
     min_gap_atr_pct=1.25,  # original anchor
-    max_gap_points=50.0,
 )
 
 BASE_CONFIG = StrategyConfig(
@@ -124,7 +123,6 @@ def main():
             flat_end="08:25",
             stop_atr_pct=stop,
             min_gap_atr_pct=1.25,
-            max_gap_points=50.0,
         )
         cfg = with_overrides(BASE_CONFIG, sessions=(sess,))
 

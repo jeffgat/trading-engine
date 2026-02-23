@@ -273,6 +273,53 @@ def apply_monthly_loss_cap(
     return no_fills + kept
 
 
+def apply_weekly_loss_cap(
+    trades: list[TradeResult],
+    cap_r: float,
+) -> list[TradeResult]:
+    """Stop trading for the rest of a week once cumulative loss hits cap_r.
+
+    Processes trades in date order. When the running weekly R drops below
+    -cap_r, all remaining trades that week are skipped.
+
+    Uses ISO week numbers (Mon-Sun) for week boundaries.
+
+    Args:
+        trades: Trade results from the simulator (need not be sorted).
+        cap_r: Maximum loss per week in R (positive value, e.g. 4.0 = stop at -4R).
+
+    Returns:
+        Filtered list with trades skipped after weekly cap is breached.
+    """
+    if not trades or cap_r <= 0:
+        return trades
+
+    filled = [t for t in trades if t.exit_type != EXIT_NO_FILL]
+    no_fills = [t for t in trades if t.exit_type == EXIT_NO_FILL]
+
+    filled_sorted = sorted(filled, key=lambda t: t.date)
+
+    weekly_r: dict[str, float] = {}    # "YYYY-WNN" -> cumulative R
+    weekly_halted: set[str] = set()    # weeks where cap was breached
+
+    kept = []
+    for t in filled_sorted:
+        d = datetime.strptime(t.date, "%Y-%m-%d")
+        iso = d.isocalendar()
+        week_key = f"{iso[0]}-W{iso[1]:02d}"
+
+        if week_key in weekly_halted:
+            continue
+
+        kept.append(t)
+        weekly_r[week_key] = weekly_r.get(week_key, 0.0) + t.r_multiple
+
+        if weekly_r[week_key] <= -cap_r:
+            weekly_halted.add(week_key)
+
+    return no_fills + kept
+
+
 def create_sma_gate_factory(
     sma_period: int = 20,
 ) -> Callable[[pd.DataFrame], Callable[[list[TradeResult]], list[TradeResult]]]:

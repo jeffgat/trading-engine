@@ -1061,6 +1061,9 @@ def _simulate_single_trade_hierarchical(
     flat_5m_clamped = min(flat_bar_start, len(map_5m_1m) - 1)
     flat_start_1m = map_5m_1m[flat_5m_clamped, 0]
 
+    # 1m fill bar — initialised here so it's available for Phase 2b returns
+    fill_bar_1m = -1
+
     # Phase 2a: Scan fill bar's remaining 1m sub-bars (handles fill+exit same 5m bar)
     if fill_bar_5m < len(map_5m_1m):
         s1m = map_5m_1m[fill_bar_5m, 0]
@@ -1107,14 +1110,14 @@ def _simulate_single_trade_hierarchical(
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
                     pnl_points += (close_5m[i] - entry_price) * (remaining_qty / qty)
-                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, float(fill_bar_1m), -1.0
                 else:
                     pnl_points += close_5m[i] - entry_price
-                    return fill_bar_5m, EXIT_EOD, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_EOD, i, pnl_points, float(fill_bar_1m), -1.0
 
             if sl_hit and not tp1_hit:
                 pnl_points += current_stop - entry_price
-                return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
+                return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
             if is_single:
                 if tp1_trigger:
@@ -1123,10 +1126,10 @@ def _simulate_single_trade_hierarchical(
                     sl_hit = low_5m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
-                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, float(fill_bar_1m), -1.0
                 if sl_hit and tp1_hit:
                     pnl_points += current_stop - entry_price
-                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
             else:
                 if sl_hit and tp1_trigger:
                     # Ambiguous 5m bar — drill to 1m
@@ -1151,11 +1154,11 @@ def _simulate_single_trade_hierarchical(
                             current_stop = cs_out
                             remaining_qty = rq_out
                             if res:
-                                return fill_bar_5m, et, i, pnl_points, -1.0, -1.0
+                                return fill_bar_5m, et, i, pnl_points, float(fill_bar_1m), float(_exit_1m)
                             continue
                     # No 1m data for this bar — pessimistic
                     pnl_points += current_stop - entry_price
-                    return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
                 if tp1_trigger:
                     pnl_points += (tp1_price - entry_price) * (half_qty / qty)
@@ -1164,16 +1167,16 @@ def _simulate_single_trade_hierarchical(
                     remaining_qty -= half_qty
                     if low_5m[i] <= be_price:
                         pnl_points += (be_price - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     if tp2_trigger:
                         pnl_points += (tp2_price - entry_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, float(fill_bar_1m), -1.0
 
         else:  # SHORT
             sl_hit = high_5m[i] >= current_stop
@@ -1183,14 +1186,14 @@ def _simulate_single_trade_hierarchical(
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
                     pnl_points += (entry_price - close_5m[i]) * (remaining_qty / qty)
-                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP1_EOD, i, pnl_points, float(fill_bar_1m), -1.0
                 else:
                     pnl_points += entry_price - close_5m[i]
-                    return fill_bar_5m, EXIT_EOD, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_EOD, i, pnl_points, float(fill_bar_1m), -1.0
 
             if sl_hit and not tp1_hit:
                 pnl_points += entry_price - current_stop
-                return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
+                return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
             if is_single:
                 if tp1_trigger:
@@ -1199,10 +1202,10 @@ def _simulate_single_trade_hierarchical(
                     sl_hit = high_5m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
-                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP2_SINGLE, i, pnl_points, float(fill_bar_1m), -1.0
                 if sl_hit and tp1_hit:
                     pnl_points += entry_price - current_stop
-                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
             else:
                 if sl_hit and tp1_trigger:
                     if i < len(map_5m_1m):
@@ -1226,10 +1229,10 @@ def _simulate_single_trade_hierarchical(
                             current_stop = cs_out
                             remaining_qty = rq_out
                             if res:
-                                return fill_bar_5m, et, i, pnl_points, -1.0, -1.0
+                                return fill_bar_5m, et, i, pnl_points, float(fill_bar_1m), float(_exit_1m)
                             continue
                     pnl_points += entry_price - current_stop
-                    return fill_bar_5m, EXIT_SL, i, pnl_points, -1.0, -1.0
+                    return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
                 if tp1_trigger:
                     pnl_points += (entry_price - tp1_price) * (half_qty / qty)
@@ -1238,23 +1241,23 @@ def _simulate_single_trade_hierarchical(
                     remaining_qty -= half_qty
                     if high_5m[i] >= be_price:
                         pnl_points += (entry_price - be_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     continue
 
                 if tp1_hit:
                     if sl_hit:
                         pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     if tp2_trigger:
                         pnl_points += (entry_price - tp2_price) * (remaining_qty / qty)
-                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, -1.0, -1.0
+                        return fill_bar_5m, EXIT_TP1_TP2, i, pnl_points, float(fill_bar_1m), -1.0
 
     # Reached end without exit
     if direction == 1:
         pnl_points += close_5m[last_bar] - entry_price
     else:
         pnl_points += entry_price - close_5m[last_bar]
-    return fill_bar_5m, EXIT_EOD, last_bar, pnl_points, -1.0, -1.0
+    return fill_bar_5m, EXIT_EOD, last_bar, pnl_points, float(fill_bar_1m), -1.0
 
 
 @dataclass
@@ -1300,6 +1303,7 @@ class _SetupCandidate:
     entry_price: float
     gap_size: float
     daily_atr: float
+    orb_range: float
 
 
 def _session_key(session: SessionConfig) -> tuple:
@@ -1318,8 +1322,7 @@ def _fvg_key(session: SessionConfig, config: StrategyConfig) -> tuple:
         _session_key(session),
         config.atr_length,
         session.min_gap_atr_pct,
-        getattr(session, "max_gap_atr_pct", 0.0),
-        session.max_gap_points,
+        getattr(session, "min_gap_orb_pct", 0.0),
         config.impulse_close_filter,
     )
 
@@ -1396,10 +1399,9 @@ def _extract_setup_candidates(
             orb_high,
             orb_low,
             session.min_gap_atr_pct,
-            session.max_gap_points,
-            max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
             close=df["close"].values if config.impulse_close_filter else None,
             impulse_close_filter=config.impulse_close_filter,
+            min_gap_orb_pct=getattr(session, "min_gap_orb_pct", 0.0),
         )
 
         # Date strings for excluded dates and half-days
@@ -1457,6 +1459,7 @@ def _extract_setup_candidates(
         candidates = _extract_inversion_candidates(
             df, fvg, valid_long, valid_short, session_day_id,
             masks["in_entry"], dates, close, session, daily_atr,
+            orb_high=orb_high, orb_low=orb_low,
             direction_filter=config.direction_filter,
         )
     else:
@@ -1481,6 +1484,7 @@ def _extract_setup_candidates(
                     entry_price=long_entry_price[i],
                     gap_size=long_gap_size[i],
                     daily_atr=daily_atr[i],
+                    orb_range=orb_high[i] - orb_low[i],
                 ))
 
         # Bearish FVG: continuation=short, reversal=long
@@ -1499,6 +1503,7 @@ def _extract_setup_candidates(
                     entry_price=short_entry_price[i],
                     gap_size=short_gap_size[i],
                     daily_atr=daily_atr[i],
+                    orb_range=orb_high[i] - orb_low[i],
                 ))
 
     return candidates
@@ -1605,6 +1610,7 @@ def _extract_cisd_candidates(
                     entry_price=close[i],
                     gap_size=abs(close[i] - open_[i]),  # displacement size
                     daily_atr=daily_atr[i],
+                    orb_range=orb_h - orb_l,
                 ))
                 continue
 
@@ -1621,6 +1627,7 @@ def _extract_cisd_candidates(
                     entry_price=close[i],
                     gap_size=abs(open_[i] - close[i]),  # displacement size
                     daily_atr=daily_atr[i],
+                    orb_range=orb_h - orb_l,
                 ))
                 continue
 
@@ -1638,6 +1645,8 @@ def _extract_inversion_candidates(
     close: np.ndarray,
     session,
     daily_atr: np.ndarray,
+    orb_high: np.ndarray | None = None,
+    orb_low: np.ndarray | None = None,
     direction_filter: str = "both",
 ) -> list[_SetupCandidate]:
     """Extract inverted FVG candidates.
@@ -1705,6 +1714,7 @@ def _extract_inversion_candidates(
             if close[i] < inversion_level and sd not in seen_days:
                 # Inversion confirmed — enter SHORT at candle close
                 seen_days.add(sd)
+                _orb_r = (orb_high[i] - orb_low[i]) if orb_high is not None else 0.0
                 candidates.append(_SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
@@ -1713,6 +1723,7 @@ def _extract_inversion_candidates(
                     entry_price=close[i],
                     gap_size=gap_size,
                     daily_atr=atr,
+                    orb_range=_orb_r,
                 ))
                 continue
 
@@ -1734,6 +1745,7 @@ def _extract_inversion_candidates(
             if close[i] > inversion_level and sd not in seen_days:
                 # Inversion confirmed — enter LONG at candle close
                 seen_days.add(sd)
+                _orb_r = (orb_high[i] - orb_low[i]) if orb_high is not None else 0.0
                 candidates.append(_SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
@@ -1742,6 +1754,7 @@ def _extract_inversion_candidates(
                     entry_price=close[i],
                     gap_size=gap_size,
                     daily_atr=atr,
+                    orb_range=_orb_r,
                 ))
                 continue
 
@@ -2031,10 +2044,9 @@ def build_signal_cache(
             sc["orb_high"],
             sc["orb_low"],
             session.min_gap_atr_pct,
-            session.max_gap_points,
-            max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
             close=df["close"].values if config.impulse_close_filter else None,
             impulse_close_filter=config.impulse_close_filter,
+            min_gap_orb_pct=getattr(session, "min_gap_orb_pct", 0.0),
         )
         return fkey, fvg
 
@@ -2279,7 +2291,13 @@ def run_backtest(
             direction = cand.direction
 
             # Compute stop, TP1, TP2, BE prices
-            stop_dist = (session.stop_atr_pct / 100.0) * atr
+            if session.stop_orb_pct > 0 and cand.orb_range > 0:
+                stop_dist = (session.stop_orb_pct / 100.0) * cand.orb_range
+            else:
+                stop_dist = (session.stop_atr_pct / 100.0) * atr
+            # Apply minimum stop floor
+            if session.min_stop_points > 0:
+                stop_dist = max(stop_dist, session.min_stop_points)
             if direction == 1:
                 stop = entry - stop_dist
                 risk_pts = entry - stop
@@ -2303,13 +2321,18 @@ def run_backtest(
                 half_qty = math.floor((qty / 2) / config.qty_step) * config.qty_step
                 half_qty = max(half_qty, config.min_qty)
 
+            tp1_dist = config.rr * risk_pts * config.tp1_ratio
+            # Apply minimum TP1 distance floor
+            if session.min_tp1_points > 0:
+                tp1_dist = max(tp1_dist, session.min_tp1_points)
+            tp2_dist = config.rr * risk_pts
             if direction == 1:
-                tp1 = entry + config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry + config.rr * risk_pts
+                tp1 = entry + tp1_dist
+                tp2 = entry + tp2_dist
                 be = entry
             else:
-                tp1 = entry - config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry - config.rr * risk_pts
+                tp1 = entry - tp1_dist
+                tp2 = entry - tp2_dist
                 be = entry
 
             # Look up precomputed boundaries using the signal bar's session day

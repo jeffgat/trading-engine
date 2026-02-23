@@ -34,9 +34,17 @@ class SessionConfig:
     # ATR-based parameters
     stop_atr_pct: float  # stop distance as % of daily ATR
     min_gap_atr_pct: float  # min FVG size as % of daily ATR
-    max_gap_points: float  # max FVG size in points (0 = no limit)
-    max_gap_atr_pct: float = 0.0  # max FVG size as % of daily ATR (0 = no limit)
     qualifying_move_atr_pct: float = 0.0  # min upward extension as % of ATR for inversion shorts (0 = disabled)
+
+    # ORB-based parameters (override ATR-based when > 0)
+    stop_orb_pct: float = 0.0  # stop distance as % of ORB range (0 = use ATR-based stop)
+    min_gap_orb_pct: float = 0.0  # min FVG size as % of ORB range (0 = use ATR-based)
+
+    # Minimum stop floor in points (0 = disabled). When > 0, stop_dist = max(computed, min_stop_points).
+    min_stop_points: float = 0.0
+
+    # Minimum TP1 distance floor in points (0 = disabled). When > 0, tp1_dist = max(computed, min_tp1_points).
+    min_tp1_points: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -147,7 +155,6 @@ NY_SESSION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=7.5,
     min_gap_atr_pct=2.25,
-    max_gap_points=100.0,
 )
 
 ASIA_SESSION = SessionConfig(
@@ -160,7 +167,6 @@ ASIA_SESSION = SessionConfig(
     flat_end="07:00",
     stop_atr_pct=5.25,
     min_gap_atr_pct=0.9,
-    max_gap_points=50.0,
 )
 
 LDN_SESSION = SessionConfig(
@@ -173,7 +179,6 @@ LDN_SESSION = SessionConfig(
     flat_end="08:25",
     stop_atr_pct=10.0,
     min_gap_atr_pct=1.0,
-    max_gap_points=50.0,
 )
 
 

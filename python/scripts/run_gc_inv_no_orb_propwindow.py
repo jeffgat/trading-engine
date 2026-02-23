@@ -52,7 +52,6 @@ def make_single_session(entry_end, flat_start, flat_end):
         entry_start="09:35", entry_end=entry_end,
         flat_start=flat_start, flat_end=flat_end,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     return StrategyConfig(
         rr=RR, tp1_ratio=TP1, risk_usd=5000.0,
@@ -75,7 +74,6 @@ def make_split_config(ny_end, ny_flat_start, ny_flat_end,
         entry_start="09:35", entry_end=ny_end,
         flat_start=ny_flat_start, flat_end=ny_flat_end,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     ah = SessionConfig(
         name="AH",
@@ -83,7 +81,6 @@ def make_split_config(ny_end, ny_flat_start, ny_flat_end,
         entry_start=ah_start, entry_end=ah_end,
         flat_start=ah_flat_start, flat_end=ah_flat_end,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     return StrategyConfig(
         rr=RR, tp1_ratio=TP1, risk_usd=5000.0,
@@ -158,7 +155,6 @@ def main():
         entry_start=ah_entry, entry_end=ah_end,
         flat_start=ah_flat_s, flat_end=ah_flat_e,
         stop_atr_pct=STOP, min_gap_atr_pct=MIN_GAP,
-        max_gap_points=MAX_GAP, qualifying_move_atr_pct=QM,
     )
     ah_only_cfg = StrategyConfig(
         rr=RR, tp1_ratio=TP1, risk_usd=5000.0,

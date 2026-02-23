@@ -48,7 +48,6 @@ BASE_SESSION = SessionConfig(
     stop_atr_pct=3.0,       # will be overridden
     min_gap_atr_pct=1.5,    # will be overridden
     max_gap_points=9999.0,  # OFF
-    max_gap_atr_pct=0.0,
 )
 
 BASE_CONFIG = StrategyConfig(

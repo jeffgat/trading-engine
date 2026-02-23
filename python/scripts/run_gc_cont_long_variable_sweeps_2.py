@@ -56,7 +56,6 @@ GC_NY_ANCHOR = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,
     min_gap_atr_pct=3.5,      # changed from 2.5 (grid R1 winner)
-    max_gap_points=25.0,
 )
 
 ANCHOR = StrategyConfig(
@@ -318,7 +317,6 @@ def sweep_max_gap_points(anchor_calmar):
             entry_start="09:40", entry_end="11:00",
             flat_start="15:50", flat_end="16:00",
             stop_atr_pct=4.0, min_gap_atr_pct=3.5,
-            max_gap_points=float(v) if v > 0 else 0.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)
@@ -345,7 +343,6 @@ def sweep_max_gap_atr_pct(anchor_calmar):
             entry_start="09:40", entry_end="11:00",
             flat_start="15:50", flat_end="16:00",
             stop_atr_pct=4.0, min_gap_atr_pct=3.5, max_gap_points=25.0,
-            max_gap_atr_pct=v if v > 0 else 0.0,
         )
         cfg = with_overrides(ANCHOR, sessions=(sess,))
         m = run(cfg)
