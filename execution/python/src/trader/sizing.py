@@ -1,6 +1,9 @@
 """Position sizing and trade level computation.
 
-Matches the Pine Script logic in HEAD_prod_nq_ny_asia.pine exactly.
+Supports the 5-leg combined longs portfolio:
+  - ATR-based stops (NQ NY, GC NY, ES NY)
+  - ORB-based stops (NQ Asia, ES Asia)
+  - Dual floor clamping (ES NY, ES Asia)
 """
 
 from __future__ import annotations
@@ -47,6 +50,13 @@ def compute_trade_levels(
     qty_step: float,
     be_offset_ticks: int,
     min_tick: float,
+    *,
+    stop_basis: str = "atr",
+    orb_range: float = 0.0,
+    stop_orb_pct: float = 0.0,
+    min_stop_pts: float = 0.0,
+    min_tp1_pts: float = 0.0,
+    max_single_risk_usd: float = 500.0,
 ) -> TradeLevels | None:
     """Compute all trade levels and position size.
 
@@ -57,7 +67,7 @@ def compute_trade_levels(
         direction: +1 for long, -1 for short.
         gap_size: FVG gap size in points.
         daily_atr: Current daily ATR value.
-        stop_atr_pct: Stop distance as % of daily ATR.
+        stop_atr_pct: Stop distance as % of daily ATR (used when stop_basis="atr").
         rr: Reward/risk ratio.
         tp1_ratio: Fraction of full target for TP1 (e.g., 0.5).
         risk_usd: Risk per trade in USD.
@@ -66,8 +76,24 @@ def compute_trade_levels(
         qty_step: Contract quantity increment.
         be_offset_ticks: Ticks above/below entry for breakeven stop.
         min_tick: Minimum price increment.
+        stop_basis: "atr" or "orb" — how to compute stop distance.
+        orb_range: ORB high - ORB low (required when stop_basis="orb").
+        stop_orb_pct: Stop distance as % of ORB range (used when stop_basis="orb").
+        min_stop_pts: Minimum stop distance in points (dual floor, ES only).
+        min_tp1_pts: Minimum TP1 distance in points (dual floor, ES only).
+        max_single_risk_usd: Max dollar risk for a 1-contract override when
+            risk_usd isn't enough for 1 contract. Defaults to $500.
     """
-    stop_dist = (stop_atr_pct / 100.0) * daily_atr
+    # Compute stop distance based on basis
+    if stop_basis == "orb":
+        stop_dist = (stop_orb_pct / 100.0) * orb_range
+    else:
+        stop_dist = (stop_atr_pct / 100.0) * daily_atr
+
+    # Dual floor: clamp stop distance to minimum points
+    if min_stop_pts > 0:
+        stop_dist = max(stop_dist, min_stop_pts)
+
     stop = entry - stop_dist * direction
     risk_pts = abs(entry - stop)
 
@@ -79,7 +105,12 @@ def compute_trade_levels(
     qty = _floor_to_step(qty_raw, qty_step)
 
     if qty < min_qty:
-        return None
+        # 1 contract exceeds risk_usd — allow if dollar risk <= max_single_risk_usd
+        single_risk = risk_pts * point_value * min_qty
+        if single_risk <= max_single_risk_usd:
+            qty = min_qty
+        else:
+            return None
 
     is_single = qty <= min_qty
     if is_single:
@@ -89,7 +120,13 @@ def compute_trade_levels(
         half_qty = max(half_qty, min_qty)
 
     # Price levels
-    tp1 = entry + (rr * risk_pts * tp1_ratio) * direction
+    tp1_dist = rr * risk_pts * tp1_ratio
+
+    # Dual floor: clamp TP1 distance to minimum points
+    if min_tp1_pts > 0:
+        tp1_dist = max(tp1_dist, min_tp1_pts)
+
+    tp1 = entry + tp1_dist * direction
     tp2 = entry + (rr * risk_pts) * direction
     be_offset = be_offset_ticks * min_tick
     be = entry + be_offset * direction

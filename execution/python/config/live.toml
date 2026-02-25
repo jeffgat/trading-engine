@@ -1,65 +1,49 @@
-# ORB Trader — Live Execution Configuration
+# ORB Trader — 5-Leg Combined Longs Portfolio Configuration
 #
-# Copy this file and modify for your setup.
+# Portfolio: NQ NY R11 + NQ Asia R9 + GC NY R3 + ES NY Final + ES Asia Final
+# All legs are long-only FVG continuation strategies.
 # API keys should be set via environment variables, not in this file.
 
 [general]
 dry_run = true              # Log webhooks but don't send (override with --live flag)
-instrument = "MNQ"          # Default execution instrument (per-session overrides below)
-atr_length = 14             # Daily ATR lookback period
+instrument = "NQ"           # Default instrument for webhook ticker
 
 [databento]
 # Set DATABENTO_API_KEY in your environment
 api_key_env = "DATABENTO_API_KEY"
 dataset = "GLBX.MDP3"
-# Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, etc.)
+# Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, GC.FUT)
 
 [traderspost]
 # Set TRADERSPOST_WEBHOOK_URL in your environment
 webhook_url_env = "TRADERSPOST_WEBHOOK_URL"
 
 [risk]
-risk_usd = 500              # Risk per trade in USD
+risk_usd = 250              # Risk per trade in USD ($250 default)
 min_qty = 1.0               # Minimum contract quantity
 qty_step = 1.0              # Contract quantity increment
-be_offset_ticks = 4         # Ticks above/below entry for breakeven stop
+be_offset_ticks = 0         # BE at entry exactly (spec: 0 offset)
+max_single_risk_usd = 500   # Max $ risk when 1 contract exceeds risk_usd
 
 [sessions]
-enabled = ["NY", "Asia", "LDN"]
+enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia"]
 
-# Per-session overrides (optional — defaults from production config in main.py)
-# Each session has a default instrument: NY=NQ, Asia=NQ, LDN=ES
-# Uncomment to override:
-
-# [sessions.ny]
-# instrument = "NQ"         # NQ data feed, use point_value from INSTRUMENTS
-# stop_atr_pct = 6.75
-# min_gap_atr_pct = 2.5
-# max_gap_atr_pct = 25.0
-# rr = 3.5
-# tp1_ratio = 0.5
-
-# [sessions.asia]
-# instrument = "NQ"
-# stop_atr_pct = 5.75
-# min_gap_atr_pct = 1.25
-# max_gap_atr_pct = 11.0
-# rr = 1.75
-# tp1_ratio = 0.25
-
-# [sessions.ldn]
-# instrument = "ES"         # LDN trades ES (different feed from NQ)
-# stop_atr_pct = 3.0
-# min_gap_atr_pct = 1.25
-# max_gap_atr_pct = 85.0
-# rr = 2.75
-# tp1_ratio = 0.3
+# Per-session overrides (optional — defaults from 5-leg spec in main.py)
+# Use dotted keys matching lowercase session name with underscore → dot:
+#   NQ_NY  → [sessions.nq.ny]
+#   GC_NY  → [sessions.gc.ny]
+#   ES_Asia → [sessions.es.asia]
+#
+# Example override:
+# [sessions.nq.ny]
+# rr = 4.0
+# risk_usd = 500
 
 [dates]
 # CME half-day early close dates (update annually)
-half_days = ["20250703", "20251128", "20251224", "20250109", "20260119"]
+half_days = ["20250109", "20250703", "20251128", "20251224", "20260119"]
 half_day_flat_start = "12:50"
 half_day_flat_end = "13:00"
 
-# Excluded dates (skip trading entirely)
-excluded = ["20241218"]
+# Excluded dates (skip trading entirely on these dates)
+excluded = []

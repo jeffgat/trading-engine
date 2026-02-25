@@ -1,10 +1,13 @@
 """Session state machine for live trade management.
 
-Each SessionEngine tracks one trading session (NY or Asia) through its daily
-lifecycle: ORB building → FVG scanning → order placement → position management.
+Each SessionEngine tracks one trading session through its daily lifecycle:
+ORB building → FVG scanning → order placement → position management.
+
+Supports the 5-leg combined longs portfolio:
+  NQ NY R11, NQ Asia R9, GC NY R3, ES NY Final, ES Asia Final
 
 State machine:
-    IDLE → ORB_BUILDING → SCANNING → ARMED_{LONG,SHORT} → FILLED → MANAGING → FLAT → IDLE
+    IDLE → ORB_BUILDING → SCANNING → ARMED_LONG → FILLED → MANAGING → FLAT → IDLE
 """
 
 from __future__ import annotations
@@ -47,10 +50,28 @@ class State(enum.Enum):
     ORB_BUILDING = "orb_building"
     SCANNING = "scanning"
     ARMED_LONG = "armed_long"
-    ARMED_SHORT = "armed_short"
     FILLED = "filled"
     MANAGING = "managing"
     FLAT = "flat"
+
+
+# ---------------------------------------------------------------------------
+# FOMC dates (GC exclusion) — update annually
+# ---------------------------------------------------------------------------
+
+FOMC_DATES: frozenset[str] = frozenset([
+    "20160127", "20160316", "20160427", "20160615", "20160727", "20160921", "20161102", "20161214",
+    "20170201", "20170315", "20170503", "20170614", "20170726", "20170920", "20171101", "20171213",
+    "20180131", "20180321", "20180502", "20180613", "20180801", "20180926", "20181108", "20181219",
+    "20190130", "20190320", "20190501", "20190619", "20190731", "20190918", "20191030", "20191211",
+    "20200129", "20200311", "20200429", "20200610", "20200729", "20200916", "20201105", "20201216",
+    "20210127", "20210317", "20210428", "20210616", "20210728", "20210922", "20211103", "20211215",
+    "20220126", "20220316", "20220504", "20220615", "20220727", "20220921", "20221102", "20221214",
+    "20230201", "20230322", "20230503", "20230614", "20230726", "20230920", "20231101", "20231213",
+    "20240131", "20240320", "20240501", "20240612", "20240731", "20240918", "20241107", "20241218",
+    "20250129", "20250319", "20250507", "20250618", "20250730", "20250917", "20251029", "20251210",
+    "20260128", "20260318", "20260429", "20260610", "20260729", "20260916", "20261104", "20261216",
+])
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +101,7 @@ class SessionEngine:
     """Manages one session's daily trade lifecycle.
 
     Args:
-        name: Session name ("NY" or "Asia").
+        name: Session name (e.g. "NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia").
         broker: TradersPost webhook client.
         orb_start: ORB window start (HH:MM).
         orb_end: ORB window end (HH:MM).
@@ -88,9 +109,13 @@ class SessionEngine:
         entry_end: Entry window end (HH:MM).
         flat_start: Flat/EOD window start (HH:MM).
         flat_end: Flat/EOD window end (HH:MM).
-        stop_atr_pct: Stop distance as % of daily ATR.
-        min_gap_atr_pct: Min FVG gap as % of daily ATR.
+        stop_atr_pct: Stop distance as % of daily ATR (ATR-based stops).
+        stop_basis: "atr" or "orb" — how to compute stop distance.
+        stop_orb_pct: Stop distance as % of ORB range (ORB-based stops).
+        min_gap_atr_pct: Min FVG gap as % of daily ATR (0 = use ORB-based).
         max_gap_atr_pct: Max FVG gap as % of daily ATR (0 = no limit).
+        min_gap_orb_pct: Min FVG gap as % of ORB range (for ORB-based gap filter).
+        gap_filter_basis: "atr" or "orb" — how to filter gap size.
         rr: Reward/risk ratio.
         tp1_ratio: Fraction of target for TP1.
         risk_usd: Risk per trade in USD.
@@ -103,6 +128,12 @@ class SessionEngine:
         half_days: Half-day dates (YYYYMMDD strings) — flat earlier.
         half_day_flat_start: Flat window start on half days (HH:MM).
         half_day_flat_end: Flat window end on half days (HH:MM).
+        excluded_dow: Day-of-week to exclude (0=Mon..6=Sun). None = no exclusion.
+        fomc_exclusion: If True, skip FOMC meeting days.
+        icf_enabled: If True, use impulse close filter (relaxed ORB check).
+        min_stop_pts: Minimum stop distance in points (dual floor, ES only).
+        min_tp1_pts: Minimum TP1 distance in points (dual floor, ES only).
+        long_only: If True, only take long setups (no short FVG detection).
     """
 
     name: str
@@ -128,6 +159,33 @@ class SessionEngine:
     qty_step: float
     be_offset_ticks: int
     min_tick: float
+
+    # Stop basis: "atr" or "orb"
+    stop_basis: str = "atr"
+    stop_orb_pct: float = 0.0
+
+    # Gap filter basis: "atr" or "orb"
+    gap_filter_basis: str = "atr"
+    min_gap_orb_pct: float = 0.0
+
+    # Dual floor (ES only)
+    min_stop_pts: float = 0.0
+    min_tp1_pts: float = 0.0
+
+    # Single-contract risk cap: if 1 contract > risk_usd, allow up to this max
+    max_single_risk_usd: float = 500.0
+
+    # Direction filter
+    long_only: bool = True
+
+    # ICF (impulse close filter) — GC only
+    icf_enabled: bool = False
+
+    # Day-of-week exclusion (0=Mon..6=Sun, None=no exclusion)
+    excluded_dow: int | None = None
+
+    # FOMC exclusion (GC only)
+    fomc_exclusion: bool = False
 
     # Date filters
     excluded_dates: tuple[str, ...] = ()
@@ -197,7 +255,17 @@ class SessionEngine:
         return _time_in_range(t, self._flat_start_t, self._flat_end_t)
 
     def _is_excluded(self, bar: Bar) -> bool:
-        return bar.timestamp.strftime("%Y%m%d") in self.excluded_dates
+        date_str = bar.timestamp.strftime("%Y%m%d")
+        # Static excluded dates
+        if date_str in self.excluded_dates:
+            return True
+        # Day-of-week exclusion (Monday=0 .. Sunday=6)
+        if self.excluded_dow is not None and bar.timestamp.weekday() == self.excluded_dow:
+            return True
+        # FOMC exclusion (GC only)
+        if self.fomc_exclusion and date_str in FOMC_DATES:
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # Daily reset
@@ -221,6 +289,17 @@ class SessionEngine:
         self._notify_state_change()
 
     # ------------------------------------------------------------------
+    # ORB range helper
+    # ------------------------------------------------------------------
+
+    @property
+    def _orb_range(self) -> float:
+        """Current ORB range (high - low). Returns 0 if not ready."""
+        if self._orb_high != self._orb_high or self._orb_low != self._orb_low:
+            return 0.0  # NaN check
+        return self._orb_high - self._orb_low
+
+    # ------------------------------------------------------------------
     # FVG detection (inline, 3-bar check)
     # ------------------------------------------------------------------
 
@@ -233,15 +312,23 @@ class SessionEngine:
             return False, 0.0, 0.0
 
         bar0 = self._bars[-1]  # current (most recent)
-        bar1 = self._bars[-2]  # middle
-        bar2 = self._bars[-3]  # oldest
+        bar1 = self._bars[-2]  # middle (impulse candle)
+        bar2 = self._bars[-3]  # oldest (before candle)
 
         # Pine: high[2] < low[0] AND high[2] < high[1] AND low[2] < low[0]
         if bar2.high < bar0.low and bar2.high < bar1.high and bar2.low < bar0.low:
             gap_size = bar0.low - bar2.high
             entry = bar0.low  # FVG top
-            # Must be above ORB high
-            if entry > self._orb_high:
+
+            # ORB directional filter
+            if self.icf_enabled:
+                # ICF-relaxed: FVG top above ORB high OR impulse close above ORB high
+                orb_ok = (entry > self._orb_high) or (bar1.close > self._orb_high)
+            else:
+                # Standard: FVG top must be above ORB high
+                orb_ok = entry > self._orb_high
+
+            if orb_ok:
                 return True, entry, gap_size
 
         return False, 0.0, 0.0
@@ -269,17 +356,25 @@ class SessionEngine:
         return False, 0.0, 0.0
 
     def _gap_valid(self, gap_size: float) -> bool:
-        """Check if gap size is within ATR-based bounds."""
-        if self._daily_atr <= 0:
-            return False
-        min_gap = (self.min_gap_atr_pct / 100.0) * self._daily_atr
-        if gap_size < min_gap:
-            return False
-        if self.max_gap_atr_pct > 0:
-            max_gap = (self.max_gap_atr_pct / 100.0) * self._daily_atr
-            if gap_size > max_gap:
+        """Check if gap size is within bounds (ATR-based or ORB-based)."""
+        if self.gap_filter_basis == "orb":
+            orb_range = self._orb_range
+            if orb_range <= 0:
                 return False
-        return True
+            min_gap = (self.min_gap_orb_pct / 100.0) * orb_range
+            return gap_size >= min_gap
+        else:
+            # ATR-based gap filter
+            if self._daily_atr <= 0:
+                return False
+            min_gap = (self.min_gap_atr_pct / 100.0) * self._daily_atr
+            if gap_size < min_gap:
+                return False
+            if self.max_gap_atr_pct > 0:
+                max_gap = (self.max_gap_atr_pct / 100.0) * self._daily_atr
+                if gap_size > max_gap:
+                    return False
+            return True
 
     # ------------------------------------------------------------------
     # Main bar handler
@@ -299,7 +394,7 @@ class SessionEngine:
         # Skip if not in RTH
         if not self._in_rth(bar_time):
             # If we were in a session and left RTH, cancel any pending
-            if self._state in (State.ARMED_LONG, State.ARMED_SHORT):
+            if self._state == State.ARMED_LONG:
                 trade_logger.info(
                     "%s | CANCEL | outside RTH | state=%s",
                     self.name, self._state.value,
@@ -311,11 +406,11 @@ class SessionEngine:
 
         # New session day detection
         if date_str != self._current_date:
-            if self._state in (State.ARMED_LONG, State.ARMED_SHORT):
+            if self._state == State.ARMED_LONG:
                 await self.broker.send_cancel()
             self._reset_day(date_str)
 
-        # Skip excluded dates
+        # Skip excluded dates (DOW, FOMC, static dates)
         if self._is_excluded(bar):
             return
 
@@ -332,7 +427,7 @@ class SessionEngine:
             await self._handle_orb_building(bar, bar_time)
         elif self._state == State.SCANNING:
             await self._handle_scanning(bar, bar_time)
-        elif self._state in (State.ARMED_LONG, State.ARMED_SHORT):
+        elif self._state == State.ARMED_LONG:
             await self._handle_armed(bar, bar_time)
         elif self._state in (State.FILLED, State.MANAGING):
             await self._handle_managing(bar, bar_time)
@@ -368,12 +463,12 @@ class SessionEngine:
             trade_logger.info(
                 "%s | ORB_READY | high=%.2f low=%.2f range=%.2f atr=%.2f",
                 self.name, self._orb_high, self._orb_low,
-                self._orb_high - self._orb_low, self._daily_atr,
+                self._orb_range, self._daily_atr,
             )
             self._notify_state_change()
 
     async def _handle_scanning(self, bar: Bar, bar_time: time) -> None:
-        """Scanning for first FVG in entry window."""
+        """Scanning for first FVG in entry window (long only)."""
         if not self._in_entry(bar_time):
             # Past entry window — cancel and go flat
             trade_logger.info(
@@ -403,15 +498,22 @@ class SessionEngine:
                     qty_step=self.qty_step,
                     be_offset_ticks=self.be_offset_ticks,
                     min_tick=self.min_tick,
+                    stop_basis=self.stop_basis,
+                    orb_range=self._orb_range,
+                    stop_orb_pct=self.stop_orb_pct,
+                    min_stop_pts=self.min_stop_pts,
+                    min_tp1_pts=self.min_tp1_pts,
+                    max_single_risk_usd=self.max_single_risk_usd,
                 )
                 if levels is not None:
                     self._levels = levels
                     self._state = State.ARMED_LONG
                     trade_logger.info(
                         "%s | LONG_SETUP | entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
-                        "qty=%.1f gap=%.2f atr=%.2f",
+                        "qty=%.1f gap=%.2f atr=%.2f orb_range=%.2f",
                         self.name, levels.entry, levels.stop, levels.tp1,
                         levels.tp2, levels.qty, gap_size, self._daily_atr,
+                        self._orb_range,
                     )
                     self._notify_state_change()
                     await self.broker.send_entry(
@@ -423,8 +525,8 @@ class SessionEngine:
                     )
                     return
 
-        # Check for short FVG (first one only)
-        if not self._short_fvg_found:
+        # Short FVG check (only if not long_only)
+        if not self.long_only and not self._short_fvg_found:
             detected, entry, gap_size = self._check_short_fvg()
             if detected and self._gap_valid(gap_size):
                 self._short_fvg_found = True
@@ -442,10 +544,18 @@ class SessionEngine:
                     qty_step=self.qty_step,
                     be_offset_ticks=self.be_offset_ticks,
                     min_tick=self.min_tick,
+                    stop_basis=self.stop_basis,
+                    orb_range=self._orb_range,
+                    stop_orb_pct=self.stop_orb_pct,
+                    min_stop_pts=self.min_stop_pts,
+                    min_tp1_pts=self.min_tp1_pts,
+                    max_single_risk_usd=self.max_single_risk_usd,
                 )
                 if levels is not None:
                     self._levels = levels
-                    self._state = State.ARMED_SHORT
+                    # Re-use ARMED_LONG state for armed short in non-long-only mode
+                    # (short not used in 5-leg portfolio but kept for backward compat)
+                    self._state = State.ARMED_LONG
                     trade_logger.info(
                         "%s | SHORT_SETUP | entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
                         "qty=%.1f gap=%.2f atr=%.2f",
@@ -482,9 +592,10 @@ class SessionEngine:
 
         # Check for fill: did price touch our limit entry?
         filled = False
-        if self._state == State.ARMED_LONG and bar.low <= levels.entry:
+        is_long = levels.direction == 1
+        if is_long and bar.low <= levels.entry:
             filled = True
-        elif self._state == State.ARMED_SHORT and bar.high >= levels.entry:
+        elif not is_long and bar.high >= levels.entry:
             filled = True
 
         if filled:
@@ -493,7 +604,7 @@ class SessionEngine:
             trade_logger.info(
                 "%s | FILLED | dir=%s entry=%.2f bar_time=%s",
                 self.name,
-                "long" if levels.direction == 1 else "short",
+                "long" if is_long else "short",
                 levels.entry,
                 bar.timestamp,
             )
@@ -539,7 +650,6 @@ class SessionEngine:
                 "%s | SL_HIT | dir=%s stop=%.2f bar_time=%s",
                 self.name, direction_str, levels.stop, bar.timestamp,
             )
-            # Broker bracket handles this — but send flatten to be safe
             await self.broker.send_flatten()
             self._state = State.FLAT
             self._notify_state_change()
@@ -556,7 +666,6 @@ class SessionEngine:
             self._tp1_hit = True
 
             if levels.is_single_contract:
-                # Single contract: just move stop to BE
                 trade_logger.info(
                     "%s | TP1_BE_SINGLE | dir=%s tp1=%.2f be=%.2f bar_time=%s",
                     self.name, direction_str, levels.tp1, levels.be, bar.timestamp,
@@ -567,7 +676,6 @@ class SessionEngine:
                     be_price=levels.be,
                 )
             else:
-                # Multi contract: partial exit + BE stop + TP2 limit
                 trade_logger.info(
                     "%s | TP1_PARTIAL | dir=%s tp1=%.2f half_qty=%.1f be=%.2f tp2=%.2f bar_time=%s",
                     self.name, direction_str, levels.tp1, levels.half_qty,
@@ -580,14 +688,11 @@ class SessionEngine:
                     tp2=levels.tp2,
                 )
 
-            # After TP1, the stop is now BE — update for subsequent SL checks
-            # We don't mutate frozen TradeLevels, so just check against be going forward
             self._notify_state_change()
             return
 
         # After TP1, check BE stop and TP2
         if self._tp1_hit:
-            # BE stop hit?
             be_hit = False
             if is_long and bar.low <= levels.be:
                 be_hit = True
@@ -599,13 +704,11 @@ class SessionEngine:
                     "%s | BE_HIT | dir=%s be=%.2f bar_time=%s",
                     self.name, direction_str, levels.be, bar.timestamp,
                 )
-                # Broker bracket handles BE — flatten to be safe
                 await self.broker.send_flatten()
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
 
-            # TP2 hit?
             tp2_hit = False
             if is_long and bar.high >= levels.tp2:
                 tp2_hit = True
@@ -617,7 +720,6 @@ class SessionEngine:
                     "%s | TP2_HIT | dir=%s tp2=%.2f bar_time=%s",
                     self.name, direction_str, levels.tp2, bar.timestamp,
                 )
-                # Broker bracket handles TP2 — flatten to be safe
                 await self.broker.send_flatten()
                 self._state = State.FLAT
                 self._notify_state_change()
@@ -647,12 +749,12 @@ class SessionEngine:
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
         """Process a 1-second bar for fill detection and exit management.
 
-        Only acts in ARMED_* and MANAGING states.  All other states
+        Only acts in ARMED_LONG and MANAGING states. All other states
         (IDLE, ORB_BUILDING, SCANNING, FLAT) ignore ticks entirely.
         """
         self._daily_atr = daily_atr
 
-        if self._state in (State.ARMED_LONG, State.ARMED_SHORT):
+        if self._state == State.ARMED_LONG:
             await self._handle_armed_tick(tick)
         elif self._state in (State.FILLED, State.MANAGING):
             await self._handle_managing_tick(tick)
@@ -679,19 +781,20 @@ class SessionEngine:
 
         # Check fill
         filled = False
-        if self._state == State.ARMED_LONG and tick.low <= levels.entry:
+        is_long = levels.direction == 1
+        if is_long and tick.low <= levels.entry:
             filled = True
-        elif self._state == State.ARMED_SHORT and tick.high >= levels.entry:
+        elif not is_long and tick.high >= levels.entry:
             filled = True
 
         if filled:
             self._fill_timestamp = tick.timestamp
-            self._fill_bar_idx = self._bar_count  # keep 5m fallback guard in sync
+            self._fill_bar_idx = self._bar_count
             self._state = State.MANAGING
             trade_logger.info(
                 "%s | FILLED | dir=%s entry=%.2f tick_time=%s",
                 self.name,
-                "long" if levels.direction == 1 else "short",
+                "long" if is_long else "short",
                 levels.entry,
                 tick.timestamp,
             )
@@ -700,7 +803,7 @@ class SessionEngine:
     async def _handle_managing_tick(self, tick: Bar) -> None:
         """Manage position exits at 1s resolution.
 
-        Checks TP1/SL/BE/TP2/EOD on each 1-second bar.  When TP1 and SL
+        Checks TP1/SL/BE/TP2/EOD on each 1-second bar. When TP1 and SL
         both trigger on the same 1s bar, SL wins (pessimistic — matches
         the backtester's finest-tier conflict resolution).
         """
@@ -846,6 +949,7 @@ class SessionEngine:
             "date": self._current_date,
             "orb_high": self._orb_high if self._orb_high == self._orb_high else None,
             "orb_low": self._orb_low if self._orb_low == self._orb_low else None,
+            "orb_range": self._orb_range if self._orb_range > 0 else None,
             "daily_atr": self._daily_atr,
             "levels": {
                 "entry": self._levels.entry,
@@ -857,4 +961,6 @@ class SessionEngine:
             } if self._levels else None,
             "tp1_hit": self._tp1_hit,
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
+            "stop_basis": self.stop_basis,
+            "long_only": self.long_only,
         }

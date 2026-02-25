@@ -1,6 +1,6 @@
 //@version=6
 strategy(
-     title              = "ORB V6 NQ Combined Longs (NY R11 + Asia R9)",
+     title              = "ORB V6 ES Combined Longs (NY Final + Asia Final)",
      overlay            = true,
      initial_capital    = 50000,
      pyramiding         = 0,
@@ -20,37 +20,39 @@ strategy(
 riskUsd      = input.float(250, "Risk per trade ($)", step=50, group="Risk Settings")
 minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
 qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
-beOffsetTicks = input.int(4, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission (Asia only). NY uses 0.", group="Risk Settings")
-execPointValue = input.float(2.0, "Execution Point Value ($)", step=1.0, tooltip="Point value of the execution instrument (MNQ=$2). Overrides chart syminfo for qty sizing.", group="Risk Settings")
+beOffsetTicks = input.int(0, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission (Asia only). NY uses 0.", group="Risk Settings")
+execPointValue = input.float(5.0, "Execution Point Value ($)", step=1.0, tooltip="Point value of the execution instrument (MES=$5). Overrides chart syminfo for qty sizing.", group="Risk Settings")
+minStopPts   = input.float(3.0, "Min Stop Distance (points)", step=0.5, tooltip="Dual floor: minimum stop distance in points (ES = 3.0)", group="Risk Settings")
+minTP1Pts    = input.float(3.0, "Min TP1 Distance (points)", step=0.5, tooltip="Dual floor: minimum TP1 distance in points (ES = 3.0)", group="Risk Settings")
 
 // ----------------------------------------------------------------------------------------
-// Inputs - Asia Session Settings (R9 — long only, ICF OFF, Tuesday exclusion)
-// ORB-based stop and gap filters (not ATR-based)
+// Inputs - Asia Session Settings (Final — long only, ICF OFF, no DOW exclusion)
+// ORB-based stop, ATR-based gap filter (hybrid), dual floor
 // ----------------------------------------------------------------------------------------
+asiaAtrLength    = input.int(14, "Asia ATR Length", minval=1, tooltip="ATR period for gap filter only (stop uses ORB range)", group="Asia Session")
 asiaSessionRTH   = input.session("1800-0700", "Asia RTH (ny time)", group="Asia Session")
 asiaOrbSession   = input.session("2000-2015", "Asia ORB window (ny time)", group="Asia Session")
-asiaEntryWindow  = input.session("2015-2230", "Asia Entry window (ny time)", group="Asia Session")
-asiaFlatWindow   = input.session("0400-0700", "Asia Flat window (ny time)", group="Asia Session")
-asiaRR           = input.float(6.0, "Reward/Risk", step=0.25, group="Asia Session")
-asiaTP1Ratio     = input.float(0.3, "Partial TP & BE Level (0.3 = 30% of target)", step=0.1, minval=0.1, maxval=0.9, group="Asia Session")
-asiaStopOrbPct   = input.float(100.0, "Asia Stop Loss (% ORB range)", step=5.0, minval=10.0, tooltip="Stop distance as percentage of ORB range", group="Asia Session")
-asiaMinGapOrbPct = input.float(10.0, "Asia Min Gap (% ORB range)", step=1.0, tooltip="Minimum gap size as percentage of ORB range", group="Asia Session")
-asiaExcludeTuesday = input.bool(true, "Exclude Tuesday sessions", tooltip="Skip Asia sessions where the 20:00 bar falls on Tuesday", group="Asia Session")
+asiaEntryWindow  = input.session("2015-0300", "Asia Entry window (ny time)", group="Asia Session")
+asiaFlatWindow   = input.session("0650-0700", "Asia Flat window (ny time)", group="Asia Session")
+asiaRR           = input.float(1.5, "Reward/Risk", step=0.25, group="Asia Session")
+asiaTP1Ratio     = input.float(0.7, "Partial TP & BE Level (0.7 = 70% of target)", step=0.1, minval=0.1, maxval=0.9, group="Asia Session")
+asiaStopOrbPct   = input.float(125.0, "Asia Stop Loss (% ORB range)", step=5.0, minval=10.0, tooltip="Stop distance as percentage of ORB range", group="Asia Session")
+asiaMinGapAtrPct = input.float(0.5, "Asia Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR-14", group="Asia Session")
 
 // ----------------------------------------------------------------------------------------
-// Inputs - NY Session Settings (R11 — long only, ICF OFF, Friday exclusion)
-// ATR-based stop and gap filters
+// Inputs - NY Session Settings (Final — long only, ICF OFF, Thursday exclusion)
+// ATR-based stop and gap filters, dual floor
 // ----------------------------------------------------------------------------------------
-nyAtrLength      = input.int(12, "NY ATR Length", minval=1, group="NY Session")
+nyAtrLength      = input.int(7, "NY ATR Length", minval=1, group="NY Session")
 nySessionRTH     = input.session("0930-1600", "NY RTH (ny time)", group="NY Session")
-nyOrbSession     = input.session("0930-0950", "NY ORB window (ny time)", group="NY Session")
-nyEntryWindow    = input.session("0950-1200", "NY Entry window (ny time)", group="NY Session")
-nyFlatWindow     = input.session("1530-1600", "NY Flat window (ny time)", group="NY Session")
-nyRR             = input.float(3.5, "Reward/Risk", step=0.25, group="NY Session")
-nyTP1Ratio       = input.float(0.4, "Partial TP & BE Level (0.4 = 40% of target)", step=0.1, minval=0.1, maxval=0.9, group="NY Session")
-nyMinGapAtrPct   = input.float(2.5, "NY Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
-nyStopAtrPct     = input.float(7.0, "NY Stop Loss (% ATR)", step=0.5, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
-nyExcludeFriday  = input.bool(true, "Exclude Friday sessions", tooltip="Skip NY sessions on Friday", group="NY Session")
+nyOrbSession     = input.session("0930-0945", "NY ORB window (ny time)", group="NY Session")
+nyEntryWindow    = input.session("0945-1300", "NY Entry window (ny time)", group="NY Session")
+nyFlatWindow     = input.session("1550-1600", "NY Flat window (ny time)", group="NY Session")
+nyRR             = input.float(5.0, "Reward/Risk", step=0.25, group="NY Session")
+nyTP1Ratio       = input.float(0.2, "Partial TP & BE Level (0.2 = 20% of target)", step=0.1, minval=0.1, maxval=0.9, group="NY Session")
+nyMinGapAtrPct   = input.float(0.25, "NY Min Gap (% ATR)", step=0.05, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
+nyStopAtrPct     = input.float(5.0, "NY Stop Loss (% ATR)", step=0.5, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
+nyExcludeThursday = input.bool(true, "Exclude Thursday sessions", tooltip="Skip NY sessions on Thursday", group="NY Session")
 
 // ----------------------------------------------------------------------------------------
 // Inputs - NY Half-Day Early Close Dates
@@ -97,25 +99,23 @@ newDay = ta.change(time("D")) != 0
 currentMonth = month(time, "America/New_York")
 currentDay   = dayofmonth(time, "America/New_York")
 currentYear  = year(time, "America/New_York")
-isExcludedDate = currentYear == 2024 and currentMonth == 12 and currentDay == 18
+isExcludedDate = false
 
 // Half-day detection
 todayStr = str.format("{0,number,0000}{1,number,00}{2,number,00}", currentYear, currentMonth, currentDay)
 isNyHalfDay = todayStr == halfDay1 or todayStr == halfDay2 or todayStr == halfDay3 or todayStr == halfDay4 or (halfDay5 != "" and todayStr == halfDay5) or (halfDay6 != "" and todayStr == halfDay6)
 
 // DOW detection
-isTuesday = dayofweek(time, "America/New_York") == dayofweek.tuesday
-isFriday  = dayofweek(time, "America/New_York") == dayofweek.friday
+isThursday = dayofweek(time, "America/New_York") == dayofweek.thursday
 
 // ----------------------------------------------------------------------------------------
-// Asia Session State Variables (R9 — long only)
+// Asia Session State Variables (Final — long only)
 // ----------------------------------------------------------------------------------------
 var float asia_orbHigh  = na
 var float asia_orbLow   = na
 var bool  asia_orbReady = false
 var bool  asia_hasTradedToday = false
 var int   asia_closedTradesAtDayStart = 0
-var bool  asia_sessionSkipped = false
 
 var bool  asia_longSetupActive  = false
 var bool  asia_longFirstFvgFound  = false
@@ -134,7 +134,7 @@ var int asia_longSetupBar  = na
 var int asia_fillBar = na
 
 // ----------------------------------------------------------------------------------------
-// NY Session State Variables (R11 — long only)
+// NY Session State Variables (Final — long only)
 // ----------------------------------------------------------------------------------------
 var float ny_orbHigh  = na
 var float ny_orbLow   = na
@@ -168,13 +168,12 @@ var float prevPos = 0
 // Reset on new day
 // ----------------------------------------------------------------------------------------
 if newDay
-    // Asia reset
+    // Asia reset (no DOW exclusion)
     asia_orbHigh := na
     asia_orbLow  := na
     asia_orbReady := false
     asia_hasTradedToday := false
     asia_closedTradesAtDayStart := strategy.closedtrades
-    asia_sessionSkipped := asiaExcludeTuesday and isTuesday
 
     asia_longSetupActive := false
     asia_longFirstFvgFound := false
@@ -196,7 +195,7 @@ if newDay
     ny_orbReady := false
     ny_hasTradedToday := false
     ny_closedTradesAtDayStart := strategy.closedtrades
-    ny_sessionSkipped := nyExcludeFriday and isFriday
+    ny_sessionSkipped := nyExcludeThursday and isThursday
 
     ny_longSetupActive := false
     ny_longFirstFvgFound := false
@@ -241,15 +240,15 @@ if nyTradeHappened and not ny_hasTradedToday
 // ----------------------------------------------------------------------------------------
 // Build ORB - Asia (20:00-20:15, 3 bars)
 // ----------------------------------------------------------------------------------------
-if inAsiaORB and inAsiaRTH and is5m and not asia_sessionSkipped
+if inAsiaORB and inAsiaRTH and is5m
     asia_orbHigh := na(asia_orbHigh) ? high : math.max(asia_orbHigh, high)
     asia_orbLow  := na(asia_orbLow)  ? low  : math.min(asia_orbLow, low)
 
-if not inAsiaORB and inAsiaRTH and is5m and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow) and not asia_sessionSkipped
+if not inAsiaORB and inAsiaRTH and is5m and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
     asia_orbReady := true
 
 // ----------------------------------------------------------------------------------------
-// Build ORB - NY (09:30-09:50, 4 bars)
+// Build ORB - NY (09:30-09:45, 3 bars)
 // ----------------------------------------------------------------------------------------
 if inNyORB and inNyRTH and is5m and not ny_sessionSkipped
     ny_orbHigh := na(ny_orbHigh) ? high : math.max(ny_orbHigh, high)
@@ -259,20 +258,22 @@ if not inNyORB and inNyRTH and is5m and not ny_orbReady and not na(ny_orbHigh) a
     ny_orbReady := true
 
 // ----------------------------------------------------------------------------------------
-// Daily ATR — NY only (Asia uses ORB range, not ATR)
+// Daily ATR — separate periods for each session
+// NY: ATR-7 for stop AND gap | Asia: ATR-14 for gap filter ONLY
 // ----------------------------------------------------------------------------------------
-dailyATR_ny = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
+dailyATR_ny   = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
+dailyATR_asia = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1], lookahead=barmerge.lookahead_on)
 
 // ----------------------------------------------------------------------------------------
-// ORB range for Asia stop/gap calculations
+// ORB range for Asia stop calculations
 // ----------------------------------------------------------------------------------------
 asiaOrbRange = not na(asia_orbHigh) and not na(asia_orbLow) ? (asia_orbHigh - asia_orbLow) : 0.0
 
 // ----------------------------------------------------------------------------------------
 // FVG size requirements
-// Asia: ORB-based gap filter | NY: ATR-based gap filter
+// Asia: ATR-based gap filter (hybrid) | NY: ATR-based gap filter
 // ----------------------------------------------------------------------------------------
-asiaMinGap = (asiaMinGapOrbPct / 100) * asiaOrbRange
+asiaMinGap = (asiaMinGapAtrPct / 100) * nz(dailyATR_asia)
 nyMinGap   = (nyMinGapAtrPct / 100) * nz(dailyATR_ny)
 
 // ----------------------------------------------------------------------------------------
@@ -303,14 +304,16 @@ floorToStep(x, step) =>
     step <= 0 ? x : math.floor(x / step) * step
 
 // ----------------------------------------------------------------------------------------
-// Activate setup - Asia Session (long only, ORB-based stop)
+// Activate setup - Asia Session (long only, ORB-based stop, ATR-based gap, dual floor)
 // ----------------------------------------------------------------------------------------
-asiaCanArmSetup = (is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not asia_sessionSkipped and not isExcludedDate and strategy.position_size == 0 and not asia_longSetupActive)
+asiaCanArmSetup = (is5m and barClosed and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asia_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not asia_longSetupActive)
 
 if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
-    entry   = longFvgTop
-    stop    = entry - (asiaStopOrbPct / 100) * asiaOrbRange
-    riskPts = entry - stop
+    entry    = longFvgTop
+    stopDist = (asiaStopOrbPct / 100) * asiaOrbRange
+    stopDist := math.max(stopDist, minStopPts)
+    stop     = entry - stopDist
+    riskPts  = stopDist
 
     if riskPts > 0
         qtyRaw = riskUsd / (riskPts * execPointValue)
@@ -319,10 +322,13 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
         halfQty := math.max(halfQty, minQty)
 
+        tp1Dist = asiaRR * riskPts * asiaTP1Ratio
+        tp1Dist := math.max(tp1Dist, minTP1Pts)
+
         if qty >= minQty
             asia_longStopStored   := stop
             asia_longTargetStored := entry + asiaRR * riskPts
-            asia_longHalfwayStored := entry + (asiaRR * riskPts * asiaTP1Ratio)
+            asia_longHalfwayStored := entry + tp1Dist
             asia_longEntryStored  := entry
             asia_longQtyStored    := qty
             asia_longHalfQty      := halfQty
@@ -332,14 +338,16 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
             asia_longSetupBar     := bar_index
 
 // ----------------------------------------------------------------------------------------
-// Activate setup - NY Session (long only, ATR-based stop)
+// Activate setup - NY Session (long only, ATR-based stop, dual floor)
 // ----------------------------------------------------------------------------------------
 nyCanArmSetup = (is5m and barClosed and inNyRTH and inNyEntryWin and ny_orbReady and not ny_hasTradedToday and not ny_sessionSkipped and not isExcludedDate and strategy.position_size == 0 and not ny_longSetupActive)
 
 if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
-    entry   = longFvgTop
-    stop    = entry - (nyStopAtrPct / 100) * nz(dailyATR_ny)
-    riskPts = entry - stop
+    entry    = longFvgTop
+    stopDist = (nyStopAtrPct / 100) * nz(dailyATR_ny)
+    stopDist := math.max(stopDist, minStopPts)
+    stop     = entry - stopDist
+    riskPts  = stopDist
 
     if riskPts > 0
         qtyRaw = riskUsd / (riskPts * execPointValue)
@@ -348,10 +356,13 @@ if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
         halfQty := math.max(halfQty, minQty)
 
+        tp1Dist = nyRR * riskPts * nyTP1Ratio
+        tp1Dist := math.max(tp1Dist, minTP1Pts)
+
         if qty >= minQty
             ny_longStopStored   := stop
             ny_longTargetStored := entry + nyRR * riskPts
-            ny_longHalfwayStored := entry + (nyRR * riskPts * nyTP1Ratio)
+            ny_longHalfwayStored := entry + tp1Dist
             ny_longEntryStored  := entry
             ny_longQtyStored    := qty
             ny_longHalfQty      := halfQty
@@ -404,7 +415,7 @@ if strategy.position_size > 0 and activeSession == "ny" and not na(ny_fillBar) a
 // ----------------------------------------------------------------------------------------
 // Entry orders - Asia (long only)
 // ----------------------------------------------------------------------------------------
-if is5m and inAsiaRTH and inAsiaEntryWin and not asia_hasTradedToday and not asia_sessionSkipped and strategy.position_size == 0
+if is5m and inAsiaRTH and inAsiaEntryWin and not asia_hasTradedToday and strategy.position_size == 0
     if asia_longSetupActive and bar_index > asia_longSetupBar
         strategy.entry("AL", strategy.long, qty=asia_longQtyStored, limit=asia_longEntryStored)
 
@@ -446,7 +457,7 @@ if strategy.position_size > 0 and activeSession == "ny" and not na(ny_fillBar) a
 // ----------------------------------------------------------------------------------------
 if asiaAfterCutoff
     if asia_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("AL")
     asia_longSetupActive := false
     asia_longEntryStored := na
@@ -454,7 +465,7 @@ if asiaAfterCutoff
 
 if not inAsiaRTH
     if asia_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("AL")
     asia_longSetupActive := false
     asia_longEntryStored := na
@@ -465,7 +476,7 @@ if not inAsiaRTH
 // ----------------------------------------------------------------------------------------
 if nyAfterCutoff
     if ny_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("NL")
     ny_longSetupActive := false
     ny_longEntryStored := na
@@ -473,7 +484,7 @@ if nyAfterCutoff
 
 if not inNyRTH
     if ny_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "cancel"}', alert.freq_once_per_bar_close)
     strategy.cancel("NL")
     ny_longSetupActive := false
     ny_longEntryStored := na
@@ -547,18 +558,18 @@ tp1HitLong = (strategy.position_size > 0 and not currentSingleContract and not t
 tp1HitSingleLong = (strategy.position_size > 0 and currentSingleContract and not tp1Alerted and positionMature) and tp1TouchLong
 
 if longEntrySignal
-    alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
     if setupSingleContract
-        alert('{"ticker": "MNQ", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
     else
-        alert('{"ticker": "MNQ", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+        alert('{"ticker": "MES", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
 if tp1HitLong
-    alert('{"ticker": "MNQ", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
     tp1Alerted := true
 if tp1HitSingleLong
-    alert('{"ticker": "MNQ", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
     tp1Alerted := true
 
 // ----------------------------------------------------------------------------------------
@@ -566,7 +577,7 @@ if tp1HitSingleLong
 // ----------------------------------------------------------------------------------------
 flatNow = prevPos != 0 and strategy.position_size == 0
 if flatNow
-    alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar)
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar)
 
 prevPos := strategy.position_size
 
@@ -574,11 +585,11 @@ prevPos := strategy.position_size
 // EOD Flat Alerts
 // ----------------------------------------------------------------------------------------
 if inAsiaFlatWin and strategy.position_size > 0 and activeSession == "asia"
-    alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
 
 nyFlatAlertNow = isNyHalfDay ? inNyHalfDayFlatWin : inNyFlatWin
 if nyFlatAlertNow and strategy.position_size > 0 and activeSession == "ny"
-    alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
+    alert('{"ticker": "MES", "action": "exit"}', alert.freq_once_per_bar_close)
 
 // ----------------------------------------------------------------------------------------
 // Visuals - ORB Lines
