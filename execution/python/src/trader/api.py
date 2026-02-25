@@ -79,32 +79,33 @@ class DashboardState:
 def parse_trade_log_line(line: str) -> dict | None:
     """Parse a trade log line into a structured dict.
 
-    Format: YYYY-MM-DD HH:MM:SS | SESSION | EVENT | key=value ...
+    Formats:
+      - YYYY-MM-DD HH:MM:SS | SESSION | EVENT | key=value ...
+      - YYYY-MM-DD HH:MM:SS | ASSET | SESSION | EVENT | key=value ...
     """
     line = line.strip()
     if not line:
         return None
 
-    parts = line.split(" | ", maxsplit=2)
-    if len(parts) < 2:
+    parts = [part.strip() for part in line.split(" | ")]
+    if len(parts) < 3:
         return None
 
-    timestamp = parts[0].strip()
+    timestamp = parts[0]
+    asset = ""
 
-    # The rest is "SESSION | EVENT | key=value ..." or "SESSION | EVENT"
-    rest = parts[1] if len(parts) == 2 else parts[1] + " | " + parts[2]
-
-    # Split into session and event+details
-    rest_parts = rest.split(" | ", maxsplit=1)
-    session = rest_parts[0].strip()
-    event_and_details = rest_parts[1].strip() if len(rest_parts) > 1 else ""
-
-    # Split event from key=value details
-    event_parts = event_and_details.split(" | ", maxsplit=1)
-    event = event_parts[0].strip()
+    # new format includes an explicit asset tag before the session.
+    if len(parts) >= 4 and parts[1].lower() in {"nq", "es", "gc"}:
+        asset = parts[1].lower()
+        session = parts[2]
+        event = parts[3]
+        detail_str = " | ".join(parts[4:]) if len(parts) > 4 else ""
+    else:
+        session = parts[1]
+        event = parts[2]
+        detail_str = " | ".join(parts[3:]) if len(parts) > 3 else ""
 
     details: dict[str, str] = {}
-    detail_str = event_parts[1].strip() if len(event_parts) > 1 else ""
 
     # Also check if event itself contains key=value pairs after the event name
     # Format: "LONG_SETUP | entry=21450.25 stop=21380.00"
@@ -125,6 +126,7 @@ def parse_trade_log_line(line: str) -> dict | None:
 
     return {
         "timestamp": timestamp,
+        "asset": asset or None,
         "session": session,
         "event": event,
         "details": details,
@@ -426,4 +428,5 @@ def _session_info(engine) -> dict:
         "fomc_exclusion": engine.fomc_exclusion,
         "min_stop_pts": engine.min_stop_pts,
         "min_tp1_pts": engine.min_tp1_pts,
+        "exec_ticker": engine.exec_ticker,
     }

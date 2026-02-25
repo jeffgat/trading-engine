@@ -3,10 +3,11 @@ import type { StatusResponse } from "@/lib/types";
 
 interface StatusPanelProps {
   status: StatusResponse | null;
+  uptime: number;
   loading: boolean;
 }
 
-export function StatusPanel({ status, loading }: StatusPanelProps) {
+export function StatusPanel({ status, uptime, loading }: StatusPanelProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
@@ -23,13 +24,13 @@ export function StatusPanel({ status, loading }: StatusPanelProps) {
     );
   }
 
-  const uptime = formatUptime(status.uptime_seconds);
+  const uptimeStr = formatUptime(uptime);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-text-muted">
-          Uptime: <span className="font-mono text-text-secondary">{uptime}</span>
+          Uptime: <span className="font-mono text-text-secondary">{uptimeStr}</span>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

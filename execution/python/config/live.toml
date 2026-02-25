@@ -6,7 +6,10 @@
 
 [general]
 dry_run = true              # Log webhooks but don't send (override with --live flag)
-instrument = "NQ"           # Default instrument for webhook ticker
+# Execution uses micro contracts by default (MNQ, MES, MGC) while
+# signal data comes from full-size contracts (NQ, ES, GC).
+# The SIGNAL_TO_EXEC mapping in main.py handles this automatically.
+# Override per-session with exec_ticker in [sessions.<name>] if needed.
 
 [databento]
 # Set DATABENTO_API_KEY in your environment
@@ -34,10 +37,10 @@ enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia"]
 #   GC_NY  → [sessions.gc.ny]
 #   ES_Asia → [sessions.es.asia]
 #
-# Example override:
+# Example overrides:
 # [sessions.nq.ny]
 # rr = 4.0
-# risk_usd = 500
+# exec_ticker = "NQ"  # Override to trade full-size NQ instead of MNQ
 
 [dates]
 # CME half-day early close dates (update annually)

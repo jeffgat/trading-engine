@@ -105,7 +105,11 @@
       "Bash(npx shadcn@latest add:*)",
       "Bash(PYTHONPATH=src python3:*)",
       "WebFetch(domain:gist.github.com)",
-      "Bash(ssh:)"
+      "Bash(ssh:)",
+      "Bash(chmod:*)",
+      "Bash(bash /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/python/deploy/deploy.sh)",
+      "Bash(ssh:*)",
+      "Bash(rsync:*)"
     ]
   }
 }

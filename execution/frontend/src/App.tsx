@@ -5,17 +5,19 @@ import { StatusPanel } from "@/components/StatusPanel";
 import { TradeFeed } from "@/components/TradeFeed";
 import { LogViewer } from "@/components/LogViewer";
 import { ConfigView } from "@/components/ConfigView";
+import { PerformanceView } from "@/components/PerformanceView";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useStatus } from "@/hooks/useStatus";
 import { useTradeLogs } from "@/hooks/useTradeLogs";
 import { useMainLogs } from "@/hooks/useMainLogs";
 import { useConfig } from "@/hooks/useConfig";
 
-type Tab = "status" | "trades" | "logs" | "config";
+type Tab = "status" | "trades" | "performance" | "logs" | "config";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "status", label: "Status" },
   { key: "trades", label: "Trades" },
+  { key: "performance", label: "Performance" },
   { key: "logs", label: "Logs" },
   { key: "config", label: "Config" },
 ];
@@ -23,7 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("status");
   const { connected, subscribe } = useWebSocket();
-  const { status, loading: statusLoading } = useStatus(subscribe);
+  const { status, uptime, loading: statusLoading } = useStatus(subscribe);
   const tradeLogs = useTradeLogs(subscribe);
   const mainLogs = useMainLogs(subscribe);
   const { config, loading: configLoading } = useConfig();
@@ -77,7 +79,7 @@ export default function App() {
       {/* Content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {activeTab === "status" && (
-          <StatusPanel status={status} loading={statusLoading} />
+          <StatusPanel status={status} uptime={uptime} loading={statusLoading} />
         )}
         {activeTab === "trades" && (
           <TradeFeed
@@ -97,6 +99,13 @@ export default function App() {
             tradeTotal={tradeLogs.total}
             tradeLoading={tradeLogs.loading}
             loadMoreTrade={tradeLogs.loadMore}
+          />
+        )}
+        {activeTab === "performance" && (
+          <PerformanceView
+            entries={tradeLogs.entries}
+            loading={tradeLogs.loading}
+            config={config}
           />
         )}
         {activeTab === "config" && (

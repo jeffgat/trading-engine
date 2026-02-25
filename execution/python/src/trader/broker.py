@@ -54,6 +54,10 @@ class TradersPostClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
+    def _resolve_ticker(self, ticker: str | None) -> str:
+        """Return explicit ticker if provided, else fall back to default."""
+        return ticker if ticker is not None else self.ticker
+
     async def _post(self, payload: dict) -> WebhookResult:
         """Send a single webhook POST. Logs payload in both live and dry-run."""
         t0 = time.monotonic()
@@ -95,6 +99,7 @@ class TradersPostClient:
         price: float,
         tp2: float,
         stop: float,
+        ticker: str | None = None,
     ) -> list[WebhookResult]:
         """Send bracket entry order.
 
@@ -107,18 +112,20 @@ class TradersPostClient:
             price: Limit entry price
             tp2: Take profit (full target) price
             stop: Initial stop loss price
+            ticker: Execution ticker override (e.g. "MNQ"). Falls back to default.
         """
+        t = self._resolve_ticker(ticker)
         results = []
 
         # Step 1: flatten stale position (Pine: lines 747, 756)
         results.append(await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": "exit",
         }))
 
         # Step 2: entry with bracket (Pine: lines 750-753, 759-762)
         results.append(await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": action,
             "quantity": qty,
             "price": price,
@@ -139,6 +146,7 @@ class TradersPostClient:
         half_qty: float,
         be_price: float,
         tp2: float,
+        ticker: str | None = None,
     ) -> list[WebhookResult]:
         """Send 3-step TP1 partial exit for multi-contract positions.
 
@@ -147,13 +155,15 @@ class TradersPostClient:
             half_qty: Quantity to exit at TP1 (also quantity for runner)
             be_price: Breakeven stop price for runner
             tp2: Full target price for runner
+            ticker: Execution ticker override (e.g. "MNQ"). Falls back to default.
         """
+        t = self._resolve_ticker(ticker)
         close_action = "sell" if direction == "long" else "buy"
         results = []
 
         # Step 1: market exit half qty (Pine: lines 765, 773)
         results.append(await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": "exit",
             "quantity": half_qty,
         }))
@@ -161,7 +171,7 @@ class TradersPostClient:
         # Step 2: BE stop for runner — cancel=true (default) clears old bracket
         # (Pine: lines 767, 775)
         results.append(await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": close_action,
             "orderType": "stop",
             "stopPrice": be_price,
@@ -173,7 +183,7 @@ class TradersPostClient:
         # Step 3: TP2 limit for runner — cancel=false preserves BE stop
         # (Pine: lines 769, 777)
         results.append(await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": close_action,
             "orderType": "limit",
             "limitPrice": tp2,
@@ -194,12 +204,14 @@ class TradersPostClient:
         direction: str,
         qty: float,
         be_price: float,
+        ticker: str | None = None,
     ) -> WebhookResult:
         """Move stop to breakeven for single-contract position."""
+        t = self._resolve_ticker(ticker)
         close_action = "sell" if direction == "long" else "buy"
 
         return await self._post({
-            "ticker": self.ticker,
+            "ticker": t,
             "action": close_action,
             "orderType": "stop",
             "stopPrice": be_price,
@@ -212,16 +224,16 @@ class TradersPostClient:
     # Flatten / Cancel (Pine: lines 789-803)
     # ------------------------------------------------------------------
 
-    async def send_flatten(self) -> WebhookResult:
+    async def send_flatten(self, ticker: str | None = None) -> WebhookResult:
         """Flatten all positions and cancel pending orders."""
         return await self._post({
-            "ticker": self.ticker,
+            "ticker": self._resolve_ticker(ticker),
             "action": "exit",
         })
 
-    async def send_cancel(self) -> WebhookResult:
+    async def send_cancel(self, ticker: str | None = None) -> WebhookResult:
         """Cancel all pending orders without closing positions."""
         return await self._post({
-            "ticker": self.ticker,
+            "ticker": self._resolve_ticker(ticker),
             "action": "cancel",
         })

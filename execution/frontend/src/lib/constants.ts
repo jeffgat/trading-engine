@@ -1,12 +1,12 @@
 export const STATE_COLORS: Record<string, string> = {
-  idle: "bg-text-muted/20 text-text-muted",
+  idle: "bg-sky-500/20 text-sky-200",
   orb_building: "bg-info/20 text-info",
   scanning: "bg-warning/20 text-warning",
   armed_long: "bg-profit/20 text-profit",
   armed_short: "bg-loss/20 text-loss",
-  filled: "bg-accent/20 text-[#8b5cf6]",
-  managing: "bg-accent/20 text-[#8b5cf6]",
-  flat: "bg-text-muted/20 text-text-muted",
+  filled: "bg-[#8b5cf6]/20 text-[#c4b5fd]",
+  managing: "bg-cyan-500/20 text-cyan-300",
+  flat: "bg-orange-500/20 text-orange-200",
 };
 
 export const STATE_LABELS: Record<string, string> = {
@@ -33,6 +33,7 @@ export const EVENT_COLORS: Record<string, string> = {
   BE_HIT: "bg-text-muted/20 text-text-muted",
   EOD_FLAT: "bg-text-muted/20 text-text-muted",
   CANCEL: "bg-text-muted/20 text-text-muted",
+  CANCELLED_LIMITS: "bg-text-muted/20 text-text-muted",
   NO_SETUP: "bg-text-muted/20 text-text-muted",
 };
 
@@ -46,6 +47,9 @@ export const LOG_LEVEL_COLORS: Record<string, string> = {
 };
 
 export const SESSION_COLORS: Record<string, string> = {
+  NQ: "bg-info/20 text-info",
+  ES: "bg-warning/20 text-warning",
+  GC: "bg-profit/20 text-profit",
   NY: "bg-info/20 text-info",
   Asia: "bg-[#8b5cf6]/20 text-[#8b5cf6]",
   LDN: "bg-warning/20 text-warning",

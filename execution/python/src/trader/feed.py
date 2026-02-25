@@ -353,6 +353,114 @@ class DataBentoFeed:
             except Exception:
                 logger.exception("Failed to warm up ATR for %s", sym)
 
+    def get_atr_values(self) -> dict[str, float]:
+        """Return current ATR values per symbol (from warmup or live)."""
+        return {sym: calc.value for sym, calc in self._atrs.items()}
+
+    def preload_intraday_5m(self, lookback_hours: int = 18) -> dict[str, list[Bar]]:
+        """load recent 1m history and build 5m bars for restart recovery."""
+        import databento as db
+        import pandas as pd
+
+        # DataBento historical data has a short delay; subtract 5 min buffer
+        # to avoid 'data_end_after_available_end' errors on restart.
+        # (Previously 20 min — reduced to capture more of the ORB window.)
+        end_dt = datetime.now(tz=ET) - timedelta(minutes=5)
+        start_dt = end_dt - timedelta(hours=lookback_hours)
+        bars_by_symbol: dict[str, list[Bar]] = {sym: [] for sym in self.symbols}
+
+        try:
+            logger.info(
+                "Preloading intraday history: symbols=%s lookback_hours=%d",
+                self.symbols,
+                lookback_hours,
+            )
+
+            client = db.Historical(key=self.api_key)
+            data = client.timeseries.get_range(
+                dataset=self.dataset,
+                symbols=self.symbols,
+                schema="ohlcv-1m",
+                stype_in="parent",
+                start=start_dt.isoformat(),
+                end=end_dt.isoformat(),
+            )
+            df = data.to_df()
+            if df.empty:
+                logger.warning("No intraday preload bars returned")
+                return bars_by_symbol
+
+            df = df.reset_index()
+            if "ts_event" not in df.columns:
+                logger.warning("Skipping intraday preload: ts_event column missing")
+                return bars_by_symbol
+
+            if "symbol" in df.columns:
+                df = df[~df["symbol"].astype(str).str.contains("-", na=False)]
+
+            df["ts_event"] = pd.to_datetime(df["ts_event"], utc=True, errors="coerce")
+            df = df[df["ts_event"].notna()]
+            if df.empty:
+                logger.warning("Skipping intraday preload: no valid timestamps")
+                return bars_by_symbol
+
+            if "stype_in_symbol" in df.columns:
+                df["parent_symbol"] = df["stype_in_symbol"].astype(str)
+            elif len(self.symbols) == 1:
+                df["parent_symbol"] = self.symbols[0]
+            elif "symbol" in df.columns:
+                root_to_parent = {sym.split(".")[0]: sym for sym in self.symbols}
+                df["parent_symbol"] = (
+                    df["symbol"]
+                    .astype(str)
+                    .str.extract(r"^([A-Za-z]+)", expand=False)
+                    .str.upper()
+                    .map(root_to_parent)
+                )
+            else:
+                logger.warning("Skipping intraday preload: parent symbol unavailable")
+                return bars_by_symbol
+
+            df = df[df["parent_symbol"].isin(self.symbols)]
+            if df.empty:
+                logger.warning("Skipping intraday preload: no matching symbols")
+                return bars_by_symbol
+
+            # pick the highest-volume contract each minute for each parent symbol.
+            df = (
+                df.sort_values(["parent_symbol", "ts_event", "volume"], ascending=[True, True, False])
+                .groupby(["parent_symbol", "ts_event"], as_index=False)
+                .first()
+                .sort_values(["ts_event", "parent_symbol"])
+            )
+
+            # reset aggregators so live stream continues from this rebuilt bucket state.
+            for sym in self.symbols:
+                self._aggregators[sym] = BarAggregator()
+
+            for _, row in df.iterrows():
+                symbol = str(row["parent_symbol"])
+                ts_et = row["ts_event"].tz_convert(ET).to_pydatetime()
+                bar_5m = self._aggregators[symbol].add_1m_bar(
+                    ts=ts_et,
+                    o=float(row["open"]),
+                    h=float(row["high"]),
+                    l=float(row["low"]),
+                    c=float(row["close"]),
+                    v=int(row.get("volume", 0)),
+                )
+                if bar_5m is not None:
+                    bars_by_symbol[symbol].append(bar_5m)
+
+            logger.info(
+                "Intraday preload complete: %s",
+                {sym: len(bars) for sym, bars in bars_by_symbol.items()},
+            )
+            return bars_by_symbol
+        except Exception:
+            logger.exception("Failed to preload intraday 5m history")
+            return bars_by_symbol
+
     async def run(self) -> None:
         """Start streaming. Blocks forever, reconnects on failure."""
         import databento as db
@@ -367,19 +475,27 @@ class DataBentoFeed:
                     self.dataset, self.symbols,
                 )
 
-                client = db.Live(key=self.api_key)
-                client.subscribe(
-                    dataset=self.dataset,
-                    schema="ohlcv-1m",
-                    stype_in="parent",
-                    symbols=self.symbols,
-                )
-                client.subscribe(
-                    dataset=self.dataset,
-                    schema="ohlcv-1s",
-                    stype_in="parent",
-                    symbols=self.symbols,
-                )
+                # Run blocking DataBento connect + subscribe in a thread so
+                # the event loop stays free for uvicorn to start.
+                loop = asyncio.get_running_loop()
+
+                def _connect():
+                    c = db.Live(key=self.api_key)
+                    c.subscribe(
+                        dataset=self.dataset,
+                        schema="ohlcv-1m",
+                        stype_in="parent",
+                        symbols=self.symbols,
+                    )
+                    c.subscribe(
+                        dataset=self.dataset,
+                        schema="ohlcv-1s",
+                        stype_in="parent",
+                        symbols=self.symbols,
+                    )
+                    return c
+
+                client = await loop.run_in_executor(None, _connect)
 
                 logger.info("DataBento connected — streaming 1m + 1s bars")
                 delay = self.reconnect_delay  # reset on successful connect
@@ -406,7 +522,7 @@ class DataBentoFeed:
                             self._id_to_raw[iid] = raw
                             self._id_volumes[iid] = 0
                             logger.debug(
-                                "Symbol mapping: %s (id=%d) → %s",
+                                "Symbol mapped: %s (id=%d) → %s",
                                 raw, iid, parent,
                             )
                     elif isinstance(record, db.OHLCVMsg):

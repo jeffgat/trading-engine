@@ -117,18 +117,18 @@ showAsia  = enableAsia and isNQ
 showESLDN = enableESLDN and isES
 
 // ============================================================================
-// SESSION FILTERS - use "5" resolution so sessions are detected correctly
-// even on higher timeframes (e.g. 15m bar spanning the entire ORB window)
+// SESSION FILTERS - use timeframe.period to match how the production strategies
+// detect sessions (prevents ORB starting one bar too early on boundary bars)
 // ============================================================================
-inNyRTH      = not na(time("5", nySessionRTH, "America/New_York"))
-inNyORB      = not na(time("5", nyOrbSession, "America/New_York"))
-inNyEntryWin = not na(time("5", nyEntryWindow, "America/New_York"))
-inAsiaRTH      = not na(time("5", asiaSessionRTH, "America/New_York"))
-inAsiaORB      = not na(time("5", asiaOrbSession, "America/New_York"))
-inAsiaEntryWin = not na(time("5", asiaEntryWindow, "America/New_York"))
-inESLDNRTH      = not na(time("5", esldnSessionRTH, "America/New_York"))
-inESLDNORB      = not na(time("5", esldnOrbSession, "America/New_York"))
-inESLDNEntryWin = not na(time("5", esldnEntryWindow, "America/New_York"))
+inNyRTH      = not na(time(timeframe.period, nySessionRTH, "America/New_York"))
+inNyORB      = not na(time(timeframe.period, nyOrbSession, "America/New_York"))
+inNyEntryWin = not na(time(timeframe.period, nyEntryWindow, "America/New_York"))
+inAsiaRTH      = not na(time(timeframe.period, asiaSessionRTH, "America/New_York"))
+inAsiaORB      = not na(time(timeframe.period, asiaOrbSession, "America/New_York"))
+inAsiaEntryWin = not na(time(timeframe.period, asiaEntryWindow, "America/New_York"))
+inESLDNRTH      = not na(time(timeframe.period, esldnSessionRTH, "America/New_York"))
+inESLDNORB      = not na(time(timeframe.period, esldnOrbSession, "America/New_York"))
+inESLDNEntryWin = not na(time(timeframe.period, esldnEntryWindow, "America/New_York"))
 
 // ============================================================================
 // 5m OHLC - stable confirmed data via lookahead_on + [1] offset

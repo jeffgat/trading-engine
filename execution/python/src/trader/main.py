@@ -24,6 +24,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,21 @@ INSTRUMENTS = {
     "MGC": {"point_value": 10.0, "min_tick": 0.10, "commission": 0.05, "db_symbol": "MGC.FUT"},
     "YM": {"point_value": 5.0, "min_tick": 1.0, "commission": 0.05, "db_symbol": "YM.FUT"},
     "MYM": {"point_value": 0.5, "min_tick": 1.0, "commission": 0.05, "db_symbol": "MYM.FUT"},
+}
+
+# Signal instrument → execution instrument mapping.
+# We subscribe to full-size contracts (NQ, ES, GC) for signal data via DataBento
+# but execute on micro contracts (MNQ, MES, MGC) via TradersPost.
+SIGNAL_TO_EXEC: dict[str, str] = {
+    "NQ": "MNQ",
+    "ES": "MES",
+    "GC": "MGC",
+    "YM": "MYM",
+    # Micros map to themselves
+    "MNQ": "MNQ",
+    "MES": "MES",
+    "MGC": "MGC",
+    "MYM": "MYM",
 }
 
 # ---------------------------------------------------------------------------
@@ -251,10 +267,14 @@ def build_engines(
         toml_overrides = session_overrides.get(toml_key, {})
         merged = {**sess_cfg, **toml_overrides}
 
-        # Per-session instrument
+        # Per-session instrument (signal data source) and execution ticker
         sess_instrument = merged.get("instrument", "NQ")
         inst = INSTRUMENTS.get(sess_instrument, INSTRUMENTS["NQ"])
         db_symbol = inst["db_symbol"]
+
+        # Resolve execution ticker: use micro contract for order routing
+        exec_ticker = merged.get("exec_ticker") or SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
+        exec_inst = INSTRUMENTS.get(exec_ticker, inst)
 
         # Track ATR length per symbol (use max of all sessions for that symbol)
         sess_atr_length = merged.get("atr_length", 14)
@@ -263,6 +283,7 @@ def build_engines(
         engine = SessionEngine(
             name=sess_name,
             broker=broker,
+            exec_ticker=exec_ticker,
             orb_start=merged["orb_start"],
             orb_end=merged["orb_end"],
             entry_start=merged["entry_start"],
@@ -275,11 +296,11 @@ def build_engines(
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
             risk_usd=risk.get("risk_usd", 250),
-            point_value=inst["point_value"],
+            point_value=exec_inst["point_value"],
             min_qty=risk.get("min_qty", 1.0),
             qty_step=risk.get("qty_step", 1.0),
             be_offset_ticks=risk.get("be_offset_ticks", 0),
-            min_tick=inst["min_tick"],
+            min_tick=exec_inst["min_tick"],
             stop_basis=merged.get("stop_basis", "atr"),
             stop_orb_pct=merged.get("stop_orb_pct", 0.0),
             gap_filter_basis=merged.get("gap_filter_basis", "atr"),
@@ -299,8 +320,8 @@ def build_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "Session engine created: %s (instrument=%s, feed=%s, stop=%s, atr=%d)",
-            sess_name, sess_instrument, db_symbol,
+            "Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d)",
+            sess_name, sess_instrument, exec_ticker, db_symbol,
             merged.get("stop_basis", "atr"), sess_atr_length,
         )
 
@@ -317,16 +338,16 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
 
     from .api import DashboardState, LogTailer, create_app
     from .broker import TradersPostClient
-    from .feed import DataBentoFeed
+    from .feed import ET, DataBentoFeed
 
     general = config.get("general", {})
     db_cfg = config.get("databento", {})
     tp_cfg = config.get("traderspost", {})
 
     dry_run = not live
-    instrument_name = general.get("instrument", "NQ")
 
-    # TradersPost client
+    # TradersPost client (default ticker is a fallback — each session overrides
+    # with its own exec_ticker derived from SIGNAL_TO_EXEC mapping)
     webhook_url = _env_or_key(tp_cfg, "webhook_url")
     if not webhook_url and not dry_run:
         logger.error("TRADERSPOST_WEBHOOK_URL not set — cannot run in live mode")
@@ -334,7 +355,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
 
     broker = TradersPostClient(
         webhook_url=webhook_url or "https://traderspost.io/api/v1/webhook/dry-run",
-        ticker=instrument_name,
+        ticker=general.get("instrument", "MNQ"),
         dry_run=dry_run,
     )
 
@@ -392,6 +413,31 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     # Seed ATR from historical daily bars so it's ready on first live bar
     feed.warm_up(lookback_days=30)
 
+    # Seed engines with warmup ATR values so the dashboard shows ATR
+    # immediately (before the first live bar arrives for that symbol).
+    atr_values = feed.get_atr_values()
+    for symbol, target_engines in symbol_map.items():
+        atr = atr_values.get(symbol, 0.0)
+        if atr > 0:
+            for engine in target_engines:
+                engine._daily_atr = atr
+
+    # recover current-day opening ranges from recent intraday history so
+    # sessions can continue scanning after service restarts.
+    intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
+    now_et = datetime.now(tz=ET)
+    recovered = 0
+    for symbol, target_engines in symbol_map.items():
+        bars = intraday_5m.get(symbol, [])
+        for engine in target_engines:
+            if engine.recover_opening_range(bars, now_et):
+                recovered += 1
+    logger.info(
+        "startup recovery complete: recovered_or=%d total_sessions=%d",
+        recovered,
+        len(engines),
+    )
+
     logger.info(
         "Starting ORB Trader [%s] — feeds=%s sessions=%s api=:%d",
         mode, feed_symbols,
@@ -417,12 +463,9 @@ async def run_replay(config: dict, csv_path: str, start: str | None, end: str | 
     from .broker import TradersPostClient
     from .feed import ReplayFeed
 
-    general = config.get("general", {})
-    instrument_name = general.get("instrument", "NQ")
-
     broker = TradersPostClient(
         webhook_url="",
-        ticker=instrument_name,
+        ticker="MNQ",
         dry_run=True,
     )
 

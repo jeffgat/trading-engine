@@ -10,15 +10,21 @@ interface TradeEventRowProps {
 export function TradeEventRow({ entry }: TradeEventRowProps) {
   const eventColor =
     EVENT_COLORS[entry.event] ?? "bg-text-muted/20 text-text-muted";
+  const [datePart, timePart] = entry.timestamp.split(" ");
 
-  const detailParts = Object.entries(entry.details);
+  const detailParts = Object.entries(entry.details).filter(
+    ([key]) => key !== "bar_time" && key !== "tick_time" && key !== "resolution",
+  );
 
   return (
     <div className="flex items-start gap-3 border-b border-border/30 px-3 py-2 hover:bg-bg-card-hover transition-colors">
       {/* Timestamp */}
       <span className="font-mono text-xs text-text-muted whitespace-nowrap pt-0.5">
-        {entry.timestamp.split(" ")[1] ?? entry.timestamp}
+        {timePart && datePart ? `${datePart} ${timePart}` : entry.timestamp}
       </span>
+
+      {/* asset */}
+      {entry.asset && <SessionTag session={entry.asset.toUpperCase()} />}
 
       {/* Session */}
       <SessionTag session={entry.session} />

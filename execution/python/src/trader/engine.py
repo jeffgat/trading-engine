@@ -138,6 +138,7 @@ class SessionEngine:
 
     name: str
     broker: TradersPostClient
+    exec_ticker: str  # Execution instrument ticker (e.g. "MNQ", "MES", "MGC")
 
     # Session time windows
     orb_start: str
@@ -210,6 +211,7 @@ class SessionEngine:
     _short_fvg_found: bool = field(default=False, init=False)
     _current_date: str = field(default="", init=False)
     _daily_atr: float = field(default=0.0, init=False)
+    _asset_tag: str = field(default="", init=False)
 
     # Parsed times (computed on first bar)
     _orb_start_t: time | None = field(default=None, init=False, repr=False)
@@ -226,6 +228,36 @@ class SessionEngine:
         self._entry_end_t = _parse_time(self.entry_end)
         self._flat_start_t = _parse_time(self.flat_start)
         self._flat_end_t = _parse_time(self.flat_end)
+        self._asset_tag = self._resolve_asset_tag()
+
+    def _resolve_asset_tag(self) -> str:
+        """resolve canonical asset tag for trade logs."""
+        prefix = self.name.split("_", maxsplit=1)[0].upper()
+        if prefix in {"NQ", "ES", "GC"}:
+            return prefix.lower()
+
+        ticker_map = {
+            "NQ": "nq",
+            "MNQ": "nq",
+            "ES": "es",
+            "MES": "es",
+            "GC": "gc",
+            "MGC": "gc",
+        }
+        return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
+
+    def _log_trade(self, event: str, details: str = "") -> None:
+        """emit trade log with asset + session tags."""
+        if details:
+            trade_logger.info(
+                "%s | %s | %s | %s",
+                self._asset_tag,
+                self.name,
+                event,
+                details,
+            )
+            return
+        trade_logger.info("%s | %s | %s", self._asset_tag, self.name, event)
 
     def _notify_state_change(self) -> None:
         """Notify dashboard of a state transition."""
@@ -271,7 +303,7 @@ class SessionEngine:
     # Daily reset
     # ------------------------------------------------------------------
 
-    def _reset_day(self, date_str: str) -> None:
+    def _reset_day(self, date_str: str, notify: bool = True) -> None:
         """Reset all state for a new trading day."""
         self._state = State.IDLE
         self._orb_high = float("nan")
@@ -286,7 +318,87 @@ class SessionEngine:
         self._short_fvg_found = False
         self._current_date = date_str
         logger.info("[%s] New session day: %s", self.name, date_str)
+        if notify:
+            self._notify_state_change()
+
+    def _expected_orb_bar_count(self) -> int:
+        """How many 5m bars should exist in the full ORB window."""
+        from datetime import datetime as _dt, timedelta as _td
+        # Build datetime objects on a dummy date to compute the span
+        base = _dt(2000, 1, 1)
+        start = _dt.combine(base, self._orb_start_t)
+        end = _dt.combine(base, self._orb_end_t)
+        if end <= start:
+            end += _td(days=1)  # cross-midnight
+        minutes = (end - start).total_seconds() / 60
+        return max(1, int(minutes // 5))
+
+    def recover_opening_range(self, bars: list[Bar], now: datetime) -> bool:
+        """recover opening range/state for current day after restart."""
+        date_str = now.strftime("%Y%m%d")
+        now_t = now.time()
+
+        # reset to a clean day state without broadcasting intermediate idle.
+        self._reset_day(date_str, notify=False)
+
+        # excluded dates should remain flat even if history exists.
+        now_bar = Bar(timestamp=now, open=0.0, high=0.0, low=0.0, close=0.0, volume=0)
+        if self._is_excluded(now_bar):
+            self._state = State.FLAT
+            self._notify_state_change()
+            return False
+
+        today_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") == date_str]
+        session_bars = [b for b in today_bars if self._in_rth(b.timestamp.time())]
+        orb_bars = [b for b in session_bars if self._in_orb(b.timestamp.time())]
+        if not orb_bars:
+            self._notify_state_change()
+            return False
+
+        self._orb_high = max(b.high for b in orb_bars)
+        self._orb_low = min(b.low for b in orb_bars)
+        self._bars = session_bars[-10:]
+        self._bar_count = len(session_bars)
+
+        # Check if the preloaded history fully covers the ORB window.
+        # If bars are missing (e.g. due to the DataBento historical delay),
+        # stay in ORB_BUILDING so live bars can complete the range.
+        expected_orb_bars = self._expected_orb_bar_count()
+        orb_complete = len(orb_bars) >= expected_orb_bars
+
+        if self._in_orb(now_t):
+            self._state = State.ORB_BUILDING
+        elif not orb_complete:
+            # Past ORB window but preload missed some bars — stay in
+            # ORB_BUILDING so the first live bars can fill the gap.
+            self._state = State.ORB_BUILDING
+            logger.warning(
+                "[%s] ORB incomplete after recovery: got %d/%d bars, "
+                "staying in ORB_BUILDING for live completion",
+                self.name, len(orb_bars), expected_orb_bars,
+            )
+        elif self._in_entry(now_t):
+            self._state = State.SCANNING
+        elif self._in_flat(now_bar):
+            self._state = State.FLAT
+        elif self._in_rth(now_t):
+            # post-entry/pre-flat should not scan for new setups.
+            self._state = State.FLAT
+        else:
+            self._state = State.IDLE
+
+        logger.info(
+            "[%s] OR recovered: high=%.2f low=%.2f range=%.2f state=%s bars=%d/%d",
+            self.name,
+            self._orb_high,
+            self._orb_low,
+            self._orb_range,
+            self._state.value,
+            len(orb_bars),
+            expected_orb_bars,
+        )
         self._notify_state_change()
+        return True
 
     # ------------------------------------------------------------------
     # ORB range helper
@@ -395,11 +507,8 @@ class SessionEngine:
         if not self._in_rth(bar_time):
             # If we were in a session and left RTH, cancel any pending
             if self._state == State.ARMED_LONG:
-                trade_logger.info(
-                    "%s | CANCEL | outside RTH | state=%s",
-                    self.name, self._state.value,
-                )
-                await self.broker.send_cancel()
+                self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
+                await self.broker.send_cancel(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
             return
@@ -407,7 +516,7 @@ class SessionEngine:
         # New session day detection
         if date_str != self._current_date:
             if self._state == State.ARMED_LONG:
-                await self.broker.send_cancel()
+                await self.broker.send_cancel(ticker=self.exec_ticker)
             self._reset_day(date_str)
 
         # Skip excluded dates (DOW, FOMC, static dates)
@@ -449,6 +558,13 @@ class SessionEngine:
                 self.name, bar.high, bar.low,
             )
             self._notify_state_change()
+        elif not self._in_orb(bar_time) and self._orb_range == 0.0:
+            # In RTH but past ORB window with no ORB data — missed the
+            # session (e.g. service started after ORB closed and recovery
+            # did not find historical bars).
+            self._log_trade("NO_SETUP", "missed ORB window (late start)")
+            self._state = State.FLAT
+            self._notify_state_change()
 
     async def _handle_orb_building(self, bar: Bar, bar_time: time) -> None:
         """Accumulating ORB high/low."""
@@ -465,10 +581,15 @@ class SessionEngine:
         else:
             # ORB window closed — ready to scan
             self._state = State.SCANNING
-            trade_logger.info(
-                "%s | ORB_READY | high=%.2f low=%.2f range=%.2f atr=%.2f",
-                self.name, self._orb_high, self._orb_low,
-                self._orb_range, self._daily_atr,
+            self._log_trade(
+                "ORB_READY",
+                "high=%.2f low=%.2f range=%.2f atr=%.2f"
+                % (
+                    self._orb_high,
+                    self._orb_low,
+                    self._orb_range,
+                    self._daily_atr,
+                ),
             )
             self._notify_state_change()
 
@@ -476,10 +597,7 @@ class SessionEngine:
         """Scanning for first FVG in entry window (long only)."""
         if not self._in_entry(bar_time):
             # Past entry window — cancel and go flat
-            trade_logger.info(
-                "%s | NO_SETUP | entry window closed",
-                self.name,
-            )
+            self._log_trade("NO_SETUP", "entry window closed")
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -513,12 +631,22 @@ class SessionEngine:
                 if levels is not None:
                     self._levels = levels
                     self._state = State.ARMED_LONG
-                    trade_logger.info(
-                        "%s | LONG_SETUP | entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
-                        "qty=%.1f gap=%.2f atr=%.2f orb_range=%.2f",
-                        self.name, levels.entry, levels.stop, levels.tp1,
-                        levels.tp2, levels.qty, gap_size, self._daily_atr,
-                        self._orb_range,
+                    self._log_trade(
+                        "LONG_SETUP",
+                        (
+                            "entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
+                            "qty=%.1f gap=%.2f atr=%.2f orb_range=%.2f"
+                        )
+                        % (
+                            levels.entry,
+                            levels.stop,
+                            levels.tp1,
+                            levels.tp2,
+                            levels.qty,
+                            gap_size,
+                            self._daily_atr,
+                            self._orb_range,
+                        ),
                     )
                     self._notify_state_change()
                     await self.broker.send_entry(
@@ -527,6 +655,7 @@ class SessionEngine:
                         price=levels.entry,
                         tp2=levels.tp2,
                         stop=levels.stop,
+                        ticker=self.exec_ticker,
                     )
                     return
 
@@ -561,11 +690,21 @@ class SessionEngine:
                     # Re-use ARMED_LONG state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
                     self._state = State.ARMED_LONG
-                    trade_logger.info(
-                        "%s | SHORT_SETUP | entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
-                        "qty=%.1f gap=%.2f atr=%.2f",
-                        self.name, levels.entry, levels.stop, levels.tp1,
-                        levels.tp2, levels.qty, gap_size, self._daily_atr,
+                    self._log_trade(
+                        "SHORT_SETUP",
+                        (
+                            "entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
+                            "qty=%.1f gap=%.2f atr=%.2f"
+                        )
+                        % (
+                            levels.entry,
+                            levels.stop,
+                            levels.tp1,
+                            levels.tp2,
+                            levels.qty,
+                            gap_size,
+                            self._daily_atr,
+                        ),
                     )
                     self._notify_state_change()
                     await self.broker.send_entry(
@@ -574,6 +713,7 @@ class SessionEngine:
                         price=levels.entry,
                         tp2=levels.tp2,
                         stop=levels.stop,
+                        ticker=self.exec_ticker,
                     )
                     return
 
@@ -586,11 +726,11 @@ class SessionEngine:
 
         # Cancel if past entry window
         if not self._in_entry(bar_time):
-            trade_logger.info(
-                "%s | CANCEL | entry window expired | entry=%.2f",
-                self.name, levels.entry,
+            self._log_trade(
+                "CANCELLED_LIMITS",
+                "entry window expired entry=%.2f" % levels.entry,
             )
-            await self.broker.send_cancel()
+            await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -606,12 +746,10 @@ class SessionEngine:
         if filled:
             self._fill_bar_idx = self._bar_count
             self._fill_timestamp = bar.timestamp
-            trade_logger.info(
-                "%s | FILLED | dir=%s entry=%.2f bar_time=%s",
-                self.name,
-                "long" if is_long else "short",
-                levels.entry,
-                bar.timestamp,
+            self._log_trade(
+                "FILLED",
+                "dir=%s entry=%.2f bar_time=%s resolution=5m"
+                % ("long" if is_long else "short", levels.entry, bar.timestamp),
             )
             # Immediately transition to managing — but don't check exits on fill bar
             self._state = State.MANAGING
@@ -628,11 +766,11 @@ class SessionEngine:
 
         # EOD flat check (takes priority)
         if self._in_flat(bar):
-            trade_logger.info(
-                "%s | EOD_FLAT | dir=%s bar_time=%s",
-                self.name, direction_str, bar.timestamp,
+            self._log_trade(
+                "EOD_FLAT",
+                f"dir={direction_str} bar_time={bar.timestamp} resolution=5m",
             )
-            await self.broker.send_flatten()
+            await self.broker.send_flatten(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -651,11 +789,12 @@ class SessionEngine:
             sl_hit = True
 
         if sl_hit and not self._tp1_hit:
-            trade_logger.info(
-                "%s | SL_HIT | dir=%s stop=%.2f bar_time=%s",
-                self.name, direction_str, levels.stop, bar.timestamp,
+            self._log_trade(
+                "SL_HIT",
+                "dir=%s stop=%.2f bar_time=%s resolution=5m"
+                % (direction_str, levels.stop, bar.timestamp),
             )
-            await self.broker.send_flatten()
+            await self.broker.send_flatten(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -671,26 +810,36 @@ class SessionEngine:
             self._tp1_hit = True
 
             if levels.is_single_contract:
-                trade_logger.info(
-                    "%s | TP1_BE_SINGLE | dir=%s tp1=%.2f be=%.2f bar_time=%s",
-                    self.name, direction_str, levels.tp1, levels.be, bar.timestamp,
+                self._log_trade(
+                    "TP1_BE_SINGLE",
+                    "dir=%s tp1=%.2f be=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, levels.tp1, levels.be, bar.timestamp),
                 )
                 await self.broker.send_tp1_single(
                     direction=direction_str,
                     qty=levels.qty,
                     be_price=levels.be,
+                    ticker=self.exec_ticker,
                 )
             else:
-                trade_logger.info(
-                    "%s | TP1_PARTIAL | dir=%s tp1=%.2f half_qty=%.1f be=%.2f tp2=%.2f bar_time=%s",
-                    self.name, direction_str, levels.tp1, levels.half_qty,
-                    levels.be, levels.tp2, bar.timestamp,
+                self._log_trade(
+                    "TP1_PARTIAL",
+                    "dir=%s tp1=%.2f half_qty=%.1f be=%.2f tp2=%.2f bar_time=%s resolution=5m"
+                    % (
+                        direction_str,
+                        levels.tp1,
+                        levels.half_qty,
+                        levels.be,
+                        levels.tp2,
+                        bar.timestamp,
+                    ),
                 )
                 await self.broker.send_tp1_multi(
                     direction=direction_str,
                     half_qty=levels.half_qty,
                     be_price=levels.be,
                     tp2=levels.tp2,
+                    ticker=self.exec_ticker,
                 )
 
             self._notify_state_change()
@@ -705,11 +854,12 @@ class SessionEngine:
                 be_hit = True
 
             if be_hit:
-                trade_logger.info(
-                    "%s | BE_HIT | dir=%s be=%.2f bar_time=%s",
-                    self.name, direction_str, levels.be, bar.timestamp,
+                self._log_trade(
+                    "BE_HIT",
+                    "dir=%s be=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, levels.be, bar.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -721,11 +871,12 @@ class SessionEngine:
                 tp2_hit = True
 
             if tp2_hit:
-                trade_logger.info(
-                    "%s | TP2_HIT | dir=%s tp2=%.2f bar_time=%s",
-                    self.name, direction_str, levels.tp2, bar.timestamp,
+                self._log_trade(
+                    "TP2_HIT",
+                    "dir=%s tp2=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, levels.tp2, bar.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -738,11 +889,12 @@ class SessionEngine:
                 tp2_hit = True
 
             if tp2_hit:
-                trade_logger.info(
-                    "%s | TP2_DIRECT | dir=%s tp2=%.2f bar_time=%s",
-                    self.name, direction_str, levels.tp2, bar.timestamp,
+                self._log_trade(
+                    "TP2_DIRECT",
+                    "dir=%s tp2=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, levels.tp2, bar.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -775,11 +927,11 @@ class SessionEngine:
 
         # Cancel if past entry window
         if not self._in_entry(tick_time):
-            trade_logger.info(
-                "%s | CANCEL | entry window expired (1s) | entry=%.2f",
-                self.name, levels.entry,
+            self._log_trade(
+                "CANCELLED_LIMITS",
+                "entry window expired (1s) entry=%.2f" % levels.entry,
             )
-            await self.broker.send_cancel()
+            await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -796,12 +948,10 @@ class SessionEngine:
             self._fill_timestamp = tick.timestamp
             self._fill_bar_idx = self._bar_count
             self._state = State.MANAGING
-            trade_logger.info(
-                "%s | FILLED | dir=%s entry=%.2f tick_time=%s",
-                self.name,
-                "long" if is_long else "short",
-                levels.entry,
-                tick.timestamp,
+            self._log_trade(
+                "FILLED",
+                "dir=%s entry=%.2f tick_time=%s resolution=1s"
+                % ("long" if is_long else "short", levels.entry, tick.timestamp),
             )
             self._notify_state_change()
 
@@ -821,11 +971,11 @@ class SessionEngine:
 
         # EOD flat check (highest priority)
         if self._in_flat(tick):
-            trade_logger.info(
-                "%s | EOD_FLAT | dir=%s tick_time=%s",
-                self.name, direction_str, tick.timestamp,
+            self._log_trade(
+                "EOD_FLAT",
+                f"dir={direction_str} tick_time={tick.timestamp} resolution=1s",
             )
-            await self.broker.send_flatten()
+            await self.broker.send_flatten(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -845,21 +995,23 @@ class SessionEngine:
 
             # Both on same 1s bar — pessimistic: SL wins (matches backtester)
             if sl_hit and tp1_touched:
-                trade_logger.info(
-                    "%s | SL_HIT | dir=%s stop=%.2f (1s ambiguous, pessimistic) tick_time=%s",
-                    self.name, direction_str, levels.stop, tick.timestamp,
+                self._log_trade(
+                    "SL_HIT",
+                    "dir=%s stop=%.2f (1s ambiguous, pessimistic) tick_time=%s resolution=1s"
+                    % (direction_str, levels.stop, tick.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
 
             if sl_hit:
-                trade_logger.info(
-                    "%s | SL_HIT | dir=%s stop=%.2f tick_time=%s",
-                    self.name, direction_str, levels.stop, tick.timestamp,
+                self._log_trade(
+                    "SL_HIT",
+                    "dir=%s stop=%.2f tick_time=%s resolution=1s"
+                    % (direction_str, levels.stop, tick.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -867,28 +1019,36 @@ class SessionEngine:
             if tp1_touched:
                 self._tp1_hit = True
                 if levels.is_single_contract:
-                    trade_logger.info(
-                        "%s | TP1_BE_SINGLE | dir=%s tp1=%.2f be=%.2f tick_time=%s",
-                        self.name, direction_str, levels.tp1, levels.be,
-                        tick.timestamp,
+                    self._log_trade(
+                        "TP1_BE_SINGLE",
+                        "dir=%s tp1=%.2f be=%.2f tick_time=%s resolution=1s"
+                        % (direction_str, levels.tp1, levels.be, tick.timestamp),
                     )
                     await self.broker.send_tp1_single(
                         direction=direction_str,
                         qty=levels.qty,
                         be_price=levels.be,
+                        ticker=self.exec_ticker,
                     )
                 else:
-                    trade_logger.info(
-                        "%s | TP1_PARTIAL | dir=%s tp1=%.2f half_qty=%.1f "
-                        "be=%.2f tp2=%.2f tick_time=%s",
-                        self.name, direction_str, levels.tp1, levels.half_qty,
-                        levels.be, levels.tp2, tick.timestamp,
+                    self._log_trade(
+                        "TP1_PARTIAL",
+                        "dir=%s tp1=%.2f half_qty=%.1f be=%.2f tp2=%.2f tick_time=%s resolution=1s"
+                        % (
+                            direction_str,
+                            levels.tp1,
+                            levels.half_qty,
+                            levels.be,
+                            levels.tp2,
+                            tick.timestamp,
+                        ),
                     )
                     await self.broker.send_tp1_multi(
                         direction=direction_str,
                         half_qty=levels.half_qty,
                         be_price=levels.be,
                         tp2=levels.tp2,
+                        ticker=self.exec_ticker,
                     )
                 self._notify_state_change()
                 return
@@ -897,11 +1057,12 @@ class SessionEngine:
             tp2_hit = (is_long and tick.high >= levels.tp2) or \
                       (not is_long and tick.low <= levels.tp2)
             if tp2_hit:
-                trade_logger.info(
-                    "%s | TP2_DIRECT | dir=%s tp2=%.2f tick_time=%s",
-                    self.name, direction_str, levels.tp2, tick.timestamp,
+                self._log_trade(
+                    "TP2_DIRECT",
+                    "dir=%s tp2=%.2f tick_time=%s resolution=1s"
+                    % (direction_str, levels.tp2, tick.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -914,21 +1075,23 @@ class SessionEngine:
                       (not is_long and tick.low <= levels.tp2)
 
             if be_hit:
-                trade_logger.info(
-                    "%s | BE_HIT | dir=%s be=%.2f tick_time=%s",
-                    self.name, direction_str, levels.be, tick.timestamp,
+                self._log_trade(
+                    "BE_HIT",
+                    "dir=%s be=%.2f tick_time=%s resolution=1s"
+                    % (direction_str, levels.be, tick.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
 
             if tp2_hit:
-                trade_logger.info(
-                    "%s | TP2_HIT | dir=%s tp2=%.2f tick_time=%s",
-                    self.name, direction_str, levels.tp2, tick.timestamp,
+                self._log_trade(
+                    "TP2_HIT",
+                    "dir=%s tp2=%.2f tick_time=%s resolution=1s"
+                    % (direction_str, levels.tp2, tick.timestamp),
                 )
-                await self.broker.send_flatten()
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._notify_state_change()
                 return

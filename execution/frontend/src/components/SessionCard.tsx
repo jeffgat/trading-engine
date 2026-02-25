@@ -24,8 +24,6 @@ export function SessionCard({ engine }: SessionCardProps) {
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
   const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
 
-  const isActive =
-    engine.state !== "idle" && engine.state !== "flat";
   const hasLevels = engine.levels != null;
   const dirLabel =
     engine.levels?.direction === 1
@@ -109,8 +107,15 @@ export function SessionCard({ engine }: SessionCardProps) {
           </div>
         )}
 
-        {/* Inactive placeholder */}
-        {!isActive && !hasLevels && engine.orb_high == null && (
+        {/* Flat with ORB but no trade */}
+        {engine.state === "flat" && !hasLevels && engine.orb_high != null && (
+          <div className="text-center text-text-muted text-xs py-2">
+            No setup today
+          </div>
+        )}
+
+        {/* Idle — no data yet */}
+        {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
           <div className="text-center text-text-muted text-xs py-4">
             Waiting for session...
           </div>

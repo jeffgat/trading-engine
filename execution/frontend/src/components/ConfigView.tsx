@@ -15,6 +15,8 @@ function ConfigItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+const DOW_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 function SessionConfigCard({
   name,
   cfg,
@@ -22,6 +24,9 @@ function SessionConfigCard({
   name: string;
   cfg: SessionConfig;
 }) {
+  const stopIsOrb = cfg.stop_basis === "orb";
+  const gapIsOrb = cfg.gap_filter_basis === "orb";
+
   return (
     <Card className="border-border bg-bg-card">
       <CardHeader className="pb-2">
@@ -37,14 +42,33 @@ function SessionConfigCard({
           label="Flat"
           value={`${cfg.flat_start} - ${cfg.flat_end}`}
         />
+        <ConfigItem label="Exec Contract" value={cfg.exec_ticker} />
+        {cfg.excluded_dow != null && (
+          <ConfigItem
+            label="Skip Day"
+            value={DOW_NAMES[cfg.excluded_dow] ?? `DOW ${cfg.excluded_dow}`}
+          />
+        )}
         <div className="border-t border-border/30 my-1" />
         <ConfigItem label="R:R" value={cfg.rr.toString()} />
         <ConfigItem label="TP1 Ratio" value={cfg.tp1_ratio.toString()} />
-        <ConfigItem label="Stop ATR %" value={`${cfg.stop_atr_pct}%`} />
-        <ConfigItem
-          label="Gap ATR %"
-          value={`${cfg.min_gap_atr_pct} - ${cfg.max_gap_atr_pct}%`}
-        />
+        {stopIsOrb ? (
+          <ConfigItem label="Stop ORB %" value={`${cfg.stop_orb_pct}%`} />
+        ) : (
+          <ConfigItem label="Stop ATR %" value={`${cfg.stop_atr_pct}%`} />
+        )}
+        {gapIsOrb ? (
+          <ConfigItem label="Gap ORB %" value={`${cfg.min_gap_orb_pct}%`} />
+        ) : (
+          <ConfigItem
+            label="Gap ATR %"
+            value={
+              cfg.max_gap_atr_pct
+                ? `${cfg.min_gap_atr_pct} - ${cfg.max_gap_atr_pct}%`
+                : `${cfg.min_gap_atr_pct}%`
+            }
+          />
+        )}
         <div className="border-t border-border/30 my-1" />
         <ConfigItem label="Risk USD" value={`$${cfg.risk_usd}`} />
         <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
@@ -103,6 +127,18 @@ export function ConfigView({ config, loading }: ConfigViewProps) {
         </Card>
       </div>
 
+      {/* Session configs */}
+      <div>
+        <h3 className="text-sm font-semibold text-text-secondary mb-3">
+          Session Configurations
+        </h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Object.entries(config.sessions).map(([name, cfg]) => (
+            <SessionConfigCard key={name} name={name} cfg={cfg} />
+          ))}
+        </div>
+      </div>
+
       {/* Date config */}
       {Object.keys(dates).length > 0 && (
         <Card className="border-border bg-bg-card">
@@ -120,18 +156,6 @@ export function ConfigView({ config, loading }: ConfigViewProps) {
           </CardContent>
         </Card>
       )}
-
-      {/* Session configs */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-secondary mb-3">
-          Session Configurations
-        </h3>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Object.entries(config.sessions).map(([name, cfg]) => (
-            <SessionConfigCard key={name} name={name} cfg={cfg} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

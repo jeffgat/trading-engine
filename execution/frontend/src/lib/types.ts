@@ -26,6 +26,7 @@ export interface StatusResponse {
 
 export interface TradeLogEntry {
   timestamp: string;
+  asset?: string | null;
   session: string;
   event: string;
   details: Record<string, string>;
@@ -53,8 +54,12 @@ export interface SessionConfig {
   flat_start: string;
   flat_end: string;
   stop_atr_pct: number;
+  stop_basis: string;
+  stop_orb_pct: number;
   min_gap_atr_pct: number;
   max_gap_atr_pct: number;
+  gap_filter_basis: string;
+  min_gap_orb_pct: number;
   rr: number;
   tp1_ratio: number;
   risk_usd: number;
@@ -63,6 +68,8 @@ export interface SessionConfig {
   qty_step: number;
   be_offset_ticks: number;
   min_tick: number;
+  exec_ticker: string;
+  excluded_dow: number | null;
 }
 
 export interface ConfigResponse {
