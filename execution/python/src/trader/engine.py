@@ -457,6 +457,11 @@ class SessionEngine:
                 self._orb_high = bar.high
             if bar.low < self._orb_low:
                 self._orb_low = bar.low
+            logger.info(
+                "[%s] ORB bar: time=%s H=%.2f L=%.2f | running high=%.2f low=%.2f",
+                self.name, bar.timestamp, bar.high, bar.low,
+                self._orb_high, self._orb_low,
+            )
         else:
             # ORB window closed — ready to scan
             self._state = State.SCANNING

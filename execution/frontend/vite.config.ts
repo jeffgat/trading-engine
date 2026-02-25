@@ -13,11 +13,11 @@ export default defineConfig({
   server: {
     proxy: {
       "/api/ws": {
-        target: "ws://localhost:8000",
+        target: "ws://143.110.148.234:8000",
         ws: true,
       },
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://143.110.148.234:8000",
       },
     },
   },

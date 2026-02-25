@@ -390,7 +390,7 @@ class DataBentoFeed:
 
                 from databento_dbn import RType
 
-                for record in client:
+                async for record in client:
                     if not self._running:
                         break
 

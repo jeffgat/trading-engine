@@ -8,7 +8,21 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+
+
+class _ETFormatter(logging.Formatter):
+    """Formatter that renders timestamps in Eastern Time."""
+
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        ct = datetime.fromtimestamp(record.created, tz=ET)
+        if datefmt:
+            return ct.strftime(datefmt)
+        return ct.isoformat()
 
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
@@ -20,7 +34,7 @@ def setup_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
-    fmt = logging.Formatter(
+    fmt = _ETFormatter(
         "%(asctime)s | %(levelname)-5s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
@@ -41,7 +55,7 @@ def setup_logging(level: str = "INFO") -> None:
 
     # Separate trade log — one line per webhook/state change
     trade_logger = logging.getLogger("trader.trades")
-    trade_fmt = logging.Formatter(
+    trade_fmt = _ETFormatter(
         "%(asctime)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
