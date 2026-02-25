@@ -1,0 +1,28 @@
+[Unit]
+Description=ORB Trader — Live Execution Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/orb-trader
+EnvironmentFile=/opt/orb-trader/.env
+ExecStart=/usr/local/bin/uv run orb-trader
+Restart=always
+RestartSec=10
+
+# Run as root for simplicity (no port binding needed)
+# Change to User=trader if you prefer
+# User=trader
+
+# Logging — systemd captures stdout/stderr, plus app writes to logs/
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orb-trader
+
+# Safety limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

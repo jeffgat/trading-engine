@@ -98,7 +98,13 @@
       "Bash(/Users/cgatbonton/Documents/orb_backtests_chris/python/scripts/run_gc_cont_long_grid_r6.py:*)",
       "Bash(ps:*)",
       "Bash(/Users/cgatbonton/Documents/orb_backtests_chris/python/scripts/run_gc_cont_long_r6_pipeline.py:*)",
-      "Bash(/Users/cgatbonton/Documents/orb_backtests_chris/python/scripts/save_gc_r6_pipeline_results.py:*)"
+      "Bash(/Users/cgatbonton/Documents/orb_backtests_chris/python/scripts/save_gc_r6_pipeline_results.py:*)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(PYTHONPATH=src python3:*)",
+      "WebFetch(domain:gist.github.com)"
     ]
   }
 }

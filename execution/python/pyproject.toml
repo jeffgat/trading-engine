@@ -1,0 +1,32 @@
+[project]
+name = "orb-trader"
+version = "0.1.0"
+description = "Live execution service for ORB continuation strategy via DataBento + TradersPost"
+requires-python = ">=3.11"
+dependencies = [
+    "databento>=0.70",
+    "aiohttp>=3.9",
+    "python-dotenv>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+]
+
+[project.scripts]
+orb-trader = "trader.main:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trader"]
+
+[tool.uv.sources]
+# Path deps to backtester packages — for dev only.
+# For deployment, vendor or install the backtester wheel alongside.
+core = { path = "../python/src/core" }
+orb_continuation = { path = "../python/src/orb_continuation" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

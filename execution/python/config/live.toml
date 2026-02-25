@@ -1,0 +1,65 @@
+# ORB Trader — Live Execution Configuration
+#
+# Copy this file and modify for your setup.
+# API keys should be set via environment variables, not in this file.
+
+[general]
+dry_run = true              # Log webhooks but don't send (override with --live flag)
+instrument = "MNQ"          # Default execution instrument (per-session overrides below)
+atr_length = 14             # Daily ATR lookback period
+
+[databento]
+# Set DATABENTO_API_KEY in your environment
+api_key_env = "DATABENTO_API_KEY"
+dataset = "GLBX.MDP3"
+# Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, etc.)
+
+[traderspost]
+# Set TRADERSPOST_WEBHOOK_URL in your environment
+webhook_url_env = "TRADERSPOST_WEBHOOK_URL"
+
+[risk]
+risk_usd = 500              # Risk per trade in USD
+min_qty = 1.0               # Minimum contract quantity
+qty_step = 1.0              # Contract quantity increment
+be_offset_ticks = 4         # Ticks above/below entry for breakeven stop
+
+[sessions]
+enabled = ["NY", "Asia", "LDN"]
+
+# Per-session overrides (optional — defaults from production config in main.py)
+# Each session has a default instrument: NY=NQ, Asia=NQ, LDN=ES
+# Uncomment to override:
+
+# [sessions.ny]
+# instrument = "NQ"         # NQ data feed, use point_value from INSTRUMENTS
+# stop_atr_pct = 6.75
+# min_gap_atr_pct = 2.5
+# max_gap_atr_pct = 25.0
+# rr = 3.5
+# tp1_ratio = 0.5
+
+# [sessions.asia]
+# instrument = "NQ"
+# stop_atr_pct = 5.75
+# min_gap_atr_pct = 1.25
+# max_gap_atr_pct = 11.0
+# rr = 1.75
+# tp1_ratio = 0.25
+
+# [sessions.ldn]
+# instrument = "ES"         # LDN trades ES (different feed from NQ)
+# stop_atr_pct = 3.0
+# min_gap_atr_pct = 1.25
+# max_gap_atr_pct = 85.0
+# rr = 2.75
+# tp1_ratio = 0.3
+
+[dates]
+# CME half-day early close dates (update annually)
+half_days = ["20250703", "20251128", "20251224", "20250109", "20260119"]
+half_day_flat_start = "12:50"
+half_day_flat_end = "13:00"
+
+# Excluded dates (skip trading entirely)
+excluded = ["20241218"]
