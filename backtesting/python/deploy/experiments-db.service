@@ -1,0 +1,14 @@
+[Unit]
+Description=Shared Experiments DB API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/experiments-db
+ExecStart=/usr/local/bin/uv run python /opt/experiments-db/experiments_api.py
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/experiments-db/.env
+
+[Install]
+WantedBy=multi-user.target

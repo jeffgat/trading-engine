@@ -14,6 +14,7 @@ interface SelectedStrategy {
   riskSize: number;
   loading: boolean;
   error: boolean;
+  hidden: boolean;
 }
 
 interface SavedLayout {
@@ -543,14 +544,16 @@ function CombinedCard({
   accountRisk,
   onRiskChange,
   onRemove,
+  onToggleHide,
 }: {
   strategies: SelectedStrategy[];
   accountRisk: number;
   onRiskChange: (id: string, riskSize: number) => void;
   onRemove: (id: string) => void;
+  onToggleHide: (id: string) => void;
 }) {
   const loaded = useMemo(
-    () => strategies.filter((s) => s.data !== null),
+    () => strategies.filter((s) => s.data !== null && !s.hidden),
     [strategies]
   );
 
@@ -605,7 +608,9 @@ function CombinedCard({
           Combined Portfolio
         </span>
         <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-          {strategies.length} strateg{strategies.length === 1 ? "y" : "ies"}
+          {strategies.some((s) => s.hidden)
+            ? `${strategies.filter((s) => !s.hidden).length}/${strategies.length} strategies`
+            : `${strategies.length} strateg${strategies.length === 1 ? "y" : "ies"}`}
         </span>
       </div>
 
@@ -632,7 +637,7 @@ function CombinedCard({
           return (
             <div
               key={s.id}
-              className="flex items-center gap-2 rounded border border-border bg-bg-secondary px-3 py-1.5"
+              className={`flex items-center gap-2 rounded border px-3 py-1.5 transition-opacity ${s.hidden ? "border-border/50 bg-bg-secondary/50 opacity-40" : "border-border bg-bg-secondary"}`}
             >
               <span
                 className="min-w-0 flex-1 truncate text-xs text-text-primary"
@@ -676,6 +681,24 @@ function CombinedCard({
                 }}
                 className="w-20 rounded border border-border bg-bg-primary px-2 py-0.5 text-xs font-mono text-text-primary outline-none focus:border-accent flex-shrink-0"
               />
+              <button
+                onClick={() => onToggleHide(s.id)}
+                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary flex-shrink-0"
+                title={s.hidden ? "Show strategy" : "Hide strategy"}
+              >
+                {s.hidden ? (
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={() => onRemove(s.id)}
                 className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary flex-shrink-0"
@@ -837,6 +860,7 @@ export function RiskEngineDashboard() {
           riskSize: accountRisk,
           loading: true,
           error: false,
+          hidden: false,
         };
         const cancel = fetchStrategyData(item.id);
         fetchCancellers.current.set(item.id, cancel);
@@ -845,6 +869,12 @@ export function RiskEngineDashboard() {
     },
     [selectedIds, fetchStrategyData]
   );
+
+  const toggleHide = useCallback((id: string) => {
+    setSelectedStrategies((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, hidden: !s.hidden } : s))
+    );
+  }, []);
 
   const removeStrategy = useCallback((id: string) => {
     fetchCancellers.current.get(id)?.();
@@ -932,7 +962,7 @@ export function RiskEngineDashboard() {
     for (const entry of layout.strategies) {
       const meta = strategyList.find((s) => s.id === entry.id);
       if (!meta) { skipped++; continue; }
-      newStrategies.push({ id: entry.id, meta, data: null, riskSize: entry.riskSize, loading: true, error: false });
+      newStrategies.push({ id: entry.id, meta, data: null, riskSize: entry.riskSize, loading: true, error: false, hidden: false });
     }
     if (skipped > 0) {
       console.warn(`Layout "${name}": ${skipped} strategy(ies) no longer exist and were skipped`);
@@ -1337,6 +1367,7 @@ export function RiskEngineDashboard() {
           accountRisk={accountRisk}
           onRiskChange={(id, riskSize) => updateRisk(id, riskSize)}
           onRemove={(id) => removeStrategy(id)}
+          onToggleHide={(id) => toggleHide(id)}
         />
       )}
     </div>
