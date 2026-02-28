@@ -11,7 +11,12 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db"
+import os as _os
+
+DB_PATH = Path(
+    _os.environ.get("EXPERIMENTS_DB_PATH")
+    or str(Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db")
+)
 BACKUP_DIR = DB_PATH.parent / "backups"
 MAX_BACKUPS = 20  # Keep last 20 backups
 
@@ -76,6 +81,14 @@ PARAM_COLUMNS: dict[str, str] = {
     "ldn_orb_window": "TEXT",
     "ldn_entry_window": "TEXT",
     "ldn_flat_window": "TEXT",
+    # VWAP Reversion params
+    "deviation_atr_pct": "REAL",
+    "deviation_std": "REAL",
+    "deviation_mode": "TEXT",
+    "rejection_mode": "TEXT",
+    "tp2_mode": "TEXT",
+    "vwap_anchor": "TEXT",
+    "stop_atr_buffer_pct": "REAL",
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)
@@ -332,11 +345,15 @@ def log_run(
     config = result_dict["config"]
     summary = result_dict["summary"]
 
-    # Extract session names from config keys like "ny_orb_window"
+    # Extract session names from config keys like "ny_orb_window" or "ny_entry_window"
     sessions: list[str] = []
+    seen_sessions: set[str] = set()
     for key in config:
-        if key.endswith("_orb_window"):
-            sessions.append(key.split("_")[0].upper())
+        if key.endswith("_orb_window") or key.endswith("_entry_window"):
+            sess_name = key.split("_")[0].upper()
+            if sess_name not in seen_sessions:
+                sessions.append(sess_name)
+                seen_sessions.add(sess_name)
     session_str = "+".join(sorted(sessions)) if sessions else ""
 
     # Extract date range from equity_curve or trades list
@@ -616,7 +633,7 @@ def log_optimization(result_dict: dict, result_id: str) -> int:
         config = all_results[0].get("config", {})
         instrument = config.get("instrument", "")
         for key in config:
-            if key.endswith("_orb_window"):
+            if key.endswith("_orb_window") or key.endswith("_entry_window"):
                 sessions_set.add(key.split("_")[0].upper())
     session_str = "+".join(sorted(sessions_set))
 
@@ -1002,7 +1019,7 @@ def get_instrument_coverage() -> list[dict]:
             MAX(date_end) AS latest_date,
             MAX(timestamp) AS last_run_at,
             GROUP_CONCAT(DISTINCT sessions) AS sessions_raw,
-            MAX(sharpe_ratio) AS best_sharpe,
+            MAX(CASE WHEN typeof(sharpe_ratio) IN ('real', 'integer') THEN sharpe_ratio END) AS best_sharpe,
             MAX(
                 COALESCE(
                     json_extract(metrics_json, '$.total_r'),
@@ -1010,8 +1027,8 @@ def get_instrument_coverage() -> list[dict]:
                 )
                 / MAX(1.0, (julianday(date_end) - julianday(date_start)) / 365.25)
             ) AS best_r_per_year,
-            MAX(win_rate) AS best_win_rate,
-            MAX(profit_factor) AS best_profit_factor
+            MAX(CASE WHEN typeof(win_rate) IN ('real', 'integer') AND win_rate <= 1.0 THEN win_rate END) AS best_win_rate,
+            MAX(CASE WHEN typeof(profit_factor) IN ('real', 'integer') THEN profit_factor END) AS best_profit_factor
         FROM runs
         WHERE instrument IS NOT NULL AND instrument != ''
         GROUP BY instrument
@@ -1208,3 +1225,11 @@ def reorder_testing_plan(instrument: str, item_ids: list[int]) -> bool:
                 [idx, item_id, instrument],
             )
     return True
+
+
+# ---------------------------------------------------------------------------
+# Remote mode override — MUST be at the bottom so wildcard import overwrites
+# all local function definitions above.
+# ---------------------------------------------------------------------------
+if _os.environ.get("EXPERIMENTS_DB_URL"):
+    from .experiments_remote import *  # noqa: F401, F403
