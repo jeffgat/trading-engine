@@ -44,6 +44,8 @@ from orb_backtest.experiments import (
     update_testing_plan_item,
     delete_testing_plan_item,
     reorder_testing_plan,
+    import_runs,
+    import_optimizations,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -189,6 +191,19 @@ def delete_optimization(result_id: str):
     if not success:
         return fail("not found", 404)
     return ok({"deleted": True})
+
+
+# --- Sync / Import ---
+
+class SyncImportRequest(BaseModel):
+    runs: list[dict] = []
+    optimizations: list[dict] = []
+
+@app.post("/api/sync/import")
+def sync_import(req: SyncImportRequest):
+    runs_count = import_runs(req.runs)
+    opts_count = import_optimizations(req.optimizations)
+    return ok({"runs_imported": runs_count, "optimizations_imported": opts_count})
 
 
 # --- Query / Compare ---

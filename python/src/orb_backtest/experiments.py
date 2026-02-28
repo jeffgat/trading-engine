@@ -1228,6 +1228,72 @@ def reorder_testing_plan(instrument: str, item_ids: list[int]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Bulk import (for syncing from another DB)
+# ---------------------------------------------------------------------------
+
+def import_runs(rows: list[dict]) -> int:
+    """Bulk import run rows from another DB. Uses INSERT OR REPLACE keyed on result_file.
+
+    Each row dict should contain all columns except 'id' (auto-increment).
+    Idempotent — safe to call multiple times with the same data.
+
+    Returns the number of rows imported.
+    """
+    init_db()
+    if not rows:
+        return 0
+
+    # Ensure result_file uniqueness index exists for REPLACE to work
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_result_file ON runs(result_file)"
+        )
+
+        count = 0
+        for row in rows:
+            # Strip 'id' — let the remote DB assign its own
+            clean = {k: v for k, v in row.items() if k != "id"}
+            if not clean.get("result_file"):
+                continue
+
+            columns = ", ".join(clean.keys())
+            placeholders = ", ".join(f":{k}" for k in clean.keys())
+            sql = f"INSERT OR REPLACE INTO runs ({columns}) VALUES ({placeholders})"
+            conn.execute(sql, clean)
+            count += 1
+
+    return count
+
+
+def import_optimizations(rows: list[dict]) -> int:
+    """Bulk import optimization rows from another DB. Uses INSERT OR REPLACE keyed on result_id.
+
+    Each row dict should contain all columns except 'id' (auto-increment).
+    Idempotent — safe to call multiple times with the same data.
+
+    Returns the number of rows imported.
+    """
+    init_db()
+    if not rows:
+        return 0
+
+    with sqlite3.connect(DB_PATH) as conn:
+        count = 0
+        for row in rows:
+            clean = {k: v for k, v in row.items() if k != "id"}
+            if not clean.get("result_id"):
+                continue
+
+            columns = ", ".join(clean.keys())
+            placeholders = ", ".join(f":{k}" for k in clean.keys())
+            sql = f"INSERT OR REPLACE INTO optimizations ({columns}) VALUES ({placeholders})"
+            conn.execute(sql, clean)
+            count += 1
+
+    return count
+
+
+# ---------------------------------------------------------------------------
 # Remote mode override — MUST be at the bottom so wildcard import overwrites
 # all local function definitions above.
 # ---------------------------------------------------------------------------

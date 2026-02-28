@@ -229,3 +229,15 @@ def reorder_testing_plan(instrument, item_ids):
         "item_ids": item_ids,
     })
     return resp.get("reordered", False)
+
+
+# --- Sync / Import ---
+
+def import_runs(rows):
+    resp = _post("/api/sync/import", {"runs": rows, "optimizations": []})
+    return resp.get("runs_imported", 0)
+
+
+def import_optimizations(rows):
+    resp = _post("/api/sync/import", {"runs": [], "optimizations": rows})
+    return resp.get("optimizations_imported", 0)
