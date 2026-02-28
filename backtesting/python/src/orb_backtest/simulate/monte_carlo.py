@@ -13,8 +13,9 @@ from ..engine.simulator import TradeResult, EXIT_NO_FILL
 class MonteCarloConfig:
     """Configuration for Monte Carlo simulation."""
     n_simulations: int = 1000
-    method: str = "bootstrap"  # "bootstrap" or "shuffle"
+    method: str = "bootstrap"  # "bootstrap", "shuffle", or "block_bootstrap"
     seed: int | None = None
+    block_length: int | None = None  # For block_bootstrap; None = sqrt(n_trades)
 
 
 @dataclass
@@ -54,6 +55,8 @@ def run_monte_carlo(
 
     Bootstrap: Resample trades with replacement (tests luck variance).
     Shuffle: Randomly reorder trades (tests path dependency).
+    Block bootstrap: Resample contiguous blocks of trades, preserving
+        serial correlation structure within blocks.
 
     Args:
         trades: List of TradeResult from a backtest.
@@ -63,6 +66,12 @@ def run_monte_carlo(
     Returns:
         MonteCarloResult with percentile distributions.
     """
+    valid_methods = {"bootstrap", "shuffle", "block_bootstrap"}
+    if config.method not in valid_methods:
+        raise ValueError(
+            f"Unknown MC method: {config.method!r}. Choose from {sorted(valid_methods)}"
+        )
+
     filled = [t for t in trades if t.exit_type != EXIT_NO_FILL]
     if not filled:
         raise ValueError("No filled trades for Monte Carlo simulation")
@@ -73,14 +82,26 @@ def run_monte_carlo(
 
     rng = np.random.default_rng(config.seed)
 
+    # Block bootstrap setup
+    if config.method == "block_bootstrap":
+        bl = config.block_length or max(1, int(np.sqrt(n_trades)))
+        bl = min(bl, n_trades)  # block can't exceed series length
+        n_blocks = int(np.ceil(n_trades / bl))
+        max_start = max(1, n_trades - bl + 1)
+
     # Generate all simulated equity curves
     equity_curves = np.zeros((n_sims, n_trades))
 
     for i in range(n_sims):
         if config.method == "bootstrap":
-            # Resample with replacement
+            # Resample with replacement (i.i.d.)
             idx = rng.integers(0, n_trades, size=n_trades)
             sim_r = r_multiples[idx]
+        elif config.method == "block_bootstrap":
+            # Resample contiguous blocks to preserve serial correlation
+            starts = rng.integers(0, max_start, size=n_blocks)
+            blocks = np.concatenate([r_multiples[s:s + bl] for s in starts])
+            sim_r = blocks[:n_trades]
         else:
             # Shuffle order
             sim_r = rng.permutation(r_multiples)

@@ -65,6 +65,7 @@ export interface SessionConfig {
   risk_usd: number;
   point_value: number;
   min_qty: number;
+  max_single_risk_usd: number;
   qty_step: number;
   be_offset_ticks: number;
   min_tick: number;

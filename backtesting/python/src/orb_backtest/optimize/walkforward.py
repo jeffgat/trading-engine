@@ -427,6 +427,22 @@ def recency_analysis(
         hist_calmar = historical_m["calmar_ratio"]
         degradation_flag = recent_calmar < hist_calmar * 0.5
 
+    # CUSUM regime-change test on all OOS trades
+    regime_result = None
+    regime_break_detected = False
+    try:
+        from ..analysis.regime_change import detect_regime_change
+
+        all_oos = []
+        for f in folds:
+            all_oos.extend(f.oos_trades)
+        all_oos.sort(key=lambda t: t.date)
+        if len(all_oos) >= 40:
+            regime_result = detect_regime_change(all_oos)
+            regime_break_detected = regime_result.break_detected
+    except Exception:
+        pass  # Graceful degradation if module unavailable
+
     return {
         "recent_metrics": recent_m,
         "historical_metrics": historical_m,
@@ -434,6 +450,8 @@ def recency_analysis(
         "degradation_flag": degradation_flag,
         "recent_folds_used": len(recent),
         "historical_folds_used": len(historical),
+        "regime_change": regime_result,
+        "regime_break_detected": regime_break_detected,
     }
 
 

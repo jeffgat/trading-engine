@@ -31,16 +31,23 @@ max_single_risk_usd = 500   # Max $ risk when 1 contract exceeds risk_usd
 [sessions]
 enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia"]
 
-# Per-session overrides (optional — defaults from 5-leg spec in main.py)
+# Per-session overrides (optional — defaults from [risk] and 5-leg spec in main.py)
 # Use dotted keys matching lowercase session name with underscore → dot:
 #   NQ_NY  → [sessions.nq.ny]
 #   GC_NY  → [sessions.gc.ny]
 #   ES_Asia → [sessions.es.asia]
 #
+# Strategy and risk fields can both be overridden per session.
+# Risk fields (risk_usd, min_qty, max_single_risk_usd) fall back to [risk] defaults.
+#
 # Example overrides:
 # [sessions.nq.ny]
 # rr = 4.0
 # exec_ticker = "NQ"  # Override to trade full-size NQ instead of MNQ
+#
+# [sessions.gc.ny]
+# risk_usd = 500              # GC uses $500 risk instead of global $250
+# max_single_risk_usd = 750
 
 [dates]
 # CME half-day early close dates (update annually)

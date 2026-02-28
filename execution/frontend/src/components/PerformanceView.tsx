@@ -150,24 +150,22 @@ function Pill({
   tone = "neutral",
 }: {
   label: string;
-  tone?: "neutral" | "long" | "short" | "rpos" | "rneg" | "ticker-nq" | "ticker-es" | "ticker-gc";
+  tone?: "neutral" | "long" | "short" | "rpos" | "rneg" | "ticker-nq" | "ticker-es" | "ticker-gc" | "session-ny" | "session-ldn" | "session-asia";
 }) {
-  const toneClass =
-    tone === "ticker-nq"
-      ? "bg-info/20 text-info border-info/30"
-      : tone === "ticker-es"
-        ? "bg-loss/20 text-loss border-loss/30"
-        : tone === "ticker-gc"
-          ? "bg-warning/20 text-warning border-warning/30"
-          : tone === "long"
-      ? "bg-profit/20 text-profit border-profit/30"
-      : tone === "short"
-        ? "bg-loss/20 text-loss border-loss/30"
-        : tone === "rpos"
-          ? "bg-profit/15 text-profit border-profit/30"
-          : tone === "rneg"
-            ? "bg-loss/15 text-loss border-loss/30"
-            : "bg-[#26262d] text-text-secondary border-border";
+  const toneClasses: Record<string, string> = {
+    "ticker-nq": "bg-info/20 text-info border-info/30",
+    "ticker-es": "bg-loss/20 text-loss border-loss/30",
+    "ticker-gc": "bg-warning/20 text-warning border-warning/30",
+    long: "bg-profit/20 text-profit border-profit/30",
+    short: "bg-loss/20 text-loss border-loss/30",
+    rpos: "bg-profit/15 text-profit border-profit/30",
+    rneg: "bg-loss/15 text-loss border-loss/30",
+    "session-ny": "bg-[#3b82f6]/20 text-[#60a5fa] border-[#3b82f6]/30",
+    "session-ldn": "bg-[#a855f7]/20 text-[#c084fc] border-[#a855f7]/30",
+    "session-asia": "bg-[#f97316]/20 text-[#fb923c] border-[#f97316]/30",
+    neutral: "bg-[#26262d] text-text-secondary border-border",
+  };
+  const toneClass = toneClasses[tone] ?? toneClasses.neutral;
 
   return (
     <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs ${toneClass}`}>
@@ -205,14 +203,13 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
               <th className="px-3 py-2 border-r border-border/80">Session</th>
               <th className="px-3 py-2 border-r border-border/80">Direction</th>
               <th className="px-3 py-2 border-r border-border/80">R</th>
-              <th className="px-3 py-2 border-r border-border/80">Strategy</th>
-              <th className="px-3 py-2">Notes</th>
+              <th className="px-3 py-2">Strategy</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-text-muted">
+                <td colSpan={9} className="px-4 py-10 text-center text-text-muted">
                   No completed trades yet
                 </td>
               </tr>
@@ -241,7 +238,12 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
                     <td className="px-3 py-2 font-medium text-text-secondary">{row.exitDate}</td>
                     <td className="px-3 py-2 font-mono text-text-secondary">{row.exitTime}</td>
                     <td className="px-3 py-2"><Pill label={row.ticker} tone={tickerTone} /></td>
-                    <td className="px-3 py-2"><Pill label={row.session} /></td>
+                    <td className="px-3 py-2"><Pill label={row.session} tone={
+                      row.session === "NY" ? "session-ny"
+                        : row.session === "LDN" ? "session-ldn"
+                        : row.session === "ASIA" ? "session-asia"
+                        : "neutral"
+                    } /></td>
                     <td className="px-3 py-2">
                       <Pill label={row.direction} tone={row.direction === "Long" ? "long" : "short"} />
                     </td>
@@ -253,7 +255,6 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
                       )}
                     </td>
                     <td className="px-3 py-2"><Pill label={row.strategy} /></td>
-                    <td className="px-3 py-2 text-text-muted">{row.notes || "—"}</td>
                   </tr>
                 );
               })

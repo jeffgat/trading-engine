@@ -109,7 +109,9 @@
       "Bash(chmod:*)",
       "Bash(bash /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/python/deploy/deploy.sh)",
       "Bash(ssh:*)",
-      "Bash(rsync:*)"
+      "Bash(rsync:*)",
+      "Bash(/tmp/atr_analysis.md:*)",
+      "Bash(bash execution/python/deploy/deploy.sh)"
     ]
   }
 }

@@ -195,7 +195,7 @@ if newDay
     ny_orbReady := false
     ny_hasTradedToday := false
     ny_closedTradesAtDayStart := strategy.closedtrades
-    ny_sessionSkipped := nyExcludeThursday and isThursday
+    ny_sessionSkipped := false
 
     ny_longSetupActive := false
     ny_longFirstFvgFound := false
@@ -246,6 +246,14 @@ if inAsiaORB and inAsiaRTH and is5m
 
 if not inAsiaORB and inAsiaRTH and is5m and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
     asia_orbReady := true
+
+// ----------------------------------------------------------------------------------------
+// Thursday exclusion — evaluated when the NY ORB window is active so that
+// dayofweek reflects the actual NY session day, not the prior evening's
+// daily-bar rollover (futures newDay fires at 18:00 ET).
+// ----------------------------------------------------------------------------------------
+if inNyORB and not ny_sessionSkipped and nyExcludeThursday and isThursday
+    ny_sessionSkipped := true
 
 // ----------------------------------------------------------------------------------------
 // Build ORB - NY (09:30-09:45, 3 bars)

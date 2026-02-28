@@ -268,6 +268,11 @@ class SessionEngine:
     # Time checks
     # ------------------------------------------------------------------
 
+    @property
+    def _crosses_midnight(self) -> bool:
+        """True if the session's RTH window spans midnight (e.g. Asia sessions)."""
+        return self._orb_start_t > self._flat_end_t
+
     def _in_orb(self, t: time) -> bool:
         return _time_in_range(t, self._orb_start_t, self._orb_end_t)
 
@@ -285,6 +290,32 @@ class SessionEngine:
             hd_end = _parse_time(self.half_day_flat_end)
             return _time_in_range(t, hd_start, hd_end)
         return _time_in_range(t, self._flat_start_t, self._flat_end_t)
+
+    def _is_same_session_night(self, date_str: str, bar_time: time) -> bool:
+        """Check if a post-midnight bar belongs to the current session night.
+
+        For cross-midnight sessions (e.g. Asia: ORB 20:00, flat 07:00),
+        bars between 00:00 and flat_end belong to the session that started
+        the previous evening.  Returns True if:
+          1. The bar is in the post-midnight portion (bar_time < orb_start)
+          2. The bar's date is exactly _current_date + 1 day
+        """
+        from datetime import datetime as _dt, timedelta as _td
+
+        # Bar is in the pre-midnight portion (at or after ORB start) —
+        # this is a NEW session starting, not a continuation.
+        if bar_time >= self._orb_start_t:
+            return False
+
+        # Check that date_str is exactly _current_date + 1 day
+        if not self._current_date:
+            return False
+        try:
+            current = _dt.strptime(self._current_date, "%Y%m%d")
+            bar_date = _dt.strptime(date_str, "%Y%m%d")
+            return bar_date == current + _td(days=1)
+        except ValueError:
+            return False
 
     def _is_excluded(self, bar: Bar) -> bool:
         date_str = bar.timestamp.strftime("%Y%m%d")
@@ -335,8 +366,19 @@ class SessionEngine:
 
     def recover_opening_range(self, bars: list[Bar], now: datetime) -> bool:
         """recover opening range/state for current day after restart."""
-        date_str = now.strftime("%Y%m%d")
+        from datetime import timedelta as _td
+
         now_t = now.time()
+
+        # For cross-midnight sessions, if we're in the post-midnight
+        # portion (time < flat_end), the ORB was built on the *previous*
+        # calendar day.  Use that date as the session date so bar
+        # filtering picks up the correct ORB bars.
+        if self._crosses_midnight and now_t < self._orb_start_t:
+            session_date = now - _td(days=1)
+            date_str = session_date.strftime("%Y%m%d")
+        else:
+            date_str = now.strftime("%Y%m%d")
 
         # reset to a clean day state without broadcasting intermediate idle.
         self._reset_day(date_str, notify=False)
@@ -348,7 +390,13 @@ class SessionEngine:
             self._notify_state_change()
             return False
 
-        today_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") == date_str]
+        # For cross-midnight sessions, session bars span two calendar
+        # days: the ORB date (pre-midnight) and the next date (post-midnight).
+        if self._crosses_midnight:
+            valid_dates = {date_str, (datetime.strptime(date_str, "%Y%m%d") + _td(days=1)).strftime("%Y%m%d")}
+            today_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") in valid_dates]
+        else:
+            today_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") == date_str]
         session_bars = [b for b in today_bars if self._in_rth(b.timestamp.time())]
         orb_bars = [b for b in session_bars if self._in_orb(b.timestamp.time())]
         if not orb_bars:
@@ -514,10 +562,28 @@ class SessionEngine:
             return
 
         # New session day detection
+        # For cross-midnight sessions (e.g. Asia: ORB 20:00, flat 07:00),
+        # the calendar date changes at midnight while the session is still
+        # active.  Post-midnight bars belong to the *previous* session
+        # night and must NOT trigger a reset — regardless of engine state.
         if date_str != self._current_date:
-            if self._state == State.ARMED_LONG:
-                await self.broker.send_cancel(ticker=self.exec_ticker)
-            self._reset_day(date_str)
+            if self._crosses_midnight and self._is_same_session_night(date_str, bar_time):
+                # Still the same session night — do NOT reset.
+                logger.debug(
+                    "[%s] Cross-midnight: skipping reset (same session night) "
+                    "date=%s current_date=%s bar_time=%s state=%s",
+                    self.name, date_str, self._current_date,
+                    bar_time, self._state.value,
+                )
+            else:
+                logger.debug(
+                    "[%s] Day reset: %s -> %s bar_time=%s state=%s",
+                    self.name, self._current_date, date_str,
+                    bar_time, self._state.value,
+                )
+                if self._state == State.ARMED_LONG:
+                    await self.broker.send_cancel(ticker=self.exec_ticker)
+                self._reset_day(date_str)
 
         # Skip excluded dates (DOW, FOMC, static dates)
         if self._is_excluded(bar):
@@ -592,6 +658,10 @@ class SessionEngine:
                 ),
             )
             self._notify_state_change()
+            # The transition bar is already in _bars but never got an FVG
+            # check.  Run scanning immediately so an FVG that completes on
+            # this bar (e.g. ORB bar[0], ORB bar[1], this bar) is detected.
+            await self._handle_scanning(bar, bar_time)
 
     async def _handle_scanning(self, bar: Bar, bar_time: time) -> None:
         """Scanning for first FVG in entry window (long only)."""
@@ -605,59 +675,82 @@ class SessionEngine:
         # Check for long FVG (first one only)
         if not self._long_fvg_found:
             detected, entry, gap_size = self._check_long_fvg()
-            if detected and self._gap_valid(gap_size):
-                self._long_fvg_found = True
-                levels = compute_trade_levels(
-                    entry=entry,
-                    direction=1,
-                    gap_size=gap_size,
-                    daily_atr=self._daily_atr,
-                    stop_atr_pct=self.stop_atr_pct,
-                    rr=self.rr,
-                    tp1_ratio=self.tp1_ratio,
-                    risk_usd=self.risk_usd,
-                    point_value=self.point_value,
-                    min_qty=self.min_qty,
-                    qty_step=self.qty_step,
-                    be_offset_ticks=self.be_offset_ticks,
-                    min_tick=self.min_tick,
-                    stop_basis=self.stop_basis,
-                    orb_range=self._orb_range,
-                    stop_orb_pct=self.stop_orb_pct,
-                    min_stop_pts=self.min_stop_pts,
-                    min_tp1_pts=self.min_tp1_pts,
-                    max_single_risk_usd=self.max_single_risk_usd,
-                )
-                if levels is not None:
-                    self._levels = levels
-                    self._state = State.ARMED_LONG
-                    self._log_trade(
-                        "LONG_SETUP",
-                        (
-                            "entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
-                            "qty=%.1f gap=%.2f atr=%.2f orb_range=%.2f"
+            if detected:
+                if not self._gap_valid(gap_size):
+                    logger.debug(
+                        "[%s] Long FVG rejected: gap=%.2f invalid size "
+                        "bar_time=%s atr=%.2f orb_range=%.2f",
+                        self.name, gap_size, bar_time,
+                        self._daily_atr, self._orb_range,
+                    )
+                else:
+                    self._long_fvg_found = True
+                    levels = compute_trade_levels(
+                        entry=entry,
+                        direction=1,
+                        gap_size=gap_size,
+                        daily_atr=self._daily_atr,
+                        stop_atr_pct=self.stop_atr_pct,
+                        rr=self.rr,
+                        tp1_ratio=self.tp1_ratio,
+                        risk_usd=self.risk_usd,
+                        point_value=self.point_value,
+                        min_qty=self.min_qty,
+                        qty_step=self.qty_step,
+                        be_offset_ticks=self.be_offset_ticks,
+                        min_tick=self.min_tick,
+                        stop_basis=self.stop_basis,
+                        orb_range=self._orb_range,
+                        stop_orb_pct=self.stop_orb_pct,
+                        min_stop_pts=self.min_stop_pts,
+                        min_tp1_pts=self.min_tp1_pts,
+                        max_single_risk_usd=self.max_single_risk_usd,
+                    )
+                    if levels is not None:
+                        self._levels = levels
+                        self._state = State.ARMED_LONG
+                        self._log_trade(
+                            "LONG_SETUP",
+                            (
+                                "entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f "
+                                "qty=%.1f gap=%.2f atr=%.2f orb_range=%.2f"
+                            )
+                            % (
+                                levels.entry,
+                                levels.stop,
+                                levels.tp1,
+                                levels.tp2,
+                                levels.qty,
+                                gap_size,
+                                self._daily_atr,
+                                self._orb_range,
+                            ),
                         )
-                        % (
-                            levels.entry,
-                            levels.stop,
-                            levels.tp1,
-                            levels.tp2,
-                            levels.qty,
-                            gap_size,
-                            self._daily_atr,
-                            self._orb_range,
-                        ),
-                    )
-                    self._notify_state_change()
-                    await self.broker.send_entry(
-                        action="buy",
-                        qty=levels.qty,
-                        price=levels.entry,
-                        tp2=levels.tp2,
-                        stop=levels.stop,
-                        ticker=self.exec_ticker,
-                    )
-                    return
+                        self._notify_state_change()
+                        await self.broker.send_entry(
+                            action="buy",
+                            qty=levels.qty,
+                            price=levels.entry,
+                            tp2=levels.tp2,
+                            stop=levels.stop,
+                            ticker=self.exec_ticker,
+                        )
+                        return
+                    else:
+                        logger.debug(
+                            "[%s] Long FVG rejected: levels=None "
+                            "entry=%.2f gap=%.2f bar_time=%s",
+                            self.name, entry, gap_size, bar_time,
+                        )
+            elif len(self._bars) >= 3:
+                logger.debug(
+                    "[%s] No long FVG: H=[%.2f,%.2f,%.2f] "
+                    "L=[%.2f,%.2f,%.2f] orb_high=%.2f bar_time=%s",
+                    self.name,
+                    self._bars[-3].high, self._bars[-2].high, self._bars[-1].high,
+                    self._bars[-3].low, self._bars[-2].low, self._bars[-1].low,
+                    self._orb_high, bar_time,
+                )
 
         # Short FVG check (only if not long_only)
         if not self.long_only and not self._short_fvg_found:

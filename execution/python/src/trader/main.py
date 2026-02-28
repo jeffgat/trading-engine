@@ -262,9 +262,18 @@ def build_engines(
             logger.warning("Unknown session '%s', skipping", sess_name)
             continue
 
-        # Allow per-session overrides from TOML (keyed by lowercase name)
+        # Allow per-session overrides from TOML (keyed by lowercase name).
+        # TOML [sessions.gc.ny] creates nested dicts, so traverse the path.
         toml_key = sess_name.lower().replace("_", ".")
-        toml_overrides = session_overrides.get(toml_key, {})
+        toml_overrides: dict = session_overrides
+        for part in toml_key.split("."):
+            if isinstance(toml_overrides, dict):
+                toml_overrides = toml_overrides.get(part, {})
+            else:
+                toml_overrides = {}
+                break
+        if not isinstance(toml_overrides, dict):
+            toml_overrides = {}
         merged = {**sess_cfg, **toml_overrides}
 
         # Per-session instrument (signal data source) and execution ticker
@@ -295,9 +304,9 @@ def build_engines(
             max_gap_atr_pct=merged.get("max_gap_atr_pct", 0),
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
-            risk_usd=risk.get("risk_usd", 250),
+            risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
-            min_qty=risk.get("min_qty", 1.0),
+            min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             be_offset_ticks=risk.get("be_offset_ticks", 0),
             min_tick=exec_inst["min_tick"],
@@ -307,7 +316,7 @@ def build_engines(
             min_gap_orb_pct=merged.get("min_gap_orb_pct", 0.0),
             min_stop_pts=merged.get("min_stop_pts", 0.0),
             min_tp1_pts=merged.get("min_tp1_pts", 0.0),
-            max_single_risk_usd=risk.get("max_single_risk_usd", 500.0),
+            max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
             long_only=merged.get("long_only", True),
             icf_enabled=merged.get("icf_enabled", False),
             excluded_dow=merged.get("excluded_dow"),

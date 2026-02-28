@@ -419,6 +419,7 @@ def _session_info(engine) -> dict:
         "risk_usd": engine.risk_usd,
         "point_value": engine.point_value,
         "min_qty": engine.min_qty,
+        "max_single_risk_usd": engine.max_single_risk_usd,
         "qty_step": engine.qty_step,
         "be_offset_ticks": engine.be_offset_ticks,
         "min_tick": engine.min_tick,

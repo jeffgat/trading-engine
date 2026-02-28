@@ -65,7 +65,14 @@ def main():
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
 
     # MC config
-    parser.add_argument("--method", default="bootstrap", choices=["bootstrap", "shuffle"])
+    parser.add_argument(
+        "--method", default="bootstrap",
+        choices=["bootstrap", "shuffle", "block_bootstrap"],
+    )
+    parser.add_argument(
+        "--block-length", type=int, default=None,
+        help="Block length for block_bootstrap method (default: sqrt(n_trades))",
+    )
     parser.add_argument("--sims", type=int, default=1000, help="Number of simulations")
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument(
@@ -125,6 +132,7 @@ def _run_trade_resample(args):
         n_simulations=args.sims,
         method=args.method,
         seed=args.seed,
+        block_length=args.block_length,
     )
 
     if not args.quiet:
@@ -304,6 +312,8 @@ def _reconstruct_trades(trades_dicts: list[dict]):
             half_qty=0.0,
             gap_size=t.get("gap_size", 0.0),
             risk_points=t.get("risk_points", 0.0),
+            fill_time=t.get("fill_time", ""),
+            exit_time=t.get("exit_time", ""),
         ))
     return results
 

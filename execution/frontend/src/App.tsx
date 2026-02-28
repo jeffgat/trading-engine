@@ -1,16 +1,16 @@
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { ConfigView } from "@/components/ConfigView";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { LogViewer } from "@/components/LogViewer";
+import { PerformanceView } from "@/components/PerformanceView";
 import { StatusPanel } from "@/components/StatusPanel";
 import { TradeFeed } from "@/components/TradeFeed";
-import { LogViewer } from "@/components/LogViewer";
-import { ConfigView } from "@/components/ConfigView";
-import { PerformanceView } from "@/components/PerformanceView";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { Badge } from "@/components/ui/badge";
+import { useConfig } from "@/hooks/useConfig";
+import { useMainLogs } from "@/hooks/useMainLogs";
 import { useStatus } from "@/hooks/useStatus";
 import { useTradeLogs } from "@/hooks/useTradeLogs";
-import { useMainLogs } from "@/hooks/useMainLogs";
-import { useConfig } from "@/hooks/useConfig";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { useState } from "react";
 
 type Tab = "status" | "trades" | "performance" | "logs" | "config";
 
