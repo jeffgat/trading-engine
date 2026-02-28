@@ -40,7 +40,6 @@ ANCHOR_SESSION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=8.75,     # Fine-tune winner
     min_gap_atr_pct=2.25,  # Fine-tune winner
-    max_gap_points=100.0,
 )
 
 ANCHOR = StrategyConfig(

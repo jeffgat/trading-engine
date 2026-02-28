@@ -33,7 +33,6 @@ HALF_DAYS = ("20250703", "20251128", "20251224", "20250109", "20260119")
 # R2 anchor defaults
 R2 = dict(
     stop_atr_pct=4.0, min_gap_atr_pct=5.0, max_gap_atr_pct=30.0,
-    max_gap_points=25.0, rr=5.0, tp1_ratio=0.5, atr_length=10,
     orb_start="09:30", orb_end="09:45", entry_end="15:00", flat_start="15:50",
 )
 
@@ -47,8 +46,6 @@ def make_config(**overrides):
         flat_start=kw["flat_start"], flat_end="16:00",
         stop_atr_pct=kw["stop_atr_pct"],
         min_gap_atr_pct=kw["min_gap_atr_pct"],
-        max_gap_points=kw["max_gap_points"],
-        max_gap_atr_pct=kw["max_gap_atr_pct"],
     )
     return StrategyConfig(
         rr=kw["rr"], tp1_ratio=kw["tp1_ratio"], risk_usd=5000.0,

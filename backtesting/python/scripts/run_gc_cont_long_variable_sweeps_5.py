@@ -49,7 +49,6 @@ GC_NY_ANCHOR = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,
     min_gap_atr_pct=2.5,
-    max_gap_points=25.0,
 )
 
 ANCHOR = StrategyConfig(
@@ -153,7 +152,6 @@ def make_sess(orb_end="09:40", entry_start="09:40", entry_end="11:00",
         entry_start=entry_start, entry_end=entry_end,
         flat_start=flat_start, flat_end="16:00",
         stop_atr_pct=stop, min_gap_atr_pct=min_gap,
-        max_gap_points=max_gap_pts, max_gap_atr_pct=max_gap_atr,
     )
 
 

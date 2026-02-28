@@ -44,8 +44,6 @@ GC_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=3.0,         # swept
     min_gap_atr_pct=3.5,      # swept
-    max_gap_points=25.0,
-    max_gap_atr_pct=25.0,
 )
 
 BASE = StrategyConfig(
@@ -120,7 +118,6 @@ if __name__ == "__main__":
                         entry_start="09:35", entry_end="11:00",
                         flat_start="15:50", flat_end="16:00",
                         stop_atr_pct=stop, min_gap_atr_pct=gap,
-                        max_gap_points=25.0, max_gap_atr_pct=25.0,
                     )
                     cfg = with_overrides(BASE, rr=rr, tp1_ratio=tp1, sessions=(sess,))
                     trades = run_backtest(df, cfg, start_date=START_DATE,

@@ -35,14 +35,17 @@ _PARAM_ABBREV: dict[str, str] = {
     "atr_length": "atr",
     "risk_usd": "risk",
     "ny_stop_atr_pct": "ny.stop",
+    "ny_stop_orb_pct": "ny.orbstop",
     "ny_min_gap_atr_pct": "ny.gap",
-    "ny_max_gap_points": "ny.maxgap",
+    "ny_min_gap_orb_pct": "ny.orbgap",
     "asia_stop_atr_pct": "asia.stop",
+    "asia_stop_orb_pct": "asia.orbstop",
     "asia_min_gap_atr_pct": "asia.gap",
-    "asia_max_gap_points": "asia.maxgap",
+    "asia_min_gap_orb_pct": "asia.orbgap",
     "ldn_stop_atr_pct": "ldn.stop",
+    "ldn_stop_orb_pct": "ldn.orbstop",
     "ldn_min_gap_atr_pct": "ldn.gap",
-    "ldn_max_gap_points": "ldn.maxgap",
+    "ldn_min_gap_orb_pct": "ldn.orbgap",
 }
 
 
@@ -162,13 +165,20 @@ def results_to_dict(
         config_dict["direction_filter"] = config.direction_filter
     if config.use_bar_magnifier:
         config_dict["bar_magnifier"] = "ON"
+    config_dict["impulse_close_filter"] = "ON" if config.impulse_close_filter else "OFF"
 
     # Add per-session params
     for sess in config.sessions:
         prefix = sess.name.lower()
-        config_dict[f"{prefix}_stop_atr_pct"] = sess.stop_atr_pct
-        config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
-        config_dict[f"{prefix}_max_gap_points"] = sess.max_gap_points
+        # ORB-based params override ATR-based — only export the active one
+        if sess.stop_orb_pct > 0:
+            config_dict[f"{prefix}_stop_orb_pct"] = sess.stop_orb_pct
+        else:
+            config_dict[f"{prefix}_stop_atr_pct"] = sess.stop_atr_pct
+        if getattr(sess, "min_gap_orb_pct", 0.0) > 0:
+            config_dict[f"{prefix}_min_gap_orb_pct"] = sess.min_gap_orb_pct
+        else:
+            config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
         if sess.qualifying_move_atr_pct > 0:
             config_dict[f"{prefix}_qualifying_move_atr_pct"] = sess.qualifying_move_atr_pct
         config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"

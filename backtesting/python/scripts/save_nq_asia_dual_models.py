@@ -78,8 +78,6 @@ def build_config(params):
         entry_end="23:00",
         stop_atr_pct=params["stop"],
         min_gap_atr_pct=params["gap"],
-        max_gap_atr_pct=params["maxgap"],
-        max_gap_points=0.0,
     )
     cfg = default_config(NQ)
     return with_overrides(

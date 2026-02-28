@@ -112,7 +112,6 @@ def run_v9(df, df_1m, regime):
         entry_start="09:35", entry_end="15:00",
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=9.0, min_gap_atr_pct=1.0,
-        max_gap_points=25.0, qualifying_move_atr_pct=10.0,
     )
     cfg = StrategyConfig(
         rr=3.5, tp1_ratio=0.2, risk_usd=5000.0,
@@ -139,7 +138,6 @@ def run_no_orb_clean(df, df_1m, fvg_by_date, session_lows, lookback=5):
         entry_start="09:35", entry_end="16:45",
         flat_start="16:45", flat_end="16:50",
         stop_atr_pct=12.0, min_gap_atr_pct=1.0,
-        max_gap_points=25.0, qualifying_move_atr_pct=100.0,
     )
     cfg = StrategyConfig(
         rr=5.0, tp1_ratio=0.2, risk_usd=5000.0,

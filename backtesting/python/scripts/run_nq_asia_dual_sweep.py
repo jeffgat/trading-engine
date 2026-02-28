@@ -61,7 +61,6 @@ def build_asia_session(orb_end, stop, gap, maxgap):
         entry_end="23:00",
         stop_atr_pct=stop,
         min_gap_atr_pct=gap,
-        max_gap_atr_pct=maxgap,
         max_gap_points=0.0,  # disable points-based filter; ATR only
     )
 

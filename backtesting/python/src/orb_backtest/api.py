@@ -111,13 +111,16 @@ class BacktestRequest(BaseModel):
 
     ny_stop_atr_pct: Optional[float] = None
     ny_min_gap_atr_pct: Optional[float] = None
-    ny_max_gap_points: Optional[float] = None
+    ny_stop_orb_pct: Optional[float] = None
+    ny_min_gap_orb_pct: Optional[float] = None
     asia_stop_atr_pct: Optional[float] = None
     asia_min_gap_atr_pct: Optional[float] = None
-    asia_max_gap_points: Optional[float] = None
+    asia_stop_orb_pct: Optional[float] = None
+    asia_min_gap_orb_pct: Optional[float] = None
     ldn_stop_atr_pct: Optional[float] = None
     ldn_min_gap_atr_pct: Optional[float] = None
-    ldn_max_gap_points: Optional[float] = None
+    ldn_stop_orb_pct: Optional[float] = None
+    ldn_min_gap_orb_pct: Optional[float] = None
 
 
 # ── Discovery endpoints ─────────────────────────────────────────────
@@ -152,7 +155,8 @@ def get_sessions():
             "flat_end": sess.flat_end,
             "stop_atr_pct": sess.stop_atr_pct,
             "min_gap_atr_pct": sess.min_gap_atr_pct,
-            "max_gap_points": sess.max_gap_points,
+            "stop_orb_pct": getattr(sess, "stop_orb_pct", 0.0),
+            "min_gap_orb_pct": getattr(sess, "min_gap_orb_pct", 0.0),
         }
         for sess in SESSION_MAP.values()
     ])
@@ -290,9 +294,9 @@ def run_backtest_endpoint(req: BacktestRequest):
     for field in (
         "rr", "tp1_ratio", "risk_usd", "atr_length",
         "name", "notes",
-        "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_max_gap_points",
-        "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_max_gap_points",
-        "ldn_stop_atr_pct", "ldn_min_gap_atr_pct", "ldn_max_gap_points",
+        "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_stop_orb_pct", "ny_min_gap_orb_pct",
+        "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_stop_orb_pct", "asia_min_gap_orb_pct",
+        "ldn_stop_atr_pct", "ldn_min_gap_atr_pct", "ldn_stop_orb_pct", "ldn_min_gap_orb_pct",
     ):
         val = getattr(req, field)
         if val is not None:

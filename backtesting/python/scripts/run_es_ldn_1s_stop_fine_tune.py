@@ -49,7 +49,6 @@ BASE_CONFIG = StrategyConfig(
         flat_end="08:25",
         stop_atr_pct=5.0,
         min_gap_atr_pct=1.25,
-        max_gap_points=50.0,
     ),),
     instrument=ES,
     strategy="continuation",
@@ -132,7 +131,6 @@ def main():
                         flat_end="08:25",
                         stop_atr_pct=stop,
                         min_gap_atr_pct=gap,
-                        max_gap_points=50.0,
                     )
                     cfg = with_overrides(BASE_CONFIG, rr=rr, tp1_ratio=tp1,
                                          sessions=(sess,))

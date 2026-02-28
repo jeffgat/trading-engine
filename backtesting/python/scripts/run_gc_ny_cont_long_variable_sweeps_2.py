@@ -42,8 +42,6 @@ GC_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=4.0,       # reverted from 2.0% (too tight, <10 ticks)
     min_gap_atr_pct=3.5,
-    max_gap_points=25.0,
-    max_gap_atr_pct=25.0,
 )
 
 ANCHOR = StrategyConfig(

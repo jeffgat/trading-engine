@@ -45,7 +45,6 @@ def make_config(orb_end, entry_start, entry_end, atr_length):
         # Defaults — will be overridden by sweep
         stop_atr_pct=4.0,
         min_gap_atr_pct=1.5,
-        max_gap_points=100.0,
     )
     return StrategyConfig(
         rr=4.0,  # swept

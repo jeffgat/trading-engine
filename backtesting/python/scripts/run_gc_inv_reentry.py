@@ -56,7 +56,6 @@ def build_session():
         flat_end="16:00",
         stop_atr_pct=9.0,
         min_gap_atr_pct=1.0,
-        max_gap_points=25.0,
         qualifying_move_atr_pct=10.0,
     )
 
@@ -101,7 +100,6 @@ def find_second_inversion_after(
         df["high"].values, df["low"].values, daily_atr,
         orb_high, orb_low,
         session.min_gap_atr_pct, session.max_gap_points,
-        max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
     )
     date_strs = compute_date_strings(timestamps)
     excluded = set(config.excluded_dates)

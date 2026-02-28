@@ -18,7 +18,6 @@ NY = SessionConfig(
     entry_start="09:45", entry_end="15:30",
     flat_start="15:50", flat_end="16:00",
     stop_atr_pct=3.0, min_gap_atr_pct=1.0,
-    max_gap_points=50.0, max_gap_atr_pct=0.0,
 )
 
 CONFIG = StrategyConfig(

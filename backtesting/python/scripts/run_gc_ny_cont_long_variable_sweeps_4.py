@@ -42,8 +42,6 @@ GC_NY = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=3.0,       # adopted R3 (borderline 10-tick)
     min_gap_atr_pct=5.0,    # adopted R3
-    max_gap_points=25.0,
-    max_gap_atr_pct=25.0,
 )
 
 ANCHOR = StrategyConfig(

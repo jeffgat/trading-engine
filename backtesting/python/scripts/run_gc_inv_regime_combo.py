@@ -41,7 +41,6 @@ def build_config(entry_start="09:35"):
         flat_end="16:00",
         stop_atr_pct=9.0,
         min_gap_atr_pct=1.0,
-        max_gap_points=25.0,
         qualifying_move_atr_pct=10.0,
     )
     return StrategyConfig(

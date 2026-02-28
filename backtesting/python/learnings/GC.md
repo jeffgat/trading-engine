@@ -20,60 +20,76 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 
 ## Strategies Tested
 
-### Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-21
+### Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-22
 
-#### Current: R2 results (clean GC.v.0 data, 1s magnifier)
+#### Current: R3 High-RR config (post-engine-bugfix, 1s magnifier, Friday exclusion)
 
-**Scripts**: `run_gc_cont_long_variable_sweeps_{1-4}.py`, `run_gc_cont_long_grid_r{1,2}.py`, `run_gc_cont_long_r2_pipeline.py`
+**Scripts**: `run_gc_ny_cont_long_variable_sweeps_{8-12}.py`, `run_gc_ny_cont_long_grid_sweep_r{1-3}.py`, `run_gc_ny_cont_long_robust_pipeline.py`
 
-**Anchor config (full-history structural):**
+Fresh re-optimization starting from baseline, taking a fundamentally different path: high RR (9.0 vs R2's 4.0), shorter ATR (7 vs 10), ICF on, entry→12:00 (vs 11:00), flat 13:30 (vs 15:50), Friday DOW exclusion.
+
+**Converged anchor config:**
 
 | Param | Value |
 |-------|-------|
 | strategy | continuation |
 | direction | long only |
-| rr | 4.0 |
-| tp1_ratio | 0.5 |
-| atr_length | 10 |
-| ny_stop_atr_pct | 4.0% |
-| ny_min_gap_atr_pct | 3.5% |
-| ny_max_gap_points | 25.0 |
+| rr | 9.0 |
+| tp1_ratio | 0.35 |
+| atr_length | 7 |
+| ny_stop_atr_pct | 4.5% |
+| ny_min_gap_atr_pct | 3.0% |
 | ny_max_gap_atr_pct | 30.0% |
-| ORB window | 09:30-09:40 (10m) |
-| entry_end | 11:00 |
-| flat_start | 15:50 |
+| ny_max_gap_points | 25.0 |
+| ORB window | 09:30-09:38 (8m) |
+| entry_end | 12:00 |
+| flat_start | 13:30 |
+| impulse_close_filter | True |
+| DOW exclusion | Friday (post-backtest) |
 | excluded_dates | FOMC_DATES |
 | magnifier | 1s |
 
-**WF mode params (use for live trading):** rr=4.5, tp1=0.5, stop=3.0%, min_gap=3.5%
+**Phase 1** (full history 2016-2026): 622 trades, 31.8% WR, 200.3R net, Sharpe 2.310, Calmar 16.11, DD -12.4R, **0 neg full years**
 
-**Phase 1** (full history 2016-2026): 492 trades, 42.7% WR, 131.8R net, Sharpe 2.638, Calmar 13.10, Max DD -10.1R, 1 neg year (2016: -0.1R)
+R by year: 2016 +2.5 | 2017 +9.3 | 2018 +18.5 | 2019 +27.8 | 2020 +23.8 | 2021 +12.5 | 2022 +11.7 | 2023 +26.7 | 2024 +25.8 | 2025 +42.4
 
-**Phase 2 WF** (36m IS/12m OOS/12m step, 5 folds, 200 combos/fold):
-- OOS: 267 trades, 37.1% WR, 69.1R net, Sharpe 2.301, Calmar 5.30, DD -13.0R
-- WF Efficiency: 0.43, Stability: 0.85 (HIGH)
-- Mode params: rr=4.5, tp1=0.5, stop=3.0%, min_gap=3.5%
-- OOS years: 2019 +9.0R, 2020 +29.5R, 2021 -5.5R, 2022 +9.5R, 2023 +26.5R
+**Phase 2 WF** (36m IS/12m OOS/12m step, 7 folds, 81 combos/fold): **PASS**
+- OOS: 416 trades, 32.5% WR, 145.7R net, Sharpe 2.467, Calmar 9.47, PF 1.52, DD -15.4R
+- WF Efficiency: 0.956 (excellent)
+- Stability: 0.929 (high) — stop=4.5 mode 6/7, gap=3.0 mode 5/7, tp1=0.35 mode 4/7
+- OOS neg year: 2021 -5.4R
 
-**Phase 3 Prop Firm**: PASS — 13.8R/yr avg (threshold 12.0).
+**Phase 3 Prop Firm**: **FAIL** — Worst month -8.0R exceeds 5.0R limit. Annual R avg passes (20.8R/yr), expectancy passes (+0.350R).
 
-**Phase 4 Hold-out** (2025-01 to 2026-02, mode params): 55 trades, 40.0% WR, 12.1R, Sharpe 2.095, PF 1.37. 2025: +5.1R, 2026 YTD: +7.0R.
+**Phase 4 Hold-out** (2025+): **PASS** — 62 trades, 37.1% WR, 41.7R, Sharpe 4.256, PF 2.08.
 
-**Phase 5 Monte Carlo**: 93.9% survival at -25R ruin (STRONG). Median final PnL 131.8R, median DD -15.1R.
+**Phase 5 Monte Carlo**: **FAIL** — 63.4% survival at -25R ruin (threshold: 70%). MC p50 DD -22.8R.
 
-**Verdict: GO** — All 5 phases pass. Deploy to prop firm.
+**Verdict: GO (user override)** — Pipeline scored 3/5 (Phase 3 worst month -8.0R, Phase 5 MC survival 63.4%). Exceptional structural metrics override borderline failures. Position sizing can manage tail risk.
 
-#### Anchor evolution (R1→R2)
-- R1 anchor: stop=4.0%, rr=4.5, min_gap=2.5%, tp1=0.5, ATR 16 (prior R6 anchor confirmed on clean data)
-- R1 grid winner: rr=4.0, min_gap=3.5% (anchor ranked #5/450) → adopted
-- R2 sweep: ATR 10 adopted (+1.31 Calmar)
-- R3 sweep: max_gap_atr=30% adopted (+1.30 Calmar)
-- R4 sweep: all confirmed (0 changes)
-- R2 grid: anchor ranked #2/450 (Δ=+0.07 vs winner) → convergence confirmed
+**DB entry**: `bt-gc-ny-cont-longs-r3-high-rr-final-fri-ex-692e90`
 
-#### Prior versions (historical reference)
-- R1 pipeline (clean data): CONDITIONAL GO — Calmar 9.71, Phase 3 marginal (11.7R/yr)
-- R6 (contaminated 1s): SUPERSEDED — Calmar 14.10, pipeline all PASS. Numbers inflated.
+**Convergence path**: 12 rounds of variable sweeps + 3 grid sweeps. Key adoptions: rr 7→9 (grid R1), flat 14:30→13:30 (R8), max_gap_atr=30% (R8), Friday exclusion (R10), rr 8→9 (R11). Grid R3 confirmed anchor at #1/625.
+
+#### Prior: R2 config — INVALIDATED by engine bug fixes (2026-02-22)
+
+The R2 config (rr=4.5, tp1=0.5, stop=3.0%, ATR 10, 10m ORB, entry→11:00, flat 15:50) was optimized before engine bug fixes. Re-running on the corrected engine:
+
+| Metric | Old R2 (pre-fix) | R2 on current engine |
+|--------|------------------|---------------------|
+| Trades | 492 | 440 |
+| Win Rate | 42.7% | 42.0% |
+| Net R | 131.8R | 81.1R (-38%) |
+| Sharpe | 2.638 | 1.888 |
+| Calmar | 13.10 | **7.76** |
+| Max DD | -10.1R | -10.4R |
+| Neg years | 1 | **2** (2022: -2.1R, 2025: -3.8R) |
+
+Bug fixes removed ~50R of phantom edge. All R2 pipeline results (WF, MC, etc.) are invalid. **Do not use R2 config — use R3 instead.**
+
+#### Other prior versions (historical reference)
+- R1 pipeline (clean data, pre-bugfix): INVALIDATED — Calmar 9.71
+- R6 (contaminated 1s): SUPERSEDED — Calmar 14.10, numbers inflated
 - v2 (contaminated 1s): SUPERSEDED — 1033 trades, Calmar 4.61
 - v1 (1m magnifier): INVALID — 1m data inflated performance
 

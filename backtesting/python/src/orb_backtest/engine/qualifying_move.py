@@ -291,8 +291,7 @@ def _extract_setup_candidates_qm(
             orb_high,
             orb_low,
             session.min_gap_atr_pct,
-            session.max_gap_points,
-            max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
+            min_gap_orb_pct=getattr(session, "min_gap_orb_pct", 0.0),
         )
 
         # Date strings for excluded dates
@@ -869,8 +868,6 @@ def _extract_setup_candidates_no_orb(
         df["low"].values,
         daily_atr,
         session.min_gap_atr_pct,
-        session.max_gap_points,
-        max_gap_atr_pct=getattr(session, "max_gap_atr_pct", 0.0),
     )
 
     date_strs = compute_date_strings(timestamps)

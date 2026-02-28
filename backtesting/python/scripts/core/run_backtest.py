@@ -41,13 +41,16 @@ def main():
     parser.add_argument("--atr-length", type=int, default=None)
     parser.add_argument("--ny-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ny-min-gap-atr-pct", type=float, default=None)
-    parser.add_argument("--ny-max-gap-atr-pct", type=float, default=None)
+    parser.add_argument("--ny-stop-orb-pct", type=float, default=None)
+    parser.add_argument("--ny-min-gap-orb-pct", type=float, default=None)
     parser.add_argument("--asia-stop-atr-pct", type=float, default=None)
     parser.add_argument("--asia-min-gap-atr-pct", type=float, default=None)
-    parser.add_argument("--asia-max-gap-atr-pct", type=float, default=None)
+    parser.add_argument("--asia-stop-orb-pct", type=float, default=None)
+    parser.add_argument("--asia-min-gap-orb-pct", type=float, default=None)
     parser.add_argument("--ldn-stop-atr-pct", type=float, default=None)
     parser.add_argument("--ldn-min-gap-atr-pct", type=float, default=None)
-    parser.add_argument("--ldn-max-gap-atr-pct", type=float, default=None)
+    parser.add_argument("--ldn-stop-orb-pct", type=float, default=None)
+    parser.add_argument("--ldn-min-gap-orb-pct", type=float, default=None)
 
     # Session selection
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
@@ -89,20 +92,26 @@ def main():
         overrides["ny_stop_atr_pct"] = args.ny_stop_atr_pct
     if args.ny_min_gap_atr_pct is not None:
         overrides["ny_min_gap_atr_pct"] = args.ny_min_gap_atr_pct
-    if args.ny_max_gap_atr_pct is not None:
-        overrides["ny_max_gap_atr_pct"] = args.ny_max_gap_atr_pct
+    if args.ny_stop_orb_pct is not None:
+        overrides["ny_stop_orb_pct"] = args.ny_stop_orb_pct
+    if args.ny_min_gap_orb_pct is not None:
+        overrides["ny_min_gap_orb_pct"] = args.ny_min_gap_orb_pct
     if args.asia_stop_atr_pct is not None:
         overrides["asia_stop_atr_pct"] = args.asia_stop_atr_pct
     if args.asia_min_gap_atr_pct is not None:
         overrides["asia_min_gap_atr_pct"] = args.asia_min_gap_atr_pct
-    if args.asia_max_gap_atr_pct is not None:
-        overrides["asia_max_gap_atr_pct"] = args.asia_max_gap_atr_pct
+    if args.asia_stop_orb_pct is not None:
+        overrides["asia_stop_orb_pct"] = args.asia_stop_orb_pct
+    if args.asia_min_gap_orb_pct is not None:
+        overrides["asia_min_gap_orb_pct"] = args.asia_min_gap_orb_pct
     if args.ldn_stop_atr_pct is not None:
         overrides["ldn_stop_atr_pct"] = args.ldn_stop_atr_pct
     if args.ldn_min_gap_atr_pct is not None:
         overrides["ldn_min_gap_atr_pct"] = args.ldn_min_gap_atr_pct
-    if args.ldn_max_gap_atr_pct is not None:
-        overrides["ldn_max_gap_atr_pct"] = args.ldn_max_gap_atr_pct
+    if args.ldn_stop_orb_pct is not None:
+        overrides["ldn_stop_orb_pct"] = args.ldn_stop_orb_pct
+    if args.ldn_min_gap_orb_pct is not None:
+        overrides["ldn_min_gap_orb_pct"] = args.ldn_min_gap_orb_pct
     if args.name is not None:
         overrides["name"] = args.name
     if args.notes is not None:

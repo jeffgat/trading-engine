@@ -32,7 +32,6 @@ LDN_SESSION = SessionConfig(
     flat_start="08:00", flat_end="08:25",
     stop_atr_pct=5.2,         # TODO: update after convergence
     min_gap_atr_pct=1.25,     # TODO: update after convergence
-    max_gap_points=50.0,
 )
 
 CONFIG = StrategyConfig(

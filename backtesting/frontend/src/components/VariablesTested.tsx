@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
     atr_length: 'ATR Length',
 
     stop_atr_pct: 'Stop ATR%',
+    stop_orb_pct: 'Stop ORB%',
     min_gap_atr_pct: 'Min Gap ATR%',
     max_gap_points: 'Max Gap Pts',
     max_gap_atr_pct: 'Max Gap ATR%',
@@ -24,6 +25,7 @@ const LABELS: Record<string, string> = {
     strategy: 'Strategy',
     direction_filter: 'Direction',
     bar_magnifier: 'Bar Magnifier',
+    impulse_close_filter: 'ICF',
     regime_sizing: 'Regime Sizing',
     regime_rule: 'Regime Rule',
     regime_multiplier: 'Regime Mult',

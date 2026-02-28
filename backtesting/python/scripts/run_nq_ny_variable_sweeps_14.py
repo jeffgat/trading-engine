@@ -40,7 +40,6 @@ def make_config(direction="long", gap=3.0, rr=2.25, tp1=0.7, stop=9.0,
         flat_end="16:00",
         stop_atr_pct=stop,
         min_gap_atr_pct=gap,
-        max_gap_points=100.0,
     )
     return StrategyConfig(
         sessions=(sess,),

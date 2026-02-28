@@ -44,7 +44,6 @@ ANCHOR_SESSION = SessionConfig(
     flat_end="07:00",
     stop_atr_pct=3.7,
     min_gap_atr_pct=0.90,
-    max_gap_points=0.0,
     max_gap_atr_pct=7.0,    # R4 adopted (was 5.0)
 )
 

@@ -28,7 +28,6 @@ ES_LDN_SESSION = SessionConfig(
     flat_end="08:25",
     stop_atr_pct=5.2,
     min_gap_atr_pct=1.25,
-    max_gap_points=50.0,
 )
 
 CONFIG = StrategyConfig(

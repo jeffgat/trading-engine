@@ -30,7 +30,6 @@ def make_config():
         flat_end="16:00",
         stop_atr_pct=8.75,
         min_gap_atr_pct=2.25,
-        max_gap_points=100.0,
     )
     return StrategyConfig(
         sessions=(sess,),

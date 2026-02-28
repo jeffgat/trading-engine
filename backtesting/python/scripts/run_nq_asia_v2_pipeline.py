@@ -36,7 +36,6 @@ def main():
         entry_end="23:00",
         stop_atr_pct=5.75,
         min_gap_atr_pct=1.25,
-        max_gap_atr_pct=11.0,
     )
     config = default_config(NQ)
     config = with_overrides(

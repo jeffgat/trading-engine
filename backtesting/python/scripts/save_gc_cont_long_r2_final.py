@@ -30,8 +30,6 @@ NY_SESSION = SessionConfig(
     flat_start="15:50", flat_end="16:00",
     stop_atr_pct=3.0,       # WF mode (tighter than structural 4.0%)
     min_gap_atr_pct=3.5,
-    max_gap_points=25.0,
-    max_gap_atr_pct=30.0,
 )
 
 CONFIG = StrategyConfig(

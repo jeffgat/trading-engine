@@ -45,8 +45,6 @@ def build_config():
         entry_end="23:00",
         stop_atr_pct=6.5,
         min_gap_atr_pct=1.25,
-        max_gap_atr_pct=5.0,
-        max_gap_points=0.0,
     )
     cfg = default_config(NQ)
     return with_overrides(

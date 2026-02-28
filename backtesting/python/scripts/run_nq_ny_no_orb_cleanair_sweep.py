@@ -50,7 +50,6 @@ def make_config(qm_atr_pct, stop_atr_pct, rr, tp1_ratio, direction):
         flat_start="15:50", flat_end="16:00",
         stop_atr_pct=stop_atr_pct,
         min_gap_atr_pct=3.0,
-        max_gap_points=100.0,
         qualifying_move_atr_pct=qm_atr_pct,
     )
     return StrategyConfig(

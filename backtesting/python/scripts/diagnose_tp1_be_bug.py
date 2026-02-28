@@ -32,7 +32,6 @@ SESS = SessionConfig(
     orb_start="20:00", orb_end="20:10", entry_start="20:10",
     entry_end="00:00", flat_start="01:00", flat_end="07:00",
     stop_atr_pct=3.7, min_gap_atr_pct=0.90,
-    max_gap_points=0.0, max_gap_atr_pct=5.0,
 )
 
 

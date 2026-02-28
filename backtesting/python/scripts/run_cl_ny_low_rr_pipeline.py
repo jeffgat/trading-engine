@@ -57,7 +57,6 @@ CL_NY_SESSION = SessionConfig(
     flat_end="16:00",
     stop_atr_pct=2.0,       # Wider stop for lower RR
     min_gap_atr_pct=1.0,
-    max_gap_points=100.0,
 )
 
 ANCHOR = StrategyConfig(

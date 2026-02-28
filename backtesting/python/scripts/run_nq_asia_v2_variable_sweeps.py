@@ -56,8 +56,6 @@ def build_config(orb_end, maxgap, entry_end, direction):
         entry_end=entry_end,
         stop_atr_pct=BASE["stop"],
         min_gap_atr_pct=BASE["gap"],
-        max_gap_atr_pct=maxgap,
-        max_gap_points=0.0,
     )
     cfg = default_config(NQ)
     return with_overrides(
