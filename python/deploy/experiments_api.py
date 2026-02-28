@@ -13,7 +13,7 @@ from pathlib import Path
 os.environ["EXPERIMENTS_DB_PATH"] = "/opt/experiments-db/experiments.db"
 
 # Add the backtesting source to the path so we can import experiments
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
