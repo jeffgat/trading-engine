@@ -2,15 +2,17 @@ import { useState } from "react";
 import { BacktestDashboard } from "@/backtesting/components/BacktestDashboard";
 import { CoverageDashboard } from "@/backtesting/components/CoverageDashboard";
 import { OptimizeDashboard } from "@/backtesting/components/OptimizeDashboard";
+import { RiskEngineDashboard } from "@/backtesting/components/RiskEngineDashboard";
 import { SavedStrategiesDashboard } from "@/backtesting/components/SavedStrategiesDashboard";
 
-type Tab = "backtests" | "saved" | "optimizations" | "coverage";
+type Tab = "backtests" | "saved" | "optimizations" | "coverage" | "risk-engine";
 
 const TAB_LABELS: Record<Tab, string> = {
   backtests: "Backtests",
   saved: "Saved",
   optimizations: "Optimizations",
   coverage: "Coverage",
+  "risk-engine": "Risk Engine",
 };
 
 export function BacktestApp() {
@@ -21,7 +23,7 @@ export function BacktestApp() {
       {/* Tab bar */}
       <div className="border-b border-border bg-bg-secondary">
         <div className="mx-auto flex max-w-7xl gap-0 px-4 sm:px-6 lg:px-8">
-          {(["backtests", "saved", "optimizations", "coverage"] as const).map((tab) => (
+          {(["backtests", "saved", "optimizations", "coverage", "risk-engine"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -44,6 +46,7 @@ export function BacktestApp() {
       {activeTab === "saved" && <SavedStrategiesDashboard />}
       {activeTab === "optimizations" && <OptimizeDashboard />}
       {activeTab === "coverage" && <CoverageDashboard />}
+      {activeTab === "risk-engine" && <RiskEngineDashboard />}
     </>
   );
 }

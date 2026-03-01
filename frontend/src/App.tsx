@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { BacktestApp } from "@/backtesting/BacktestApp";
 import { ExecutionApp } from "@/execution/ExecutionApp";
+import { useState } from "react";
 
 type Section = "backtesting" | "execution";
 
@@ -14,7 +14,7 @@ function App() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-6">
             <span className="text-lg font-semibold tracking-tight text-text-primary">
-              Gat Labs
+              Gat Capital
             </span>
             <div className="flex gap-1">
               {(["backtesting", "execution"] as const).map((s) => (
