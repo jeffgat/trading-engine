@@ -65,7 +65,7 @@ export function ExecutionApp() {
                 onClick={() => setActiveTab(key)}
                 className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
                   activeTab === key
-                    ? "border-[#8b5cf6] text-text-primary"
+                    ? "border-accent text-text-primary"
                     : "border-transparent text-text-muted hover:text-text-secondary hover:border-border"
                 }`}
               >

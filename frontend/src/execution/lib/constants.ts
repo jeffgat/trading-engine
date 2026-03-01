@@ -4,7 +4,7 @@ export const STATE_COLORS: Record<string, string> = {
   scanning: "bg-warning/20 text-warning",
   armed_long: "bg-profit/20 text-profit",
   armed_short: "bg-loss/20 text-loss",
-  filled: "bg-[#8b5cf6]/20 text-[#c4b5fd]",
+  filled: "bg-accent/20 text-gold-200",
   managing: "bg-cyan-500/20 text-cyan-300",
   flat: "bg-orange-500/20 text-orange-200",
 };
@@ -24,7 +24,7 @@ export const EVENT_COLORS: Record<string, string> = {
   ORB_READY: "bg-info/20 text-info",
   LONG_SETUP: "bg-profit/20 text-profit",
   SHORT_SETUP: "bg-loss/20 text-loss",
-  FILLED: "bg-[#8b5cf6]/20 text-[#8b5cf6]",
+  FILLED: "bg-accent/20 text-accent",
   TP1_PARTIAL: "bg-profit-dim/20 text-profit-dim",
   TP1_BE_SINGLE: "bg-profit-dim/20 text-profit-dim",
   TP2_HIT: "bg-profit/20 text-profit",
@@ -51,6 +51,6 @@ export const SESSION_COLORS: Record<string, string> = {
   ES: "bg-warning/20 text-warning",
   GC: "bg-profit/20 text-profit",
   NY: "bg-info/20 text-info",
-  Asia: "bg-[#8b5cf6]/20 text-[#8b5cf6]",
+  Asia: "bg-accent/20 text-accent",
   LDN: "bg-warning/20 text-warning",
 };
