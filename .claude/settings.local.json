@@ -111,7 +111,12 @@
       "Bash(ssh:*)",
       "Bash(rsync:*)",
       "Bash(/tmp/atr_analysis.md:*)",
-      "Bash(bash execution/python/deploy/deploy.sh)"
+      "Bash(bash execution/python/deploy/deploy.sh)",
+      "Bash(git fetch origin main)",
+      "Bash(git merge origin/main)",
+      "Bash(bash backtesting/python/deploy/deploy_db.sh --setup)",
+      "Bash(bash backtesting/python/deploy/deploy_db.sh)",
+      "Bash(npx vite)"
     ]
   }
 }
