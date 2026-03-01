@@ -13,11 +13,14 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from .overrides import EDITABLE_FIELDS, load_overrides, save_overrides, validate_fields
 
 if TYPE_CHECKING:
     from .engine import SessionEngine
@@ -359,9 +362,102 @@ def create_app(state: DashboardState) -> FastAPI:
 
     @app.get("/api/config")
     async def get_config():
+        overrides = load_overrides()
         return {
             "config": state.config,
             "sessions": {e.name: _session_info(e) for e in state.engines},
+            "overrides": {
+                e.name: overrides.get(e.name, {}) for e in state.engines
+            },
+            "defaults": {
+                e.name: _defaults_for_session(e.name) for e in state.engines
+            },
+        }
+
+    # ── Config override endpoints ──────────────────────────────────
+
+    @app.patch("/api/config/sessions/{session_name}")
+    async def update_session_config(session_name: str, body: SessionOverrideRequest):
+        engine = _find_engine(state, session_name)
+        if engine is None:
+            raise HTTPException(404, f"Session '{session_name}' not found")
+
+        valid_fields, errors = validate_fields(body.overrides)
+        if errors:
+            raise HTTPException(422, detail=errors)
+        if not valid_fields:
+            raise HTTPException(400, "No valid fields to update")
+
+        # Safety: reject if engine is mid-trade
+        if engine._state.value in ("armed_long", "filled", "managing"):
+            raise HTTPException(
+                409,
+                f"Session '{session_name}' is in state '{engine._state.value}'. "
+                "Config changes are blocked while a trade is active.",
+            )
+
+        # Load, merge, persist
+        overrides = load_overrides()
+        session_overrides = overrides.get(session_name, {})
+        session_overrides.update(valid_fields)
+
+        # Remove overrides that match the default value (keep sparse)
+        defaults = _defaults_for_session(session_name)
+        session_overrides = {
+            k: v for k, v in session_overrides.items() if defaults.get(k) != v
+        }
+
+        if session_overrides:
+            overrides[session_name] = session_overrides
+        elif session_name in overrides:
+            del overrides[session_name]
+        save_overrides(overrides)
+
+        # Apply to in-memory engine
+        _apply_overrides_to_engine(engine, valid_fields)
+
+        await state.broadcast({"type": "config_update", "data": {
+            "session": session_name,
+            "config": _session_info(engine),
+            "overrides": overrides.get(session_name, {}),
+        }})
+
+        return {
+            "session": session_name,
+            "config": _session_info(engine),
+            "overrides": overrides.get(session_name, {}),
+        }
+
+    @app.delete("/api/config/sessions/{session_name}")
+    async def reset_session_config(session_name: str):
+        engine = _find_engine(state, session_name)
+        if engine is None:
+            raise HTTPException(404, f"Session '{session_name}' not found")
+
+        if engine._state.value in ("armed_long", "filled", "managing"):
+            raise HTTPException(
+                409, "Cannot reset config while a trade is active",
+            )
+
+        # Remove overrides for this session
+        overrides = load_overrides()
+        if session_name in overrides:
+            del overrides[session_name]
+            save_overrides(overrides)
+
+        # Reset engine fields to defaults
+        _apply_defaults_to_engine(engine, session_name, state.config)
+
+        await state.broadcast({"type": "config_update", "data": {
+            "session": session_name,
+            "config": _session_info(engine),
+            "overrides": {},
+        }})
+
+        return {
+            "session": session_name,
+            "config": _session_info(engine),
+            "overrides": {},
         }
 
     # ── WebSocket ───────────────────────────────────────────────────
@@ -396,6 +492,81 @@ def create_app(state: DashboardState) -> FastAPI:
         logger.info("Serving frontend from %s", FRONTEND_DIST)
 
     return app
+
+
+class SessionOverrideRequest(BaseModel):
+    """Sparse dict of fields to override for a session."""
+
+    overrides: dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
+
+def _find_engine(state: DashboardState, name: str):
+    """Find engine by session name."""
+    for e in state.engines:
+        if e.name == name:
+            return e
+    return None
+
+
+def _apply_overrides_to_engine(engine, fields: dict) -> None:
+    """Apply override fields to a live SessionEngine."""
+    from .engine import _parse_time
+
+    time_fields = {"orb_start", "orb_end", "entry_start", "entry_end",
+                   "flat_start", "flat_end"}
+
+    for key, value in fields.items():
+        setattr(engine, key, value)
+
+    # Re-parse cached time objects if any time field changed
+    if time_fields & fields.keys():
+        engine._orb_start_t = _parse_time(engine.orb_start)
+        engine._orb_end_t = _parse_time(engine.orb_end)
+        engine._entry_start_t = _parse_time(engine.entry_start)
+        engine._entry_end_t = _parse_time(engine.entry_end)
+        engine._flat_start_t = _parse_time(engine.flat_start)
+        engine._flat_end_t = _parse_time(engine.flat_end)
+
+
+def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
+    """Reset engine fields back to SESSION_CONFIGS defaults."""
+    from .engine import _parse_time
+    from .main import SESSION_CONFIGS
+
+    defaults = SESSION_CONFIGS.get(session_name, {})
+    risk = config.get("risk", {})
+
+    for key in EDITABLE_FIELDS:
+        if key in defaults:
+            setattr(engine, key, defaults[key])
+        elif key == "risk_usd":
+            setattr(engine, key, risk.get("risk_usd", 250))
+        elif key == "min_qty":
+            setattr(engine, key, risk.get("min_qty", 1.0))
+        elif key == "max_single_risk_usd":
+            setattr(engine, key, risk.get("max_single_risk_usd", 500.0))
+        elif key == "be_offset_ticks":
+            setattr(engine, key, risk.get("be_offset_ticks", 0))
+
+    # Re-parse cached time objects
+    engine._orb_start_t = _parse_time(engine.orb_start)
+    engine._orb_end_t = _parse_time(engine.orb_end)
+    engine._entry_start_t = _parse_time(engine.entry_start)
+    engine._entry_end_t = _parse_time(engine.entry_end)
+    engine._flat_start_t = _parse_time(engine.flat_start)
+    engine._flat_end_t = _parse_time(engine.flat_end)
+
+
+def _defaults_for_session(name: str) -> dict:
+    """Get the raw SESSION_CONFIGS defaults for a session (editable fields only)."""
+    from .main import SESSION_CONFIGS
+
+    cfg = SESSION_CONFIGS.get(name, {})
+    return {k: v for k, v in cfg.items() if k in EDITABLE_FIELDS}
 
 
 def _session_info(engine) -> dict:

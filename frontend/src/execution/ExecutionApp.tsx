@@ -28,7 +28,14 @@ export function ExecutionApp() {
   const { status, uptime, loading: statusLoading } = useStatus(subscribe);
   const tradeLogs = useTradeLogs(subscribe);
   const mainLogs = useMainLogs(subscribe);
-  const { config, loading: configLoading } = useConfig();
+  const {
+    config,
+    loading: configLoading,
+    saving: configSaving,
+    error: configError,
+    updateSession,
+    resetSession,
+  } = useConfig();
 
   const mode = status?.mode ?? "\u2014";
   const isLive = mode === "LIVE";
@@ -109,7 +116,14 @@ export function ExecutionApp() {
           />
         )}
         {activeTab === "config" && (
-          <ConfigView config={config} loading={configLoading} />
+          <ConfigView
+            config={config}
+            loading={configLoading}
+            saving={configSaving}
+            error={configError}
+            onUpdateSession={updateSession}
+            onResetSession={resetSession}
+          />
         )}
       </main>
     </>

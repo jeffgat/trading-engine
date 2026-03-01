@@ -76,6 +76,8 @@ export interface SessionConfig {
 export interface ConfigResponse {
   config: Record<string, unknown>;
   sessions: Record<string, SessionConfig>;
+  overrides: Record<string, Partial<SessionConfig>>;
+  defaults: Record<string, Partial<SessionConfig>>;
 }
 
 export type WsMessage =

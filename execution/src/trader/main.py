@@ -236,9 +236,11 @@ def build_engines(
         - atr_lengths maps DataBento symbol to the ATR period for that feed.
     """
     from .engine import SessionEngine
+    from .overrides import load_overrides
 
     general = config.get("general", {})
     risk = config.get("risk", {})
+    runtime_overrides = load_overrides()
 
     sessions_enabled = config.get("sessions", {}).get("enabled", [
         "NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia",
@@ -274,7 +276,7 @@ def build_engines(
                 break
         if not isinstance(toml_overrides, dict):
             toml_overrides = {}
-        merged = {**sess_cfg, **toml_overrides}
+        merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {})}
 
         # Per-session instrument (signal data source) and execution ticker
         sess_instrument = merged.get("instrument", "NQ")

@@ -148,7 +148,9 @@
       "Bash(__NEW_LINE_4c4ddeb3325b8372__ echo \"Backtesting API URLs updated\")",
       "Bash(__NEW_LINE_2826e57ac138b626__ echo \"Execution API URLs updated\")",
       "Bash(git fetch origin)",
-      "Bash(git merge origin/main --no-commit --no-ff)"
+      "Bash(git merge origin/main --no-commit --no-ff)",
+      "Bash(git stash pop)",
+      "Bash(npx vite build)"
     ]
   }
 }
