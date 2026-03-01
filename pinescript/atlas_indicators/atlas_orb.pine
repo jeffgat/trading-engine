@@ -630,8 +630,6 @@ if enableAsia and orbBarClosed5 and not inAsiaORB and inAsiaRTH and not asia_orb
 // ============================================================================
 nyDailyATR   = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
 asiaDailyATR = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1], lookahead=barmerge.lookahead_on)
-extTicker  = ticker.new(syminfo.prefix, syminfo.ticker, session.extended)
-globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead_on)
 
 // ============================================================================
 // ALERT TRIGGER FLAGS (per-bar, non-persistent)
@@ -932,25 +930,6 @@ if asiaShowOrb and not asia_orbLinesDrawn and canDraw
 if asiaShowOrb and asia_orbLinesDrawn and not na(asia_orbHighLine)
     line.set_x2(asia_orbHighLine, math.max(time, line.get_x2(asia_orbHighLine)))
     line.set_x2(asia_orbLowLine, math.max(time, line.get_x2(asia_orbLowLine)))
-
-// ============================================================================
-// ATR DISTANCE DISPLAY + DEBUG
-// ============================================================================
-displayATR       = enableNY ? nyDailyATR : asiaDailyATR
-displayAtrLength = enableNY ? nyAtrLength : asiaAtrLength
-globexDist  = close - globexOpen
-globexPct   = displayATR > 0 ? (globexDist / displayATR) * 100 : 0.0
-globexSign  = globexDist >= 0 ? "+" : ""
-globexColor = globexDist >= 0 ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
-
-var table atrTable = table.new(position.top_right, 1, 3, bgcolor=color.new(#1e222d, 10), border_width=1, border_color=color.new(#363a45, 0))
-if barstate.islast
-    atrText = "ATR(" + str.tostring(displayAtrLength) + "): " + str.tostring(displayATR, format.mintick)
-    globexText = "GlobEx: " + globexSign + str.tostring(globexDist, format.mintick) + " (" + globexSign + str.tostring(globexPct, "#.0") + "% ATR)"
-    debugText = "root=" + syminfo.root + " | asset=" + asset + " | RR=" + str.tostring(nyRR) + " | ATR_len=" + str.tostring(nyAtrLength) + " | stop%=" + str.tostring(nyStopPct)
-    table.cell(atrTable, 0, 0, atrText, text_color=color.white, text_size=size.small)
-    table.cell(atrTable, 0, 1, globexText, text_color=globexColor, text_size=size.small)
-    table.cell(atrTable, 0, 2, debugText, text_color=color.yellow, text_size=size.small)
 
 // ============================================================================
 // ALERTS - fire when a new FVG setup is detected

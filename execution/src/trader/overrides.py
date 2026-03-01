@@ -26,6 +26,15 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
     "min_stop_pts", "min_tp1_pts",
 })
 
+# IFVG-specific editable fields (for NQ_NY_LSI and future IFVG sessions)
+IFVG_EDITABLE_FIELDS: frozenset[str] = frozenset({
+    "entry_start", "entry_end", "flat_start", "flat_end", "excluded_dow",
+    "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_atr_pct",
+    "max_bars_after_sweep", "max_inversion_bars",
+    "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
+    "qty_multiplier", "long_only",
+})
+
 # Fields that must NOT be changed at runtime (derived from instrument)
 READONLY_FIELDS: frozenset[str] = frozenset({
     "point_value", "min_tick", "exec_ticker", "qty_step",
@@ -54,17 +63,22 @@ def save_overrides(overrides: dict[str, dict[str, Any]], path: Path = DEFAULT_PA
     logger.info("Saved config overrides to %s", path)
 
 
-def validate_fields(fields: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def validate_fields(fields: dict[str, Any], allowed: frozenset[str] | None = None) -> tuple[dict[str, Any], list[str]]:
     """Validate and filter override fields.
+
+    Args:
+        fields: Dict of field name → value.
+        allowed: Set of allowed field names. Defaults to EDITABLE_FIELDS.
 
     Returns (valid_fields, error_messages).
     """
+    editable = allowed or EDITABLE_FIELDS
     errors: list[str] = []
     valid: dict[str, Any] = {}
     for key, value in fields.items():
         if key in READONLY_FIELDS:
             errors.append(f"Field '{key}' is read-only and cannot be overridden")
-        elif key not in EDITABLE_FIELDS:
+        elif key not in editable:
             errors.append(f"Unknown field '{key}'")
         else:
             valid[key] = value

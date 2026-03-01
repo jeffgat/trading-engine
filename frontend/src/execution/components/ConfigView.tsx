@@ -31,7 +31,7 @@ interface GlobalRiskDefaults {
   max_single_risk_usd: number;
 }
 
-type DraftValues = Record<string, string | number | boolean | null>;
+type DraftValues = Record<string, string | number | boolean | number[] | null>;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -49,6 +49,15 @@ const DOW_OPTIONS = [
   { value: "5", label: "Sat" },
   { value: "6", label: "Sun" },
 ];
+
+/** Format excluded_dow (single int, array, or null) for display. */
+function formatExcludedDow(dow: number | number[] | null): string | null {
+  if (dow == null) return null;
+  if (Array.isArray(dow)) {
+    return dow.map((d) => DOW_NAMES[d] ?? `DOW ${d}`).join(", ");
+  }
+  return DOW_NAMES[dow] ?? `DOW ${dow}`;
+}
 
 // ---------------------------------------------------------------------------
 // Small reusable components
@@ -150,7 +159,6 @@ function SessionConfigCard({
   cfg,
   globalRisk,
   overrides,
-  defaults,
   saving,
   onSave,
   onReset,
@@ -159,7 +167,7 @@ function SessionConfigCard({
   cfg: SessionConfig;
   globalRisk: GlobalRiskDefaults;
   overrides: Partial<SessionConfig>;
-  defaults: Partial<SessionConfig>;
+  defaults?: Partial<SessionConfig>;
   saving: boolean;
   onSave: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
   onReset: (name: string) => Promise<void>;
@@ -169,6 +177,7 @@ function SessionConfigCard({
   const [cardError, setCardError] = useState<string | null>(null);
 
   const hasOverrides = Object.keys(overrides).length > 0;
+  const isIfvg = cfg.type === "ifvg";
 
   const stopIsOrb = cfg.stop_basis === "orb";
   const gapIsOrb = cfg.gap_filter_basis === "orb";
@@ -179,29 +188,50 @@ function SessionConfigCard({
 
   // Start editing — populate draft from current cfg values
   const startEditing = useCallback(() => {
-    setDraft({
-      orb_start: cfg.orb_start,
-      orb_end: cfg.orb_end,
-      entry_start: cfg.entry_start,
-      entry_end: cfg.entry_end,
-      flat_start: cfg.flat_start,
-      flat_end: cfg.flat_end,
-      excluded_dow: cfg.excluded_dow,
-      rr: cfg.rr,
-      tp1_ratio: cfg.tp1_ratio,
-      stop_atr_pct: cfg.stop_atr_pct,
-      stop_orb_pct: cfg.stop_orb_pct,
-      min_gap_atr_pct: cfg.min_gap_atr_pct,
-      min_gap_orb_pct: cfg.min_gap_orb_pct,
-      max_gap_atr_pct: cfg.max_gap_atr_pct,
-      risk_usd: cfg.risk_usd,
-      min_qty: cfg.min_qty,
-      max_single_risk_usd: cfg.max_single_risk_usd,
-      be_offset_ticks: cfg.be_offset_ticks,
-    });
+    if (isIfvg) {
+      setDraft({
+        entry_start: cfg.entry_start,
+        entry_end: cfg.entry_end,
+        flat_start: cfg.flat_start,
+        flat_end: cfg.flat_end,
+        excluded_dow: cfg.excluded_dow,
+        rr: cfg.rr,
+        tp1_ratio: cfg.tp1_ratio,
+        min_gap_atr_pct: cfg.min_gap_atr_pct,
+        min_stop_atr_pct: cfg.min_stop_atr_pct,
+        max_bars_after_sweep: cfg.max_bars_after_sweep,
+        max_inversion_bars: cfg.max_inversion_bars,
+        qty_multiplier: cfg.qty_multiplier,
+        risk_usd: cfg.risk_usd,
+        min_qty: cfg.min_qty,
+        max_single_risk_usd: cfg.max_single_risk_usd,
+        be_offset_ticks: cfg.be_offset_ticks,
+      });
+    } else {
+      setDraft({
+        orb_start: cfg.orb_start,
+        orb_end: cfg.orb_end,
+        entry_start: cfg.entry_start,
+        entry_end: cfg.entry_end,
+        flat_start: cfg.flat_start,
+        flat_end: cfg.flat_end,
+        excluded_dow: cfg.excluded_dow,
+        rr: cfg.rr,
+        tp1_ratio: cfg.tp1_ratio,
+        stop_atr_pct: cfg.stop_atr_pct,
+        stop_orb_pct: cfg.stop_orb_pct,
+        min_gap_atr_pct: cfg.min_gap_atr_pct,
+        min_gap_orb_pct: cfg.min_gap_orb_pct,
+        max_gap_atr_pct: cfg.max_gap_atr_pct,
+        risk_usd: cfg.risk_usd,
+        min_qty: cfg.min_qty,
+        max_single_risk_usd: cfg.max_single_risk_usd,
+        be_offset_ticks: cfg.be_offset_ticks,
+      });
+    }
     setCardError(null);
     setEditing(true);
-  }, [cfg]);
+  }, [cfg, isIfvg]);
 
   const cancelEditing = () => {
     setEditing(false);
@@ -213,46 +243,21 @@ function SessionConfigCard({
     setDraft((d) => ({ ...d, [key]: raw }));
   };
 
-  // Build the sparse override object — only fields that differ from defaults
-  const buildOverrides = (): Partial<SessionConfig> => {
-    const result: Record<string, unknown> = {};
-
-    const numericFields = [
-      "rr", "tp1_ratio", "stop_atr_pct", "stop_orb_pct",
-      "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
-      "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
-    ];
-    const timeFields = [
-      "orb_start", "orb_end", "entry_start", "entry_end",
-      "flat_start", "flat_end",
-    ];
-
-    for (const f of timeFields) {
-      const val = String(draft[f] ?? "");
-      if (val !== String(defaults[f as keyof SessionConfig] ?? "")) {
-        result[f] = val;
-      }
-    }
-
-    for (const f of numericFields) {
-      const val = Number(draft[f]);
-      const def = Number(defaults[f as keyof SessionConfig] ?? 0);
-      if (!isNaN(val) && val !== def) {
-        result[f] = val;
-      }
-    }
-
-    // excluded_dow: null means "none"
-    const dowDraft = draft.excluded_dow;
-    const dowVal =
-      dowDraft === null || dowDraft === "" ? null : Number(dowDraft);
-    const dowDefault = (defaults as Record<string, unknown>).excluded_dow ?? null;
-    if (dowVal !== dowDefault) {
-      result.excluded_dow = dowVal;
-    }
-
-    return result as Partial<SessionConfig>;
-  };
+  // Build field lists based on engine type
+  const numericFields = isIfvg
+    ? [
+        "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_atr_pct",
+        "max_bars_after_sweep", "max_inversion_bars", "qty_multiplier",
+        "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
+      ]
+    : [
+        "rr", "tp1_ratio", "stop_atr_pct", "stop_orb_pct",
+        "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
+        "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
+      ];
+  const timeFields = isIfvg
+    ? ["entry_start", "entry_end", "flat_start", "flat_end"]
+    : ["orb_start", "orb_end", "entry_start", "entry_end", "flat_start", "flat_end"];
 
   const handleSave = async () => {
     setCardError(null);
@@ -260,15 +265,6 @@ function SessionConfigCard({
       // Send ALL current draft values (not just diffs) so the backend can
       // compute which are actually overrides vs defaults
       const allFields: Record<string, unknown> = {};
-      const numericFields = [
-        "rr", "tp1_ratio", "stop_atr_pct", "stop_orb_pct",
-        "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
-        "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
-      ];
-      const timeFields = [
-        "orb_start", "orb_end", "entry_start", "entry_end",
-        "flat_start", "flat_end",
-      ];
 
       for (const f of timeFields) {
         allFields[f] = String(draft[f] ?? "");
@@ -342,18 +338,22 @@ function SessionConfigCard({
           {/* Session Times */}
           <div className="space-y-0.5">
             <SectionLabel>Session Times</SectionLabel>
-            <EditableField
-              label="ORB Start"
-              value={String(draft.orb_start ?? "")}
-              onChange={(v) => setField("orb_start", v)}
-              overridden={isOverridden("orb_start")}
-            />
-            <EditableField
-              label="ORB End"
-              value={String(draft.orb_end ?? "")}
-              onChange={(v) => setField("orb_end", v)}
-              overridden={isOverridden("orb_end")}
-            />
+            {!isIfvg && (
+              <>
+                <EditableField
+                  label="ORB Start"
+                  value={String(draft.orb_start ?? "")}
+                  onChange={(v) => setField("orb_start", v)}
+                  overridden={isOverridden("orb_start")}
+                />
+                <EditableField
+                  label="ORB End"
+                  value={String(draft.orb_end ?? "")}
+                  onChange={(v) => setField("orb_end", v)}
+                  overridden={isOverridden("orb_end")}
+                />
+              </>
+            )}
             <EditableField
               label="Entry Start"
               value={String(draft.entry_start ?? "")}
@@ -378,14 +378,16 @@ function SessionConfigCard({
               onChange={(v) => setField("flat_end", v)}
               overridden={isOverridden("flat_end")}
             />
-            <SelectField
-              label="Skip Day"
-              value={draft.excluded_dow == null ? "" : String(draft.excluded_dow)}
-              options={DOW_OPTIONS}
-              onChange={(v) =>
-                setDraft((d) => ({ ...d, excluded_dow: v === "" ? null : v }))
-              }
-            />
+            {!isIfvg && (
+              <SelectField
+                label="Skip Day"
+                value={draft.excluded_dow == null ? "" : String(draft.excluded_dow)}
+                options={DOW_OPTIONS}
+                onChange={(v) =>
+                  setDraft((d) => ({ ...d, excluded_dow: v === "" ? null : v }))
+                }
+              />
+            )}
           </div>
 
           {/* Strategy */}
@@ -405,47 +407,82 @@ function SessionConfigCard({
               type="number"
               overridden={isOverridden("tp1_ratio")}
             />
-            {stopIsOrb ? (
-              <EditableField
-                label="Stop ORB %"
-                value={String(draft.stop_orb_pct ?? "")}
-                onChange={(v) => setField("stop_orb_pct", v)}
-                type="number"
-                overridden={isOverridden("stop_orb_pct")}
-              />
-            ) : (
-              <EditableField
-                label="Stop ATR %"
-                value={String(draft.stop_atr_pct ?? "")}
-                onChange={(v) => setField("stop_atr_pct", v)}
-                type="number"
-                overridden={isOverridden("stop_atr_pct")}
-              />
-            )}
-            {gapIsOrb ? (
-              <EditableField
-                label="Gap ORB %"
-                value={String(draft.min_gap_orb_pct ?? "")}
-                onChange={(v) => setField("min_gap_orb_pct", v)}
-                type="number"
-                overridden={isOverridden("min_gap_orb_pct")}
-              />
-            ) : (
+            {isIfvg ? (
               <>
                 <EditableField
-                  label="Gap ATR % (min)"
+                  label="Gap ATR %"
                   value={String(draft.min_gap_atr_pct ?? "")}
                   onChange={(v) => setField("min_gap_atr_pct", v)}
                   type="number"
                   overridden={isOverridden("min_gap_atr_pct")}
                 />
                 <EditableField
-                  label="Gap ATR % (max)"
-                  value={String(draft.max_gap_atr_pct ?? "")}
-                  onChange={(v) => setField("max_gap_atr_pct", v)}
+                  label="Min Stop ATR %"
+                  value={String(draft.min_stop_atr_pct ?? "")}
+                  onChange={(v) => setField("min_stop_atr_pct", v)}
                   type="number"
-                  overridden={isOverridden("max_gap_atr_pct")}
+                  overridden={isOverridden("min_stop_atr_pct")}
                 />
+                <EditableField
+                  label="Max Sweep Bars"
+                  value={String(draft.max_bars_after_sweep ?? "")}
+                  onChange={(v) => setField("max_bars_after_sweep", v)}
+                  type="number"
+                  overridden={isOverridden("max_bars_after_sweep")}
+                />
+                <EditableField
+                  label="Max Inversion Bars"
+                  value={String(draft.max_inversion_bars ?? "")}
+                  onChange={(v) => setField("max_inversion_bars", v)}
+                  type="number"
+                  overridden={isOverridden("max_inversion_bars")}
+                />
+              </>
+            ) : (
+              <>
+                {stopIsOrb ? (
+                  <EditableField
+                    label="Stop ORB %"
+                    value={String(draft.stop_orb_pct ?? "")}
+                    onChange={(v) => setField("stop_orb_pct", v)}
+                    type="number"
+                    overridden={isOverridden("stop_orb_pct")}
+                  />
+                ) : (
+                  <EditableField
+                    label="Stop ATR %"
+                    value={String(draft.stop_atr_pct ?? "")}
+                    onChange={(v) => setField("stop_atr_pct", v)}
+                    type="number"
+                    overridden={isOverridden("stop_atr_pct")}
+                  />
+                )}
+                {gapIsOrb ? (
+                  <EditableField
+                    label="Gap ORB %"
+                    value={String(draft.min_gap_orb_pct ?? "")}
+                    onChange={(v) => setField("min_gap_orb_pct", v)}
+                    type="number"
+                    overridden={isOverridden("min_gap_orb_pct")}
+                  />
+                ) : (
+                  <>
+                    <EditableField
+                      label="Gap ATR % (min)"
+                      value={String(draft.min_gap_atr_pct ?? "")}
+                      onChange={(v) => setField("min_gap_atr_pct", v)}
+                      type="number"
+                      overridden={isOverridden("min_gap_atr_pct")}
+                    />
+                    <EditableField
+                      label="Gap ATR % (max)"
+                      value={String(draft.max_gap_atr_pct ?? "")}
+                      onChange={(v) => setField("max_gap_atr_pct", v)}
+                      type="number"
+                      overridden={isOverridden("max_gap_atr_pct")}
+                    />
+                  </>
+                )}
               </>
             )}
           </div>
@@ -474,6 +511,15 @@ function SessionConfigCard({
               type="number"
               overridden={isOverridden("max_single_risk_usd")}
             />
+            {isIfvg && (
+              <EditableField
+                label="Qty Multiplier"
+                value={String(draft.qty_multiplier ?? "")}
+                onChange={(v) => setField("qty_multiplier", v)}
+                type="number"
+                overridden={isOverridden("qty_multiplier")}
+              />
+            )}
             <EditableField
               label="BE Offset (ticks)"
               value={String(draft.be_offset_ticks ?? "")}
@@ -526,6 +572,8 @@ function SessionConfigCard({
   }
 
   // ── Read mode ───────────────────────────────────────────────────
+  const excludedDowDisplay = formatExcludedDow(cfg.excluded_dow);
+
   return (
     <Card className="border-border bg-bg-card">
       <CardHeader className="pb-2">
@@ -534,6 +582,15 @@ function SessionConfigCard({
             <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
               {name}
             </CardTitle>
+            <span
+              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                isIfvg
+                  ? "text-violet-400 bg-violet-400/10"
+                  : "text-emerald-400 bg-emerald-400/10"
+              }`}
+            >
+              {isIfvg ? "LSI" : "ORB"}
+            </span>
             {hasOverrides && (
               <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
                 overridden
@@ -552,11 +609,13 @@ function SessionConfigCard({
         {/* Session Times */}
         <div className="space-y-1">
           <SectionLabel>Session Times</SectionLabel>
-          <ConfigItem
-            label="ORB"
-            value={`${cfg.orb_start} - ${cfg.orb_end}`}
-            overridden={isOverridden("orb_start") || isOverridden("orb_end")}
-          />
+          {!isIfvg && (
+            <ConfigItem
+              label="ORB"
+              value={`${cfg.orb_start} - ${cfg.orb_end}`}
+              overridden={isOverridden("orb_start") || isOverridden("orb_end")}
+            />
+          )}
           <ConfigItem
             label="Entry"
             value={`${cfg.entry_start} - ${cfg.entry_end}`}
@@ -567,10 +626,10 @@ function SessionConfigCard({
             value={`${cfg.flat_start} - ${cfg.flat_end}`}
             overridden={isOverridden("flat_start") || isOverridden("flat_end")}
           />
-          {cfg.excluded_dow != null && (
+          {excludedDowDisplay && (
             <ConfigItem
               label="Skip Day"
-              value={DOW_NAMES[cfg.excluded_dow] ?? `DOW ${cfg.excluded_dow}`}
+              value={excludedDowDisplay}
               overridden={isOverridden("excluded_dow")}
             />
           )}
@@ -585,35 +644,62 @@ function SessionConfigCard({
             value={cfg.tp1_ratio.toString()}
             overridden={isOverridden("tp1_ratio")}
           />
-          {stopIsOrb ? (
-            <ConfigItem
-              label="Stop ORB %"
-              value={`${cfg.stop_orb_pct}%`}
-              overridden={isOverridden("stop_orb_pct")}
-            />
+          {isIfvg ? (
+            <>
+              <ConfigItem
+                label="Gap ATR %"
+                value={`${cfg.min_gap_atr_pct}%`}
+                overridden={isOverridden("min_gap_atr_pct")}
+              />
+              <ConfigItem
+                label="Min Stop ATR %"
+                value={`${cfg.min_stop_atr_pct}%`}
+                overridden={isOverridden("min_stop_atr_pct")}
+              />
+              <ConfigItem
+                label="Max Sweep Bars"
+                value={cfg.max_bars_after_sweep.toString()}
+                overridden={isOverridden("max_bars_after_sweep")}
+              />
+              <ConfigItem
+                label="Max Inversion Bars"
+                value={cfg.max_inversion_bars.toString()}
+                overridden={isOverridden("max_inversion_bars")}
+              />
+            </>
           ) : (
-            <ConfigItem
-              label="Stop ATR %"
-              value={`${cfg.stop_atr_pct}%`}
-              overridden={isOverridden("stop_atr_pct")}
-            />
-          )}
-          {gapIsOrb ? (
-            <ConfigItem
-              label="Gap ORB %"
-              value={`${cfg.min_gap_orb_pct}%`}
-              overridden={isOverridden("min_gap_orb_pct")}
-            />
-          ) : (
-            <ConfigItem
-              label="Gap ATR %"
-              value={
-                cfg.max_gap_atr_pct
-                  ? `${cfg.min_gap_atr_pct} - ${cfg.max_gap_atr_pct}%`
-                  : `${cfg.min_gap_atr_pct}%`
-              }
-              overridden={isOverridden("min_gap_atr_pct") || isOverridden("max_gap_atr_pct")}
-            />
+            <>
+              {stopIsOrb ? (
+                <ConfigItem
+                  label="Stop ORB %"
+                  value={`${cfg.stop_orb_pct}%`}
+                  overridden={isOverridden("stop_orb_pct")}
+                />
+              ) : (
+                <ConfigItem
+                  label="Stop ATR %"
+                  value={`${cfg.stop_atr_pct}%`}
+                  overridden={isOverridden("stop_atr_pct")}
+                />
+              )}
+              {gapIsOrb ? (
+                <ConfigItem
+                  label="Gap ORB %"
+                  value={`${cfg.min_gap_orb_pct}%`}
+                  overridden={isOverridden("min_gap_orb_pct")}
+                />
+              ) : (
+                <ConfigItem
+                  label="Gap ATR %"
+                  value={
+                    cfg.max_gap_atr_pct
+                      ? `${cfg.min_gap_atr_pct} - ${cfg.max_gap_atr_pct}%`
+                      : `${cfg.min_gap_atr_pct}%`
+                  }
+                  overridden={isOverridden("min_gap_atr_pct") || isOverridden("max_gap_atr_pct")}
+                />
+              )}
+            </>
           )}
         </div>
 
@@ -643,6 +729,13 @@ function SessionConfigCard({
             value={`$${maxSingleRisk}`}
             overridden={maxRiskOverridden || isOverridden("max_single_risk_usd")}
           />
+          {isIfvg && (
+            <ConfigItem
+              label="Qty Multiplier"
+              value={`${cfg.qty_multiplier}x`}
+              overridden={isOverridden("qty_multiplier")}
+            />
+          )}
           <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
           <ConfigItem
             label="BE Offset"

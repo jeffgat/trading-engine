@@ -41,6 +41,22 @@ class Bar:
     volume: int
 
 
+@dataclass
+class TradeRecord:
+    """Completed trade record for cross-session history (e.g. G5 gate)."""
+
+    session: str          # e.g. "NQ_Asia", "ES_Asia", "NQ_LDN"
+    date: str             # YYYYMMDD (session start date)
+    direction: int        # +1 long, -1 short
+    entry_price: float
+    stop_price: float
+    tp1_price: float
+    tp2_price: float
+    exit_type: str        # sl, tp1_partial, tp1_be, tp1_eod, tp2, tp2_direct, eod, cancelled
+    tp1_hit: bool         # critical for G5 gate
+    timestamp: str        # ISO format exit timestamp
+
+
 # ---------------------------------------------------------------------------
 # State enum
 # ---------------------------------------------------------------------------
@@ -196,6 +212,10 @@ class SessionEngine:
 
     # Optional callback for dashboard state change notifications
     on_state_change: Callable[[dict], None] | None = None
+    # Optional callback for recording completed trades (G5 gate, history)
+    on_trade_exit: Callable[[TradeRecord], None] | None = None
+    # G5 gate: callback returns True if session should be skipped for a date
+    g5_gate_check: Callable[[str], bool] | None = None
 
     # Internal state (reset daily)
     _state: State = field(default=State.IDLE, init=False)
@@ -263,6 +283,25 @@ class SessionEngine:
         """Notify dashboard of a state transition."""
         if self.on_state_change is not None:
             self.on_state_change(self.status_dict())
+
+    def _emit_trade_record(self, exit_type: str) -> None:
+        """Record a completed trade for cross-session history (G5 gate etc.)."""
+        if self.on_trade_exit is None:
+            return
+        levels = self._levels
+        record = TradeRecord(
+            session=self.name,
+            date=self._current_date,
+            direction=levels.direction if levels else 0,
+            entry_price=levels.entry if levels else 0.0,
+            stop_price=levels.stop if levels else 0.0,
+            tp1_price=levels.tp1 if levels else 0.0,
+            tp2_price=levels.tp2 if levels else 0.0,
+            exit_type=exit_type,
+            tp1_hit=self._tp1_hit,
+            timestamp=datetime.now().isoformat(),
+        )
+        self.on_trade_exit(record)
 
     # ------------------------------------------------------------------
     # Time checks
@@ -645,7 +684,14 @@ class SessionEngine:
                 self._orb_high, self._orb_low,
             )
         else:
-            # ORB window closed — ready to scan
+            # ORB window closed — check G5 gate before scanning
+            if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
+                self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
+                self._state = State.FLAT
+                self._notify_state_change()
+                return
+
+            # Ready to scan
             self._state = State.SCANNING
             self._log_trade(
                 "ORB_READY",
@@ -864,6 +910,7 @@ class SessionEngine:
                 f"dir={direction_str} bar_time={bar.timestamp} resolution=5m",
             )
             await self.broker.send_flatten(ticker=self.exec_ticker)
+            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -888,6 +935,7 @@ class SessionEngine:
                 % (direction_str, levels.stop, bar.timestamp),
             )
             await self.broker.send_flatten(ticker=self.exec_ticker)
+            self._emit_trade_record("sl")
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -953,6 +1001,7 @@ class SessionEngine:
                     % (direction_str, levels.be, bar.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -970,6 +1019,7 @@ class SessionEngine:
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -988,6 +1038,7 @@ class SessionEngine:
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -1069,6 +1120,7 @@ class SessionEngine:
                 f"dir={direction_str} tick_time={tick.timestamp} resolution=1s",
             )
             await self.broker.send_flatten(ticker=self.exec_ticker)
+            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
             self._notify_state_change()
             return
@@ -1094,6 +1146,7 @@ class SessionEngine:
                     % (direction_str, levels.stop, tick.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -1105,6 +1158,7 @@ class SessionEngine:
                     % (direction_str, levels.stop, tick.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -1156,6 +1210,7 @@ class SessionEngine:
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -1174,6 +1229,7 @@ class SessionEngine:
                     % (direction_str, levels.be, tick.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return
@@ -1185,6 +1241,7 @@ class SessionEngine:
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._notify_state_change()
                 return

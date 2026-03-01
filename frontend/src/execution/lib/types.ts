@@ -47,12 +47,16 @@ export interface LogResponse<T> {
 }
 
 export interface SessionConfig {
+  type: "continuation" | "ifvg";
+  // ORB fields (continuation only)
   orb_start: string;
   orb_end: string;
+  // Common time fields
   entry_start: string;
   entry_end: string;
   flat_start: string;
   flat_end: string;
+  // Continuation strategy fields
   stop_atr_pct: number;
   stop_basis: string;
   stop_orb_pct: number;
@@ -60,8 +64,16 @@ export interface SessionConfig {
   max_gap_atr_pct: number;
   gap_filter_basis: string;
   min_gap_orb_pct: number;
+  // IFVG strategy fields
+  min_stop_atr_pct: number;
+  max_bars_after_sweep: number;
+  max_inversion_bars: number;
+  qty_multiplier: number;
+  // Common strategy fields
   rr: number;
   tp1_ratio: number;
+  long_only: boolean;
+  // Risk & sizing
   risk_usd: number;
   point_value: number;
   min_qty: number;
@@ -70,7 +82,7 @@ export interface SessionConfig {
   be_offset_ticks: number;
   min_tick: number;
   exec_ticker: string;
-  excluded_dow: number | null;
+  excluded_dow: number | number[] | null;
 }
 
 export interface ConfigResponse {

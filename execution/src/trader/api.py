@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from .overrides import EDITABLE_FIELDS, load_overrides, save_overrides, validate_fields
 
 if TYPE_CHECKING:
-    from .engine import SessionEngine
+    from .engine import SessionEngine, TradeRecord
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class DashboardState:
     config: dict = field(default_factory=dict)
     mode: str = "DRY-RUN"
     start_time: float = field(default_factory=time.time)
+    trade_history: list[TradeRecord] = field(default_factory=list)
     _ws_clients: set[WebSocket] = field(default_factory=set, repr=False)
 
     async def broadcast(self, message: dict) -> None:
@@ -55,6 +56,18 @@ class DashboardState:
                 dead.append(ws)
         for ws in dead:
             self._ws_clients.discard(ws)
+
+    def record_trade(self, record: TradeRecord) -> None:
+        """Called by engines on trade exit. Stores record for G5 gate queries."""
+        self.trade_history.append(record)
+        logger.info("Trade recorded: %s %s exit=%s tp1=%s", record.session, record.date, record.exit_type, record.tp1_hit)
+
+    def asia_tp1_hit_for_date(self, date: str) -> bool:
+        """Check if any Asia session hit TP1 on the given date (for G5 gate)."""
+        for r in self.trade_history:
+            if r.date == date and r.tp1_hit and r.session in ("NQ_Asia", "ES_Asia"):
+                return True
+        return False
 
     def on_state_change(self, status: dict) -> None:
         """Called by engines on state transitions. Schedules WS broadcast."""
@@ -360,6 +373,19 @@ def create_app(state: DashboardState) -> FastAPI:
         )
         return {"entries": entries, "total": total, "limit": limit, "offset": offset}
 
+    @app.get("/api/trades/history")
+    async def get_trade_history(
+        session: str = Query("", description="Filter by session name"),
+        limit: int = Query(100, ge=1, le=1000),
+    ):
+        records = state.trade_history
+        if session:
+            records = [r for r in records if r.session == session]
+        # newest first, then limit
+        records = list(reversed(records))[:limit]
+        from dataclasses import asdict
+        return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+
     @app.get("/api/config")
     async def get_config():
         overrides = load_overrides()
@@ -378,18 +404,21 @@ def create_app(state: DashboardState) -> FastAPI:
 
     @app.patch("/api/config/sessions/{session_name}")
     async def update_session_config(session_name: str, body: SessionOverrideRequest):
+        from .overrides import IFVG_EDITABLE_FIELDS
         engine = _find_engine(state, session_name)
         if engine is None:
             raise HTTPException(404, f"Session '{session_name}' not found")
 
-        valid_fields, errors = validate_fields(body.overrides)
+        allowed = IFVG_EDITABLE_FIELDS if _is_ifvg_engine(engine) else None
+        valid_fields, errors = validate_fields(body.overrides, allowed=allowed)
         if errors:
             raise HTTPException(422, detail=errors)
         if not valid_fields:
             raise HTTPException(400, "No valid fields to update")
 
-        # Safety: reject if engine is mid-trade
-        if engine._state.value in ("armed_long", "filled", "managing"):
+        # Safety: reject if engine is mid-trade (covers both SessionEngine and IFVGEngine states)
+        blocked_states = {"armed_long", "filled", "managing", "armed_limit"}
+        if engine._state.value in blocked_states:
             raise HTTPException(
                 409,
                 f"Session '{session_name}' is in state '{engine._state.value}'. "
@@ -434,7 +463,7 @@ def create_app(state: DashboardState) -> FastAPI:
         if engine is None:
             raise HTTPException(404, f"Session '{session_name}' not found")
 
-        if engine._state.value in ("armed_long", "filled", "managing"):
+        if engine._state.value in {"armed_long", "filled", "managing", "armed_limit"}:
             raise HTTPException(
                 409, "Cannot reset config while a trade is active",
             )
@@ -513,7 +542,7 @@ def _find_engine(state: DashboardState, name: str):
 
 
 def _apply_overrides_to_engine(engine, fields: dict) -> None:
-    """Apply override fields to a live SessionEngine."""
+    """Apply override fields to a live SessionEngine or IFVGEngine."""
     from .engine import _parse_time
 
     time_fields = {"orb_start", "orb_end", "entry_start", "entry_end",
@@ -524,8 +553,9 @@ def _apply_overrides_to_engine(engine, fields: dict) -> None:
 
     # Re-parse cached time objects if any time field changed
     if time_fields & fields.keys():
-        engine._orb_start_t = _parse_time(engine.orb_start)
-        engine._orb_end_t = _parse_time(engine.orb_end)
+        if hasattr(engine, "_orb_start_t"):
+            engine._orb_start_t = _parse_time(engine.orb_start)
+            engine._orb_end_t = _parse_time(engine.orb_end)
         engine._entry_start_t = _parse_time(engine.entry_start)
         engine._entry_end_t = _parse_time(engine.entry_end)
         engine._flat_start_t = _parse_time(engine.flat_start)
@@ -533,37 +563,59 @@ def _apply_overrides_to_engine(engine, fields: dict) -> None:
 
 
 def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
-    """Reset engine fields back to SESSION_CONFIGS defaults."""
+    """Reset engine fields back to config defaults."""
     from .engine import _parse_time
-    from .main import SESSION_CONFIGS
+    from .main import SESSION_CONFIGS, IFVG_SESSION_CONFIGS
+    from .overrides import IFVG_EDITABLE_FIELDS
 
-    defaults = SESSION_CONFIGS.get(session_name, {})
     risk = config.get("risk", {})
 
-    for key in EDITABLE_FIELDS:
-        if key in defaults:
-            setattr(engine, key, defaults[key])
-        elif key == "risk_usd":
-            setattr(engine, key, risk.get("risk_usd", 250))
-        elif key == "min_qty":
-            setattr(engine, key, risk.get("min_qty", 1.0))
-        elif key == "max_single_risk_usd":
-            setattr(engine, key, risk.get("max_single_risk_usd", 500.0))
-        elif key == "be_offset_ticks":
-            setattr(engine, key, risk.get("be_offset_ticks", 0))
+    if _is_ifvg_engine(engine):
+        defaults = IFVG_SESSION_CONFIGS.get(session_name, {})
+        for key in IFVG_EDITABLE_FIELDS:
+            if key in defaults:
+                setattr(engine, key, defaults[key])
+            elif key == "risk_usd":
+                setattr(engine, key, risk.get("risk_usd", 250))
+            elif key == "min_qty":
+                setattr(engine, key, risk.get("min_qty", 1.0))
+    else:
+        defaults = SESSION_CONFIGS.get(session_name, {})
+        for key in EDITABLE_FIELDS:
+            if key in defaults:
+                setattr(engine, key, defaults[key])
+            elif key == "risk_usd":
+                setattr(engine, key, risk.get("risk_usd", 250))
+            elif key == "min_qty":
+                setattr(engine, key, risk.get("min_qty", 1.0))
+            elif key == "max_single_risk_usd":
+                setattr(engine, key, risk.get("max_single_risk_usd", 500.0))
+            elif key == "be_offset_ticks":
+                setattr(engine, key, risk.get("be_offset_ticks", 0))
 
     # Re-parse cached time objects
-    engine._orb_start_t = _parse_time(engine.orb_start)
-    engine._orb_end_t = _parse_time(engine.orb_end)
+    if hasattr(engine, "_orb_start_t"):
+        engine._orb_start_t = _parse_time(engine.orb_start)
+        engine._orb_end_t = _parse_time(engine.orb_end)
     engine._entry_start_t = _parse_time(engine.entry_start)
     engine._entry_end_t = _parse_time(engine.entry_end)
     engine._flat_start_t = _parse_time(engine.flat_start)
     engine._flat_end_t = _parse_time(engine.flat_end)
 
 
+def _is_ifvg_engine(engine) -> bool:
+    """Check if an engine is an IFVGEngine (vs SessionEngine)."""
+    return hasattr(engine, "qty_multiplier") and not hasattr(engine, "orb_start")
+
+
 def _defaults_for_session(name: str) -> dict:
-    """Get the raw SESSION_CONFIGS defaults for a session (editable fields only)."""
-    from .main import SESSION_CONFIGS
+    """Get the raw config defaults for a session (editable fields only)."""
+    from .main import SESSION_CONFIGS, IFVG_SESSION_CONFIGS
+
+    cfg = IFVG_SESSION_CONFIGS.get(name)
+    if cfg is not None:
+        from .overrides import IFVG_EDITABLE_FIELDS
+        return {k: v for k, v in cfg.items() if k in IFVG_EDITABLE_FIELDS}
 
     cfg = SESSION_CONFIGS.get(name, {})
     return {k: v for k, v in cfg.items() if k in EDITABLE_FIELDS}
@@ -571,7 +623,33 @@ def _defaults_for_session(name: str) -> dict:
 
 def _session_info(engine) -> dict:
     """Extract session config info from an engine instance."""
+    if _is_ifvg_engine(engine):
+        return {
+            "type": "ifvg",
+            "entry_start": engine.entry_start,
+            "entry_end": engine.entry_end,
+            "flat_start": engine.flat_start,
+            "flat_end": engine.flat_end,
+            "rr": engine.rr,
+            "tp1_ratio": engine.tp1_ratio,
+            "min_gap_atr_pct": engine.min_gap_atr_pct,
+            "min_stop_atr_pct": engine.min_stop_atr_pct,
+            "max_bars_after_sweep": engine.max_bars_after_sweep,
+            "max_inversion_bars": engine.max_inversion_bars,
+            "risk_usd": engine.risk_usd,
+            "point_value": engine.point_value,
+            "min_qty": engine.min_qty,
+            "max_single_risk_usd": engine.max_single_risk_usd,
+            "qty_step": engine.qty_step,
+            "qty_multiplier": engine.qty_multiplier,
+            "be_offset_ticks": engine.be_offset_ticks,
+            "min_tick": engine.min_tick,
+            "long_only": engine.long_only,
+            "excluded_dow": engine.excluded_dow,
+            "exec_ticker": engine.exec_ticker,
+        }
     return {
+        "type": "continuation",
         "orb_start": engine.orb_start,
         "orb_end": engine.orb_end,
         "entry_start": engine.entry_start,

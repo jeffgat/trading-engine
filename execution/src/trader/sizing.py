@@ -57,6 +57,7 @@ def compute_trade_levels(
     min_stop_pts: float = 0.0,
     min_tp1_pts: float = 0.0,
     max_single_risk_usd: float = 500.0,
+    qty_multiplier: float = 1.0,
 ) -> TradeLevels | None:
     """Compute all trade levels and position size.
 
@@ -111,6 +112,11 @@ def compute_trade_levels(
             qty = min_qty
         else:
             return None
+
+    # Apply qty multiplier (e.g. 2x for LSI strategy)
+    if qty_multiplier != 1.0:
+        qty = _floor_to_step(qty * qty_multiplier, qty_step)
+        qty = max(qty, min_qty)
 
     is_single = qty <= min_qty
     if is_single:

@@ -298,10 +298,10 @@ function MonthlyHeatmapRow({
         const scaled = raw * scale;
 
         // Net R: fixed scale — full green at +10R, full red at -10R, neutral at 0
-        // Max DD: ≤10R=green, >10R steep gradient to red, full red at 12R
+        // Max DD: ≤5R=green, gradient to red at 8R, full red past 8R
         const R_SCALE = 10;
-        const DD_GREEN_FLOOR = 8;
-        const DD_RED_CEILING = 9;
+        const DD_GREEN_FLOOR = 5;
+        const DD_RED_CEILING = 8;
         const t = mode === "net-r"
           ? Math.max(0, Math.min(1, (scaled / R_SCALE + 1) / 2))
           : scaled <= DD_GREEN_FLOOR ? 1

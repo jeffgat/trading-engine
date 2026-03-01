@@ -1,7 +1,8 @@
 """Entry point for the ORB live execution service.
 
-Runs the 5-leg combined longs portfolio:
-  NQ NY R11, NQ Asia R9, GC NY R3, ES NY Final, ES Asia Final
+Runs the 7-leg combined longs portfolio:
+  NQ NY R11, NQ Asia R9, GC NY R3, ES NY Final, ES Asia Final,
+  NQ LDN (G5 gated), NQ NY LSI (IFVG 2x)
 
 Usage:
     # Live mode (dry-run by default)
@@ -91,6 +92,8 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
+        "risk_usd": 199,
+        "max_single_risk_usd": 300,
     },
     # --- NQ Asia R9 (ORB-based stop, Tuesday exclusion) ---
     "NQ_Asia": {
@@ -117,6 +120,8 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
+        "risk_usd": 163,
+        "max_single_risk_usd": 300,
     },
     # --- GC NY R3 (ATR-based stop, Friday+FOMC exclusion, ICF ON) ---
     "GC_NY": {
@@ -141,6 +146,8 @@ SESSION_CONFIGS = {
         "fomc_exclusion": True,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
+        "risk_usd": 112,
+        "max_single_risk_usd": 300,
     },
     # --- ES NY Final (ATR-based stop, Thursday exclusion, dual floor) ---
     "ES_NY": {
@@ -165,6 +172,8 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
+        "risk_usd": 202,
+        "max_single_risk_usd": 300,
     },
     # --- ES Asia Final (ORB-based stop, ATR-based gap, no DOW excl, dual floor) ---
     "ES_Asia": {
@@ -191,6 +200,64 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
+        "risk_usd": 132,
+        "max_single_risk_usd": 300,
+    },
+    # --- NQ LDN (ATR-based stop, G5 gated — skip when Asia hit TP1) ---
+    "NQ_LDN": {
+        "orb_start": "03:00",
+        "orb_end": "03:30",
+        "entry_start": "03:30",
+        "entry_end": "08:25",
+        "flat_start": "08:20",
+        "flat_end": "08:25",
+        "stop_atr_pct": 1.5,
+        "stop_basis": "atr",
+        "min_gap_atr_pct": 1.0,
+        "max_gap_atr_pct": 0,
+        "gap_filter_basis": "atr",
+        "rr": 6.0,
+        "tp1_ratio": 0.7,
+        "instrument": "NQ",
+        "atr_length": 10,
+        "long_only": True,
+        "icf_enabled": False,
+        "excluded_dow": None,  # no DOW exclusion; G5 gate applied instead
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+        "risk_usd": 72,
+        "max_single_risk_usd": 300,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# IFVG reversal (LSI) session configs — separate from continuation legs
+# ---------------------------------------------------------------------------
+
+IFVG_SESSION_CONFIGS = {
+    # --- NQ NY LSI (IFVG reversal, 2x sizing, limit entry) ---
+    "NQ_NY_LSI": {
+        "entry_start": "09:30",
+        "entry_end": "15:30",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "rr": 3.0,
+        "tp1_ratio": 0.3,
+        "min_gap_atr_pct": 5.0,  # 5% ATR-10
+        "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
+        "max_bars_after_sweep": 20,
+        "max_inversion_bars": 10,
+        "instrument": "NQ",
+        "atr_length": 10,
+        "long_only": True,
+        "excluded_dow": [0, 1, 4],  # Mon, Tue, Fri
+        "qty_multiplier": 2.0,
+        "be_offset_ticks": 4,
+        "risk_usd": 250,
+        "max_single_risk_usd": 300,
+        "killzones": [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
     },
 }
 
@@ -339,6 +406,88 @@ def build_engines(
     return engines, symbol_map, atr_lengths
 
 
+def build_ifvg_engines(
+    config: dict,
+    broker,
+    symbol_map: dict[str, list],
+    atr_lengths: dict[str, int],
+) -> list:
+    """Build IFVGEngine instances for IFVG/LSI sessions.
+
+    Mutates symbol_map and atr_lengths in-place to register the new engines.
+    """
+    from .ifvg_engine import IFVGEngine
+
+    risk = config.get("risk", {})
+    ifvg_enabled = config.get("sessions", {}).get("ifvg_enabled", [])
+    if not ifvg_enabled:
+        return []
+
+    half_days = tuple(config.get("dates", {}).get("half_days", [
+        "20250703", "20251128", "20251224", "20250109", "20260119",
+    ]))
+    excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
+
+    engines = []
+    for sess_name in ifvg_enabled:
+        sess_cfg = IFVG_SESSION_CONFIGS.get(sess_name)
+        if sess_cfg is None:
+            logger.warning("Unknown IFVG session '%s', skipping", sess_name)
+            continue
+
+        sess_instrument = sess_cfg.get("instrument", "NQ")
+        inst = INSTRUMENTS.get(sess_instrument, INSTRUMENTS["NQ"])
+        db_symbol = inst["db_symbol"]
+        exec_ticker = SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
+        exec_inst = INSTRUMENTS.get(exec_ticker, inst)
+
+        sess_atr_length = sess_cfg.get("atr_length", 10)
+        atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
+
+        # Handle excluded_dow as list → first value for single exclusion
+        excl_dow = sess_cfg.get("excluded_dow")
+
+        engine = IFVGEngine(
+            name=sess_name,
+            broker=broker,
+            exec_ticker=exec_ticker,
+            entry_start=sess_cfg["entry_start"],
+            entry_end=sess_cfg["entry_end"],
+            flat_start=sess_cfg["flat_start"],
+            flat_end=sess_cfg["flat_end"],
+            rr=sess_cfg["rr"],
+            tp1_ratio=sess_cfg["tp1_ratio"],
+            min_gap_atr_pct=sess_cfg.get("min_gap_atr_pct", 5.0),
+            min_stop_atr_pct=sess_cfg.get("min_stop_atr_pct", 0.05),
+            max_bars_after_sweep=sess_cfg.get("max_bars_after_sweep", 20),
+            max_inversion_bars=sess_cfg.get("max_inversion_bars", 10),
+            risk_usd=sess_cfg.get("risk_usd", risk.get("risk_usd", 250)),
+            point_value=exec_inst["point_value"],
+            min_qty=sess_cfg.get("min_qty", risk.get("min_qty", 1.0)),
+            qty_step=risk.get("qty_step", 1.0),
+            qty_multiplier=sess_cfg.get("qty_multiplier", 1.0),
+            be_offset_ticks=sess_cfg.get("be_offset_ticks", risk.get("be_offset_ticks", 0)),
+            min_tick=exec_inst["min_tick"],
+            max_single_risk_usd=sess_cfg.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
+            long_only=sess_cfg.get("long_only", True),
+            excluded_dow=excl_dow,
+            excluded_dates=excluded_dates,
+            half_days=half_days,
+            half_day_flat_start=config.get("dates", {}).get("half_day_flat_start", "12:50"),
+            half_day_flat_end=config.get("dates", {}).get("half_day_flat_end", "13:00"),
+            killzones=sess_cfg.get("killzones"),
+        )
+        engines.append(engine)
+        symbol_map.setdefault(db_symbol, []).append(engine)
+        logger.info(
+            "IFVG engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f)",
+            sess_name, sess_instrument, exec_ticker, db_symbol,
+            sess_cfg.get("qty_multiplier", 1.0),
+        )
+
+    return engines
+
+
 # ---------------------------------------------------------------------------
 # Main async loop
 # ---------------------------------------------------------------------------
@@ -372,17 +521,43 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
 
     # Build session engines with per-session instrument routing
     engines, symbol_map, atr_lengths = build_engines(config, broker)
-    if not engines:
+
+    # Build IFVG engines (mutates symbol_map and atr_lengths in-place)
+    ifvg_engines = build_ifvg_engines(config, broker, symbol_map, atr_lengths)
+    all_engines = engines + ifvg_engines
+
+    if not all_engines:
         logger.error("No session engines configured")
         sys.exit(1)
 
-    # Dashboard API
+    # Dashboard API — include both engine types
     mode = "LIVE" if not dry_run else "DRY-RUN"
-    dashboard = DashboardState(engines=engines, config=config, mode=mode)
+    dashboard = DashboardState(engines=all_engines, config=config, mode=mode)
 
-    # Wire state change callback into each engine
-    for engine in engines:
+    # Wire callbacks into each engine (both SessionEngine and IFVGEngine)
+    for engine in all_engines:
         engine.on_state_change = dashboard.on_state_change
+        engine.on_trade_exit = dashboard.record_trade
+
+    # Wire G5 gate for NQ_LDN: skip when Asia hit TP1 the prior night
+    def _g5_gate(ldn_date: str) -> bool:
+        """Return True to BLOCK the trade (Asia TP1 hit prior night)."""
+        from datetime import timedelta
+        try:
+            ldn_dt = datetime.strptime(ldn_date, "%Y%m%d")
+        except ValueError:
+            return False
+        # Asia session runs the evening before: date D-1 (or Friday → Sunday)
+        asia_dt = ldn_dt - timedelta(days=1)
+        # Skip weekends: if LDN is Monday, Asia was Friday night
+        while asia_dt.weekday() >= 5:
+            asia_dt -= timedelta(days=1)
+        asia_date_str = asia_dt.strftime("%Y%m%d")
+        return dashboard.asia_tp1_hit_for_date(asia_date_str)
+
+    for engine in engines:
+        if engine.name == "NQ_LDN":
+            engine.g5_gate_check = _g5_gate
 
     app = create_app(dashboard)
     tailer = LogTailer(dashboard)
@@ -441,7 +616,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     for symbol, target_engines in symbol_map.items():
         bars = intraday_5m.get(symbol, [])
         for engine in target_engines:
-            if engine.recover_opening_range(bars, now_et):
+            if hasattr(engine, "recover_opening_range") and engine.recover_opening_range(bars, now_et):
                 recovered += 1
     logger.info(
         "startup recovery complete: recovered_or=%d total_sessions=%d",

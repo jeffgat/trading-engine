@@ -150,7 +150,15 @@
       "Bash(git fetch origin)",
       "Bash(git merge origin/main --no-commit --no-ff)",
       "Bash(git stash pop)",
-      "Bash(npx vite build)"
+      "Bash(npx vite build)",
+      "Bash(echo $EXPERIMENTS_DB_PATH)",
+      "Bash(# Search by name curl -s \"\"http://143.110.148.234:8100/api/backtests?search=Combined+Longs+7-Leg&limit=5\"\")",
+      "Bash(# The result_id is bt-nq-gc-es-combined-longs-7-leg-gated-g5-n-1a5160 curl -s \"\"http://143.110.148.234:8100/api/backtests/bt-nq-gc-es-combined-longs-7-leg-gated-g5-n-1a5160\"\")",
+      "Bash(# Search for individual leg backtests - look for recent starred strategies curl -s \"\"http://143.110.148.234:8100/api/starred?limit=50\"\" | python3 -c \"\" import json, sys data = json.load\\(sys.stdin\\) result = data.get\\(''result'', data\\) if isinstance\\(result, list\\): for r in result: name = r.get\\(''experiment_name'', r.get\\(''name'', ''?''\\)\\) rid = r.get\\(''result_file'', r.get\\(''id'', ''?''\\)\\) inst = r.get\\(''instrument'', ''?''\\) trades = r.get\\(''total_trades'', ''?''\\) net_r = r.get\\(''total_r'', ''?''\\) print\\(f'' {rid} | {name} | {inst} | trades={trades} | R={net_r}''\\) else: print\\(str\\(result\\)[:2000]\\) \"\")",
+      "Bash(# Get LSI leg 7 details \\(NQ NY LSI fvg_limit v2 2x\\) curl -s \"\"http://143.110.148.234:8100/api/backtests/bt-nq-ny-lsi-fvg-limit-v2-long-2016-2026-fi-5302c0\"\")",
+      "Bash(# Get the 6-leg gated version details \\(the base before adding LSI\\) curl -s \"\"http://143.110.148.234:8100/api/backtests/bt-nq-gc-es-combined-longs-6-leg-gated-g5-s-8cf3c8\"\")",
+      "Bash(# Get the individual component run IDs from the 7-leg result # The 6-leg was built from 5-leg + NQ LDN gated, and 7-leg = 6-leg + LSI 2x # Let''s check for all the individual starred legs and their trade counts curl -s \"\"http://143.110.148.234:8100/api/starred?limit=50\"\")",
+      "Bash(git config --get-all remote.origin.url)"
     ]
   }
 }
