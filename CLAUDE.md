@@ -63,12 +63,12 @@ Every backtest and optimization **must** have a unique, descriptive `experiment_
 
 ## Per-Asset Learnings
 
-Maintain a living document for each asset in `python/learnings/`. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
+Maintain a living document for each asset in `backtesting/learnings/`. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
 
-- **Location**: `python/learnings/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
+- **Location**: `backtesting/learnings/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
 - **When to update**: After completing a strategy test, robust pipeline run, or discovering a significant finding for any asset
 - **What to include**: Instrument profile, strategies tested (with GO/NO-GO status), winning configs, key findings, parameter sensitivity, prop firm considerations
-- **Format**: See `python/learnings/GC.md` as the reference template
+- **Format**: See `backtesting/learnings/GC.md` as the reference template
 
 ### Rules for agents
 
@@ -84,7 +84,7 @@ Maintain a living document for each asset in `python/learnings/`. These files ca
 - **Trade simulation** (Numba-compiled): `_simulate_single_trade()` handles fill scanning, partial TP, breakeven stops
 - **One trade per session-day**: When both long and short setups exist, the first-to-fill wins
 
-### Key Modules
+### Key Modules (under `backtesting/src/orb_backtest/`)
 - `engine/simulator.py` — Core backtest loop, `run_backtest()` entry point, `TradeResult` schema
 - `signals/` — `fvg.py` (FVG detection), `orb.py` (ORB levels), `session.py` (time windows), `daily_atr.py`
 - `results/metrics.py` — Sharpe, Sortino, drawdown, profit factor, win rate, exit breakdown

@@ -1,0 +1,396 @@
+//@version=6
+strategy(
+     title              = "ORB V6 GC NY Cont Longs R3",
+     overlay            = true,
+     initial_capital    = 50000,
+     pyramiding         = 0,
+     margin_long        = 0,
+     margin_short       = 0,
+     commission_type    = strategy.commission.cash_per_contract,
+     commission_value   = 0.05,
+     calc_on_every_tick = true,
+     process_orders_on_close = true,
+     use_bar_magnifier  = true,
+     fill_orders_on_standard_ohlc = false
+)
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Risk Settings
+// ----------------------------------------------------------------------------------------
+riskUsd        = input.float(250, "Risk per trade ($)", step=500, group="Risk Settings")
+minQty         = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
+qtyStep        = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
+execPointValue = input.float(10.0, "Execution Point Value ($)", step=1.0, tooltip="Point value of the execution instrument (MGC=$10, GC=$100). Overrides chart syminfo for qty sizing.", group="Risk Settings")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - NY Session Settings (R3 — long only, ICF ON, Friday + FOMC exclusion)
+// ATR-based stop and gap filters
+// ----------------------------------------------------------------------------------------
+atrLength       = input.int(7, "ATR Length", minval=1, group="NY Session")
+sessionRTH      = input.session("0930-1600", "NY RTH (ny time)", group="NY Session")
+orbSession      = input.session("0930-0940", "ORB window (ny time)", tooltip="8m ORB approximated as 10m (2 bars) on 5m chart", group="NY Session")
+entryWindow     = input.session("0940-1200", "Entry window (ny time)", group="NY Session")
+flatWindow      = input.session("1330-1600", "Flat window (ny time)", group="NY Session")
+rr              = input.float(9.0, "Reward/Risk", step=0.25, group="NY Session")
+tp1Ratio        = input.float(0.35, "Partial TP & BE Level (0.35 = 35% of target)", step=0.05, minval=0.1, maxval=0.9, group="NY Session")
+minGapAtrPct    = input.float(3.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
+stopAtrPct      = input.float(4.5, "Stop Loss (% ATR)", step=0.5, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
+excludeFriday   = input.bool(true, "Exclude Friday sessions", tooltip="Skip NY sessions on Friday", group="NY Session")
+excludeFomc     = input.bool(true, "Exclude FOMC days", tooltip="Skip sessions on FOMC meeting days", group="NY Session")
+
+// ----------------------------------------------------------------------------------------
+// Inputs - Half-Day Early Close Dates
+// ----------------------------------------------------------------------------------------
+halfDayFlatWindow = input.session("1250-1300", "Half-Day Flat window (ny time)", group="Half-Day")
+halfDay1 = input.string("20250703", "Half-Day 1 (YYYYMMDD)", tooltip="Day before July 4th", group="Half-Day")
+halfDay2 = input.string("20251128", "Half-Day 2 (YYYYMMDD)", tooltip="Day after Thanksgiving", group="Half-Day")
+halfDay3 = input.string("20251224", "Half-Day 3 (YYYYMMDD)", tooltip="Christmas Eve", group="Half-Day")
+halfDay4 = input.string("20250109", "Half-Day 4 (YYYYMMDD)", tooltip="National Day of Mourning (one-off)", group="Half-Day")
+halfDay5 = input.string("20260119", "Half-Day 5 (YYYYMMDD)", tooltip="MLK Day 2026", group="Half-Day")
+halfDay6 = input.string("", "Half-Day 6 (YYYYMMDD)", tooltip="Leave blank if unused", group="Half-Day")
+
+// ----------------------------------------------------------------------------------------
+// Safety: intended for 5m charts
+// ----------------------------------------------------------------------------------------
+is5m = timeframe.isintraday and timeframe.multiplier == 5
+barClosed = barstate.isconfirmed
+
+// ----------------------------------------------------------------------------------------
+// Session filters
+// ----------------------------------------------------------------------------------------
+inRTH      = not na(time(timeframe.period, sessionRTH, "America/New_York"))
+inORB      = not na(time(timeframe.period, orbSession, "America/New_York"))
+inEntryWin = not na(time(timeframe.period, entryWindow, "America/New_York"))
+inFlatWin  = not na(time(timeframe.period, flatWindow, "America/New_York"))
+inHalfDayFlatWin = not na(time(timeframe.period, halfDayFlatWindow, "America/New_York"))
+afterCutoff = inRTH and not inEntryWin
+
+// new trading day
+newDay = ta.change(time("D")) != 0
+
+// ----------------------------------------------------------------------------------------
+// Date and DOW detection
+// ----------------------------------------------------------------------------------------
+currentMonth = month(time, "America/New_York")
+currentDay   = dayofmonth(time, "America/New_York")
+currentYear  = year(time, "America/New_York")
+
+// Half-day detection
+todayStr = str.format("{0,number,0000}{1,number,00}{2,number,00}", currentYear, currentMonth, currentDay)
+isHalfDay = todayStr == halfDay1 or todayStr == halfDay2 or todayStr == halfDay3 or todayStr == halfDay4 or (halfDay5 != "" and todayStr == halfDay5) or (halfDay6 != "" and todayStr == halfDay6)
+
+// DOW detection
+isFriday = dayofweek(time, "America/New_York") == dayofweek.friday
+
+// ----------------------------------------------------------------------------------------
+// FOMC Date Exclusion
+// Pine arrays have a 100k element limit — this list covers 2016–2026.
+// Update annually with new FOMC meeting dates.
+// ----------------------------------------------------------------------------------------
+todayInt = currentYear * 10000 + currentMonth * 100 + currentDay
+
+var int[] fomcDates = array.from(
+     20160127, 20160316, 20160427, 20160615, 20160727, 20160921, 20161102, 20161214,
+     20170201, 20170315, 20170503, 20170614, 20170726, 20170920, 20171101, 20171213,
+     20180131, 20180321, 20180502, 20180613, 20180801, 20180926, 20181108, 20181219,
+     20190130, 20190320, 20190501, 20190619, 20190731, 20190918, 20191030, 20191211,
+     20200129, 20200311, 20200429, 20200610, 20200729, 20200916, 20201105, 20201216,
+     20210127, 20210317, 20210428, 20210616, 20210728, 20210922, 20211103, 20211215,
+     20220126, 20220316, 20220504, 20220615, 20220727, 20220921, 20221102, 20221214,
+     20230201, 20230322, 20230503, 20230614, 20230726, 20230920, 20231101, 20231213,
+     20240131, 20240320, 20240501, 20240612, 20240731, 20240918, 20241107, 20241218,
+     20250129, 20250319, 20250507, 20250618, 20250730, 20250917, 20251029, 20251210,
+     20260128, 20260318, 20260429, 20260610, 20260729, 20260916, 20261104, 20261216
+)
+
+isFomc = excludeFomc and array.includes(fomcDates, todayInt)
+
+// Combined session skip
+sessionSkipped = (excludeFriday and isFriday) or isFomc
+
+// ----------------------------------------------------------------------------------------
+// Session State Variables (long only)
+// ----------------------------------------------------------------------------------------
+var float orbHigh  = na
+var float orbLow   = na
+var bool  orbReady = false
+var bool  hasTradedToday = false
+var int   closedTradesAtDayStart = 0
+
+var bool  longSetupActive     = false
+var bool  longFirstFvgFound   = false
+
+var float longStopStored      = na
+var float longTargetStored    = na
+var float longHalfwayStored   = na
+var float longEntryStored     = na
+var float longQtyStored       = na
+var float longHalfQty         = na
+var bool  longBEActive        = false
+var bool  longSingleContract  = false
+var float longFilledEntry     = na
+
+var int longSetupBar = na
+var int fillBar      = na
+
+var bool  tp1Alerted = false
+var float prevPos = 0
+
+// ----------------------------------------------------------------------------------------
+// Reset on new day
+// ----------------------------------------------------------------------------------------
+if newDay
+    orbHigh := na
+    orbLow  := na
+    orbReady := false
+    hasTradedToday := false
+    closedTradesAtDayStart := strategy.closedtrades
+
+    longSetupActive    := false
+    longFirstFvgFound  := false
+    longStopStored     := na
+    longTargetStored   := na
+    longHalfwayStored  := na
+    longEntryStored    := na
+    longQtyStored      := na
+    longHalfQty        := na
+    longBEActive       := false
+    longSingleContract := false
+    longFilledEntry    := na
+    longSetupBar       := na
+    fillBar            := na
+
+    strategy.cancel("GL")
+
+// ----------------------------------------------------------------------------------------
+// Detect trade occurred
+// ----------------------------------------------------------------------------------------
+tradeHappened = (strategy.opentrades > 0 or strategy.closedtrades > closedTradesAtDayStart)
+
+if tradeHappened and not hasTradedToday
+    hasTradedToday := true
+    longSetupActive := false
+    longFirstFvgFound := true
+    longEntryStored := na
+    strategy.cancel("GL")
+
+// ----------------------------------------------------------------------------------------
+// Build ORB (09:30-09:40, 2 bars — 10m approximation of 8m ORB)
+// ----------------------------------------------------------------------------------------
+if inORB and inRTH and is5m and not sessionSkipped
+    orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+    orbLow  := na(orbLow)  ? low  : math.min(orbLow, low)
+
+if not inORB and inRTH and is5m and not orbReady and not na(orbHigh) and not na(orbLow) and not sessionSkipped
+    orbReady := true
+
+// ----------------------------------------------------------------------------------------
+// Daily ATR (ATR-7)
+// ----------------------------------------------------------------------------------------
+dailyATR = request.security(syminfo.tickerid, "D", ta.atr(atrLength)[1], lookahead=barmerge.lookahead_on)
+
+// ----------------------------------------------------------------------------------------
+// FVG size requirements (ATR-based gap filter)
+// ----------------------------------------------------------------------------------------
+minGap = (minGapAtrPct / 100) * nz(dailyATR)
+
+// ----------------------------------------------------------------------------------------
+// FVG detection (long only — ICF ON)
+// ----------------------------------------------------------------------------------------
+longFvgTop    = low
+longFvgBottom = high[2]
+longGapSize   = longFvgTop - longFvgBottom
+
+baseLongFVG = high[2] < low and high[2] < high[1] and low[2] < low
+
+// ICF ON: accept FVG if gap zone is above ORB high, OR impulse candle closed above ORB high
+longGapValid = longGapSize >= minGap
+longOrbOk    = (longFvgTop > orbHigh) or (close[1] > orbHigh)
+longFVG      = baseLongFVG and longOrbOk and longGapValid
+
+// ----------------------------------------------------------------------------------------
+// qty rounding helpers
+// ----------------------------------------------------------------------------------------
+floorToStep(x, step) =>
+    step <= 0 ? x : math.floor(x / step) * step
+
+// ----------------------------------------------------------------------------------------
+// Activate setup (long only, ATR-based stop)
+// ----------------------------------------------------------------------------------------
+canArmSetup = (is5m and barClosed and inRTH and inEntryWin and orbReady and not hasTradedToday and not sessionSkipped and strategy.position_size == 0 and not longSetupActive)
+
+if canArmSetup and not longFirstFvgFound and longFVG
+    entry   = longFvgTop
+    stop    = entry - (stopAtrPct / 100) * nz(dailyATR)
+    riskPts = entry - stop
+
+    if riskPts > 0
+        qtyRaw = riskUsd / (riskPts * execPointValue)
+        qty    = floorToStep(qtyRaw, qtyStep)
+        isSingleContract = qty <= minQty
+        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
+        halfQty := math.max(halfQty, minQty)
+
+        if qty >= minQty
+            longStopStored     := stop
+            longTargetStored   := entry + rr * riskPts
+            longHalfwayStored  := entry + (rr * riskPts * tp1Ratio)
+            longEntryStored    := entry
+            longQtyStored      := qty
+            longHalfQty        := halfQty
+            longSingleContract := isSingleContract
+            longSetupActive    := true
+            longFirstFvgFound  := true
+            longSetupBar       := bar_index
+
+// ----------------------------------------------------------------------------------------
+// Track actual entry fill price
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and na(longFilledEntry) and longSetupActive
+    longFilledEntry := strategy.opentrades.entry_price(0)
+    fillBar := bar_index
+
+// Reset when flat
+if strategy.position_size == 0
+    tp1Alerted := false
+
+// ----------------------------------------------------------------------------------------
+// Update breakeven state (gated on fill bar + 1)
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and not na(fillBar) and bar_index > fillBar
+    if longSingleContract
+        if not na(longHalfwayStored) and high >= longHalfwayStored
+            longBEActive := true
+    else
+        positionReduced = strategy.position_size < longQtyStored and longQtyStored > 0 and not na(longFilledEntry)
+        if positionReduced
+            longBEActive := true
+
+// ----------------------------------------------------------------------------------------
+// Entry orders (long only)
+// ----------------------------------------------------------------------------------------
+if is5m and inRTH and inEntryWin and not hasTradedToday and not sessionSkipped and strategy.position_size == 0
+    if longSetupActive and bar_index > longSetupBar
+        strategy.entry("GL", strategy.long, qty=longQtyStored, limit=longEntryStored)
+
+// ----------------------------------------------------------------------------------------
+// Exit orders (gated on fill bar, BE at entry = 0 offset)
+// ----------------------------------------------------------------------------------------
+if strategy.position_size > 0 and not na(fillBar) and bar_index >= fillBar
+    beStopPrice = not na(longFilledEntry) ? longFilledEntry : longEntryStored
+    finalStop = longBEActive ? beStopPrice : longStopStored
+
+    if longSingleContract
+        strategy.exit("GL-F", from_entry="GL", stop=finalStop, limit=longTargetStored, comment_loss=longBEActive ? "g-l-be" : "g-l-sl", comment_profit="g-l-tp2")
+    else
+        strategy.exit("GL-P", from_entry="GL", qty=longHalfQty, stop=finalStop, limit=longHalfwayStored, comment_loss=longBEActive ? "g-l-be" : "g-l-sl", comment_profit="g-l-tp1")
+        strategy.exit("GL-F", from_entry="GL", stop=finalStop, limit=longTargetStored, comment_loss=longBEActive ? "g-l-be" : "g-l-sl", comment_profit="g-l-tp2")
+
+// ----------------------------------------------------------------------------------------
+// Cancel pending orders after cutoff
+// ----------------------------------------------------------------------------------------
+if afterCutoff
+    if longSetupActive and strategy.position_size == 0
+        alert('{"ticker": "MGC", "action": "cancel"}', alert.freq_once_per_bar_close)
+    strategy.cancel("GL")
+    longSetupActive := false
+    longEntryStored := na
+    longSetupBar := na
+
+if not inRTH
+    if longSetupActive and strategy.position_size == 0
+        alert('{"ticker": "MGC", "action": "cancel"}', alert.freq_once_per_bar_close)
+    strategy.cancel("GL")
+    longSetupActive := false
+    longEntryStored := na
+    longSetupBar := na
+
+// ----------------------------------------------------------------------------------------
+// Flat at end of session
+// ----------------------------------------------------------------------------------------
+flatNowEod = isHalfDay ? inHalfDayFlatWin : inFlatWin
+if flatNowEod and strategy.position_size > 0
+    strategy.close("GL", comment="gc-eod-flat")
+
+// ----------------------------------------------------------------------------------------
+// Hidden Plots for TradersPost Webhooks
+// ----------------------------------------------------------------------------------------
+currentTP1 = strategy.position_size > 0 ? longHalfwayStored : na
+currentTP2 = strategy.position_size > 0 ? longTargetStored : na
+currentStop = strategy.position_size > 0 ? longStopStored : na
+currentBE = strategy.position_size > 0 ? longFilledEntry : na
+currentEntry = strategy.position_size > 0 ? longEntryStored : na
+currentQty = (longSetupActive and longSetupActive[1] == false) ? longQtyStored : strategy.position_size > 0 ? longQtyStored : na
+currentHalfQty = strategy.position_size > 0 ? longHalfQty : na
+currentSingleContract = strategy.position_size > 0 ? longSingleContract : false
+
+setupEntry = (longSetupActive and longSetupActive[1] == false) ? longEntryStored : na
+setupStop = (longSetupActive and longSetupActive[1] == false) ? longStopStored : na
+setupTP1 = (longSetupActive and longSetupActive[1] == false) ? longHalfwayStored : na
+setupTP2 = (longSetupActive and longSetupActive[1] == false) ? longTargetStored : na
+setupHalfQty = (longSetupActive and longSetupActive[1] == false) ? longHalfQty : na
+setupSingleContract = (longSetupActive and longSetupActive[1] == false) ? longSingleContract : false
+
+plot(currentTP1, "TP1", display=display.none)
+plot(currentTP2, "TP2", display=display.none)
+plot(currentStop, "StopLoss", display=display.none)
+plot(currentBE, "BreakevenPrice", display=display.none)
+plot(currentEntry, "Entry", display=display.none)
+plot(currentQty, "Quantity", display=display.none)
+plot(currentHalfQty, "HalfQuantity", display=display.none)
+plot(setupEntry, "SetupEntry", display=display.none)
+plot(setupStop, "SetupStop", display=display.none)
+plot(setupTP1, "SetupTP1", display=display.none)
+plot(setupTP2, "SetupTP2", display=display.none)
+
+// ----------------------------------------------------------------------------------------
+// Alert Conditions for TradersPost
+// ----------------------------------------------------------------------------------------
+longEntrySignal = (longSetupActive and longSetupActive[1] == false)
+
+// TP1 hit detection (long only)
+positionMature = not na(fillBar) and bar_index > fillBar
+
+tp1TouchLong = strategy.position_size > 0 and not na(currentTP1) and high >= currentTP1 and positionMature
+tp1HitLong = (strategy.position_size > 0 and not currentSingleContract and not tp1Alerted and positionMature) and (
+    (strategy.position_size < strategy.position_size[1]) or tp1TouchLong
+)
+tp1HitSingleLong = (strategy.position_size > 0 and currentSingleContract and not tp1Alerted and positionMature) and tp1TouchLong
+
+if longEntrySignal
+    alert('{"ticker": "MGC", "action": "exit"}', alert.freq_once_per_bar_close)
+    if setupSingleContract
+        alert('{"ticker": "MGC", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+    else
+        alert('{"ticker": "MGC", "action": "buy", "quantity": ' + str.tostring(currentQty) + ', "price": ' + str.tostring(setupEntry) + ', "takeProfit": {"limitPrice": ' + str.tostring(setupTP2) + '}, "stopLoss": {"type": "stop", "stopPrice": ' + str.tostring(setupStop) + '}, "delay": 3}', alert.freq_once_per_bar_close)
+if tp1HitLong
+    alert('{"ticker": "MGC", "action": "exit", "quantity": ' + str.tostring(currentHalfQty) + '}', alert.freq_once_per_bar)
+    alert('{"ticker": "MGC", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    alert('{"ticker": "MGC", "action": "sell", "orderType": "limit", "limitPrice": ' + str.tostring(currentTP2) + ', "quantity": ' + str.tostring(currentHalfQty) + ', "sentiment": "flat", "cancel": false, "delay": 5}', alert.freq_once_per_bar)
+    tp1Alerted := true
+if tp1HitSingleLong
+    alert('{"ticker": "MGC", "action": "sell", "orderType": "stop", "stopPrice": ' + str.tostring(currentBE) + ', "quantity": ' + str.tostring(currentQty) + ', "sentiment": "flat", "delay": 3}', alert.freq_once_per_bar)
+    tp1Alerted := true
+
+// ----------------------------------------------------------------------------------------
+// Final exit alert - flatten and cancel remaining orders
+// ----------------------------------------------------------------------------------------
+flatNow = prevPos != 0 and strategy.position_size == 0
+if flatNow
+    alert('{"ticker": "MGC", "action": "exit"}', alert.freq_once_per_bar)
+
+prevPos := strategy.position_size
+
+// ----------------------------------------------------------------------------------------
+// EOD Flat Alerts
+// ----------------------------------------------------------------------------------------
+eodFlatAlertNow = isHalfDay ? inHalfDayFlatWin : inFlatWin
+if eodFlatAlertNow and strategy.position_size > 0
+    alert('{"ticker": "MGC", "action": "exit"}', alert.freq_once_per_bar_close)
+
+// ----------------------------------------------------------------------------------------
+// Visuals - ORB Lines
+// ----------------------------------------------------------------------------------------
+plotORB = inRTH and inEntryWin
+plot(plotORB ? orbHigh : na, "GC ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#FFD700, 0))
+plot(plotORB ? orbLow  : na, "GC ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#DAA520, 0))

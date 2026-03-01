@@ -1,0 +1,59 @@
+# ORB Trader — 5-Leg Combined Longs Portfolio Configuration
+#
+# Portfolio: NQ NY R11 + NQ Asia R9 + GC NY R3 + ES NY Final + ES Asia Final
+# All legs are long-only FVG continuation strategies.
+# API keys should be set via environment variables, not in this file.
+
+[general]
+dry_run = true              # Log webhooks but don't send (override with --live flag)
+# Execution uses micro contracts by default (MNQ, MES, MGC) while
+# signal data comes from full-size contracts (NQ, ES, GC).
+# The SIGNAL_TO_EXEC mapping in main.py handles this automatically.
+# Override per-session with exec_ticker in [sessions.<name>] if needed.
+
+[databento]
+# Set DATABENTO_API_KEY in your environment
+api_key_env = "DATABENTO_API_KEY"
+dataset = "GLBX.MDP3"
+# Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, GC.FUT)
+
+[traderspost]
+# Set TRADERSPOST_WEBHOOK_URL in your environment
+webhook_url_env = "TRADERSPOST_WEBHOOK_URL"
+
+[risk]
+risk_usd = 250              # Risk per trade in USD ($250 default)
+min_qty = 1.0               # Minimum contract quantity
+qty_step = 1.0              # Contract quantity increment
+be_offset_ticks = 0         # BE at entry exactly (spec: 0 offset)
+max_single_risk_usd = 500   # Max $ risk when 1 contract exceeds risk_usd
+
+[sessions]
+enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia"]
+
+# Per-session overrides (optional — defaults from [risk] and 5-leg spec in main.py)
+# Use dotted keys matching lowercase session name with underscore → dot:
+#   NQ_NY  → [sessions.nq.ny]
+#   GC_NY  → [sessions.gc.ny]
+#   ES_Asia → [sessions.es.asia]
+#
+# Strategy and risk fields can both be overridden per session.
+# Risk fields (risk_usd, min_qty, max_single_risk_usd) fall back to [risk] defaults.
+#
+# Example overrides:
+# [sessions.nq.ny]
+# rr = 4.0
+# exec_ticker = "NQ"  # Override to trade full-size NQ instead of MNQ
+#
+# [sessions.gc.ny]
+# risk_usd = 500              # GC uses $500 risk instead of global $250
+# max_single_risk_usd = 750
+
+[dates]
+# CME half-day early close dates (update annually)
+half_days = ["20250109", "20250703", "20251128", "20251224", "20260119"]
+half_day_flat_start = "12:50"
+half_day_flat_end = "13:00"
+
+# Excluded dates (skip trading entirely on these dates)
+excluded = []

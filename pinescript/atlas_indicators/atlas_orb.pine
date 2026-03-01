@@ -8,71 +8,101 @@ indicator(
 )
 
 // ============================================================================
+// AUTO-DETECT ASSET from chart symbol
+// ============================================================================
+asset = if syminfo.root == "ES" or syminfo.root == "MES"
+    "ES"
+else if syminfo.root == "NQ" or syminfo.root == "MNQ"
+    "NQ"
+else if syminfo.root == "GC" or syminfo.root == "MGC"
+    "GC"
+else
+    "ES"
+
+// ============================================================================
 // INPUTS - Display
 // ============================================================================
 drawbackDays = input.int(1, "Days Back", minval=1, maxval=50, tooltip="Number of trading days to show drawings for", group="Display")
 
 // ============================================================================
-// INPUTS - Session Toggles
+// INPUTS - ES: NY
 // ============================================================================
-enableNY   = input.bool(true, "Enable NY Session", group="Sessions")
-enableAsia = input.bool(true, "Enable Asia Session", group="Sessions")
-enableESLDN = input.bool(true, "Enable ES LDN Session", group="Sessions")
+i_esOrbSession   = input.session("0930-0945", "ORB Window (ny time)", group="ES: NY")
+i_esEntryWindow  = input.session("0945-1300", "Entry Window (ny time)", group="ES: NY")
+i_esDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="ES: NY")
+i_esImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="ES: NY")
+i_esRR           = input.float(5.0, "Reward/Risk", step=0.25, group="ES: NY")
+i_esTp1Ratio     = input.float(0.2, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="ES: NY")
+i_esStopMode     = input.string("ATR", "Stop Size Mode", options=["ATR", "ORB"], group="ES: NY")
+i_esAtrLength    = input.int(7, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="ES: NY")
+i_esStopPct      = input.float(5.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="ES: NY")
+i_esMinGapPct    = input.float(0.25, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="ES: NY")
+esOrbHighColor   = input.color(#18b79c, "ORB High Color", group="ES: NY")
+esOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="ES: NY")
 
 // ============================================================================
-// INPUTS - NY Session
+// INPUTS - ES: Asia
 // ============================================================================
-nySessionRTH   = input.session("0930-1600", "NY RTH (ny time)", group="NY Session")
-nyOrbSession   = input.session("0930-0950", "NY ORB window (ny time)", group="NY Session")
-nyEntryWindow  = input.session("0950-1500", "NY Entry window (ny time)", group="NY Session")
-nyOrbHighColor = input.color(#18b79c, "NY ORB High Color", group="NY Session")
-nyOrbLowColor  = input.color(#94E3DA, "NY ORB Low Color", group="NY Session")
-nyMaxGapPoints = input.float(100.0, "NY Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="NY Session")
-nyMinGapAtrPct = input.float(3.0, "NY Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NY Session")
-nyStopAtrPct   = input.float(9.0, "NY Stop Loss (% ATR)", step=1.0, minval=1.0, tooltip="Stop distance as percentage of daily ATR", group="NY Session")
-nyLongOnly     = input.bool(true, "NY Long Only", tooltip="Only take long setups (bullish FVGs above ORB)", group="NY Session")
+i_esAsiaOrbSession   = input.session("2000-2015", "ORB Window (ny time)", group="ES: Asia")
+i_esAsiaEntryWindow  = input.session("2015-0300", "Entry Window (ny time)", group="ES: Asia")
+i_esAsiaDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="ES: Asia")
+i_esAsiaImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="ES: Asia")
+i_esAsiaRR           = input.float(1.5, "Reward/Risk", step=0.25, group="ES: Asia")
+i_esAsiaTp1Ratio     = input.float(0.7, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="ES: Asia")
+i_esAsiaStopMode     = input.string("ORB", "Stop Size Mode", options=["ATR", "ORB"], group="ES: Asia")
+i_esAsiaAtrLength    = input.int(14, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="ES: Asia")
+i_esAsiaStopPct      = input.float(125.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="ES: Asia")
+i_esAsiaMinGapPct    = input.float(0.5, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="ES: Asia")
+esAsiaOrbHighColor   = input.color(#2196F3, "ORB High Color", group="ES: Asia")
+esAsiaOrbLowColor    = input.color(#A5DFFA, "ORB Low Color", group="ES: Asia")
 
 // ============================================================================
-// INPUTS - Asia Session
+// INPUTS - NQ: NY
 // ============================================================================
-asiaSessionRTH   = input.session("1800-0700", "Asia RTH (ny time)", group="Asia Session")
-asiaOrbSession   = input.session("2000-2010", "Asia ORB window (ny time)", group="Asia Session")
-asiaEntryWindow  = input.session("2010-2300", "Asia Entry window (ny time)", group="Asia Session")
-asiaOrbHighColor = input.color(#2196F3, "Asia ORB High Color", group="Asia Session")
-asiaOrbLowColor  = input.color(#A5DFFA, "Asia ORB Low Color", group="Asia Session")
-asiaMaxGapAtrPct = input.float(5.0, "Asia Max Gap (% ATR)", step=0.5, tooltip="Maximum gap size as percentage of daily ATR (0 = no limit)", group="Asia Session")
-asiaMinGapAtrPct = input.float(0.90, "Asia Min Gap (% ATR)", step=0.1, tooltip="Minimum gap size as percentage of daily ATR", group="Asia Session")
-asiaStopAtrPct   = input.float(3.7, "Asia Stop Loss (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="Asia Session")
+i_nqNyOrbSession   = input.session("0930-0950", "ORB Window (ny time)", group="NQ: NY")
+i_nqNyEntryWindow  = input.session("0950-1200", "Entry Window (ny time)", group="NQ: NY")
+i_nqNyDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: NY")
+i_nqNyImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="NQ: NY")
+i_nqNyRR           = input.float(3.5, "Reward/Risk", step=0.25, group="NQ: NY")
+i_nqNyTp1Ratio     = input.float(0.4, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
+i_nqNyStopMode     = input.string("ATR", "Stop Size Mode", options=["ATR", "ORB"], group="NQ: NY")
+i_nqNyAtrLength    = input.int(12, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="NQ: NY")
+i_nqNyStopPct      = input.float(7.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="NQ: NY")
+i_nqNyMinGapPct    = input.float(2.5, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="NQ: NY")
+nqNyOrbHighColor   = input.color(#18b79c, "ORB High Color", group="NQ: NY")
+nqNyOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="NQ: NY")
 
 // ============================================================================
-// INPUTS - ES LDN Session
+// INPUTS - NQ: Asia
 // ============================================================================
-esldnSessionRTH   = input.session("0300-0830", "ES LDN RTH (ny time)", group="ES LDN Session")
-esldnOrbSession   = input.session("0300-0315", "ES LDN ORB window (ny time)", group="ES LDN Session")
-esldnEntryWindow  = input.session("0315-0825", "ES LDN Entry window (ny time)", group="ES LDN Session")
-esldnOrbHighColor = input.color(#FF9800, "ES LDN ORB High Color", group="ES LDN Session")
-esldnOrbLowColor  = input.color(#FFD180, "ES LDN ORB Low Color", group="ES LDN Session")
-esldnMaxGapPoints = input.float(50.0, "ES LDN Max Gap (points)", step=1.0, tooltip="Maximum gap size in points (0 = no limit)", group="ES LDN Session")
-esldnMinGapAtrPct = input.float(1.25, "ES LDN Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="ES LDN Session")
-esldnStopAtrPct   = input.float(1.5, "ES LDN Stop Loss (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="ES LDN Session")
+i_nqAsiaOrbSession   = input.session("2000-2015", "ORB Window (ny time)", group="NQ: Asia")
+i_nqAsiaEntryWindow  = input.session("2015-2230", "Entry Window (ny time)", group="NQ: Asia")
+i_nqAsiaDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: Asia")
+i_nqAsiaImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="NQ: Asia")
+i_nqAsiaRR           = input.float(6.0, "Reward/Risk", step=0.25, group="NQ: Asia")
+i_nqAsiaTp1Ratio     = input.float(0.3, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: Asia")
+i_nqAsiaStopMode     = input.string("ORB", "Stop Size Mode", options=["ATR", "ORB"], group="NQ: Asia")
+i_nqAsiaAtrLength    = input.int(5, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="NQ: Asia")
+i_nqAsiaStopPct      = input.float(100.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="NQ: Asia")
+i_nqAsiaMinGapPct    = input.float(10.0, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="NQ: Asia")
+nqAsiaOrbHighColor   = input.color(#2196F3, "ORB High Color", group="NQ: Asia")
+nqAsiaOrbLowColor    = input.color(#A5DFFA, "ORB Low Color", group="NQ: Asia")
 
 // ============================================================================
-// INPUTS - NY Trade Levels
+// INPUTS - GC: NY
 // ============================================================================
-nyRR       = input.float(2.0, "NY Reward/Risk", step=0.25, group="NY Trade Levels")
-nyTp1Ratio = input.float(0.6, "NY TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NY Trade Levels")
-
-// ============================================================================
-// INPUTS - Asia Trade Levels
-// ============================================================================
-asiaRR       = input.float(1.75, "Asia Reward/Risk", step=0.25, group="Asia Trade Levels")
-asiaTp1Ratio = input.float(0.35, "Asia TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="Asia Trade Levels")
-
-// ============================================================================
-// INPUTS - ES LDN Trade Levels
-// ============================================================================
-esldnRR       = input.float(3.0, "ES LDN Reward/Risk", step=0.25, group="ES LDN Trade Levels")
-esldnTp1Ratio = input.float(0.5, "ES LDN TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="ES LDN Trade Levels")
+i_gcOrbSession   = input.session("0930-0938", "ORB Window (ny time)", group="GC: NY")
+i_gcEntryWindow  = input.session("0938-1200", "Entry Window (ny time)", group="GC: NY")
+i_gcDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="GC: NY")
+i_gcImpulseClose = input.bool(true, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="GC: NY")
+i_gcRR           = input.float(9.0, "Reward/Risk", step=0.25, group="GC: NY")
+i_gcTp1Ratio     = input.float(0.35, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="GC: NY")
+i_gcStopMode     = input.string("ATR", "Stop Size Mode", options=["ATR", "ORB"], group="GC: NY")
+i_gcAtrLength    = input.int(7, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="GC: NY")
+i_gcStopPct      = input.float(4.5, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="GC: NY")
+i_gcMinGapPct    = input.float(3.0, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="GC: NY")
+gcOrbHighColor   = input.color(#18b79c, "ORB High Color", group="GC: NY")
+gcOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="GC: NY")
 
 // ============================================================================
 // INPUTS - Trade Level Colors
@@ -89,13 +119,216 @@ tp2Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted
 // ============================================================================
 // INPUTS - Alerts
 // ============================================================================
-enableAlerts = input.bool(false, "Enable Setup Alerts", tooltip="Enable alert conditions for when a new FVG setup is detected", group="Alerts")
+enableAlerts = input.bool(true, "Enable Setup Alerts", tooltip="Enable alert conditions for when a new FVG setup is detected", group="Alerts")
 
 // ============================================================================
-// INPUTS - Daily ATR
+// RESOLVE ACTIVE CONFIG — select from per-asset inputs
 // ============================================================================
-atrLength     = input.int(14, "ATR Length (NY / ES LDN)", minval=1, tooltip="ATR period for NY and ES LDN sessions", group="Daily ATR")
-asiaAtrLength = input.int(5, "ATR Length (Asia)", minval=1, tooltip="ATR period for Asia session (faster ATR)", group="Daily ATR")
+enableNY   = asset == "ES" or asset == "NQ" or asset == "GC"
+enableAsia = asset == "NQ" or asset == "ES"
+
+// Session RTH (fixed, same for all assets)
+nySessionRTH   = "0930-1600"
+asiaSessionRTH = "1800-0700"
+
+// NY session times
+nyOrbSession = if asset == "ES"
+    i_esOrbSession
+else if asset == "NQ"
+    i_nqNyOrbSession
+else if asset == "GC"
+    i_gcOrbSession
+else
+    i_esOrbSession
+
+nyEntryWindow = if asset == "ES"
+    i_esEntryWindow
+else if asset == "NQ"
+    i_nqNyEntryWindow
+else if asset == "GC"
+    i_gcEntryWindow
+else
+    i_esEntryWindow
+
+// NY direction
+nyDirection = if asset == "ES"
+    i_esDirection
+else if asset == "NQ"
+    i_nqNyDirection
+else if asset == "GC"
+    i_gcDirection
+else
+    "Long Only"
+
+asiaDirection = if asset == "ES"
+    i_esAsiaDirection
+else if asset == "NQ"
+    i_nqAsiaDirection
+else
+    "Long Only"
+
+// NY trade params
+nyRR = if asset == "ES"
+    i_esRR
+else if asset == "NQ"
+    i_nqNyRR
+else if asset == "GC"
+    i_gcRR
+else
+    i_esRR
+
+nyTp1Ratio = if asset == "ES"
+    i_esTp1Ratio
+else if asset == "NQ"
+    i_nqNyTp1Ratio
+else if asset == "GC"
+    i_gcTp1Ratio
+else
+    i_esTp1Ratio
+
+nyImpulseClose = if asset == "ES"
+    i_esImpulseClose
+else if asset == "NQ"
+    i_nqNyImpulseClose
+else if asset == "GC"
+    i_gcImpulseClose
+else
+    false
+
+nyStopMode = if asset == "ES"
+    i_esStopMode
+else if asset == "NQ"
+    i_nqNyStopMode
+else if asset == "GC"
+    i_gcStopMode
+else
+    "ATR"
+
+nyStopPct = if asset == "ES"
+    i_esStopPct
+else if asset == "NQ"
+    i_nqNyStopPct
+else if asset == "GC"
+    i_gcStopPct
+else
+    i_esStopPct
+
+nyMinGapPct = if asset == "ES"
+    i_esMinGapPct
+else if asset == "NQ"
+    i_nqNyMinGapPct
+else if asset == "GC"
+    i_gcMinGapPct
+else
+    i_esMinGapPct
+
+// Per-session ATR lengths
+nyAtrLength = if asset == "ES"
+    i_esAtrLength
+else if asset == "NQ"
+    i_nqNyAtrLength
+else if asset == "GC"
+    i_gcAtrLength
+else
+    i_esAtrLength
+
+asiaAtrLength = if asset == "ES"
+    i_esAsiaAtrLength
+else if asset == "NQ"
+    i_nqAsiaAtrLength
+else
+    14
+
+// Asia session times
+asiaOrbSession = if asset == "ES"
+    i_esAsiaOrbSession
+else if asset == "NQ"
+    i_nqAsiaOrbSession
+else
+    "2000-2015"
+
+asiaEntryWindow = if asset == "ES"
+    i_esAsiaEntryWindow
+else if asset == "NQ"
+    i_nqAsiaEntryWindow
+else
+    "2015-2230"
+
+// Asia trade params
+asiaRR = if asset == "ES"
+    i_esAsiaRR
+else if asset == "NQ"
+    i_nqAsiaRR
+else
+    6.0
+
+asiaTp1Ratio = if asset == "ES"
+    i_esAsiaTp1Ratio
+else if asset == "NQ"
+    i_nqAsiaTp1Ratio
+else
+    0.3
+
+asiaImpulseClose = if asset == "ES"
+    i_esAsiaImpulseClose
+else if asset == "NQ"
+    i_nqAsiaImpulseClose
+else
+    false
+
+asiaStopMode = if asset == "ES"
+    i_esAsiaStopMode
+else if asset == "NQ"
+    i_nqAsiaStopMode
+else
+    "ORB"
+
+asiaStopPct = if asset == "ES"
+    i_esAsiaStopPct
+else if asset == "NQ"
+    i_nqAsiaStopPct
+else
+    100.0
+
+asiaMinGapPct = if asset == "ES"
+    i_esAsiaMinGapPct
+else if asset == "NQ"
+    i_nqAsiaMinGapPct
+else
+    10.0
+
+// ORB colors
+nyOrbHighColor = if asset == "ES"
+    esOrbHighColor
+else if asset == "NQ"
+    nqNyOrbHighColor
+else if asset == "GC"
+    gcOrbHighColor
+else
+    esOrbHighColor
+
+nyOrbLowColor = if asset == "ES"
+    esOrbLowColor
+else if asset == "NQ"
+    nqNyOrbLowColor
+else if asset == "GC"
+    gcOrbLowColor
+else
+    esOrbLowColor
+
+asiaOrbHighColor = if asset == "ES"
+    esAsiaOrbHighColor
+else if asset == "NQ"
+    nqAsiaOrbHighColor
+else
+    #2196F3
+
+asiaOrbLowColor = if asset == "ES"
+    esAsiaOrbLowColor
+else if asset == "NQ"
+    nqAsiaOrbLowColor
+else
+    #A5DFFA
 
 // ============================================================================
 // LINE STYLE LOOKUP
@@ -108,15 +341,6 @@ tp1LineStyle   = styleToLine(tp1Style)
 tp2LineStyle   = styleToLine(tp2Style)
 
 // ============================================================================
-// SYMBOL GATING - NQ sessions only on NQ, ES LDN only on ES
-// ============================================================================
-isNQ    = str.contains(syminfo.root, "NQ")
-isES    = str.contains(syminfo.root, "ES")
-showNY    = enableNY   and isNQ
-showAsia  = enableAsia and isNQ
-showESLDN = enableESLDN and isES
-
-// ============================================================================
 // SESSION FILTERS - use "5" resolution so sessions are detected correctly
 // even on higher timeframes (e.g. 15m bar spanning the entire ORB window)
 // ============================================================================
@@ -126,28 +350,39 @@ inNyEntryWin = not na(time("5", nyEntryWindow, "America/New_York"))
 inAsiaRTH      = not na(time("5", asiaSessionRTH, "America/New_York"))
 inAsiaORB      = not na(time("5", asiaOrbSession, "America/New_York"))
 inAsiaEntryWin = not na(time("5", asiaEntryWindow, "America/New_York"))
-inESLDNRTH      = not na(time("5", esldnSessionRTH, "America/New_York"))
-inESLDNORB      = not na(time("5", esldnOrbSession, "America/New_York"))
-inESLDNEntryWin = not na(time("5", esldnEntryWindow, "America/New_York"))
 
 // ============================================================================
 // 5m OHLC - stable confirmed data via lookahead_on + [1] offset
 // uses regular session ticker so 5m bars align identically on all chart tfs
+// c5_1 / o5_1 = impulse candle close/open (for impulse close filter)
 // ============================================================================
 regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
-[h5, l5, h5_1, l5_1, h5_2, l5_2, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], time[1], time[3]], lookahead=barmerge.lookahead_on)
+[h5, l5, h5_1, l5_1, h5_2, l5_2, c5_1, o5_1, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], close[2], open[2], time[1], time[3]], lookahead=barmerge.lookahead_on)
 barClosed5 = ta.change(t5) != 0
 
+// ORB OHLC - current bar data (no [1] shift) for building the ORB range
+// The FVG candles need the [1] shift for look-ahead safety, but ORB high/low
+// should use the actual bar within the ORB window, not the previous one.
+[orbH5, orbL5, orbT5] = request.security(regTicker, "5", [high, low, time], lookahead=barmerge.lookahead_on)
+orbBarClosed5 = ta.change(orbT5) != 0
+
 // Session start detection (rising edge of session filter)
-nyRTHStart    = inNyRTH and not inNyRTH[1]
-asiaRTHStart  = inAsiaRTH and not inAsiaRTH[1]
-esldnRTHStart = inESLDNRTH and not inESLDNRTH[1]
+nyRTHStart   = inNyRTH and not inNyRTH[1]
+asiaRTHStart = inAsiaRTH and not inAsiaRTH[1]
 
 // ============================================================================
 // DRAWBACK FILTER - only draw recent N days
 // ============================================================================
 barsPerDay = timeframe.in_seconds("D") / timeframe.in_seconds(timeframe.period)
 canDraw    = bar_index >= last_bar_index - drawbackDays * barsPerDay
+
+// ============================================================================
+// DIRECTION FLAGS
+// ============================================================================
+nyDetectLongs    = nyDirection != "Short Only"
+nyDetectShorts   = nyDirection != "Long Only"
+asiaDetectLongs  = asiaDirection != "Short Only"
+asiaDetectShorts = asiaDirection != "Long Only"
 
 // ============================================================================
 // NY ORB STATE
@@ -190,26 +425,6 @@ var int   asia_shortFvgStartTime = na
 var string asia_shortFvgText     = na
 
 // ============================================================================
-// ES LDN ORB STATE
-// ============================================================================
-var float esldn_orbHigh = na
-var float esldn_orbLow  = na
-var bool  esldn_orbReady = false
-
-var bool  esldn_longFirstFvgFound  = false
-var bool  esldn_shortFirstFvgFound = false
-
-var float esldn_longFvgTopStored  = na
-var float esldn_longFvgBotStored  = na
-var int   esldn_longFvgStartTime  = na
-var string esldn_longFvgText      = na
-
-var float esldn_shortFvgTopStored = na
-var float esldn_shortFvgBotStored = na
-var int   esldn_shortFvgStartTime = na
-var string esldn_shortFvgText     = na
-
-// ============================================================================
 // DRAWING REFERENCES (draw once, update to extend)
 // ============================================================================
 // NY ORB lines
@@ -222,29 +437,19 @@ var line asia_orbHighLine = na
 var line asia_orbLowLine  = na
 var int  asia_orbLineStart = na
 
-// ES LDN ORB lines
-var line esldn_orbHighLine = na
-var line esldn_orbLowLine  = na
-var int  esldn_orbLineStart = na
-
 // FVG boxes + labels (draw once, extend right edge)
 var box   ny_longFvgBox      = na
 var box   ny_shortFvgBox     = na
 var box   asia_longFvgBox    = na
 var box   asia_shortFvgBox   = na
-var box   esldn_longFvgBox   = na
-var box   esldn_shortFvgBox  = na
 var label ny_longFvgLabel    = na
 var label ny_shortFvgLabel   = na
 var label asia_longFvgLabel  = na
 var label asia_shortFvgLabel = na
-var label esldn_longFvgLabel  = na
-var label esldn_shortFvgLabel = na
 
 // Track whether ORB lines have been created this session
-var bool ny_orbLinesDrawn    = false
-var bool asia_orbLinesDrawn  = false
-var bool esldn_orbLinesDrawn = false
+var bool ny_orbLinesDrawn   = false
+var bool asia_orbLinesDrawn = false
 
 // ============================================================================
 // TRADE LEVEL STATE - NY
@@ -271,19 +476,6 @@ var float asia_shortEntry = na
 var float asia_shortStop  = na
 var float asia_shortTp1   = na
 var float asia_shortTp2   = na
-
-// ============================================================================
-// TRADE LEVEL STATE - ES LDN
-// ============================================================================
-var float esldn_longEntry = na
-var float esldn_longStop  = na
-var float esldn_longTp1   = na
-var float esldn_longTp2   = na
-
-var float esldn_shortEntry = na
-var float esldn_shortStop  = na
-var float esldn_shortTp1   = na
-var float esldn_shortTp2   = na
 
 // ============================================================================
 // TRADE LEVEL LINE/LABEL REFS
@@ -320,24 +512,8 @@ var label asia_shortStopLbl  = na
 var label asia_shortTp1Lbl   = na
 var label asia_shortTp2Lbl   = na
 
-var line esldn_longEntryLine = na
-var line esldn_longStopLine  = na
-var line esldn_longTp1Line   = na
-var line esldn_longTp2Line   = na
-var label esldn_longStopLbl  = na
-var label esldn_longTp1Lbl   = na
-var label esldn_longTp2Lbl   = na
-
-var line esldn_shortEntryLine = na
-var line esldn_shortStopLine  = na
-var line esldn_shortTp1Line   = na
-var line esldn_shortTp2Line   = na
-var label esldn_shortStopLbl  = na
-var label esldn_shortTp1Lbl   = na
-var label esldn_shortTp2Lbl   = na
-
 // ============================================================================
-// RESET ON SESSION START (not calendar day — survives half days & holidays)
+// RESET ON SESSION START (not calendar day - survives half days & holidays)
 // ============================================================================
 if nyRTHStart
     ny_orbHigh := na
@@ -429,86 +605,31 @@ if asiaRTHStart
     asia_longFvgLabel  := na
     asia_shortFvgLabel := na
 
-if esldnRTHStart
-    esldn_orbHigh := na
-    esldn_orbLow  := na
-    esldn_orbReady := false
-    esldn_longFirstFvgFound := false
-    esldn_shortFirstFvgFound := false
-    esldn_longFvgTopStored := na
-    esldn_longFvgBotStored := na
-    esldn_longFvgStartTime := na
-    esldn_longFvgText      := na
-    esldn_shortFvgTopStored := na
-    esldn_shortFvgBotStored := na
-    esldn_shortFvgStartTime := na
-    esldn_shortFvgText      := na
-    esldn_orbLinesDrawn := false
-    esldn_orbHighLine := na
-    esldn_orbLowLine  := na
-    esldn_orbLineStart := na
-    esldn_longEntry := na
-    esldn_longStop  := na
-    esldn_longTp1   := na
-    esldn_longTp2   := na
-    esldn_shortEntry := na
-    esldn_shortStop  := na
-    esldn_shortTp1   := na
-    esldn_shortTp2   := na
-    esldn_longEntryLine := na
-    esldn_longStopLine  := na
-    esldn_longTp1Line   := na
-    esldn_longTp2Line   := na
-    esldn_longStopLbl   := na
-    esldn_longTp1Lbl    := na
-    esldn_longTp2Lbl    := na
-    esldn_shortEntryLine := na
-    esldn_shortStopLine  := na
-    esldn_shortTp1Line   := na
-    esldn_shortTp2Line   := na
-    esldn_shortStopLbl   := na
-    esldn_shortTp1Lbl    := na
-    esldn_shortTp2Lbl    := na
-    esldn_longFvgBox      := na
-    esldn_shortFvgBox     := na
-    esldn_longFvgLabel    := na
-    esldn_shortFvgLabel   := na
-
 // ============================================================================
-// build orb - ny (use chart high/low like the strategy does)
+// BUILD ORB - NY (use current-bar 5m ohlc so ORB uses data from within the window)
 // ============================================================================
-if showNY and inNyORB and inNyRTH
-    ny_orbHigh := na(ny_orbHigh) ? high : math.max(ny_orbHigh, high)
-    ny_orbLow  := na(ny_orbLow)  ? low  : math.min(ny_orbLow, low)
+if enableNY and orbBarClosed5 and inNyORB and inNyRTH
+    ny_orbHigh := na(ny_orbHigh) ? orbH5 : math.max(ny_orbHigh, orbH5)
+    ny_orbLow  := na(ny_orbLow)  ? orbL5 : math.min(ny_orbLow, orbL5)
 
-if showNY and not inNyORB and inNyRTH and not ny_orbReady and not na(ny_orbHigh) and not na(ny_orbLow)
+if enableNY and orbBarClosed5 and not inNyORB and inNyRTH and not ny_orbReady and not na(ny_orbHigh) and not na(ny_orbLow)
     ny_orbReady := true
 
 // ============================================================================
-// build orb - asia (use chart high/low like the strategy does)
+// BUILD ORB - ASIA (use current-bar 5m ohlc so ORB uses data from within the window)
 // ============================================================================
-if showAsia and inAsiaORB and inAsiaRTH
-    asia_orbHigh := na(asia_orbHigh) ? high : math.max(asia_orbHigh, high)
-    asia_orbLow  := na(asia_orbLow)  ? low  : math.min(asia_orbLow, low)
+if enableAsia and orbBarClosed5 and inAsiaORB and inAsiaRTH
+    asia_orbHigh := na(asia_orbHigh) ? orbH5 : math.max(asia_orbHigh, orbH5)
+    asia_orbLow  := na(asia_orbLow)  ? orbL5 : math.min(asia_orbLow, orbL5)
 
-if showAsia and not inAsiaORB and inAsiaRTH and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
+if enableAsia and orbBarClosed5 and not inAsiaORB and inAsiaRTH and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
     asia_orbReady := true
-
-// ============================================================================
-// build orb - es ldn (use chart high/low like the strategy does)
-// ============================================================================
-if showESLDN and inESLDNORB and inESLDNRTH
-    esldn_orbHigh := na(esldn_orbHigh) ? high : math.max(esldn_orbHigh, high)
-    esldn_orbLow  := na(esldn_orbLow)  ? low  : math.min(esldn_orbLow, low)
-
-if showESLDN and not inESLDNORB and inESLDNRTH and not esldn_orbReady and not na(esldn_orbHigh) and not na(esldn_orbLow)
-    esldn_orbReady := true
 
 // ============================================================================
 // DAILY ATR + GLOBEX OPEN
 // ============================================================================
-dailyATR     = request.security(syminfo.tickerid, "D", ta.atr(atrLength)[1], lookahead=barmerge.lookahead_on)
-dailyATRAsia = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1], lookahead=barmerge.lookahead_on)
+nyDailyATR   = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
+asiaDailyATR = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1], lookahead=barmerge.lookahead_on)
 extTicker  = ticker.new(syminfo.prefix, syminfo.ticker, session.extended)
 globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead_on)
 
@@ -517,13 +638,11 @@ globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead
 // ============================================================================
 ny_longSetupAlert   = false
 ny_shortSetupAlert  = false
-asia_longSetupAlert   = false
-asia_shortSetupAlert  = false
-esldn_longSetupAlert  = false
-esldn_shortSetupAlert = false
+asia_longSetupAlert  = false
+asia_shortSetupAlert = false
 
 // ============================================================================
-// helper: compute bar time at session end time
+// HELPER: compute bar time at session end time
 // ============================================================================
 calcEndBarTime(sessionStr, tz) =>
     // parse end time (hhmm after the hyphen) from session string e.g. "0945-1300"
@@ -538,17 +657,17 @@ calcEndBarTime(sessionStr, tz) =>
     barMoment
 
 // ============================================================================
-// FVG SIZE REQUIREMENTS
+// FVG SIZE REQUIREMENTS (supports ATR-based and ORB-based sizing)
 // ============================================================================
-nyMinGap    = (nyMinGapAtrPct / 100) * nz(dailyATR)
-asiaMinGap  = (asiaMinGapAtrPct / 100) * nz(dailyATRAsia)
-esldnMinGap = (esldnMinGapAtrPct / 100) * nz(dailyATR)
-nyMaxGap    = nyMaxGapPoints > 0 ? nyMaxGapPoints : float(na)
-asiaMaxGap  = asiaMaxGapAtrPct > 0 ? (asiaMaxGapAtrPct / 100) * nz(dailyATRAsia) : float(na)
-esldnMaxGap = esldnMaxGapPoints > 0 ? esldnMaxGapPoints : float(na)
+nyOrbRange   = nz(ny_orbHigh - ny_orbLow)
+asiaOrbRange = nz(asia_orbHigh - asia_orbLow)
+
+nyMinGap   = nyStopMode == "ORB" ? (nyMinGapPct / 100) * nyOrbRange : (nyMinGapPct / 100) * nz(nyDailyATR)
+asiaMinGap = asiaStopMode == "ORB" ? (asiaMinGapPct / 100) * asiaOrbRange : (asiaMinGapPct / 100) * nz(asiaDailyATR)
 
 // ============================================================================
 // FVG DETECTION (using 5m OHLC: h5, l5, h5_1, l5_1, h5_2, l5_2)
+// with impulse close filter and direction filter
 // ============================================================================
 longFvgTop     = l5
 longFvgBottom  = h5_2
@@ -558,27 +677,25 @@ longGapSize    = longFvgTop - longFvgBottom
 shortGapSize   = shortFvgTop - shortFvgBottom
 
 // NY FVG validation
-nyLongGapValid  = longGapSize >= nyMinGap and (na(nyMaxGap) or longGapSize <= nyMaxGap)
-nyShortGapValid = shortGapSize >= nyMinGap and (na(nyMaxGap) or shortGapSize <= nyMaxGap)
-nyLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and longFvgTop > ny_orbHigh and nyLongGapValid
-nyShortFVG = l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and shortFvgBottom < ny_orbLow and nyShortGapValid
+nyLongGapValid  = longGapSize >= nyMinGap
+nyShortGapValid = shortGapSize >= nyMinGap
+nyLongBreakout  = longFvgTop > ny_orbHigh or (nyImpulseClose and c5_1 > ny_orbHigh)
+nyShortBreakout = shortFvgBottom < ny_orbLow or (nyImpulseClose and c5_1 < ny_orbLow)
+nyLongFVG  = nyDetectLongs and h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and nyLongBreakout and nyLongGapValid
+nyShortFVG = nyDetectShorts and l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and nyShortBreakout and nyShortGapValid
 
 // Asia FVG validation
-asiaLongGapValid  = longGapSize >= asiaMinGap and (na(asiaMaxGap) or longGapSize <= asiaMaxGap)
-asiaShortGapValid = shortGapSize >= asiaMinGap and (na(asiaMaxGap) or shortGapSize <= asiaMaxGap)
-asiaLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and longFvgTop > asia_orbHigh and asiaLongGapValid
-asiaShortFVG = l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and shortFvgBottom < asia_orbLow and asiaShortGapValid
-
-// ES LDN FVG validation
-esldnLongGapValid  = longGapSize >= esldnMinGap and (na(esldnMaxGap) or longGapSize <= esldnMaxGap)
-esldnShortGapValid = shortGapSize >= esldnMinGap and (na(esldnMaxGap) or shortGapSize <= esldnMaxGap)
-esldnLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and longFvgTop > esldn_orbHigh and esldnLongGapValid
-esldnShortFVG = l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and shortFvgBottom < esldn_orbLow and esldnShortGapValid
+asiaLongGapValid  = longGapSize >= asiaMinGap
+asiaShortGapValid = shortGapSize >= asiaMinGap
+asiaLongBreakout  = longFvgTop > asia_orbHigh or (asiaImpulseClose and c5_1 > asia_orbHigh)
+asiaShortBreakout = shortFvgBottom < asia_orbLow or (asiaImpulseClose and c5_1 < asia_orbLow)
+asiaLongFVG  = asiaDetectLongs and h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and asiaLongBreakout and asiaLongGapValid
+asiaShortFVG = asiaDetectShorts and l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and asiaShortBreakout and asiaShortGapValid
 
 // ============================================================================
 // DETECT FIRST FVG - NY
 // ============================================================================
-nyCanDetect = showNY and barClosed5 and inNyRTH and inNyEntryWin and ny_orbReady
+nyCanDetect = enableNY and barClosed5 and inNyRTH and inNyEntryWin and ny_orbReady
 
 if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
     ny_longFirstFvgFound := true
@@ -587,11 +704,11 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
     ny_longFvgBotStored  := longFvgBottom
     ny_longFvgStartTime  := t5_2
     fvgPts    = longGapSize
-    fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+    fvgAtrPct = nyDailyATR > 0 ? (fvgPts / nyDailyATR) * 100 : 0.0
     ny_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    // Draw box + label + trade levels ONCE (only within drawback window)
     ny_longEntry := longFvgTop
-    ny_longStop  := ny_longEntry - (nyStopAtrPct / 100) * nz(dailyATR)
+    stopDist     = nyStopMode == "ORB" ? (nyStopPct / 100) * nyOrbRange : (nyStopPct / 100) * nz(nyDailyATR)
+    ny_longStop  := ny_longEntry - stopDist
     riskPts      = ny_longEntry - ny_longStop
     ny_longTp1   := ny_longEntry + (nyRR * riskPts * nyTp1Ratio)
     ny_longTp2   := ny_longEntry + (nyRR * riskPts)
@@ -599,11 +716,11 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
         ny_longFvgBox := box.new(ny_longFvgStartTime, ny_longFvgTopStored, time, ny_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
         ny_longFvgLabel := label.new(time, (ny_longFvgTopStored + ny_longFvgBotStored) / 2, ny_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+        slAtr  = nyDailyATR > 0 ? (slPts / nyDailyATR) * 100 : 0.0
         tp1Pts = ny_longTp1 - ny_longEntry
-        tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+        tp1Atr = nyDailyATR > 0 ? (tp1Pts / nyDailyATR) * 100 : 0.0
         tp2Pts = ny_longTp2 - ny_longEntry
-        tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+        tp2Atr = nyDailyATR > 0 ? (tp2Pts / nyDailyATR) * 100 : 0.0
         nyEndBar = calcEndBarTime(nyEntryWindow, "America/New_York")
         ny_longEntryLine := line.new(time, ny_longEntry, nyEndBar, ny_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
         ny_longStopLine  := line.new(time, ny_longStop, nyEndBar, ny_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
@@ -616,17 +733,18 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
         ny_longTp1Lbl  := label.new(nyEndBar, ny_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
         ny_longTp2Lbl  := label.new(nyEndBar, ny_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-if nyCanDetect and not nyLongOnly and not ny_shortFirstFvgFound and nyShortFVG
+if nyCanDetect and not ny_shortFirstFvgFound and nyShortFVG
     ny_shortFirstFvgFound := true
     ny_shortSetupAlert := enableAlerts
     ny_shortFvgTopStored  := shortFvgTop
     ny_shortFvgBotStored  := shortFvgBottom
     ny_shortFvgStartTime  := t5_2
     fvgPts    = shortGapSize
-    fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
+    fvgAtrPct = nyDailyATR > 0 ? (fvgPts / nyDailyATR) * 100 : 0.0
     ny_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     ny_shortEntry := shortFvgBottom
-    ny_shortStop  := ny_shortEntry + (nyStopAtrPct / 100) * nz(dailyATR)
+    stopDist      = nyStopMode == "ORB" ? (nyStopPct / 100) * nyOrbRange : (nyStopPct / 100) * nz(nyDailyATR)
+    ny_shortStop  := ny_shortEntry + stopDist
     riskPts       = ny_shortStop - ny_shortEntry
     ny_shortTp1   := ny_shortEntry - (nyRR * riskPts * nyTp1Ratio)
     ny_shortTp2   := ny_shortEntry - (nyRR * riskPts)
@@ -634,11 +752,11 @@ if nyCanDetect and not nyLongOnly and not ny_shortFirstFvgFound and nyShortFVG
         ny_shortFvgBox := box.new(ny_shortFvgStartTime, ny_shortFvgTopStored, time, ny_shortFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
         ny_shortFvgLabel := label.new(time, (ny_shortFvgTopStored + ny_shortFvgBotStored) / 2, ny_shortFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
+        slAtr  = nyDailyATR > 0 ? (slPts / nyDailyATR) * 100 : 0.0
         tp1Pts = ny_shortEntry - ny_shortTp1
-        tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
+        tp1Atr = nyDailyATR > 0 ? (tp1Pts / nyDailyATR) * 100 : 0.0
         tp2Pts = ny_shortEntry - ny_shortTp2
-        tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
+        tp2Atr = nyDailyATR > 0 ? (tp2Pts / nyDailyATR) * 100 : 0.0
         nyEndBar = calcEndBarTime(nyEntryWindow, "America/New_York")
         ny_shortEntryLine := line.new(time, ny_shortEntry, nyEndBar, ny_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
         ny_shortStopLine  := line.new(time, ny_shortStop, nyEndBar, ny_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
@@ -654,7 +772,7 @@ if nyCanDetect and not nyLongOnly and not ny_shortFirstFvgFound and nyShortFVG
 // ============================================================================
 // DETECT FIRST FVG - Asia
 // ============================================================================
-asiaCanDetect = showAsia and barClosed5 and inAsiaRTH and inAsiaEntryWin and asia_orbReady
+asiaCanDetect = enableAsia and barClosed5 and inAsiaRTH and inAsiaEntryWin and asia_orbReady
 
 if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
     asia_longFirstFvgFound := true
@@ -663,10 +781,11 @@ if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
     asia_longFvgBotStored  := longFvgBottom
     asia_longFvgStartTime  := t5_2
     fvgPts    = longGapSize
-    fvgAtrPct = dailyATRAsia > 0 ? (fvgPts / dailyATRAsia) * 100 : 0.0
+    fvgAtrPct = asiaDailyATR > 0 ? (fvgPts / asiaDailyATR) * 100 : 0.0
     asia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     asia_longEntry := longFvgTop
-    asia_longStop  := asia_longEntry - (asiaStopAtrPct / 100) * nz(dailyATRAsia)
+    stopDist       = asiaStopMode == "ORB" ? (asiaStopPct / 100) * asiaOrbRange : (asiaStopPct / 100) * nz(asiaDailyATR)
+    asia_longStop  := asia_longEntry - stopDist
     riskPts        = asia_longEntry - asia_longStop
     asia_longTp1   := asia_longEntry + (asiaRR * riskPts * asiaTp1Ratio)
     asia_longTp2   := asia_longEntry + (asiaRR * riskPts)
@@ -674,11 +793,11 @@ if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
         asia_longFvgBox := box.new(asia_longFvgStartTime, asia_longFvgTopStored, time, asia_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
         asia_longFvgLabel := label.new(time, (asia_longFvgTopStored + asia_longFvgBotStored) / 2, asia_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = dailyATRAsia > 0 ? (slPts / dailyATRAsia) * 100 : 0.0
+        slAtr  = asiaDailyATR > 0 ? (slPts / asiaDailyATR) * 100 : 0.0
         tp1Pts = asia_longTp1 - asia_longEntry
-        tp1Atr = dailyATRAsia > 0 ? (tp1Pts / dailyATRAsia) * 100 : 0.0
+        tp1Atr = asiaDailyATR > 0 ? (tp1Pts / asiaDailyATR) * 100 : 0.0
         tp2Pts = asia_longTp2 - asia_longEntry
-        tp2Atr = dailyATRAsia > 0 ? (tp2Pts / dailyATRAsia) * 100 : 0.0
+        tp2Atr = asiaDailyATR > 0 ? (tp2Pts / asiaDailyATR) * 100 : 0.0
         asiaEndBar = calcEndBarTime(asiaEntryWindow, "America/New_York")
         asia_longEntryLine := line.new(time, asia_longEntry, asiaEndBar, asia_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
         asia_longStopLine  := line.new(time, asia_longStop, asiaEndBar, asia_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
@@ -698,10 +817,11 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
     asia_shortFvgBotStored  := shortFvgBottom
     asia_shortFvgStartTime  := t5_2
     fvgPts    = shortGapSize
-    fvgAtrPct = dailyATRAsia > 0 ? (fvgPts / dailyATRAsia) * 100 : 0.0
+    fvgAtrPct = asiaDailyATR > 0 ? (fvgPts / asiaDailyATR) * 100 : 0.0
     asia_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
     asia_shortEntry := shortFvgBottom
-    asia_shortStop  := asia_shortEntry + (asiaStopAtrPct / 100) * nz(dailyATRAsia)
+    stopDist        = asiaStopMode == "ORB" ? (asiaStopPct / 100) * asiaOrbRange : (asiaStopPct / 100) * nz(asiaDailyATR)
+    asia_shortStop  := asia_shortEntry + stopDist
     riskPts         = asia_shortStop - asia_shortEntry
     asia_shortTp1   := asia_shortEntry - (asiaRR * riskPts * asiaTp1Ratio)
     asia_shortTp2   := asia_shortEntry - (asiaRR * riskPts)
@@ -709,11 +829,11 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
         asia_shortFvgBox := box.new(asia_shortFvgStartTime, asia_shortFvgTopStored, time, asia_shortFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
         asia_shortFvgLabel := label.new(time, (asia_shortFvgTopStored + asia_shortFvgBotStored) / 2, asia_shortFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = dailyATRAsia > 0 ? (slPts / dailyATRAsia) * 100 : 0.0
+        slAtr  = asiaDailyATR > 0 ? (slPts / asiaDailyATR) * 100 : 0.0
         tp1Pts = asia_shortEntry - asia_shortTp1
-        tp1Atr = dailyATRAsia > 0 ? (tp1Pts / dailyATRAsia) * 100 : 0.0
+        tp1Atr = asiaDailyATR > 0 ? (tp1Pts / asiaDailyATR) * 100 : 0.0
         tp2Pts = asia_shortEntry - asia_shortTp2
-        tp2Atr = dailyATRAsia > 0 ? (tp2Pts / dailyATRAsia) * 100 : 0.0
+        tp2Atr = asiaDailyATR > 0 ? (tp2Pts / asiaDailyATR) * 100 : 0.0
         asiaEndBar = calcEndBarTime(asiaEntryWindow, "America/New_York")
         asia_shortEntryLine := line.new(time, asia_shortEntry, asiaEndBar, asia_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
         asia_shortStopLine  := line.new(time, asia_shortStop, asiaEndBar, asia_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
@@ -727,111 +847,28 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
         asia_shortTp2Lbl  := label.new(asiaEndBar, asia_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
-// DETECT FIRST FVG - ES LDN
-// ============================================================================
-esldnCanDetect = showESLDN and barClosed5 and inESLDNRTH and inESLDNEntryWin and esldn_orbReady
-
-if esldnCanDetect and not esldn_longFirstFvgFound and esldnLongFVG
-    esldn_longFirstFvgFound := true
-    esldn_longSetupAlert := enableAlerts
-    esldn_longFvgTopStored  := longFvgTop
-    esldn_longFvgBotStored  := longFvgBottom
-    esldn_longFvgStartTime  := t5_2
-    fvgPts    = longGapSize
-    fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
-    esldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    esldn_longEntry := longFvgTop
-    esldn_longStop  := esldn_longEntry - (esldnStopAtrPct / 100) * nz(dailyATR)
-    riskPts         = esldn_longEntry - esldn_longStop
-    esldn_longTp1   := esldn_longEntry + (esldnRR * riskPts * esldnTp1Ratio)
-    esldn_longTp2   := esldn_longEntry + (esldnRR * riskPts)
-    if canDraw
-        esldn_longFvgBox := box.new(esldn_longFvgStartTime, esldn_longFvgTopStored, time, esldn_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
-        esldn_longFvgLabel := label.new(time, (esldn_longFvgTopStored + esldn_longFvgBotStored) / 2, esldn_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
-        slPts  = riskPts
-        slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
-        tp1Pts = esldn_longTp1 - esldn_longEntry
-        tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
-        tp2Pts = esldn_longTp2 - esldn_longEntry
-        tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        esldnEndBar = calcEndBarTime(esldnEntryWindow, "America/New_York")
-        esldn_longEntryLine := line.new(time, esldn_longEntry, esldnEndBar, esldn_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        esldn_longStopLine  := line.new(time, esldn_longStop, esldnEndBar, esldn_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        esldn_longTp1Line   := line.new(time, esldn_longTp1, esldnEndBar, esldn_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        esldn_longTp2Line   := line.new(time, esldn_longTp2, esldnEndBar, esldn_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
-        slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
-        tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
-        tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        esldn_longStopLbl := label.new(esldnEndBar, esldn_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        esldn_longTp1Lbl  := label.new(esldnEndBar, esldn_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        esldn_longTp2Lbl  := label.new(esldnEndBar, esldn_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
-
-if esldnCanDetect and not esldn_shortFirstFvgFound and esldnShortFVG
-    esldn_shortFirstFvgFound := true
-    esldn_shortSetupAlert := enableAlerts
-    esldn_shortFvgTopStored  := shortFvgTop
-    esldn_shortFvgBotStored  := shortFvgBottom
-    esldn_shortFvgStartTime  := t5_2
-    fvgPts    = shortGapSize
-    fvgAtrPct = dailyATR > 0 ? (fvgPts / dailyATR) * 100 : 0.0
-    esldn_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    esldn_shortEntry := shortFvgBottom
-    esldn_shortStop  := esldn_shortEntry + (esldnStopAtrPct / 100) * nz(dailyATR)
-    riskPts          = esldn_shortStop - esldn_shortEntry
-    esldn_shortTp1   := esldn_shortEntry - (esldnRR * riskPts * esldnTp1Ratio)
-    esldn_shortTp2   := esldn_shortEntry - (esldnRR * riskPts)
-    if canDraw
-        esldn_shortFvgBox := box.new(esldn_shortFvgStartTime, esldn_shortFvgTopStored, time, esldn_shortFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
-        esldn_shortFvgLabel := label.new(time, (esldn_shortFvgTopStored + esldn_shortFvgBotStored) / 2, esldn_shortFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
-        slPts  = riskPts
-        slAtr  = dailyATR > 0 ? (slPts / dailyATR) * 100 : 0.0
-        tp1Pts = esldn_shortEntry - esldn_shortTp1
-        tp1Atr = dailyATR > 0 ? (tp1Pts / dailyATR) * 100 : 0.0
-        tp2Pts = esldn_shortEntry - esldn_shortTp2
-        tp2Atr = dailyATR > 0 ? (tp2Pts / dailyATR) * 100 : 0.0
-        esldnEndBar = calcEndBarTime(esldnEntryWindow, "America/New_York")
-        esldn_shortEntryLine := line.new(time, esldn_shortEntry, esldnEndBar, esldn_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        esldn_shortStopLine  := line.new(time, esldn_shortStop, esldnEndBar, esldn_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
-        esldn_shortTp1Line   := line.new(time, esldn_shortTp1, esldnEndBar, esldn_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
-        esldn_shortTp2Line   := line.new(time, esldn_shortTp2, esldnEndBar, esldn_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
-        slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
-        tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
-        tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        esldn_shortStopLbl := label.new(esldnEndBar, esldn_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
-        esldn_shortTp1Lbl  := label.new(esldnEndBar, esldn_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        esldn_shortTp2Lbl  := label.new(esldnEndBar, esldn_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
-
-// ============================================================================
 // EXTEND FVG BOXES + LABELS (update right edge, not delete+redraw)
 // ============================================================================
-if showNY and inNyRTH and inNyEntryWin and not na(ny_longFvgBox)
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_longFvgBox)
     box.set_right(ny_longFvgBox, time)
     label.set_x(ny_longFvgLabel, time)
 
-if showNY and inNyRTH and inNyEntryWin and not na(ny_shortFvgBox)
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_shortFvgBox)
     box.set_right(ny_shortFvgBox, time)
     label.set_x(ny_shortFvgLabel, time)
 
-if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longFvgBox)
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longFvgBox)
     box.set_right(asia_longFvgBox, time)
     label.set_x(asia_longFvgLabel, time)
 
-if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortFvgBox)
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortFvgBox)
     box.set_right(asia_shortFvgBox, time)
     label.set_x(asia_shortFvgLabel, time)
-
-if showESLDN and inESLDNRTH and inESLDNEntryWin and not na(esldn_longFvgBox)
-    box.set_right(esldn_longFvgBox, time)
-    label.set_x(esldn_longFvgLabel, time)
-
-if showESLDN and inESLDNRTH and inESLDNEntryWin and not na(esldn_shortFvgBox)
-    box.set_right(esldn_shortFvgBox, time)
-    label.set_x(esldn_shortFvgLabel, time)
 
 // ============================================================================
 // EXTEND TRADE LEVEL LINES + LABELS
 // ============================================================================
-if showNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
     line.set_x2(ny_longEntryLine, math.max(time, line.get_x2(ny_longEntryLine)))
     line.set_x2(ny_longStopLine, math.max(time, line.get_x2(ny_longStopLine)))
     line.set_x2(ny_longTp1Line, math.max(time, line.get_x2(ny_longTp1Line)))
@@ -840,7 +877,7 @@ if showNY and inNyRTH and inNyEntryWin and not na(ny_longEntryLine)
     label.set_x(ny_longTp1Lbl, math.max(time, label.get_x(ny_longTp1Lbl)))
     label.set_x(ny_longTp2Lbl, math.max(time, label.get_x(ny_longTp2Lbl)))
 
-if showNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
+if enableNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
     line.set_x2(ny_shortEntryLine, math.max(time, line.get_x2(ny_shortEntryLine)))
     line.set_x2(ny_shortStopLine, math.max(time, line.get_x2(ny_shortStopLine)))
     line.set_x2(ny_shortTp1Line, math.max(time, line.get_x2(ny_shortTp1Line)))
@@ -849,7 +886,7 @@ if showNY and inNyRTH and inNyEntryWin and not na(ny_shortEntryLine)
     label.set_x(ny_shortTp1Lbl, math.max(time, label.get_x(ny_shortTp1Lbl)))
     label.set_x(ny_shortTp2Lbl, math.max(time, label.get_x(ny_shortTp2Lbl)))
 
-if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
     line.set_x2(asia_longEntryLine, math.max(time, line.get_x2(asia_longEntryLine)))
     line.set_x2(asia_longStopLine, math.max(time, line.get_x2(asia_longStopLine)))
     line.set_x2(asia_longTp1Line, math.max(time, line.get_x2(asia_longTp1Line)))
@@ -858,7 +895,7 @@ if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_longEntryLine)
     label.set_x(asia_longTp1Lbl, math.max(time, label.get_x(asia_longTp1Lbl)))
     label.set_x(asia_longTp2Lbl, math.max(time, label.get_x(asia_longTp2Lbl)))
 
-if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
+if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
     line.set_x2(asia_shortEntryLine, math.max(time, line.get_x2(asia_shortEntryLine)))
     line.set_x2(asia_shortStopLine, math.max(time, line.get_x2(asia_shortStopLine)))
     line.set_x2(asia_shortTp1Line, math.max(time, line.get_x2(asia_shortTp1Line)))
@@ -867,29 +904,11 @@ if showAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
     label.set_x(asia_shortTp1Lbl, math.max(time, label.get_x(asia_shortTp1Lbl)))
     label.set_x(asia_shortTp2Lbl, math.max(time, label.get_x(asia_shortTp2Lbl)))
 
-if showESLDN and inESLDNRTH and inESLDNEntryWin and not na(esldn_longEntryLine)
-    line.set_x2(esldn_longEntryLine, math.max(time, line.get_x2(esldn_longEntryLine)))
-    line.set_x2(esldn_longStopLine, math.max(time, line.get_x2(esldn_longStopLine)))
-    line.set_x2(esldn_longTp1Line, math.max(time, line.get_x2(esldn_longTp1Line)))
-    line.set_x2(esldn_longTp2Line, math.max(time, line.get_x2(esldn_longTp2Line)))
-    label.set_x(esldn_longStopLbl, math.max(time, label.get_x(esldn_longStopLbl)))
-    label.set_x(esldn_longTp1Lbl, math.max(time, label.get_x(esldn_longTp1Lbl)))
-    label.set_x(esldn_longTp2Lbl, math.max(time, label.get_x(esldn_longTp2Lbl)))
-
-if showESLDN and inESLDNRTH and inESLDNEntryWin and not na(esldn_shortEntryLine)
-    line.set_x2(esldn_shortEntryLine, math.max(time, line.get_x2(esldn_shortEntryLine)))
-    line.set_x2(esldn_shortStopLine, math.max(time, line.get_x2(esldn_shortStopLine)))
-    line.set_x2(esldn_shortTp1Line, math.max(time, line.get_x2(esldn_shortTp1Line)))
-    line.set_x2(esldn_shortTp2Line, math.max(time, line.get_x2(esldn_shortTp2Line)))
-    label.set_x(esldn_shortStopLbl, math.max(time, label.get_x(esldn_shortStopLbl)))
-    label.set_x(esldn_shortTp1Lbl, math.max(time, label.get_x(esldn_shortTp1Lbl)))
-    label.set_x(esldn_shortTp2Lbl, math.max(time, label.get_x(esldn_shortTp2Lbl)))
-
 // ============================================================================
 // VISUALS - ORB LINES (draw once per session, project to entry window end)
 // ============================================================================
-// ny: create lines once when orb is ready, project to end of entry window
-nyShowOrb = showNY and inNyRTH and inNyEntryWin and ny_orbReady
+// NY: create lines once when orb is ready, project to end of entry window
+nyShowOrb = enableNY and inNyRTH and inNyEntryWin and ny_orbReady
 if nyShowOrb and not ny_orbLinesDrawn and canDraw
     ny_orbLineStart := time
     nyEndBar = calcEndBarTime(nyEntryWindow, "America/New_York")
@@ -901,8 +920,8 @@ if nyShowOrb and ny_orbLinesDrawn and not na(ny_orbHighLine)
     line.set_x2(ny_orbHighLine, math.max(time, line.get_x2(ny_orbHighLine)))
     line.set_x2(ny_orbLowLine, math.max(time, line.get_x2(ny_orbLowLine)))
 
-// asia: create lines once when orb is ready, project to end of entry window
-asiaShowOrb = showAsia and inAsiaRTH and inAsiaEntryWin and asia_orbReady
+// Asia: create lines once when orb is ready, project to end of entry window
+asiaShowOrb = enableAsia and inAsiaRTH and inAsiaEntryWin and asia_orbReady
 if asiaShowOrb and not asia_orbLinesDrawn and canDraw
     asia_orbLineStart := time
     asiaEndBar = calcEndBarTime(asiaEntryWindow, "America/New_York")
@@ -914,41 +933,43 @@ if asiaShowOrb and asia_orbLinesDrawn and not na(asia_orbHighLine)
     line.set_x2(asia_orbHighLine, math.max(time, line.get_x2(asia_orbHighLine)))
     line.set_x2(asia_orbLowLine, math.max(time, line.get_x2(asia_orbLowLine)))
 
-// es ldn: create lines once when orb is ready, project to end of entry window
-esldnShowOrb = showESLDN and inESLDNRTH and inESLDNEntryWin and esldn_orbReady
-if esldnShowOrb and not esldn_orbLinesDrawn and canDraw
-    esldn_orbLineStart := time
-    esldnEndBar = calcEndBarTime(esldnEntryWindow, "America/New_York")
-    esldn_orbHighLine := line.new(esldn_orbLineStart, esldn_orbHigh, esldnEndBar, esldn_orbHigh, xloc=xloc.bar_time, color=esldnOrbHighColor, width=2)
-    esldn_orbLowLine  := line.new(esldn_orbLineStart, esldn_orbLow, esldnEndBar, esldn_orbLow, xloc=xloc.bar_time, color=esldnOrbLowColor, width=2)
-    esldn_orbLinesDrawn := true
-
-if esldnShowOrb and esldn_orbLinesDrawn and not na(esldn_orbHighLine)
-    line.set_x2(esldn_orbHighLine, math.max(time, line.get_x2(esldn_orbHighLine)))
-    line.set_x2(esldn_orbLowLine, math.max(time, line.get_x2(esldn_orbLowLine)))
-
 // ============================================================================
-// ATR DISTANCE DISPLAY
+// ATR DISTANCE DISPLAY + DEBUG
 // ============================================================================
+displayATR       = enableNY ? nyDailyATR : asiaDailyATR
+displayAtrLength = enableNY ? nyAtrLength : asiaAtrLength
 globexDist  = close - globexOpen
-globexPct   = dailyATR > 0 ? (globexDist / dailyATR) * 100 : 0.0
+globexPct   = displayATR > 0 ? (globexDist / displayATR) * 100 : 0.0
 globexSign  = globexDist >= 0 ? "+" : ""
 globexColor = globexDist >= 0 ? color.new(#26a69a, 0) : color.new(#ef5350, 0)
 
-var table atrTable = table.new(position.top_right, 1, 2, bgcolor=color.new(#1e222d, 10), border_width=1, border_color=color.new(#363a45, 0))
+var table atrTable = table.new(position.top_right, 1, 3, bgcolor=color.new(#1e222d, 10), border_width=1, border_color=color.new(#363a45, 0))
 if barstate.islast
-    atrText = "ATR(" + str.tostring(atrLength) + "): " + str.tostring(dailyATR, format.mintick)
+    atrText = "ATR(" + str.tostring(displayAtrLength) + "): " + str.tostring(displayATR, format.mintick)
     globexText = "GlobEx: " + globexSign + str.tostring(globexDist, format.mintick) + " (" + globexSign + str.tostring(globexPct, "#.0") + "% ATR)"
+    debugText = "root=" + syminfo.root + " | asset=" + asset + " | RR=" + str.tostring(nyRR) + " | ATR_len=" + str.tostring(nyAtrLength) + " | stop%=" + str.tostring(nyStopPct)
     table.cell(atrTable, 0, 0, atrText, text_color=color.white, text_size=size.small)
     table.cell(atrTable, 0, 1, globexText, text_color=globexColor, text_size=size.small)
+    table.cell(atrTable, 0, 2, debugText, text_color=color.yellow, text_size=size.small)
 
 // ============================================================================
-// ALERTS - fire when a new FVG setup is detected (must enable in settings)
+// ALERTS - fire when a new FVG setup is detected
+// alert() calls fire automatically; alertcondition() for manual per-condition setup
 // ============================================================================
-alertcondition(ny_longSetupAlert,    "NY Long Setup",     "NY long FVG setup detected")
-alertcondition(ny_shortSetupAlert,   "NY Short Setup",    "NY short FVG setup detected")
-alertcondition(asia_longSetupAlert,  "Asia Long Setup",   "Asia long FVG setup detected")
-alertcondition(asia_shortSetupAlert, "Asia Short Setup",  "Asia short FVG setup detected")
-alertcondition(esldn_longSetupAlert,  "ES LDN Long Setup",  "ES LDN long FVG setup detected")
-alertcondition(esldn_shortSetupAlert, "ES LDN Short Setup", "ES LDN short FVG setup detected")
-alertcondition(ny_longSetupAlert or ny_shortSetupAlert or asia_longSetupAlert or asia_shortSetupAlert or esldn_longSetupAlert or esldn_shortSetupAlert, "Any Setup", "FVG setup detected")
+if ny_longSetupAlert
+    alert(asset + " NY Long armed @ " + str.tostring(ny_longEntry, format.mintick) + " | SL " + str.tostring(ny_longStop, format.mintick) + " | TP1 " + str.tostring(ny_longTp1, format.mintick) + " | TP2 " + str.tostring(ny_longTp2, format.mintick), alert.freq_once_per_bar_close)
+
+if ny_shortSetupAlert
+    alert(asset + " NY Short armed @ " + str.tostring(ny_shortEntry, format.mintick) + " | SL " + str.tostring(ny_shortStop, format.mintick) + " | TP1 " + str.tostring(ny_shortTp1, format.mintick) + " | TP2 " + str.tostring(ny_shortTp2, format.mintick), alert.freq_once_per_bar_close)
+
+if asia_longSetupAlert
+    alert(asset + " Asia Long armed @ " + str.tostring(asia_longEntry, format.mintick) + " | SL " + str.tostring(asia_longStop, format.mintick) + " | TP1 " + str.tostring(asia_longTp1, format.mintick) + " | TP2 " + str.tostring(asia_longTp2, format.mintick), alert.freq_once_per_bar_close)
+
+if asia_shortSetupAlert
+    alert(asset + " Asia Short armed @ " + str.tostring(asia_shortEntry, format.mintick) + " | SL " + str.tostring(asia_shortStop, format.mintick) + " | TP1 " + str.tostring(asia_shortTp1, format.mintick) + " | TP2 " + str.tostring(asia_shortTp2, format.mintick), alert.freq_once_per_bar_close)
+
+alertcondition(ny_longSetupAlert,   "NY Long Setup",   "NY long FVG setup detected")
+alertcondition(ny_shortSetupAlert,  "NY Short Setup",  "NY short FVG setup detected")
+alertcondition(asia_longSetupAlert,  "Asia Long Setup",  "Asia long FVG setup detected")
+alertcondition(asia_shortSetupAlert, "Asia Short Setup", "Asia short FVG setup detected")
+alertcondition(ny_longSetupAlert or ny_shortSetupAlert or asia_longSetupAlert or asia_shortSetupAlert, "Any Setup", "FVG setup detected")

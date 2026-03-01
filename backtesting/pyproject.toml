@@ -1,0 +1,44 @@
+[project]
+name = "orb-backtest"
+version = "0.1.0"
+description = "Python backtesting engine for ORB+FVG trading strategies"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "numba>=0.59",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "pyarrow>=14.0",
+    "tabulate>=0.9",
+    "optuna>=4.7.0",
+    "yfinance>=1.2.0",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+data = [
+    "databento>=0.70",
+]
+storage = [
+    "boto3>=1.35",
+    "watchdog>=4.0",
+]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orb_backtest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
