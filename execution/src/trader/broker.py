@@ -38,10 +38,12 @@ class TradersPostClient:
         ticker: str = "MNQ",
         dry_run: bool = True,
         timeout_s: float = 10.0,
+        config_name: str = "",
     ) -> None:
         self.webhook_url = webhook_url
         self.ticker = ticker
         self.dry_run = dry_run
+        self.config_name = config_name
         self.timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._session: aiohttp.ClientSession | None = None
 
@@ -64,7 +66,7 @@ class TradersPostClient:
 
         if self.dry_run:
             latency = (time.monotonic() - t0) * 1000
-            logger.info("[DRY-RUN] webhook: %s", payload)
+            logger.info("[DRY-RUN] [%s] webhook: %s", self.config_name or "DEFAULT", payload)
             return WebhookResult(payload=payload, status=None, latency_ms=latency, dry_run=True)
 
         session = await self._ensure_session()

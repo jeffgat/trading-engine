@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ConfigResponse, SessionConfig } from "@/execution/lib/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
 
 export function useConfig() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
@@ -81,5 +81,9 @@ export function useConfig() {
     [fetchConfig],
   );
 
-  return { config, loading, saving, error, updateSession, resetSession };
+  const execConfigs: Record<string, ExecConfigMeta> = useMemo(() => {
+    return config?.exec_configs ?? {};
+  }, [config]);
+
+  return { config, loading, saving, error, updateSession, resetSession, execConfigs };
 }

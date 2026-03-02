@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { StatusResponse } from "@/execution/lib/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { SessionStatus, StatusResponse } from "@/execution/lib/types";
 
 export function useStatus(
   subscribe: (type: string, cb: (data: unknown) => void) => () => void,
@@ -54,5 +54,22 @@ export function useStatus(
     return () => clearInterval(id);
   }, []);
 
-  return { status, uptime, loading };
+  // Derive config-grouped engines and flat engines list
+  const configEngines: Record<string, SessionStatus[]> = useMemo(() => {
+    if (!status?.configs) return {};
+    const result: Record<string, SessionStatus[]> = {};
+    for (const [configName, group] of Object.entries(status.configs)) {
+      result[configName] = (group.engines ?? []).map((e) => ({
+        ...e,
+        config_name: e.config_name ?? configName,
+      }));
+    }
+    return result;
+  }, [status]);
+
+  const engines: SessionStatus[] = useMemo(() => {
+    return Object.values(configEngines).flat();
+  }, [configEngines]);
+
+  return { status, uptime, loading, configEngines, engines };
 }

@@ -16,16 +16,18 @@ export interface SessionStatus {
   daily_atr: number;
   levels: TradeLevels | null;
   tp1_hit: boolean;
+  config_name?: string;
 }
 
 export interface StatusResponse {
-  engines: SessionStatus[];
+  configs: Record<string, { engines: SessionStatus[] }>;
   uptime_seconds: number;
   mode: string;
 }
 
 export interface TradeLogEntry {
   timestamp: string;
+  config?: string | null;
   asset?: string | null;
   session: string;
   event: string;
@@ -85,11 +87,19 @@ export interface SessionConfig {
   excluded_dow: number | number[] | null;
 }
 
+export interface ExecConfigMeta {
+  enabled: boolean;
+  webhook_url: string;
+  sessions: string[];
+  ifvg_sessions: string[];
+}
+
 export interface ConfigResponse {
   config: Record<string, unknown>;
   sessions: Record<string, SessionConfig>;
   overrides: Record<string, Partial<SessionConfig>>;
   defaults: Record<string, Partial<SessionConfig>>;
+  exec_configs?: Record<string, ExecConfigMeta>;
 }
 
 export type WsMessage =

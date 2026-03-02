@@ -1,9 +1,12 @@
+import { useMemo } from "react";
+import { CONFIG_COLORS } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry } from "@/execution/lib/types";
 
 interface PerformanceViewProps {
   entries: TradeLogEntry[];
   loading: boolean;
   config: ConfigResponse | null;
+  activeConfig: string;
 }
 
 interface SessionCfg {
@@ -14,6 +17,7 @@ interface SessionCfg {
 interface OpenTrade {
   id: string;
   session: string;
+  config: string;
   ticker: string;
   direction: "Long" | "Short";
   entryTs: string;
@@ -27,6 +31,7 @@ interface PerfRow {
   exitTime: string;
   ticker: string;
   session: string;
+  config: string;
   direction: "Long" | "Short";
   rValue: number | null;
   strategy: string;
@@ -37,7 +42,7 @@ interface PerfRow {
 const EXIT_EVENTS = new Set(["SL_HIT", "BE_HIT", "TP2_HIT", "TP2_DIRECT", "EOD_FLAT"]);
 
 function splitTs(ts: string): { date: string; time: string } {
-  const [date = "—", time = "—"] = ts.split(" ");
+  const [date = "\u2014", time = "\u2014"] = ts.split(" ");
   return { date, time };
 }
 
@@ -46,7 +51,7 @@ function tickerFromEntry(entry: TradeLogEntry): string {
   if (raw.includes("NQ")) return "NQ";
   if (raw.includes("ES")) return "ES";
   if (raw.includes("GC")) return "GC";
-  return "—";
+  return "\u2014";
 }
 
 function sessionLabel(session: string): string {
@@ -79,16 +84,21 @@ function getRValue(
 
 function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): PerfRow[] {
   const ordered = [...entries].reverse();
-  const openBySession = new Map<string, OpenTrade>();
+  // Key open trades by config:session to handle multiple configs
+  const openByKey = new Map<string, OpenTrade>();
   const rows: PerfRow[] = [];
 
   for (const entry of ordered) {
+    const entryConfig = entry.config ?? "";
+    const tradeKey = `${entryConfig}:${entry.session}`;
+
     if (entry.event === "FILLED") {
       const dirRaw = (entry.details.dir || "").toLowerCase();
       const direction = dirRaw === "short" ? "Short" : "Long";
-      openBySession.set(entry.session, {
-        id: `${entry.session}-${entry.timestamp}`,
+      openByKey.set(tradeKey, {
+        id: `${tradeKey}-${entry.timestamp}`,
         session: entry.session,
+        config: entryConfig,
         ticker: tickerFromEntry(entry),
         direction,
         entryTs: entry.timestamp,
@@ -98,7 +108,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
 
     if (!EXIT_EVENTS.has(entry.event)) continue;
 
-    const open = openBySession.get(entry.session);
+    const open = openByKey.get(tradeKey);
     if (!open) continue;
 
     const entryParts = splitTs(open.entryTs);
@@ -114,25 +124,27 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       exitTime: exitParts.time,
       ticker: open.ticker,
       session: sessionLabel(open.session),
+      config: open.config,
       direction: open.direction,
       rValue,
       strategy: "ORB",
       notes: "",
       sortTs: entry.timestamp,
     });
-    openBySession.delete(entry.session);
+    openByKey.delete(tradeKey);
   }
 
-  for (const open of openBySession.values()) {
+  for (const open of openByKey.values()) {
     const entryParts = splitTs(open.entryTs);
     rows.push({
       id: `${open.id}-open`,
       entryDate: entryParts.date,
       entryTime: entryParts.time,
-      exitDate: "—",
+      exitDate: "\u2014",
       exitTime: "open",
       ticker: open.ticker,
       session: sessionLabel(open.session),
+      config: open.config,
       direction: open.direction,
       rValue: null,
       strategy: "ORB",
@@ -174,8 +186,13 @@ function Pill({
   );
 }
 
-export function PerformanceView({ entries, loading, config }: PerformanceViewProps) {
-  const rows = buildRows(entries, config);
+export function PerformanceView({ entries, loading, config, activeConfig }: PerformanceViewProps) {
+  const allRows = buildRows(entries, config);
+
+  const rows = useMemo(() => {
+    if (activeConfig === "ALL") return allRows;
+    return allRows.filter((row) => row.config === activeConfig);
+  }, [allRows, activeConfig]);
 
   if (loading) {
     return (
@@ -192,13 +209,14 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
       </div>
 
       <div className="overflow-x-auto rounded-md border border-border bg-bg-card">
-        <table className="min-w-[1060px] w-full border-collapse text-sm">
+        <table className="min-w-[1160px] w-full border-collapse text-sm">
           <thead className="bg-[#24242b] text-text-primary">
             <tr className="text-left">
               <th className="px-3 py-2 border-r border-border/80">Entry Date</th>
               <th className="px-3 py-2 border-r border-border/80">Entry Time</th>
               <th className="px-3 py-2 border-r border-border/80">Exit Date</th>
               <th className="px-3 py-2 border-r border-border/80">Exit Time</th>
+              <th className="px-3 py-2 border-r border-border/80">Config</th>
               <th className="px-3 py-2 border-r border-border/80">Ticker</th>
               <th className="px-3 py-2 border-r border-border/80">Session</th>
               <th className="px-3 py-2 border-r border-border/80">Direction</th>
@@ -209,7 +227,7 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-text-muted">
+                <td colSpan={10} className="px-4 py-10 text-center text-text-muted">
                   No completed trades yet
                 </td>
               </tr>
@@ -231,12 +249,25 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
                         ? "ticker-gc"
                         : "neutral";
 
+                const configColorClasses = row.config
+                  ? CONFIG_COLORS[row.config] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
+                  : "";
+
                 return (
                   <tr key={row.id} className="border-t border-border/60 hover:bg-bg-card-hover/70">
                     <td className="px-3 py-2 font-medium text-text-secondary">{row.entryDate}</td>
                     <td className="px-3 py-2 font-mono text-text-secondary">{row.entryTime}</td>
                     <td className="px-3 py-2 font-medium text-text-secondary">{row.exitDate}</td>
                     <td className="px-3 py-2 font-mono text-text-secondary">{row.exitTime}</td>
+                    <td className="px-3 py-2">
+                      {row.config ? (
+                        <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${configColorClasses}`}>
+                          {row.config}
+                        </span>
+                      ) : (
+                        <span className="text-text-muted">\u2014</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2"><Pill label={row.ticker} tone={tickerTone} /></td>
                     <td className="px-3 py-2"><Pill label={row.session} tone={
                       row.session === "NY" ? "session-ny"
@@ -249,7 +280,7 @@ export function PerformanceView({ entries, loading, config }: PerformanceViewPro
                     </td>
                     <td className="px-3 py-2">
                       {row.rValue == null ? (
-                        <span className="text-text-muted">—</span>
+                        <span className="text-text-muted">\u2014</span>
                       ) : (
                         <Pill label={row.rValue.toFixed(1)} tone={rTone} />
                       )}

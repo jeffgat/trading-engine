@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -310,14 +312,79 @@ def _env_or_key(cfg: dict, key: str, env_key: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Execution config profiles (FAST, SLOW, etc.)
+# ---------------------------------------------------------------------------
+
+EXEC_CONFIGS_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "exec_configs.json"
+
+
+@dataclass
+class ExecutionConfig:
+    """Named execution profile with its own session subset and risk overrides."""
+
+    name: str
+    enabled: bool = True
+    webhook_url: str = ""
+    session_overrides: dict[str, dict] = field(default_factory=dict)
+    ifvg_session_overrides: dict[str, dict] = field(default_factory=dict)
+
+
+def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
+    """Load execution configs from exec_configs.json.
+
+    Falls back to a single DEFAULT config built from live.toml sessions
+    if the file does not exist.
+    """
+    if EXEC_CONFIGS_PATH.exists():
+        with open(EXEC_CONFIGS_PATH) as f:
+            raw = json.load(f)
+        configs = []
+        for name, data in raw.items():
+            configs.append(ExecutionConfig(
+                name=name,
+                enabled=data.get("enabled", True),
+                webhook_url=data.get("webhook_url", ""),
+                session_overrides=data.get("sessions", {}),
+                ifvg_session_overrides=data.get("ifvg_sessions", {}),
+            ))
+        if configs:
+            return configs
+
+    # Fallback: single DEFAULT config from live.toml
+    cfg = config or {}
+    sessions_enabled = cfg.get("sessions", {}).get("enabled", [
+        "NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia",
+    ])
+    ifvg_enabled = cfg.get("sessions", {}).get("ifvg_enabled", [])
+    return [ExecutionConfig(
+        name="DEFAULT",
+        enabled=True,
+        webhook_url="",
+        session_overrides={s: {} for s in sessions_enabled},
+        ifvg_session_overrides={s: {} for s in ifvg_enabled},
+    )]
+
+
+# ---------------------------------------------------------------------------
 # Build engines from config
 # ---------------------------------------------------------------------------
 
 def build_engines(
     config: dict,
     broker,
+    *,
+    config_name: str = "",
+    session_list: list[str] | None = None,
+    exec_overrides: dict[str, dict] | None = None,
 ) -> tuple[list, dict[str, list], dict[str, int]]:
     """Build SessionEngine instances from config.
+
+    Args:
+        config: TOML config dict.
+        broker: TradersPost client for this exec config.
+        config_name: Execution config name (e.g. "FAST", "SLOW").
+        session_list: Which sessions to build. If None, uses live.toml enabled list.
+        exec_overrides: Per-session overrides from the exec config (e.g. risk_usd).
 
     Returns:
         (engines, symbol_map, atr_lengths) where:
@@ -331,10 +398,11 @@ def build_engines(
     risk = config.get("risk", {})
     runtime_overrides = load_overrides()
 
-    sessions_enabled = config.get("sessions", {}).get("enabled", [
+    sessions_enabled = session_list if session_list is not None else config.get("sessions", {}).get("enabled", [
         "NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia",
     ])
     session_overrides = config.get("sessions", {})
+    exec_overrides = exec_overrides or {}
 
     # Half-day and excluded date configs
     half_days = tuple(config.get("dates", {}).get("half_days", [
@@ -365,7 +433,7 @@ def build_engines(
                 break
         if not isinstance(toml_overrides, dict):
             toml_overrides = {}
-        merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {})}
+        merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {}), **exec_overrides.get(sess_name, {})}
 
         # Per-session instrument (signal data source) and execution ticker
         sess_instrument = merged.get("instrument", "NQ")
@@ -384,6 +452,7 @@ def build_engines(
             name=sess_name,
             broker=broker,
             exec_ticker=exec_ticker,
+            config_name=config_name,
             orb_start=merged["orb_start"],
             orb_end=merged["orb_end"],
             entry_start=merged["entry_start"],
@@ -420,9 +489,9 @@ def build_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d)",
-            sess_name, sess_instrument, exec_ticker, db_symbol,
-            merged.get("stop_basis", "atr"), sess_atr_length,
+            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s)",
+            config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
+            merged.get("stop_basis", "atr"), sess_atr_length, merged.get("risk_usd", "?"),
         )
 
     return engines, symbol_map, atr_lengths
@@ -433,6 +502,10 @@ def build_ifvg_engines(
     broker,
     symbol_map: dict[str, list],
     atr_lengths: dict[str, int],
+    *,
+    config_name: str = "",
+    ifvg_list: list[str] | None = None,
+    ifvg_overrides: dict[str, dict] | None = None,
 ) -> list:
     """Build IFVGEngine instances for IFVG/LSI sessions.
 
@@ -441,7 +514,8 @@ def build_ifvg_engines(
     from .ifvg_engine import IFVGEngine
 
     risk = config.get("risk", {})
-    ifvg_enabled = config.get("sessions", {}).get("ifvg_enabled", [])
+    ifvg_enabled = ifvg_list if ifvg_list is not None else config.get("sessions", {}).get("ifvg_enabled", [])
+    ifvg_overrides = ifvg_overrides or {}
     if not ifvg_enabled:
         return []
 
@@ -466,45 +540,49 @@ def build_ifvg_engines(
         sess_atr_length = sess_cfg.get("atr_length", 10)
         atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
 
+        # Merge exec config overrides (e.g. risk_usd) on top of base config
+        merged = {**sess_cfg, **ifvg_overrides.get(sess_name, {})}
+
         # Handle excluded_dow as list → first value for single exclusion
-        excl_dow = sess_cfg.get("excluded_dow")
+        excl_dow = merged.get("excluded_dow")
 
         engine = IFVGEngine(
             name=sess_name,
             broker=broker,
             exec_ticker=exec_ticker,
-            entry_start=sess_cfg["entry_start"],
-            entry_end=sess_cfg["entry_end"],
-            flat_start=sess_cfg["flat_start"],
-            flat_end=sess_cfg["flat_end"],
-            rr=sess_cfg["rr"],
-            tp1_ratio=sess_cfg["tp1_ratio"],
-            min_gap_atr_pct=sess_cfg.get("min_gap_atr_pct", 5.0),
-            min_stop_atr_pct=sess_cfg.get("min_stop_atr_pct", 0.05),
-            max_bars_after_sweep=sess_cfg.get("max_bars_after_sweep", 20),
-            max_inversion_bars=sess_cfg.get("max_inversion_bars", 10),
-            risk_usd=sess_cfg.get("risk_usd", risk.get("risk_usd", 250)),
+            config_name=config_name,
+            entry_start=merged["entry_start"],
+            entry_end=merged["entry_end"],
+            flat_start=merged["flat_start"],
+            flat_end=merged["flat_end"],
+            rr=merged["rr"],
+            tp1_ratio=merged["tp1_ratio"],
+            min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
+            min_stop_atr_pct=merged.get("min_stop_atr_pct", 0.05),
+            max_bars_after_sweep=merged.get("max_bars_after_sweep", 20),
+            max_inversion_bars=merged.get("max_inversion_bars", 10),
+            risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
-            min_qty=sess_cfg.get("min_qty", risk.get("min_qty", 1.0)),
+            min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
-            qty_multiplier=sess_cfg.get("qty_multiplier", 1.0),
-            be_offset_ticks=sess_cfg.get("be_offset_ticks", risk.get("be_offset_ticks", 0)),
+            qty_multiplier=merged.get("qty_multiplier", 1.0),
+            be_offset_ticks=merged.get("be_offset_ticks", risk.get("be_offset_ticks", 0)),
             min_tick=exec_inst["min_tick"],
-            max_single_risk_usd=sess_cfg.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
-            long_only=sess_cfg.get("long_only", True),
+            max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
+            long_only=merged.get("long_only", True),
             excluded_dow=excl_dow,
             excluded_dates=excluded_dates,
             half_days=half_days,
             half_day_flat_start=config.get("dates", {}).get("half_day_flat_start", "12:50"),
             half_day_flat_end=config.get("dates", {}).get("half_day_flat_end", "13:00"),
-            killzones=sess_cfg.get("killzones"),
+            killzones=merged.get("killzones"),
         )
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "IFVG engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f)",
-            sess_name, sess_instrument, exec_ticker, db_symbol,
-            sess_cfg.get("qty_multiplier", 1.0),
+            "[%s] IFVG engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s)",
+            config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
+            merged.get("qty_multiplier", 1.0), merged.get("risk_usd", "?"),
         )
 
     return engines
@@ -527,59 +605,119 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     tp_cfg = config.get("traderspost", {})
 
     dry_run = not live
+    mode = "LIVE" if not dry_run else "DRY-RUN"
 
-    # TradersPost client (default ticker is a fallback — each session overrides
-    # with its own exec_ticker derived from SIGNAL_TO_EXEC mapping)
-    webhook_url = _env_or_key(tp_cfg, "webhook_url")
-    if not webhook_url and not dry_run:
+    # Global webhook URL fallback
+    global_webhook_url = _env_or_key(tp_cfg, "webhook_url")
+    if not global_webhook_url and not dry_run:
         logger.error("TRADERSPOST_WEBHOOK_URL not set — cannot run in live mode")
         sys.exit(1)
 
-    broker = TradersPostClient(
-        webhook_url=webhook_url or "https://traderspost.io/api/v1/webhook/dry-run",
-        ticker=general.get("instrument", "MNQ"),
-        dry_run=dry_run,
-    )
+    # Load execution configs (FAST, SLOW, etc.)
+    exec_configs = load_exec_configs(config)
+    logger.info("Loaded %d execution config(s): %s", len(exec_configs), [ec.name for ec in exec_configs])
 
-    # Build session engines with per-session instrument routing
-    engines, symbol_map, atr_lengths = build_engines(config, broker)
+    # Build engines per execution config
+    engines_by_config: dict[str, list] = {}
+    brokers: list[TradersPostClient] = []
+    global_symbol_map: dict[str, list] = {}
+    global_atr_lengths: dict[str, int] = {}
+    exec_configs_meta: dict[str, dict] = {}  # metadata for API
 
-    # Build IFVG engines (mutates symbol_map and atr_lengths in-place)
-    ifvg_engines = build_ifvg_engines(config, broker, symbol_map, atr_lengths)
-    all_engines = engines + ifvg_engines
+    for ec in exec_configs:
+        if not ec.enabled:
+            logger.info("Execution config '%s' is disabled, skipping", ec.name)
+            continue
 
+        # One broker per execution config (for future per-account webhook routing)
+        wh_url = ec.webhook_url or global_webhook_url or "https://traderspost.io/api/v1/webhook/dry-run"
+        broker = TradersPostClient(
+            webhook_url=wh_url,
+            ticker=general.get("instrument", "MNQ"),
+            dry_run=dry_run,
+            config_name=ec.name,
+        )
+        brokers.append(broker)
+
+        # Build continuation engines for this config's sessions
+        session_list = list(ec.session_overrides.keys())
+        engines, sym_map, atr_lens = build_engines(
+            config, broker,
+            config_name=ec.name,
+            session_list=session_list,
+            exec_overrides=ec.session_overrides,
+        )
+
+        # Build IFVG engines for this config's IFVG sessions
+        ifvg_list = list(ec.ifvg_session_overrides.keys())
+        ifvg_engines = build_ifvg_engines(
+            config, broker, sym_map, atr_lens,
+            config_name=ec.name,
+            ifvg_list=ifvg_list,
+            ifvg_overrides=ec.ifvg_session_overrides,
+        )
+
+        config_engines = engines + ifvg_engines
+        engines_by_config[ec.name] = config_engines
+
+        # Merge into global maps (feed routes bars to ALL engines across all configs)
+        for sym, eng_list in sym_map.items():
+            global_symbol_map.setdefault(sym, []).extend(eng_list)
+        for sym, length in atr_lens.items():
+            global_atr_lengths[sym] = max(global_atr_lengths.get(sym, 0), length)
+
+        # Store metadata for API
+        exec_configs_meta[ec.name] = {
+            "enabled": ec.enabled,
+            "webhook_url": ec.webhook_url,
+            "sessions": session_list,
+            "ifvg_sessions": ifvg_list,
+        }
+
+        logger.info(
+            "[%s] Built %d engines: sessions=%s ifvg=%s",
+            ec.name, len(config_engines), session_list, ifvg_list,
+        )
+
+    all_engines = [e for engines in engines_by_config.values() for e in engines]
     if not all_engines:
-        logger.error("No session engines configured")
+        logger.error("No session engines configured across any execution config")
         sys.exit(1)
 
-    # Dashboard API — include both engine types
-    mode = "LIVE" if not dry_run else "DRY-RUN"
-    dashboard = DashboardState(engines=all_engines, config=config, mode=mode)
+    # Dashboard API — pass engines grouped by config
+    dashboard = DashboardState(
+        engines_by_config=engines_by_config,
+        config=config,
+        mode=mode,
+        exec_configs=exec_configs_meta,
+    )
 
     # Wire callbacks into each engine (both SessionEngine and IFVGEngine)
     for engine in all_engines:
         engine.on_state_change = dashboard.on_state_change
         engine.on_trade_exit = dashboard.record_trade
 
-    # Wire G5 gate for NQ_LDN: skip when Asia hit TP1 the prior night
-    def _g5_gate(ldn_date: str) -> bool:
-        """Return True to BLOCK the trade (Asia TP1 hit prior night)."""
-        from datetime import timedelta
-        try:
-            ldn_dt = datetime.strptime(ldn_date, "%Y%m%d")
-        except ValueError:
-            return False
-        # Asia session runs the evening before: date D-1 (or Friday → Sunday)
-        asia_dt = ldn_dt - timedelta(days=1)
-        # Skip weekends: if LDN is Monday, Asia was Friday night
-        while asia_dt.weekday() >= 5:
-            asia_dt -= timedelta(days=1)
-        asia_date_str = asia_dt.strftime("%Y%m%d")
-        return dashboard.asia_tp1_hit_for_date(asia_date_str)
+    # Wire G5 gate for NQ_LDN: skip when Asia hit TP1 the prior night.
+    # Scoped per config — only checks trade_history from the same config.
+    for cfg_name, cfg_engines in engines_by_config.items():
+        def _make_g5_gate(config_name: str):
+            def _g5_gate(ldn_date: str) -> bool:
+                """Return True to BLOCK the trade (Asia TP1 hit prior night)."""
+                from datetime import timedelta
+                try:
+                    ldn_dt = datetime.strptime(ldn_date, "%Y%m%d")
+                except ValueError:
+                    return False
+                asia_dt = ldn_dt - timedelta(days=1)
+                while asia_dt.weekday() >= 5:
+                    asia_dt -= timedelta(days=1)
+                asia_date_str = asia_dt.strftime("%Y%m%d")
+                return dashboard.asia_tp1_hit_for_date(asia_date_str, config_name=config_name)
+            return _g5_gate
 
-    for engine in engines:
-        if engine.name == "NQ_LDN":
-            engine.g5_gate_check = _g5_gate
+        for engine in cfg_engines:
+            if engine.name == "NQ_LDN":
+                engine.g5_gate_check = _make_g5_gate(cfg_name)
 
     app = create_app(dashboard)
     tailer = LogTailer(dashboard)
@@ -591,23 +729,21 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
 
     # Bar callback — route 5m bars to engines for signal detection (ORB, FVG)
     async def on_bar(symbol: str, bar, daily_atr: float):
-        target_engines = symbol_map.get(symbol, [])
+        target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
             await engine.on_bar(bar, daily_atr)
 
     # Tick callback — route 1s bars to engines for fill/exit management
     async def on_tick(symbol: str, tick, daily_atr: float):
-        target_engines = symbol_map.get(symbol, [])
+        target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
             await engine.on_tick(tick, daily_atr)
 
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key")
-    feed_symbols = list(symbol_map.keys())
+    feed_symbols = list(global_symbol_map.keys())
 
-    # Use the max ATR length across all sessions for the global feed ATR
-    # (individual session ATR needs are handled by the per-symbol ATR calculator)
-    global_atr_length = max(atr_lengths.values()) if atr_lengths else 14
+    global_atr_length = max(global_atr_lengths.values()) if global_atr_lengths else 14
 
     feed = DataBentoFeed(
         api_key=api_key or None,
@@ -621,36 +757,30 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     # Seed ATR from historical daily bars so it's ready on first live bar
     feed.warm_up(lookback_days=60)
 
-    # Seed engines with warmup ATR values so the dashboard shows ATR
-    # immediately (before the first live bar arrives for that symbol).
     atr_values = feed.get_atr_values()
-    for symbol, target_engines in symbol_map.items():
+    for symbol, target_engines in global_symbol_map.items():
         atr = atr_values.get(symbol, 0.0)
         if atr > 0:
             for engine in target_engines:
                 engine._daily_atr = atr
 
-    # recover current-day opening ranges from recent intraday history so
-    # sessions can continue scanning after service restarts.
+    # recover current-day opening ranges from recent intraday history
     intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
     now_et = datetime.now(tz=ET)
     recovered = 0
-    for symbol, target_engines in symbol_map.items():
+    for symbol, target_engines in global_symbol_map.items():
         bars = intraday_5m.get(symbol, [])
         for engine in target_engines:
             if hasattr(engine, "recover_opening_range") and engine.recover_opening_range(bars, now_et):
                 recovered += 1
     logger.info(
-        "startup recovery complete: recovered_or=%d total_sessions=%d",
-        recovered,
-        len(engines),
+        "startup recovery complete: recovered_or=%d total_engines=%d",
+        recovered, len(all_engines),
     )
 
     logger.info(
-        "Starting ORB Trader [%s] — feeds=%s sessions=%s api=:%d",
-        mode, feed_symbols,
-        [(e.name, sym) for sym, engs in symbol_map.items() for e in engs],
-        api_port,
+        "Starting ORB Trader [%s] — configs=%s feeds=%s total_engines=%d api=:%d",
+        mode, list(engines_by_config.keys()), feed_symbols, len(all_engines), api_port,
     )
 
     try:
@@ -662,7 +792,8 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     except KeyboardInterrupt:
         logger.info("Shutting down...")
     finally:
-        await broker.close()
+        for broker in brokers:
+            await broker.close()
         server.should_exit = True
 
 

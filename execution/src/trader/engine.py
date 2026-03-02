@@ -55,6 +55,7 @@ class TradeRecord:
     exit_type: str        # sl, tp1_partial, tp1_be, tp1_eod, tp2, tp2_direct, eod, cancelled
     tp1_hit: bool         # critical for G5 gate
     timestamp: str        # ISO format exit timestamp
+    config_name: str = "" # execution config (e.g. "FAST", "SLOW")
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +211,9 @@ class SessionEngine:
     half_day_flat_start: str = "12:50"
     half_day_flat_end: str = "13:00"
 
+    # Execution config name (e.g. "FAST", "SLOW")
+    config_name: str = ""
+
     # Optional callback for dashboard state change notifications
     on_state_change: Callable[[dict], None] | None = None
     # Optional callback for recording completed trades (G5 gate, history)
@@ -224,6 +228,7 @@ class SessionEngine:
     _bars: list[Bar] = field(default_factory=list, init=False)  # rolling window
     _levels: TradeLevels | None = field(default=None, init=False)
     _tp1_hit: bool = field(default=False, init=False)
+    _tp1_bar_count: int = field(default=-1, init=False)  # _bar_count when TP1 hit (1s)
     _fill_bar_idx: int = field(default=-1, init=False)
     _fill_timestamp: datetime | None = field(default=None, init=False)
     _bar_count: int = field(default=0, init=False)
@@ -267,17 +272,19 @@ class SessionEngine:
         return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
 
     def _log_trade(self, event: str, details: str = "") -> None:
-        """emit trade log with asset + session tags."""
+        """emit trade log with config + asset + session tags."""
+        cfg = self.config_name or "DEFAULT"
         if details:
             trade_logger.info(
-                "%s | %s | %s | %s",
+                "%s | %s | %s | %s | %s",
+                cfg,
                 self._asset_tag,
                 self.name,
                 event,
                 details,
             )
             return
-        trade_logger.info("%s | %s | %s", self._asset_tag, self.name, event)
+        trade_logger.info("%s | %s | %s | %s", cfg, self._asset_tag, self.name, event)
 
     def _notify_state_change(self) -> None:
         """Notify dashboard of a state transition."""
@@ -300,6 +307,7 @@ class SessionEngine:
             exit_type=exit_type,
             tp1_hit=self._tp1_hit,
             timestamp=datetime.now().isoformat(),
+            config_name=self.config_name,
         )
         self.on_trade_exit(record)
 
@@ -381,6 +389,7 @@ class SessionEngine:
         self._bars.clear()
         self._levels = None
         self._tp1_hit = False
+        self._tp1_bar_count = -1
         self._fill_bar_idx = -1
         self._fill_timestamp = None
         self._bar_count = 0
@@ -919,6 +928,14 @@ class SessionEngine:
         if self._bar_count <= self._fill_bar_idx:
             return
 
+        # Gate: skip the 5m bar that contains the TP1 hit.
+        # When TP1 is detected on a 1s tick mid-bar, the enclosing 5m bar's
+        # low includes pre-TP1 price action near the entry, making
+        # bar.low <= BE trivially true and causing a false BE_HIT.
+        # The 1s tick path is authoritative for exits on this bar.
+        if self._tp1_hit and self._tp1_bar_count >= 0 and self._bar_count <= self._tp1_bar_count:
+            return
+
         is_long = levels.direction == 1
 
         # Check stop loss (before TP1 — conservative)
@@ -949,6 +966,7 @@ class SessionEngine:
 
         if tp1_touched and not self._tp1_hit:
             self._tp1_hit = True
+            self._tp1_bar_count = self._bar_count
 
             if levels.is_single_contract:
                 self._log_trade(
@@ -1165,6 +1183,7 @@ class SessionEngine:
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade(
                         "TP1_BE_SINGLE",
@@ -1262,6 +1281,7 @@ class SessionEngine:
     def status_dict(self) -> dict:
         """Return current state as a dict for logging/debugging."""
         return {
+            "config_name": self.config_name,
             "session": self.name,
             "state": self._state.value,
             "date": self._current_date,

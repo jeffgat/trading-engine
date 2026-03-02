@@ -10,7 +10,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/dialog";
-import type { ConfigResponse, SessionConfig } from "@/execution/lib/types";
+import { CONFIG_COLORS } from "@/execution/lib/constants";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +24,7 @@ interface ConfigViewProps {
   error: string | null;
   onUpdateSession: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
   onResetSession: (name: string) => Promise<void>;
+  execConfigs: Record<string, ExecConfigMeta>;
 }
 
 interface GlobalRiskDefaults {
@@ -791,6 +793,87 @@ function SessionConfigCard({
 }
 
 // ---------------------------------------------------------------------------
+// SessionConfigsSection (tabbed view by speed prefix)
+// ---------------------------------------------------------------------------
+
+function SessionConfigsSection({
+  sessions,
+  overrides,
+  defaults,
+  globalRisk,
+  saving,
+  onUpdateSession,
+  onResetSession,
+}: {
+  sessions: Record<string, SessionConfig>;
+  overrides: Record<string, Partial<SessionConfig>>;
+  defaults: Record<string, Partial<SessionConfig>>;
+  globalRisk: GlobalRiskDefaults;
+  saving: boolean;
+  onUpdateSession: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
+  onResetSession: (name: string) => Promise<void>;
+}) {
+  const allPrefixes = Array.from(
+    new Set(
+      Object.keys(sessions).map((n) => {
+        const parts = n.split(":");
+        return parts.length > 1 ? parts[0] : "OTHER";
+      })
+    )
+  ).sort();
+
+  const tabs = ["All", ...allPrefixes];
+  const [activeTab, setActiveTab] = useState(tabs[0]);
+
+  const filteredEntries = Object.entries(sessions).filter(([name]) => {
+    if (activeTab === "All") return true;
+    const parts = name.split(":");
+    const prefix = parts.length > 1 ? parts[0] : "OTHER";
+    return prefix === activeTab;
+  });
+
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-3">
+        <h3 className="text-sm font-semibold text-text-secondary">
+          Session Configurations
+        </h3>
+        <div className="flex items-center gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${
+                activeTab === tab
+                  ? "bg-accent/20 text-accent border border-accent/30"
+                  : "text-text-muted hover:text-text-secondary hover:bg-bg-secondary border border-transparent"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {filteredEntries.map(([name, cfg]) => (
+          <SessionConfigCard
+            key={name}
+            name={name}
+            cfg={cfg}
+            globalRisk={globalRisk}
+            overrides={overrides[name] ?? {}}
+            defaults={defaults[name] ?? {}}
+            saving={saving}
+            onSave={onUpdateSession}
+            onReset={onResetSession}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ConfigView (main export)
 // ---------------------------------------------------------------------------
 
@@ -801,6 +884,7 @@ export function ConfigView({
   error,
   onUpdateSession,
   onResetSession,
+  execConfigs,
 }: ConfigViewProps) {
   if (loading) {
     return (
@@ -837,6 +921,72 @@ export function ConfigView({
         </div>
       )}
 
+      {/* Execution Configs Summary */}
+      {Object.keys(execConfigs).length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-text-secondary mb-3">
+            Execution Configs
+          </h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(execConfigs).map(([name, meta]) => {
+              const colorClasses = CONFIG_COLORS[name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
+              return (
+                <Card key={name} className="border-border bg-bg-card">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorClasses}`}>
+                          {name}
+                        </span>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                          meta.enabled
+                            ? "text-profit bg-profit/10"
+                            : "text-text-muted bg-text-muted/10"
+                        }`}>
+                          {meta.enabled ? "enabled" : "disabled"}
+                        </span>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="space-y-1">
+                      <ConfigItem
+                        label="Webhook"
+                        value={meta.webhook_url ? "configured" : "not set"}
+                      />
+                      {meta.sessions.length > 0 && (
+                        <div className="flex justify-between py-1">
+                          <span className="text-text-muted text-xs">Sessions</span>
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {meta.sessions.map((s) => (
+                              <span key={s} className="font-mono text-xs text-text-secondary bg-bg-secondary rounded px-1.5 py-0.5">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {meta.ifvg_sessions.length > 0 && (
+                        <div className="flex justify-between py-1">
+                          <span className="text-text-muted text-xs">IFVG Sessions</span>
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {meta.ifvg_sessions.map((s) => (
+                              <span key={s} className="font-mono text-xs text-text-secondary bg-bg-secondary rounded px-1.5 py-0.5">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* General + Risk */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card className="border-border bg-bg-card">
@@ -863,26 +1013,15 @@ export function ConfigView({
       </div>
 
       {/* Session configs */}
-      <div>
-        <h3 className="text-sm font-semibold text-text-secondary mb-3">
-          Session Configurations
-        </h3>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Object.entries(config.sessions).map(([name, cfg]) => (
-            <SessionConfigCard
-              key={name}
-              name={name}
-              cfg={cfg}
-              globalRisk={globalRisk}
-              overrides={config.overrides?.[name] ?? {}}
-              defaults={config.defaults?.[name] ?? {}}
-              saving={saving}
-              onSave={onUpdateSession}
-              onReset={onResetSession}
-            />
-          ))}
-        </div>
-      </div>
+      <SessionConfigsSection
+        sessions={config.sessions}
+        overrides={config.overrides ?? {}}
+        defaults={config.defaults ?? {}}
+        globalRisk={globalRisk}
+        saving={saving}
+        onUpdateSession={onUpdateSession}
+        onResetSession={onResetSession}
+      />
 
       {/* Date config */}
       {Object.keys(dates).length > 0 && (

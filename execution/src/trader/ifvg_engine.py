@@ -99,10 +99,13 @@ class IFVGEngine:
         half_day_flat_end: str = "13:00",
         # Killzones
         killzones: list[tuple[str, str, str]] | None = None,
+        # Execution config name
+        config_name: str = "",
     ) -> None:
         self.name = name
         self.broker = broker
         self.exec_ticker = exec_ticker
+        self.config_name = config_name
 
         # Time windows
         self.entry_start = entry_start
@@ -212,14 +215,13 @@ class IFVGEngine:
     # ------------------------------------------------------------------
 
     def _log_trade(self, event: str, detail: str = "") -> None:
-        msg = "%s | NQ | %s | %s" % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            self.name,
-            event,
-        )
+        cfg = self.config_name or "DEFAULT"
         if detail:
-            msg += " | " + detail
-        trade_logger.info(msg)
+            trade_logger.info(
+                "%s | nq | %s | %s | %s", cfg, self.name, event, detail,
+            )
+            return
+        trade_logger.info("%s | nq | %s | %s", cfg, self.name, event)
 
     def _notify_state_change(self) -> None:
         if self.on_state_change:
@@ -240,6 +242,7 @@ class IFVGEngine:
             exit_type=exit_type,
             tp1_hit=self._tp1_hit,
             timestamp=datetime.now().isoformat(),
+            config_name=self.config_name,
         )
         self.on_trade_exit(record)
 
@@ -786,6 +789,7 @@ class IFVGEngine:
         levels = self._levels
         liq = self._liquidity.levels
         return {
+            "config_name": self.config_name,
             "session": self.name,
             "state": self._state.value,
             "type": "ifvg",

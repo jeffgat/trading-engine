@@ -5,12 +5,13 @@ import { PerformanceView } from "@/execution/components/PerformanceView";
 import { StatusPanel } from "@/execution/components/StatusPanel";
 import { TradeFeed } from "@/execution/components/TradeFeed";
 import { Badge } from "@/shared/ui/badge";
+import { CONFIG_COLORS } from "@/execution/lib/constants";
 import { useConfig } from "@/execution/hooks/useConfig";
 import { useMainLogs } from "@/execution/hooks/useMainLogs";
 import { useStatus } from "@/execution/hooks/useStatus";
 import { useTradeLogs } from "@/execution/hooks/useTradeLogs";
 import { useWebSocket } from "@/execution/hooks/useWebSocket";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type Tab = "status" | "trades" | "performance" | "logs" | "config";
 
@@ -24,8 +25,9 @@ const TABS: { key: Tab; label: string }[] = [
 
 export function ExecutionApp() {
   const [activeTab, setActiveTab] = useState<Tab>("status");
+  const [activeConfig, setActiveConfig] = useState<string>("ALL");
   const { connected, subscribe } = useWebSocket();
-  const { status, uptime, loading: statusLoading } = useStatus(subscribe);
+  const { status, uptime, loading: statusLoading, configEngines, engines } = useStatus(subscribe);
   const tradeLogs = useTradeLogs(subscribe);
   const mainLogs = useMainLogs(subscribe);
   const {
@@ -35,10 +37,16 @@ export function ExecutionApp() {
     error: configError,
     updateSession,
     resetSession,
+    execConfigs,
   } = useConfig();
 
   const mode = status?.mode ?? "\u2014";
   const isLive = mode === "LIVE";
+
+  // Derive config names from the status response
+  const configNames = useMemo(() => {
+    return Object.keys(configEngines).sort();
+  }, [configEngines]);
 
   return (
     <>
@@ -81,12 +89,53 @@ export function ExecutionApp() {
             ))}
           </nav>
         </div>
+
+        {/* Config selector pills */}
+        {configNames.length > 0 && (
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2">
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setActiveConfig("ALL")}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  activeConfig === "ALL"
+                    ? "bg-text-muted/20 text-text-primary border-text-muted/40"
+                    : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
+                }`}
+              >
+                ALL
+              </button>
+              {configNames.map((name) => {
+                const isActive = activeConfig === name;
+                const colorClasses = CONFIG_COLORS[name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
+                return (
+                  <button
+                    key={name}
+                    onClick={() => setActiveConfig(name)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                      isActive
+                        ? colorClasses
+                        : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {activeTab === "status" && (
-          <StatusPanel status={status} uptime={uptime} loading={statusLoading} />
+          <StatusPanel
+            configEngines={configEngines}
+            engines={engines}
+            uptime={uptime}
+            loading={statusLoading}
+            activeConfig={activeConfig}
+          />
         )}
         {activeTab === "trades" && (
           <TradeFeed
@@ -94,6 +143,7 @@ export function ExecutionApp() {
             total={tradeLogs.total}
             loading={tradeLogs.loading}
             loadMore={tradeLogs.loadMore}
+            activeConfig={activeConfig}
           />
         )}
         {activeTab === "logs" && (
@@ -106,6 +156,7 @@ export function ExecutionApp() {
             tradeTotal={tradeLogs.total}
             tradeLoading={tradeLogs.loading}
             loadMoreTrade={tradeLogs.loadMore}
+            activeConfig={activeConfig}
           />
         )}
         {activeTab === "performance" && (
@@ -113,6 +164,7 @@ export function ExecutionApp() {
             entries={tradeLogs.entries}
             loading={tradeLogs.loading}
             config={config}
+            activeConfig={activeConfig}
           />
         )}
         {activeTab === "config" && (
@@ -123,6 +175,7 @@ export function ExecutionApp() {
             error={configError}
             onUpdateSession={updateSession}
             onResetSession={resetSession}
+            execConfigs={execConfigs}
           />
         )}
       </main>

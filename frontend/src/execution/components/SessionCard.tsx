@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Badge } from "@/shared/ui/badge";
-import { STATE_COLORS, STATE_LABELS } from "@/execution/lib/constants";
+import { STATE_COLORS, STATE_LABELS, CONFIG_COLORS } from "@/execution/lib/constants";
 import type { SessionStatus } from "@/execution/lib/types";
 
 interface SessionCardProps {
@@ -35,9 +35,20 @@ export function SessionCard({ engine }: SessionCardProps) {
   return (
     <Card className="border-border bg-bg-card">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-base font-semibold">
-          {engine.session}
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-base font-semibold">
+            {engine.session}
+          </CardTitle>
+          {engine.config_name && (
+            <span
+              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${
+                CONFIG_COLORS[engine.config_name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
+              }`}
+            >
+              {engine.config_name}
+            </span>
+          )}
+        </div>
         <Badge variant="outline" className={`border-0 ${stateColor}`}>
           {stateLabel}
         </Badge>

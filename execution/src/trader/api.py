@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
 
+# Known execution config names (used to distinguish config tag from asset tag in log parsing)
+_KNOWN_CONFIGS: set[str] = set()
+
 
 # ---------------------------------------------------------------------------
 # Dashboard state (shared between engine and API)
@@ -39,12 +42,22 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend
 class DashboardState:
     """In-memory state store read by API, written by engines."""
 
-    engines: list[SessionEngine] = field(default_factory=list)
+    engines_by_config: dict[str, list] = field(default_factory=dict)
     config: dict = field(default_factory=dict)
     mode: str = "DRY-RUN"
     start_time: float = field(default_factory=time.time)
     trade_history: list[TradeRecord] = field(default_factory=list)
+    exec_configs: dict[str, dict] = field(default_factory=dict)
     _ws_clients: set[WebSocket] = field(default_factory=set, repr=False)
+
+    def __post_init__(self) -> None:
+        # Register config names for log parsing
+        _KNOWN_CONFIGS.update(self.engines_by_config.keys())
+
+    @property
+    def all_engines(self) -> list:
+        """Flat list of all engines across all configs."""
+        return [e for engines in self.engines_by_config.values() for e in engines]
 
     async def broadcast(self, message: dict) -> None:
         """Send a JSON message to all connected WebSocket clients."""
@@ -60,12 +73,21 @@ class DashboardState:
     def record_trade(self, record: TradeRecord) -> None:
         """Called by engines on trade exit. Stores record for G5 gate queries."""
         self.trade_history.append(record)
-        logger.info("Trade recorded: %s %s exit=%s tp1=%s", record.session, record.date, record.exit_type, record.tp1_hit)
+        logger.info(
+            "Trade recorded: [%s] %s %s exit=%s tp1=%s",
+            record.config_name, record.session, record.date,
+            record.exit_type, record.tp1_hit,
+        )
 
-    def asia_tp1_hit_for_date(self, date: str) -> bool:
-        """Check if any Asia session hit TP1 on the given date (for G5 gate)."""
+    def asia_tp1_hit_for_date(self, date: str, config_name: str = "") -> bool:
+        """Check if any Asia session hit TP1 on the given date (for G5 gate).
+
+        When config_name is provided, only checks trades from that config.
+        """
         for r in self.trade_history:
             if r.date == date and r.tp1_hit and r.session in ("NQ_Asia", "ES_Asia"):
+                if config_name and r.config_name != config_name:
+                    continue
                 return True
         return False
 
@@ -82,7 +104,12 @@ class DashboardState:
 
     def _build_status(self) -> dict:
         return {
-            "engines": [e.status_dict() for e in self.engines],
+            "configs": {
+                cfg_name: {
+                    "engines": [e.status_dict() for e in engines],
+                }
+                for cfg_name, engines in self.engines_by_config.items()
+            },
             "uptime_seconds": round(time.time() - self.start_time),
             "mode": self.mode,
         }
@@ -95,7 +122,10 @@ class DashboardState:
 def parse_trade_log_line(line: str) -> dict | None:
     """Parse a trade log line into a structured dict.
 
-    Formats:
+    Formats (new — with config tag):
+      - YYYY-MM-DD HH:MM:SS | CONFIG | ASSET | SESSION | EVENT | key=value ...
+
+    Legacy formats (backward-compatible):
       - YYYY-MM-DD HH:MM:SS | SESSION | EVENT | key=value ...
       - YYYY-MM-DD HH:MM:SS | ASSET | SESSION | EVENT | key=value ...
     """
@@ -108,32 +138,36 @@ def parse_trade_log_line(line: str) -> dict | None:
         return None
 
     timestamp = parts[0]
+    config = None
     asset = ""
 
-    # new format includes an explicit asset tag before the session.
-    if len(parts) >= 4 and parts[1].lower() in {"nq", "es", "gc"}:
-        asset = parts[1].lower()
-        session = parts[2]
-        event = parts[3]
-        detail_str = " | ".join(parts[4:]) if len(parts) > 4 else ""
-    else:
-        session = parts[1]
-        event = parts[2]
-        detail_str = " | ".join(parts[3:]) if len(parts) > 3 else ""
+    # Detect config tag: known config name (FAST, SLOW, DEFAULT) or uppercase
+    # non-asset string in parts[1]
+    remaining = parts[1:]
+    if remaining and remaining[0].upper() in _KNOWN_CONFIGS | {"DEFAULT"}:
+        config = remaining[0].upper()
+        remaining = remaining[1:]
+
+    # Detect asset tag
+    if remaining and remaining[0].lower() in {"nq", "es", "gc"}:
+        asset = remaining[0].lower()
+        remaining = remaining[1:]
+
+    if len(remaining) < 2:
+        return None
+
+    session = remaining[0]
+    event = remaining[1]
+    detail_str = " | ".join(remaining[2:]) if len(remaining) > 2 else ""
 
     details: dict[str, str] = {}
 
-    # Also check if event itself contains key=value pairs after the event name
-    # Format: "LONG_SETUP | entry=21450.25 stop=21380.00"
-    # or: "FILLED | dir=long entry=21450.25 bar_time=2026-02-23 10:30:00"
     if detail_str:
         for match in re.finditer(r'(\w+)=(\S+)', detail_str):
             details[match.group(1)] = match.group(2)
 
     # Some events embed key=value in the event string itself
-    # e.g. "LONG_SETUP | entry=21450.25 stop=21380.00 ..."
     if not details and " " in event:
-        # The event name is the first word
         ev_parts = event.split(None, 1)
         event = ev_parts[0]
         if len(ev_parts) > 1:
@@ -142,6 +176,7 @@ def parse_trade_log_line(line: str) -> dict | None:
 
     return {
         "timestamp": timestamp,
+        "config": config,
         "asset": asset or None,
         "session": session,
         "event": event,
@@ -176,6 +211,7 @@ def _read_log_lines(
     offset: int = 0,
     search: str = "",
     level: str = "",
+    config_filter: str = "",
     parser=None,
 ) -> tuple[list[dict], int]:
     """Read and parse log lines from a file (newest first).
@@ -194,6 +230,11 @@ def _read_log_lines(
         parsed = parser(line) if parser else None
         if parsed is not None:
             entries.append(parsed)
+
+    # Filter by config name (trade log only)
+    if config_filter:
+        config_upper = config_filter.upper()
+        entries = [e for e in entries if e.get("config", "").upper() == config_upper]
 
     # Filter by level (main log only)
     if level:
@@ -346,12 +387,14 @@ def create_app(state: DashboardState) -> FastAPI:
         limit: int = Query(50, ge=1, le=500),
         offset: int = Query(0, ge=0),
         search: str = Query(""),
+        config: str = Query("", description="Filter by execution config name"),
     ):
         entries, total = _read_log_lines(
             LOG_DIR / "trades.log",
             limit=limit,
             offset=offset,
             search=search,
+            config_filter=config,
             parser=parse_trade_log_line,
         )
         return {"entries": entries, "total": total, "limit": limit, "offset": offset}
@@ -376,9 +419,12 @@ def create_app(state: DashboardState) -> FastAPI:
     @app.get("/api/trades/history")
     async def get_trade_history(
         session: str = Query("", description="Filter by session name"),
+        config: str = Query("", description="Filter by execution config name"),
         limit: int = Query(100, ge=1, le=1000),
     ):
         records = state.trade_history
+        if config:
+            records = [r for r in records if r.config_name == config]
         if session:
             records = [r for r in records if r.session == session]
         # newest first, then limit
@@ -389,15 +435,20 @@ def create_app(state: DashboardState) -> FastAPI:
     @app.get("/api/config")
     async def get_config():
         overrides = load_overrides()
+        all_engines = state.all_engines
         return {
             "config": state.config,
-            "sessions": {e.name: _session_info(e) for e in state.engines},
+            "sessions": {
+                f"{e.config_name}:{e.name}" if e.config_name else e.name: _session_info(e)
+                for e in all_engines
+            },
             "overrides": {
-                e.name: overrides.get(e.name, {}) for e in state.engines
+                e.name: overrides.get(e.name, {}) for e in all_engines
             },
             "defaults": {
-                e.name: _defaults_for_session(e.name) for e in state.engines
+                e.name: _defaults_for_session(e.name) for e in all_engines
             },
+            "exec_configs": state.exec_configs,
         }
 
     # ── Config override endpoints ──────────────────────────────────
@@ -534,8 +585,8 @@ class SessionOverrideRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _find_engine(state: DashboardState, name: str):
-    """Find engine by session name."""
-    for e in state.engines:
+    """Find engine by session name (returns first match across configs)."""
+    for e in state.all_engines:
         if e.name == name:
             return e
     return None
@@ -626,6 +677,7 @@ def _session_info(engine) -> dict:
     if _is_ifvg_engine(engine):
         return {
             "type": "ifvg",
+            "config_name": engine.config_name,
             "entry_start": engine.entry_start,
             "entry_end": engine.entry_end,
             "flat_start": engine.flat_start,
@@ -650,6 +702,7 @@ def _session_info(engine) -> dict:
         }
     return {
         "type": "continuation",
+        "config_name": engine.config_name,
         "orb_start": engine.orb_start,
         "orb_end": engine.orb_end,
         "entry_start": engine.entry_start,

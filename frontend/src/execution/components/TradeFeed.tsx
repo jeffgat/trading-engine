@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TradeEventRow } from "./TradeEventRow";
 import type { TradeLogEntry } from "@/execution/lib/types";
@@ -7,6 +8,7 @@ interface TradeFeedProps {
   total: number;
   loading: boolean;
   loadMore: () => void;
+  activeConfig: string;
 }
 
 export function TradeFeed({
@@ -14,7 +16,13 @@ export function TradeFeed({
   total,
   loading,
   loadMore,
+  activeConfig,
 }: TradeFeedProps) {
+  const filtered = useMemo(() => {
+    if (activeConfig === "ALL") return entries;
+    return entries.filter((e) => e.config === activeConfig);
+  }, [entries, activeConfig]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
@@ -23,7 +31,7 @@ export function TradeFeed({
     );
   }
 
-  if (entries.length === 0) {
+  if (filtered.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
         No trade events yet
@@ -34,11 +42,11 @@ export function TradeFeed({
   return (
     <div className="space-y-2">
       <div className="text-sm text-text-muted">
-        {entries.length} of {total} events
+        {filtered.length} of {total} events
       </div>
       <ScrollArea className="h-[calc(100vh-220px)] rounded-md border border-border bg-bg-card">
         <div>
-          {entries.map((entry, i) => (
+          {filtered.map((entry, i) => (
             <TradeEventRow key={`${entry.timestamp}-${i}`} entry={entry} />
           ))}
           {entries.length < total && (

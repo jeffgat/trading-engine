@@ -1,5 +1,5 @@
 import { Badge } from "@/shared/ui/badge";
-import { EVENT_COLORS } from "@/execution/lib/constants";
+import { EVENT_COLORS, CONFIG_COLORS } from "@/execution/lib/constants";
 import { SessionTag } from "./SessionTag";
 import type { TradeLogEntry } from "@/execution/lib/types";
 
@@ -22,6 +22,17 @@ export function TradeEventRow({ entry }: TradeEventRowProps) {
       <span className="font-mono text-xs text-text-muted whitespace-nowrap pt-0.5">
         {timePart && datePart ? `${datePart} ${timePart}` : entry.timestamp}
       </span>
+
+      {/* Config badge */}
+      {entry.config && (
+        <span
+          className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${
+            CONFIG_COLORS[entry.config] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
+          }`}
+        >
+          {entry.config}
+        </span>
+      )}
 
       {/* asset */}
       {entry.asset && <SessionTag session={entry.asset.toUpperCase()} />}

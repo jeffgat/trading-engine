@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
-import { LOG_LEVEL_COLORS } from "@/execution/lib/constants";
+import { LOG_LEVEL_COLORS, CONFIG_COLORS } from "@/execution/lib/constants";
 import type { MainLogEntry, TradeLogEntry } from "@/execution/lib/types";
 
 interface LogViewerProps {
@@ -13,6 +13,7 @@ interface LogViewerProps {
   tradeTotal: number;
   tradeLoading: boolean;
   loadMoreTrade: () => void;
+  activeConfig: string;
 }
 
 export function LogViewer({
@@ -24,6 +25,7 @@ export function LogViewer({
   tradeTotal,
   tradeLoading,
   loadMoreTrade,
+  activeConfig,
 }: LogViewerProps) {
   const [tab, setTab] = useState<"main" | "trade">("main");
   const [search, setSearch] = useState("");
@@ -56,15 +58,22 @@ export function LogViewer({
   }, [mainEntries, levelFilter, search]);
 
   const filteredTrade = useMemo(() => {
-    if (!search) return tradeEntries;
-    const s = search.toLowerCase();
-    return tradeEntries.filter(
-      (e) =>
-        e.event.toLowerCase().includes(s) ||
-        e.session.toLowerCase().includes(s) ||
-        JSON.stringify(e.details).toLowerCase().includes(s),
-    );
-  }, [tradeEntries, search]);
+    let result = tradeEntries;
+    // Filter by config
+    if (activeConfig !== "ALL") {
+      result = result.filter((e) => e.config === activeConfig);
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.event.toLowerCase().includes(s) ||
+          e.session.toLowerCase().includes(s) ||
+          JSON.stringify(e.details).toLowerCase().includes(s),
+      );
+    }
+    return result;
+  }, [tradeEntries, search, activeConfig]);
 
   const isMain = tab === "main";
   const loading = isMain ? mainLoading : tradeLoading;
@@ -177,6 +186,15 @@ export function LogViewer({
                     <span className="text-text-muted whitespace-nowrap">
                       {entry.timestamp.split(" ")[1] ?? entry.timestamp}
                     </span>
+                    {entry.config && (
+                      <span
+                        className={`inline-flex items-center rounded border px-1 py-0 text-[10px] font-medium ${
+                          CONFIG_COLORS[entry.config] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
+                        }`}
+                      >
+                        {entry.config}
+                      </span>
+                    )}
                     <span className="text-info w-10">{entry.session}</span>
                     <span className="text-text-primary font-medium w-24">
                       {entry.event}

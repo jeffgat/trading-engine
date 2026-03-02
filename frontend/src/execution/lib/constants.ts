@@ -54,3 +54,8 @@ export const SESSION_COLORS: Record<string, string> = {
   Asia: "bg-accent/20 text-accent",
   LDN: "bg-warning/20 text-warning",
 };
+
+export const CONFIG_COLORS: Record<string, string> = {
+  FAST: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  SLOW: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+};
