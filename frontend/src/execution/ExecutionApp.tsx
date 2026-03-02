@@ -90,8 +90,8 @@ export function ExecutionApp() {
           </nav>
         </div>
 
-        {/* Config selector pills */}
-        {configNames.length > 0 && (
+        {/* Config selector pills — hidden on config tab (has its own tabs) */}
+        {configNames.length > 0 && activeTab !== "config" && (
           <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2">
             <div className="flex gap-1.5">
               <button

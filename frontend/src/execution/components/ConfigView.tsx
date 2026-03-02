@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { CONFIG_COLORS } from "@/execution/lib/constants";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/shared/ui/card";
 import {
   Dialog,
@@ -10,8 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/dialog";
-import { CONFIG_COLORS } from "@/execution/lib/constants";
-import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
+import { useCallback, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -954,30 +954,37 @@ export function ConfigView({
                         label="Webhook"
                         value={meta.webhook_url ? "configured" : "not set"}
                       />
-                      {meta.sessions.length > 0 && (
-                        <div className="flex justify-between py-1">
-                          <span className="text-text-muted text-xs">Sessions</span>
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {meta.sessions.map((s) => (
-                              <span key={s} className="font-mono text-xs text-text-secondary bg-bg-secondary rounded px-1.5 py-0.5">
-                                {s}
-                              </span>
-                            ))}
+                      {(meta.sessions.length > 0 || meta.ifvg_sessions.length > 0) && (() => {
+                        // Build a lookup: short name → session type from config.sessions
+                        const typeByShort: Record<string, "continuation" | "ifvg"> = {};
+                        Object.entries(config.sessions).forEach(([fullName, cfg]) => {
+                          const short = fullName.includes(":") ? fullName.split(":")[1] : fullName;
+                          typeByShort[short] = cfg.type;
+                        });
+                        const allSessions = [
+                          ...meta.sessions.map((s) => ({ name: s, isIfvg: typeByShort[s] === "ifvg" })),
+                          ...meta.ifvg_sessions.map((s) => ({ name: s, isIfvg: true })),
+                        ];
+                        return (
+                          <div className="flex justify-between py-1 gap-2">
+                            <span className="text-text-muted text-xs shrink-0">Sessions</span>
+                            <div className="flex flex-wrap gap-1 justify-end">
+                              {allSessions.map(({ name: s, isIfvg }) => (
+                                <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
+                                  {s}
+                                  <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                                    isIfvg
+                                      ? "text-violet-400 bg-violet-400/10"
+                                      : "text-emerald-400 bg-emerald-400/10"
+                                  }`}>
+                                    {isIfvg ? "LSI" : "ORB"}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      {meta.ifvg_sessions.length > 0 && (
-                        <div className="flex justify-between py-1">
-                          <span className="text-text-muted text-xs">IFVG Sessions</span>
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {meta.ifvg_sessions.map((s) => (
-                              <span key={s} className="font-mono text-xs text-text-secondary bg-bg-secondary rounded px-1.5 py-0.5">
-                                {s}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
