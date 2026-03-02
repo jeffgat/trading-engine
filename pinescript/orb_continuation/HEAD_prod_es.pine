@@ -17,7 +17,8 @@ strategy(
 // ----------------------------------------------------------------------------------------
 // Inputs - Shared Risk Settings
 // ----------------------------------------------------------------------------------------
-riskUsd      = input.float(250, "Risk per trade ($)", step=50, group="Risk Settings")
+nyRiskUsd    = input.float(250, "NY Risk per trade ($)", step=50, group="Risk Settings")
+asiaRiskUsd  = input.float(100, "Asia Risk per trade ($)", step=50, group="Risk Settings")
 minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
 qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
 beOffsetTicks = input.int(0, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission (Asia only). NY uses 0.", group="Risk Settings")
@@ -324,7 +325,7 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
     riskPts  = stopDist
 
     if riskPts > 0
-        qtyRaw = riskUsd / (riskPts * execPointValue)
+        qtyRaw = asiaRiskUsd / (riskPts * execPointValue)
         qty    = floorToStep(qtyRaw, qtyStep)
         isSingleContract = qty <= minQty
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
@@ -358,7 +359,7 @@ if nyCanArmSetup and not ny_longFirstFvgFound and nyLongFVG
     riskPts  = stopDist
 
     if riskPts > 0
-        qtyRaw = riskUsd / (riskPts * execPointValue)
+        qtyRaw = nyRiskUsd / (riskPts * execPointValue)
         qty    = floorToStep(qtyRaw, qtyStep)
         isSingleContract = qty <= minQty
         halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
