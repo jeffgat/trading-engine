@@ -1,11 +1,10 @@
 import { BacktestApp } from '@/backtesting/BacktestApp';
 import { ExecutionApp } from '@/execution/ExecutionApp';
-import { useState } from 'react';
-
-type Section = 'backtesting' | 'execution';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 function App() {
-    const [section, setSection] = useState<Section>('backtesting');
+    const location = useLocation();
+    const isExecution = location.pathname.startsWith('/execution');
 
     return (
         <div className="min-h-screen bg-bg-primary">
@@ -17,26 +16,35 @@ function App() {
                             Gat<span className="text-accent">.</span> Capital
                         </span>
                         <div className="flex gap-1">
-                            {(['backtesting', 'execution'] as const).map((s) => (
-                                <button
-                                    key={s}
-                                    onClick={() => setSection(s)}
-                                    className={`px-4 py-3 text-sm font-medium capitalize transition-colors border-b-2 ${
-                                        section === s
-                                            ? 'border-accent text-text-primary'
-                                            : 'border-transparent text-text-muted hover:text-text-secondary'
-                                    }`}>
-                                    {s === 'backtesting' ? 'Backtesting' : 'Execution'}
-                                </button>
-                            ))}
+                            <Link
+                                to="/"
+                                className={`px-4 py-3 text-sm font-medium capitalize transition-colors border-b-2 ${
+                                    !isExecution
+                                        ? 'border-accent text-text-primary'
+                                        : 'border-transparent text-text-muted hover:text-text-secondary'
+                                }`}>
+                                Backtesting
+                            </Link>
+                            <Link
+                                to="/execution"
+                                className={`px-4 py-3 text-sm font-medium capitalize transition-colors border-b-2 ${
+                                    isExecution
+                                        ? 'border-accent text-text-primary'
+                                        : 'border-transparent text-text-muted hover:text-text-secondary'
+                                }`}>
+                                Execution
+                            </Link>
                         </div>
                     </div>
                 </div>
             </nav>
 
             {/* Section content */}
-            {section === 'backtesting' && <BacktestApp />}
-            {section === 'execution' && <ExecutionApp />}
+            <Routes>
+                <Route path="/" element={<BacktestApp />} />
+                <Route path="/execution/*" element={<ExecutionApp />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
         </div>
     );
 }

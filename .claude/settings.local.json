@@ -128,7 +128,8 @@
       "WebFetch(domain:pinewizards.com)",
       "Bash(claude mcp add:*)",
       "Bash(rm:*)",
-      "Bash(pgrep -fl \"orb-trader\\\\|uvicorn.*trader\")"
+      "Bash(pgrep -fl \"orb-trader\\\\|uvicorn.*trader\")",
+      "Bash(cat /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/deploy/*.sh)"
     ]
   }
 }

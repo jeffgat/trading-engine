@@ -68,7 +68,7 @@ function getRValue(
 
   if (event === "SL_HIT") return -1;
   if (event === "BE_HIT") {
-    if (rr == null || tp1 == null) return 0;
+    if (rr == null || tp1 == null) return null;
     return 0.5 * rr * tp1;
   }
   if (event === "TP2_DIRECT") {

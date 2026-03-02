@@ -698,7 +698,7 @@ class SessionOverrideRequest(BaseModel):
 class ExecWebhooksRequest(BaseModel):
     """Replacement webhooks list for an execution config."""
 
-    webhooks: list[dict[str, str]]
+    webhooks: list[dict[str, Any]]
 
 
 class WebhookPatchRequest(BaseModel):
