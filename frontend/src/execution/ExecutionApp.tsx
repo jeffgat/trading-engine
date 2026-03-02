@@ -37,6 +37,7 @@ export function ExecutionApp() {
     error: configError,
     updateSession,
     resetSession,
+    updateWebhooks,
     execConfigs,
   } = useConfig();
 
@@ -175,6 +176,7 @@ export function ExecutionApp() {
             error={configError}
             onUpdateSession={updateSession}
             onResetSession={resetSession}
+            onUpdateWebhooks={updateWebhooks}
             execConfigs={execConfigs}
           />
         )}

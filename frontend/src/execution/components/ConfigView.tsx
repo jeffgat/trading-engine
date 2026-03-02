@@ -1,5 +1,5 @@
 import { CONFIG_COLORS } from "@/execution/lib/constants";
-import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/shared/ui/card";
 import {
   Dialog,
@@ -24,6 +24,7 @@ interface ConfigViewProps {
   error: string | null;
   onUpdateSession: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
   onResetSession: (name: string) => Promise<void>;
+  onUpdateWebhooks: (configName: string, webhooks: WebhookEntry[]) => Promise<void>;
   execConfigs: Record<string, ExecConfigMeta>;
 }
 
@@ -148,6 +149,169 @@ function SelectField({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WebhookManager
+// ---------------------------------------------------------------------------
+
+function WebhookManager({
+  configName,
+  webhooks,
+  onSave,
+}: {
+  configName: string;
+  webhooks: WebhookEntry[];
+  onSave: (configName: string, webhooks: WebhookEntry[]) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<WebhookEntry[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const startEditing = () => {
+    setDraft(webhooks.map((w) => ({ ...w })));
+    setError(null);
+    setEditing(true);
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setDraft([]);
+    setError(null);
+  };
+
+  const setField = (idx: number, key: keyof WebhookEntry, value: string) => {
+    setDraft((d) => d.map((w, i) => (i === idx ? { ...w, [key]: value } : w)));
+  };
+
+  const addRow = () => {
+    setDraft((d) => [...d, { url: "", label: "" }]);
+  };
+
+  const removeRow = (idx: number) => {
+    setDraft((d) => d.filter((_, i) => i !== idx));
+  };
+
+  const handleSave = async () => {
+    const cleaned = draft.filter((w) => w.url.trim());
+    if (draft.some((w) => !w.url.trim())) {
+      setError("All webhook entries must have a URL");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(configName, cleaned);
+      setEditing(false);
+      setDraft([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── read mode ──
+  if (!editing) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted text-xs">Webhooks</span>
+          <button
+            onClick={startEditing}
+            className="text-[10px] text-text-muted hover:text-accent transition-colors"
+          >
+            Edit
+          </button>
+        </div>
+        {webhooks.length === 0 ? (
+          <p className="text-[11px] text-text-muted italic">not set</p>
+        ) : (
+          <div className="space-y-1">
+            {webhooks.map((w, i) => (
+              <div key={i} className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-text-secondary truncate max-w-[120px]">
+                  {w.label || `Webhook ${i + 1}`}
+                </span>
+                <span className="font-mono text-[10px] text-profit bg-profit/10 px-1.5 py-0.5 rounded">
+                  configured
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── edit mode ──
+  return (
+    <div className="space-y-2 rounded-md border border-accent/30 bg-accent/5 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-accent uppercase tracking-wide">
+          Edit Webhooks
+        </span>
+        <div className="flex gap-1.5">
+          <button
+            onClick={cancel}
+            disabled={saving}
+            className="rounded border border-border px-2 py-0.5 text-[10px] text-text-muted hover:text-text-secondary transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded bg-accent px-2 py-0.5 text-[10px] font-medium text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-[10px] text-loss">{error}</p>
+      )}
+
+      {draft.map((w, i) => (
+        <div key={i} className="space-y-1 rounded border border-border bg-bg-secondary p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-text-muted">Account {i + 1}</span>
+            <button
+              onClick={() => removeRow(i)}
+              className="text-[10px] text-loss/70 hover:text-loss transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Label (e.g. Account 1)"
+            value={w.label}
+            onChange={(e) => setField(i, "label", e.target.value)}
+            className="w-full rounded border border-border bg-bg-secondary px-2 py-1 font-mono text-[11px] text-text-secondary outline-none focus:border-accent focus:ring-1 focus:ring-accent/50"
+          />
+          <input
+            type="text"
+            placeholder="Webhook URL"
+            value={w.url}
+            onChange={(e) => setField(i, "url", e.target.value)}
+            className={`w-full rounded border bg-bg-secondary px-2 py-1 font-mono text-[10px] text-text-secondary outline-none focus:border-accent focus:ring-1 focus:ring-accent/50 ${
+              w.url.trim() ? "border-border" : "border-loss/40"
+            }`}
+          />
+        </div>
+      ))}
+
+      <button
+        onClick={addRow}
+        className="w-full rounded border border-dashed border-border py-1 text-[10px] text-text-muted hover:border-accent/50 hover:text-accent transition-colors"
+      >
+        + Add Webhook
+      </button>
     </div>
   );
 }
@@ -884,6 +1048,7 @@ export function ConfigView({
   error,
   onUpdateSession,
   onResetSession,
+  onUpdateWebhooks,
   execConfigs,
 }: ConfigViewProps) {
   if (loading) {
@@ -950,9 +1115,10 @@ export function ConfigView({
                   </CardHeader>
                   <CardContent className="space-y-2">
                     <div className="space-y-1">
-                      <ConfigItem
-                        label="Webhook"
-                        value={meta.webhook_url ? "configured" : "not set"}
+                      <WebhookManager
+                        configName={name}
+                        webhooks={meta.webhooks ?? []}
+                        onSave={onUpdateWebhooks}
                       />
                       {(meta.sessions.length > 0 || meta.ifvg_sessions.length > 0) && (() => {
                         // Build a lookup: short name → session type from config.sessions

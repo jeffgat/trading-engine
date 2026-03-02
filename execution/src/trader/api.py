@@ -508,6 +508,43 @@ def create_app(state: DashboardState) -> FastAPI:
             "overrides": overrides.get(session_name, {}),
         }
 
+    # ── Exec config webhook endpoints ──────────────────────────────
+
+    @app.put("/api/config/exec/{config_name}/webhooks")
+    async def update_exec_webhooks(config_name: str, body: "ExecWebhooksRequest"):
+        """Replace the webhooks list for an execution config and persist to disk."""
+        from .main import EXEC_CONFIGS_PATH, WebhookEntry, load_exec_configs, save_exec_configs
+        import json
+
+        configs = load_exec_configs()
+        target = next((c for c in configs if c.name == config_name), None)
+        if target is None:
+            raise HTTPException(404, f"Exec config '{config_name}' not found")
+
+        # Validate — reject empty URLs
+        new_webhooks = []
+        for w in body.webhooks:
+            url = (w.get("url") or "").strip()
+            label = (w.get("label") or "").strip()
+            if not url:
+                raise HTTPException(422, "Each webhook must have a non-empty url")
+            new_webhooks.append(WebhookEntry(url=url, label=label))
+
+        target.webhooks = new_webhooks
+        save_exec_configs(configs)
+
+        # Update metadata so the API reflects the change immediately
+        state.exec_configs[config_name]["webhooks"] = [
+            {"url": w.url, "label": w.label} for w in new_webhooks
+        ]
+
+        await state.broadcast({"type": "config_update", "data": {
+            "exec_config": config_name,
+            "webhooks": state.exec_configs[config_name]["webhooks"],
+        }})
+
+        return {"config": config_name, "webhooks": state.exec_configs[config_name]["webhooks"]}
+
     @app.delete("/api/config/sessions/{session_name}")
     async def reset_session_config(session_name: str):
         engine = _find_engine(state, session_name)
@@ -578,6 +615,12 @@ class SessionOverrideRequest(BaseModel):
     """Sparse dict of fields to override for a session."""
 
     overrides: dict[str, Any]
+
+
+class ExecWebhooksRequest(BaseModel):
+    """Replacement webhooks list for an execution config."""
+
+    webhooks: list[dict[str, str]]
 
 
 # ---------------------------------------------------------------------------

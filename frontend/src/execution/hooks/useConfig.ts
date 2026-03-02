@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ConfigResponse, ExecConfigMeta, SessionConfig } from "@/execution/lib/types";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 
 export function useConfig() {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
@@ -81,9 +81,39 @@ export function useConfig() {
     [fetchConfig],
   );
 
+  const updateWebhooks = useCallback(
+    async (configName: string, webhooks: WebhookEntry[]) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/webhooks`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ webhooks }),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          const msg =
+            typeof err.detail === "string"
+              ? err.detail
+              : JSON.stringify(err.detail);
+          throw new Error(msg);
+        }
+        await fetchConfig();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to save webhooks";
+        setError(msg);
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchConfig],
+  );
+
   const execConfigs: Record<string, ExecConfigMeta> = useMemo(() => {
     return config?.exec_configs ?? {};
   }, [config]);
 
-  return { config, loading, saving, error, updateSession, resetSession, execConfigs };
+  return { config, loading, saving, error, updateSession, resetSession, updateWebhooks, execConfigs };
 }

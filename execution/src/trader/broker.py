@@ -239,3 +239,53 @@ class TradersPostClient:
             "ticker": self._resolve_ticker(ticker),
             "action": "cancel",
         })
+
+
+class MultiBroker:
+    """Fan-out broker that forwards every call to multiple TradersPostClient instances.
+
+    All methods mirror TradersPostClient's interface. Results from the first
+    broker are returned; remaining brokers are fired in parallel and their
+    results are discarded (errors are logged but do not raise).
+    """
+
+    def __init__(self, brokers: list[TradersPostClient]) -> None:
+        self._brokers = brokers
+
+    async def close(self) -> None:
+        await asyncio.gather(*[b.close() for b in self._brokers], return_exceptions=True)
+
+    async def send_entry(self, action, qty, price, tp2, stop, ticker=None):
+        results = await asyncio.gather(
+            *[b.send_entry(action, qty, price, tp2, stop, ticker=ticker) for b in self._brokers],
+            return_exceptions=True,
+        )
+        return results[0] if results else []
+
+    async def send_tp1_multi(self, direction, half_qty, be_price, tp2, ticker=None):
+        results = await asyncio.gather(
+            *[b.send_tp1_multi(direction, half_qty, be_price, tp2, ticker=ticker) for b in self._brokers],
+            return_exceptions=True,
+        )
+        return results[0] if results else []
+
+    async def send_tp1_single(self, direction, qty, be_price, ticker=None):
+        results = await asyncio.gather(
+            *[b.send_tp1_single(direction, qty, be_price, ticker=ticker) for b in self._brokers],
+            return_exceptions=True,
+        )
+        return results[0] if results else None
+
+    async def send_flatten(self, ticker=None):
+        results = await asyncio.gather(
+            *[b.send_flatten(ticker=ticker) for b in self._brokers],
+            return_exceptions=True,
+        )
+        return results[0] if results else None
+
+    async def send_cancel(self, ticker=None):
+        results = await asyncio.gather(
+            *[b.send_cancel(ticker=ticker) for b in self._brokers],
+            return_exceptions=True,
+        )
+        return results[0] if results else None

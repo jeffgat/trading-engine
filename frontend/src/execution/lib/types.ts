@@ -87,9 +87,15 @@ export interface SessionConfig {
   excluded_dow: number | number[] | null;
 }
 
+export interface WebhookEntry {
+  url: string;
+  label: string;
+}
+
 export interface ExecConfigMeta {
   enabled: boolean;
-  webhook_url: string;
+  /** New multi-webhook format */
+  webhooks: WebhookEntry[];
   sessions: string[];
   ifvg_sessions: string[];
 }

@@ -319,14 +319,43 @@ EXEC_CONFIGS_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "
 
 
 @dataclass
+class WebhookEntry:
+    """A single webhook endpoint with a human-readable label."""
+
+    url: str
+    label: str = ""
+
+
+@dataclass
 class ExecutionConfig:
     """Named execution profile with its own session subset and risk overrides."""
 
     name: str
     enabled: bool = True
-    webhook_url: str = ""
+    webhooks: list[WebhookEntry] = field(default_factory=list)
     session_overrides: dict[str, dict] = field(default_factory=dict)
     ifvg_session_overrides: dict[str, dict] = field(default_factory=dict)
+
+    @property
+    def webhook_url(self) -> str:
+        """First webhook URL (legacy compat). Empty string if none configured."""
+        return self.webhooks[0].url if self.webhooks else ""
+
+
+def _parse_webhooks(data: dict) -> list[WebhookEntry]:
+    """Parse webhooks from exec config dict, migrating legacy webhook_url."""
+    # New format: webhooks array
+    if "webhooks" in data:
+        return [
+            WebhookEntry(url=w.get("url", ""), label=w.get("label", ""))
+            for w in data["webhooks"]
+            if w.get("url")
+        ]
+    # Legacy: single webhook_url string
+    url = data.get("webhook_url", "")
+    if url:
+        return [WebhookEntry(url=url, label="Default")]
+    return []
 
 
 def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
@@ -343,7 +372,7 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
             configs.append(ExecutionConfig(
                 name=name,
                 enabled=data.get("enabled", True),
-                webhook_url=data.get("webhook_url", ""),
+                webhooks=_parse_webhooks(data),
                 session_overrides=data.get("sessions", {}),
                 ifvg_session_overrides=data.get("ifvg_sessions", {}),
             ))
@@ -359,10 +388,25 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
     return [ExecutionConfig(
         name="DEFAULT",
         enabled=True,
-        webhook_url="",
+        webhooks=[],
         session_overrides={s: {} for s in sessions_enabled},
         ifvg_session_overrides={s: {} for s in ifvg_enabled},
     )]
+
+
+def save_exec_configs(configs: list[ExecutionConfig]) -> None:
+    """Persist execution configs back to exec_configs.json."""
+    raw: dict = {}
+    for ec in configs:
+        raw[ec.name] = {
+            "enabled": ec.enabled,
+            "webhooks": [{"url": w.url, "label": w.label} for w in ec.webhooks],
+            "sessions": ec.session_overrides,
+            "ifvg_sessions": ec.ifvg_session_overrides,
+        }
+    with open(EXEC_CONFIGS_PATH, "w") as f:
+        json.dump(raw, f, indent=2)
+        f.write("\n")
 
 
 # ---------------------------------------------------------------------------
@@ -629,15 +673,28 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             logger.info("Execution config '%s' is disabled, skipping", ec.name)
             continue
 
-        # One broker per execution config (for future per-account webhook routing)
-        wh_url = ec.webhook_url or global_webhook_url or "https://traderspost.io/api/v1/webhook/dry-run"
-        broker = TradersPostClient(
-            webhook_url=wh_url,
-            ticker=general.get("instrument", "MNQ"),
-            dry_run=dry_run,
-            config_name=ec.name,
-        )
-        brokers.append(broker)
+        # One broker per webhook endpoint; fall back to global URL or dry-run stub
+        config_brokers: list[TradersPostClient] = []
+        webhook_entries = ec.webhooks or []
+        if not webhook_entries and global_webhook_url:
+            webhook_entries = [WebhookEntry(url=global_webhook_url, label="Default")]
+        if not webhook_entries:
+            # Dry-run stub — no real URL needed
+            webhook_entries = [WebhookEntry(url="https://traderspost.io/api/v1/webhook/dry-run", label="")]
+
+        for wh in webhook_entries:
+            b = TradersPostClient(
+                webhook_url=wh.url,
+                ticker=general.get("instrument", "MNQ"),
+                dry_run=dry_run,
+                config_name=f"{ec.name}[{wh.label}]" if wh.label else ec.name,
+            )
+            config_brokers.append(b)
+            brokers.append(b)
+
+        # Multi-broker fan-out: wrap list so engines send to all accounts
+        from .broker import MultiBroker
+        broker = MultiBroker(config_brokers)
 
         # Build continuation engines for this config's sessions
         session_list = list(ec.session_overrides.keys())
@@ -669,7 +726,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         # Store metadata for API
         exec_configs_meta[ec.name] = {
             "enabled": ec.enabled,
-            "webhook_url": ec.webhook_url,
+            "webhooks": [{"url": w.url, "label": w.label} for w in ec.webhooks],
             "sessions": session_list,
             "ifvg_sessions": ifvg_list,
         }
