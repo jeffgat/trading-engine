@@ -395,13 +395,16 @@ function StrategyCard({
           <label className="text-[10px] text-text-muted font-display">Risk ($)</label>
           <input
             type="number"
+            step={50}
+            min={100}
             value={riskSize}
             onChange={(e) => {
               const v = parseFloat(e.target.value);
               if (!isNaN(v)) onRiskChange(v);
             }}
             onBlur={() => {
-              if (riskSize < 1) onRiskChange(1);
+              const rounded = Math.max(100, Math.round(riskSize / 50) * 50);
+              if (rounded !== riskSize) onRiskChange(rounded);
             }}
             className="w-24 rounded border border-border bg-bg-secondary px-2 py-1 text-xs font-mono text-text-primary outline-none focus:border-accent"
           />
@@ -671,13 +674,16 @@ function CombinedCard({
               <label className="text-[10px] text-text-muted font-display flex-shrink-0">Risk ($)</label>
               <input
                 type="number"
+                step={50}
+                min={100}
                 value={s.riskSize}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
                   if (!isNaN(v)) onRiskChange(s.id, v);
                 }}
                 onBlur={() => {
-                  if (s.riskSize < 1) onRiskChange(s.id, 1);
+                  const rounded = Math.max(100, Math.round(s.riskSize / 50) * 50);
+                  if (rounded !== s.riskSize) onRiskChange(s.id, rounded);
                 }}
                 className="w-20 rounded border border-border bg-bg-primary px-2 py-0.5 text-xs font-mono text-text-primary outline-none focus:border-accent flex-shrink-0"
               />
@@ -944,8 +950,9 @@ export function RiskEngineDashboard() {
       prev.map((s) => {
         const kf = kellyFractions.get(s.id);
         if (kf === undefined) return s;
-        const riskSize = Math.round((kf / maxKelly) * accountRisk);
-        return { ...s, riskSize: Math.max(riskSize, 1) };
+        const raw = Math.round((kf / maxKelly) * accountRisk);
+        const riskSize = Math.max(100, Math.round(raw / 50) * 50);
+        return { ...s, riskSize };
       })
     );
   }, [accountRisk, selectedStrategies]);
@@ -1105,6 +1112,8 @@ export function RiskEngineDashboard() {
           </label>
           <input
             type="number"
+            step={50}
+            min={100}
             value={accountRisk}
             onChange={(e) => {
               const v = parseFloat(e.target.value);
@@ -1113,7 +1122,8 @@ export function RiskEngineDashboard() {
               }
             }}
             onBlur={() => {
-              if (accountRisk < 1) setAccountRisk(1);
+              const rounded = Math.max(100, Math.round(accountRisk / 50) * 50);
+              if (rounded !== accountRisk) setAccountRisk(rounded);
             }}
             className="w-32 rounded border border-border bg-bg-secondary px-3 py-1.5 text-sm font-mono text-text-primary outline-none focus:border-accent"
           />

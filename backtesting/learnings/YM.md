@@ -65,3 +65,13 @@
 - **R/year ceiling is ~7.4R** even after full optimization (variable sweeps + grid). The edge is consistent (0 neg years, Calmar 0.74) but the absolute return is too low. YM's $5/pt value limits per-trade R generation.
 - **Tuesday exclusion is the single biggest improvement**: Calmar nearly doubled (0.35→0.65), eliminated both negative years. Persistent across all anchor configs.
 - **YM is fully explored** — all 4 direction/session combos tested, NY longs optimized through grid sweep. No further strategies to pursue unless a fundamentally different approach (reversal, multi-session combo, or different entry logic) is considered.
+
+### 5. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO
+- **Status**: **NO-GO** (definitive — losing strategy, no edge)
+- **Baseline** (2026-03-01): ORB 09:30-09:35, entry 09:35-15:30, flat 15:50, rr=2.625, tp1=0.3, gap=2.25%, n_left=3, n_right=3, fvg_window=10, absolute stop
+- **Both**: 2408 trades, 53.4% WR, **PF 0.90**, -102.5R net, Sharpe -0.74, DD -118.7R, **7/10 neg years**
+- **Longs**: 1176 trades, 53.6% WR, PF 0.91, -42.2R net, 7 neg years
+- **Shorts**: 1232 trades, 53.3% WR, PF 0.89, -60.2R net, 7 neg years
+- **R by year (both)**: 2016:-10 2017:-33 2018:-11 2019:-23 2020:+4 2021:-23 2022:+13 2023:-15 2024:+3 2025:-3
+- **Conclusion**: PF < 1.0 in all directions. YM lacks LSI edge entirely. Median stop 74 ticks is fine but the signal is structurally unprofitable.
+- **Script**: `run_ym_ny_lsi_baseline.py`

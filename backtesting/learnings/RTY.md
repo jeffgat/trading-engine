@@ -117,3 +117,13 @@
 
 ## Overall Assessment
 RTY ORB+FVG continuation longs fail walk-forward validation in both sessions. The instrument shows strong in-sample curves but poor OOS generalization. Both Asia and NY exhibit WF efficiency well below 0.3, indicating the strategy's edge on RTY is likely curve-fitted. Not recommended for further ORB+FVG exploration without a fundamentally different approach (e.g., reversal, different entry logic).
+
+### 3. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO
+- **Status**: **NO-GO** (definitive — losing strategy, no edge)
+- **Baseline** (2026-03-01): ORB 09:30-09:35, entry 09:35-15:30, flat 15:50, rr=2.625, tp1=0.3, gap=2.25%, n_left=3, n_right=3, fvg_window=10, absolute stop
+- **Both**: 2060 trades, 53.7% WR, **PF 0.91**, -73.4R net, Sharpe -0.62, DD -87.6R, **6/9 neg years** (no 2016 data)
+- **Longs**: 1073 trades, 53.3% WR, PF 0.86, -61.2R net, 8 neg years — actively destructive
+- **Shorts**: 987 trades, 54.2% WR, PF 0.97, -12.3R net, 5 neg years — closest to breakeven but still losing
+- **R by year (both)**: 2017:-10 2018:+5 2019:-32 2020:+28 2021:+3 2022:-8 2023:-18 2024:-21 2025:-22
+- **Conclusion**: PF < 1.0 in all directions. Longs are the worst side (PF 0.86) — opposite of NQ where longs carry the edge. RTY lacks LSI edge.
+- **Script**: `run_rty_ny_lsi_baseline.py`

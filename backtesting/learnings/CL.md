@@ -57,6 +57,118 @@ Phase 5: 43.3% MC survival — **INFLATED**
 
 Low-RR variant (rr=4.0, stop=2.0%): Also inflated. Calmar 9.58, MC survival 11.5%.
 
+### VWAP Reversion Shorts — NO-GO
+
+**Scripts**: `run_cl_ny_vwap_diagnostic.py`, `run_cl_ny_vwap_focused_sweep.py`
+
+**Approach**: Session-anchored VWAP deviation + rejection candle entry, short only. Tested deviation_atr_pct 10-100%, stop_atr_pct 0-25%, deviation_std 1.0-3.0, rejection modes (close/pinbar), TP2 modes (fixed_rr/vwap), ATR lengths 5-30, entry windows, flat times. Full 2D dev×stop grid + focused high-leverage sweeps.
+
+**Diagnostic sweep (82 configs)**: CL shorts showed initial promise at dev=20%, stop=15%, rr=8.0, tp1=0.7, atr=10, entry→11:00 → 895 trades, PF 1.16, +89.1R, Calmar 0.35, 2 neg years.
+
+**Focused sweep (7 dimensions)**: Flat time, dev×stop 2D grid, min_stop_points, RR, TP1, entry end, ATR length. Only RR (8→12) and TP1 (0.7→0.8) adopted with minimal impact.
+
+**Best config found**:
+
+| Param | Value |
+|-------|-------|
+| direction | short |
+| deviation_atr_pct | 20% |
+| stop_atr_pct | 15% |
+| rr | 12.0 |
+| tp1_ratio | 0.8 |
+| atr_length | 10 |
+| entry_end | 11:00 |
+| flat_start | 15:50 |
+| rejection_mode | close |
+| tp2_mode | fixed_rr |
+
+| Metric | Value |
+|--------|-------|
+| Trades | 895 |
+| WR | 0.4% |
+| PF | 1.18 |
+| Net R | +96.8 |
+| R/yr | 9.5 |
+| Max DD | -25.6R |
+| Calmar | 0.37 |
+| Neg years | 2 (2020, 2025) |
+| Median stop | 36 ticks |
+
+**Why NO-GO**:
+- Calmar 0.37 is below the 0.5 pipeline threshold (would fail Phase 1 structural validation)
+- Extreme concentration: 2022 (+38.3R) and 2024 (+50.9R) = 92% of total R
+- Poor recency: 2025 is -10.0R
+- Flat optimization surface: no dimension meaningfully improves Calmar beyond 0.37
+- Edge is thin and fragile — not suitable for prop firm deployment
+
+**Key finding**: VWAP longs on CL are definitively bad (all configs negative). Shorts show a marginal statistical edge but insufficient for trading.
+
+### LSI (Liquidity Sweep Inversion) Both — NO-GO
+
+**Scripts**: `run_cl_ny_lsi_baseline.py`, `run_cl_ny_lsi_variable_sweeps_1.py`
+
+**Approach**: `strategy="lsi"` — swing level swept → FVG forms within 10 bars → FVG inverted → entry at inversion bar close. Structural stop (`lsi_stop_mode="absolute"`). Entry 09:35-15:30, flat 15:50.
+
+**Step 1 — Baseline** (n_left=3, n_right=3, 2016-2026):
+
+| Metric | Both | Longs | Shorts |
+|--------|------|-------|--------|
+| Trades | 2421 | 1223 | 1198 |
+| WR | 53.9% | 54.7% | 53.1% |
+| PF | 0.88 | 0.94 | 0.82 |
+| Net R | -120.0 | -31.4 | -88.6 |
+| R/yr | -11.7 | -2.9 | -8.8 |
+| Calmar | -0.95 | -0.58 | -0.92 |
+| Max DD | -126.9R | -54.1R | -96.6R |
+| Neg years | 9/10 | 5/10 | 9/10 |
+| Median stop | 37t | 39t | 36t |
+
+**Step 2 — Wide Pivot Sweep** (n_left × n_right 2D grid, 64 combos):
+
+Tested whether wider pivots (requiring more significant swing levels) improve the signal. Grid: n_left=[3,6,12,24,48,96,144,288] × n_right=[3,6,12,24,48,96,144,288]. All other params held at baseline.
+
+| Metric | Best combo (48×12) | Range across grid |
+|--------|-------------------|-------------------|
+| PF | 0.94 | 0.77 – 0.94 |
+| Calmar | -0.78 | -1.02 – -0.78 |
+| Net R | -43.1 | -165.0 – -43.1 |
+| Trades | 1968 | 1196 – 2421 |
+| Neg years | 7/10 | 5 – 10 |
+
+**Every single combo in the 64-cell grid is negative** — PF < 1.0 and Calmar < 0 for all. The best combo (n_left=48, n_right=12) merely loses less (-43.1R vs -120.0R baseline) with PF 0.94 and 7 negative years. No combo meets viability thresholds (PF ≥ 1.0, Calmar ≥ 0.5).
+
+**Why NO-GO (strengthened)**:
+- Baseline failed: PF 0.88, Net R -120R, 9/10 negative years
+- Wide pivot sweep (64 combos up to 288 bars / ~24 hours) — zero viable combos
+- PF never reaches 1.0 at any pivot width, Calmar never reaches 0.0
+- Wider pivots reduce trade count but do not flip the edge — losses shrink proportionally
+- The LSI signal is structurally broken on CL regardless of pivot significance
+- Structural stops are healthy (37-39 ticks median) — not a stop-distance artifact
+- FVG stop mode even worse: 23.5% WR, -1490.7R
+- **DEFINITIVE NO-GO** — do not revisit LSI on CL
+
+### Reversal with Liquidity Sweep Gate — NO-GO
+
+**Script**: `run_cl_ny_reversal_sweep_test.py`
+
+**Concept**: `strategy="reversal"` (bullish FVG → SHORT, bearish FVG → LONG). Sweep gate keeps only trades where a liquidity sweep occurred between signal and fill: buy-side sweep for shorts (price took out swing high), sell-side sweep for longs (price took out swing low).
+
+**Grid**: stop_atr_pct=[7,10,15] × rr=[2.0,3.5,5.0] × direction=[both,long,short] = 27 configs. Post-filtered at swing lookback N=[6,12,24,48].
+
+**Baseline results** (all 27 configs deeply negative):
+- Win rate: 10-29% depending on stop/rr
+- PF: 0.16-0.54
+- Net R: -470R to -1560R over 10 years
+- Every config negative every year
+
+**Sweep gate results**:
+- Gate passes only 3-8 trades out of 1200+ filled (0.2-0.5% pass rate)
+- Top 10 table EMPTY — no gated config reaches 20-trade minimum
+- "Positive" N=48 long-only results (+2.5 to +4.8R) are noise on 6-trade samples
+- Short-side gated trades: universally 0% WR across all lookback values
+
+**Verdict: NO-GO** — Reversal signal is structurally broken on CL. After ORB breakout, counter-directional FVGs do not produce reversals even when preceded by a liquidity sweep. The sweep gate is too selective (99.5%+ rejection) to produce a tradeable sample. Do not revisit.
+
 ---
 
 ## What Works on CL
@@ -68,7 +180,9 @@ Low-RR variant (rr=4.0, stop=2.0%): Also inflated. Calmar 9.58, MC survival 11.5
 ## What Doesn't Work on CL
 
 - **Continuation at stop_atr_pct < 7%** — Sub-tick stops, invalidated by 10-tick floor. The optimizer consistently pushed toward impossibly tight stops, masking the lack of edge at realistic distances.
-- **Reversal / inversion strategies** — Not yet tested on clean data.
+- **VWAP Reversion** — Shorts marginal (Calmar 0.37, PF 1.18, concentrated in 2 years). Longs definitively bad (all configs negative). Flat optimization surface — no lever moves Calmar above 0.37. Not viable for prop firm.
+- **Reversal with sweep gate** — NO-GO. 27 configs (stop=[7,10,15]% × rr=[2.0,3.5,5.0] × dir=[both,long,short]) all catastrophically negative. Baseline: -470R to -1560R, WR 10-29%, PF 0.16-0.54. Sweep gate (N=[6,12,24,48]) filters to 3-8 trades in 10 years (0.2-0.5% pass rate) — statistically meaningless. "Positive" gated results are noise on 6-trade samples. Script: `run_cl_ny_reversal_sweep_test.py`.
+- **LSI (Liquidity Sweep Inversion)** — DEFINITIVE NO-GO. Baseline (n_left=3, n_right=3): PF 0.88, Net R -120R, 9/10 neg years. Wide pivot sweep (64 combos, n_left/n_right up to 288 bars): every combo negative, best PF=0.94, best Calmar=-0.78. Signal structurally broken on CL regardless of pivot width. Scripts: `run_cl_ny_lsi_baseline.py`, `run_cl_ny_lsi_variable_sweeps_1.py`.
 - **Asia / LDN sessions** — Not yet tested.
 
 ## Parameter Sensitivity
@@ -84,5 +198,5 @@ CL continuation has no viable edge at realistic stop distances. Not deployable.
 - Re-test continuation with stop_atr_pct range starting at 7%+ (realistic 10+ tick stops)
 - Test other instruments for similar sub-tick stop contamination (GC, ES, NQ have wider ATR-to-tick ratios and are likely unaffected)
 - Continuation long-only vs short-only at realistic stops
-- Reversal / inversion strategies on clean data
+- Reversal / inversion strategies — sweep-gated reversal confirmed NO-GO, LSI DEFINITIVE NO-GO (baseline + 64-combo wide pivot sweep, see above). CISD variant not tested.
 - Asia / LDN sessions on CL

@@ -1,1 +1,1 @@
-Spawn a team of agents to do the implementation. Add a critic agent to review each agent's work and find gaps.
+Spawn a team of agents to do the implementation. Add a critic agent to review each agent's work and find gaps. After fixing the issues found by the critic, spawn another critic to review again. Repeat the critic review and fix process until the critic finds no gaps in the implementation.

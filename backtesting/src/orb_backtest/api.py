@@ -44,7 +44,31 @@ from .results.export import (
     list_optimization_results,
     load_optimization_result,
     delete_optimization_result,
+    vwap_results_to_dict,
+    vwap_grid_results_to_dict,
+    gapfill_results_to_dict,
+    gapfill_grid_results_to_dict,
 )
+from .vwap_config import (
+    VWAPStrategyConfig,
+    VWAPSessionConfig,
+    default_vwap_config,
+    with_vwap_overrides,
+    NY_VWAP_SESSION,
+    ASIA_VWAP_SESSION,
+    LDN_VWAP_SESSION,
+)
+from .engine.vwap_simulator import run_vwap_backtest
+from .gapfill_config import (
+    GapFillStrategyConfig,
+    GapFillSessionConfig,
+    default_gapfill_config,
+    with_gapfill_overrides,
+    NY_GAPFILL_SESSION,
+)
+from .engine.gapfill_simulator import run_gapfill_backtest
+from .optimize.parallel_gapfill import run_gapfill_sweep
+from .optimize.walkforward_gapfill import _generate_gapfill_param_grid
 from .results.metrics import compute_metrics, recompute_summary
 from .optimize.grid import generate_param_grid, linspace_range
 from .optimize.parallel import run_sweep
@@ -76,6 +100,8 @@ app.add_middleware(
 )
 
 SESSION_MAP = {"NY": NY_SESSION, "Asia": ASIA_SESSION, "LDN": LDN_SESSION}
+VWAP_SESSION_MAP = {"NY": NY_VWAP_SESSION, "Asia": ASIA_VWAP_SESSION, "LDN": LDN_VWAP_SESSION}
+GAPFILL_SESSION_MAP = {"NY": NY_GAPFILL_SESSION}
 
 
 # ── Response helpers ─────────────────────────────────────────────────
@@ -149,6 +175,7 @@ def get_sessions():
             "name": sess.name,
             "orb_start": sess.orb_start,
             "orb_end": sess.orb_end,
+            "rth_start": sess.rth_start,
             "entry_start": sess.entry_start,
             "entry_end": sess.entry_end,
             "flat_start": sess.flat_start,
@@ -170,11 +197,15 @@ def get_candles(
     instrument: str = Query(...),
     date: str = Query(..., description="Trade date YYYY-MM-DD"),
     session: str = Query(..., description="Session name: NY, Asia, LDN"),
+    timeframe: str = Query("1m", description="Bar timeframe: 1m or 5m"),
+    sweep_time: str = Query("", description="Optional ISO timestamp of LSI sweep for dynamic chart padding"),
 ):
     """Return OHLCV bars for a single session-day (1-min if available, else 5-min).
 
     Used by the TradeChartModal to render a candlestick chart for a specific trade.
     Includes 30 min padding before ORB start and 15 min after flat end.
+    When timeframe="5m", skips 1m data entirely. When timeframe="1m" (default),
+    tries 1m first and falls back to 5m if missing or too sparse.
     """
     try:
         inst = get_instrument(instrument)
@@ -192,19 +223,35 @@ def get_candles(
     except ValueError:
         raise data_not_found(f"Invalid date format: {date}. Use YYYY-MM-DD.")
 
-    # Compute time window with padding
-    orb_h, orb_m = (int(x) for x in sess.orb_start.split(":"))
+    # Compute time window with padding (rth_start for LSI, orb_start for ORB strategies)
+    rth_start = sess.rth_start or sess.orb_start
+    orb_h, orb_m = (int(x) for x in rth_start.split(":"))
     flat_h, flat_m = (int(x) for x in sess.flat_end.split(":"))
 
     orb_start_min = orb_h * 60 + orb_m
     flat_end_min = flat_h * 60 + flat_m
     crosses_midnight = orb_start_min > flat_end_min
 
-    # Build start/end timestamps with padding
-    padding_before = timedelta(minutes=30)
+    # Build start/end timestamps with padding.
+    # Default 120 min pre-padding. When lsi_sweep_time is available, extend
+    # dynamically so the sweep bar is always visible in the chart.
+    padding_before = timedelta(minutes=120)
     padding_after = timedelta(minutes=15)
 
     window_start_time = datetime.combine(trade_date, datetime.min.time().replace(hour=orb_h, minute=orb_m)) - padding_before
+
+    # Dynamic padding: if the sweep occurred before our window, extend back
+    if sweep_time:
+        try:
+            sweep_dt = datetime.fromisoformat(sweep_time)
+            # Strip timezone info for comparison with naive window_start_time
+            if sweep_dt.tzinfo is not None:
+                sweep_dt = sweep_dt.replace(tzinfo=None)
+            # Extend window to include sweep bar + 30 min of context before it
+            if sweep_dt < window_start_time:
+                window_start_time = sweep_dt - timedelta(minutes=30)
+        except (ValueError, TypeError):
+            pass  # ignore malformed sweep times
     if crosses_midnight:
         window_end_time = datetime.combine(trade_date + timedelta(days=1), datetime.min.time().replace(hour=flat_h, minute=flat_m)) + padding_after
     else:
@@ -237,21 +284,27 @@ def get_candles(
         return windowed
 
     bars = pd.DataFrame()
-    try:
-        bars = _load_and_window(load_1m_for_5m, inst.data_file, load_start, load_end)
-    except FileNotFoundError:
-        pass
-
-    # Fall back to 5-min if 1m data is missing or too sparse
-    if len(bars) < MIN_REAL_BARS:
+    if timeframe == "5m":
+        # 5m explicitly requested — skip 1m entirely
         try:
-            bars_5m = _load_and_window(load_5m_data, inst.data_file, load_start, load_end)
-            # Use 5m if it has more real bars than the 1m data
-            if len(bars_5m) >= len(bars):
-                bars = bars_5m
+            bars = _load_and_window(load_5m_data, inst.data_file, load_start, load_end)
         except FileNotFoundError as e:
-            if bars.empty:
-                raise data_not_found(str(e))
+            raise data_not_found(str(e))
+    else:
+        # 1m preferred, fall back to 5m if missing or too sparse
+        try:
+            bars = _load_and_window(load_1m_for_5m, inst.data_file, load_start, load_end)
+        except FileNotFoundError:
+            pass
+
+        if len(bars) < MIN_REAL_BARS:
+            try:
+                bars_5m = _load_and_window(load_5m_data, inst.data_file, load_start, load_end)
+                if len(bars_5m) >= len(bars):
+                    bars = bars_5m
+            except FileNotFoundError as e:
+                if bars.empty:
+                    raise data_not_found(str(e))
 
     if bars.empty:
         return []
@@ -618,3 +671,224 @@ def delete_plan_item(item_id: int):
 def reorder_plan(req: TestingPlanReorderRequest):
     reorder_testing_plan(req.instrument, req.item_ids)
     return ok({"reordered": True})
+
+
+# ── VWAP Reversion endpoints ────────────────────────────────────────
+
+
+class VWAPBacktestRequest(BaseModel):
+    instrument: str = "NQ"
+    sessions: list[str] = ["NY"]
+    start: Optional[str] = None
+    end: Optional[str] = None
+    name: Optional[str] = None
+    notes: Optional[str] = None
+    rr: Optional[float] = None
+    tp1_ratio: Optional[float] = None
+    risk_usd: Optional[float] = None
+    atr_length: Optional[int] = None
+    tp2_mode: Optional[str] = None
+    direction_filter: Optional[str] = None
+
+    ny_deviation_atr_pct: Optional[float] = None
+    ny_deviation_std: Optional[float] = None
+    ny_deviation_mode: Optional[str] = None
+    ny_rejection_mode: Optional[str] = None
+    ny_stop_atr_pct: Optional[float] = None
+    asia_deviation_atr_pct: Optional[float] = None
+    asia_deviation_std: Optional[float] = None
+    asia_deviation_mode: Optional[str] = None
+    asia_rejection_mode: Optional[str] = None
+    asia_stop_atr_pct: Optional[float] = None
+    ldn_deviation_atr_pct: Optional[float] = None
+    ldn_deviation_std: Optional[float] = None
+    ldn_deviation_mode: Optional[str] = None
+    ldn_rejection_mode: Optional[str] = None
+    ldn_stop_atr_pct: Optional[float] = None
+
+
+@app.post("/api/vwap/backtest")
+def run_vwap_backtest_endpoint(req: VWAPBacktestRequest):
+    try:
+        instrument = get_instrument(req.instrument)
+    except KeyError:
+        raise unknown_instrument(req.instrument)
+
+    sessions = []
+    for s in req.sessions:
+        if s not in VWAP_SESSION_MAP:
+            raise unknown_session(s)
+        sessions.append(VWAP_SESSION_MAP[s])
+
+    config = default_vwap_config(instrument)
+    config = with_vwap_overrides(config, sessions=tuple(sessions))
+
+    # Apply param overrides
+    overrides = {}
+    for field_name in (
+        "rr", "tp1_ratio", "risk_usd", "atr_length", "tp2_mode",
+        "direction_filter", "name", "notes",
+        "ny_deviation_atr_pct", "ny_deviation_std", "ny_deviation_mode",
+        "ny_rejection_mode", "ny_stop_atr_pct",
+        "asia_deviation_atr_pct", "asia_deviation_std", "asia_deviation_mode",
+        "asia_rejection_mode", "asia_stop_atr_pct",
+        "ldn_deviation_atr_pct", "ldn_deviation_std", "ldn_deviation_mode",
+        "ldn_rejection_mode", "ldn_stop_atr_pct",
+    ):
+        val = getattr(req, field_name, None)
+        if val is not None:
+            overrides[field_name] = val
+
+    if overrides:
+        config = with_vwap_overrides(config, **overrides)
+
+    # Load data
+    try:
+        df = load_5m_data(instrument.data_file, req.start, req.end)
+    except FileNotFoundError as e:
+        raise data_not_found(str(e))
+
+    df_1m = None
+    try:
+        df_1m = load_1m_for_5m(instrument.data_file, req.start, req.end)
+    except FileNotFoundError:
+        pass
+
+    trades = run_vwap_backtest(df, config, start_date=req.start, end_date=req.end, df_1m=df_1m)
+    result = vwap_results_to_dict(trades, config, include_equity_curve=True)
+    result_id = save_backtest_result(result)
+    result["id"] = result_id
+
+    return ok(result)
+
+
+# ── Gap Fill endpoints ────────────────────────────────────────────
+
+
+class GapFillBacktestRequest(BaseModel):
+    instrument: str = "ES"
+    sessions: list[str] = ["NY"]
+    start: Optional[str] = None
+    end: Optional[str] = None
+    name: Optional[str] = None
+    notes: Optional[str] = None
+    stop_multiplier: Optional[float] = None
+    tp1_ratio: Optional[float] = None
+    risk_usd: Optional[float] = None
+    atr_length: Optional[int] = None
+    min_gap_atr_pct: Optional[float] = None
+    max_gap_atr_pct: Optional[float] = None
+    min_gap_points: Optional[float] = None
+    max_gap_staleness_days: Optional[int] = None
+    direction_filter: Optional[str] = None
+
+
+@app.post("/api/gapfill/backtest")
+def run_gapfill_backtest_endpoint(req: GapFillBacktestRequest):
+    try:
+        instrument = get_instrument(req.instrument)
+    except KeyError:
+        raise unknown_instrument(req.instrument)
+
+    sessions = []
+    for s in req.sessions:
+        if s not in GAPFILL_SESSION_MAP:
+            raise unknown_session(s)
+        sessions.append(GAPFILL_SESSION_MAP[s])
+
+    config = default_gapfill_config(instrument)
+    config = with_gapfill_overrides(config, sessions=tuple(sessions))
+
+    # Apply param overrides
+    overrides = {}
+    for field_name in (
+        "stop_multiplier", "tp1_ratio", "risk_usd", "atr_length",
+        "min_gap_atr_pct", "max_gap_atr_pct", "min_gap_points",
+        "max_gap_staleness_days", "direction_filter", "name", "notes",
+    ):
+        val = getattr(req, field_name, None)
+        if val is not None:
+            overrides[field_name] = val
+
+    if overrides:
+        config = with_gapfill_overrides(config, **overrides)
+
+    # Load data
+    try:
+        df = load_5m_data(instrument.data_file, req.start, req.end)
+    except FileNotFoundError as e:
+        raise data_not_found(str(e))
+
+    df_1m = None
+    try:
+        df_1m = load_1m_for_5m(instrument.data_file, req.start, req.end)
+    except FileNotFoundError:
+        pass
+
+    trades = run_gapfill_backtest(df, config, start_date=req.start, end_date=req.end, df_1m=df_1m)
+    result = gapfill_results_to_dict(trades, config, include_equity_curve=True)
+    result_id = save_backtest_result(result)
+    result["id"] = result_id
+
+    return ok(result)
+
+
+class GapFillOptimizeRequest(BaseModel):
+    instrument: str = "ES"
+    sessions: list[str] = ["NY"]
+    start: Optional[str] = None
+    end: Optional[str] = None
+    sweeps: dict[str, str] = {}
+    metric: str = "sharpe_ratio"
+
+
+@app.post("/api/gapfill/optimize")
+def run_gapfill_optimize_endpoint(req: GapFillOptimizeRequest):
+    if not req.sweeps:
+        raise no_sweep_params()
+
+    try:
+        instrument = get_instrument(req.instrument)
+    except KeyError:
+        raise unknown_instrument(req.instrument)
+
+    sessions = []
+    for s in req.sessions:
+        if s not in GAPFILL_SESSION_MAP:
+            raise unknown_session(s)
+        sessions.append(GAPFILL_SESSION_MAP[s])
+
+    config = default_gapfill_config(instrument)
+    config = with_gapfill_overrides(config, sessions=tuple(sessions))
+
+    # Parse sweep specs
+    param_ranges: dict[str, list[float]] = {}
+    for param_name, spec in req.sweeps.items():
+        try:
+            param_ranges[param_name] = _parse_sweep_spec(spec)
+        except (ValueError, IndexError):
+            raise invalid_sweep_spec(param_name, spec)
+
+    # Generate grid
+    configs = _generate_gapfill_param_grid(config, param_ranges)
+
+    # Load data
+    try:
+        df = load_5m_data(instrument.data_file, start=req.start, end=req.end)
+    except FileNotFoundError as e:
+        raise data_not_found(str(e))
+
+    df_1m = None
+    try:
+        df_1m = load_1m_for_5m(instrument.data_file, req.start, req.end)
+    except FileNotFoundError:
+        pass
+
+    # Run sweep
+    results = run_gapfill_sweep(df, configs, start_date=req.start, end_date=req.end, df_1m=df_1m)
+
+    result = gapfill_grid_results_to_dict(results, swept_params=param_ranges)
+    result_id = save_optimization_result(result)
+    result["id"] = result_id
+
+    return ok(result)

@@ -19,21 +19,37 @@ class Instrument:
 
 @dataclass(frozen=True)
 class SessionConfig:
-    """Per-session parameters. Maps 1:1 to Pine Script input groups."""
+    """Per-session parameters. Maps 1:1 to Pine Script input groups.
 
-    name: str  # "NY", "Asia", "LDN"
+    Time fields use "HH:MM" in exchange_tz.
 
-    # Time windows (HH:MM in exchange_tz)
-    orb_start: str
-    orb_end: str
-    entry_start: str
-    entry_end: str
-    flat_start: str
-    flat_end: str
+    For ORB-based strategies (continuation, reversal, inversion, cisd):
+        orb_start/orb_end define the ORB window; in_rth spans orb_start → flat_end.
+
+    For non-ORB strategies (lsi):
+        Set ``rth_start`` instead — it defines the start of RTH for signal
+        detection (FVGs, sweeps).  ``orb_start``/``orb_end`` can be omitted.
+    """
+
+    name: str = ""
+
+    # ORB window (used by continuation/reversal/inversion/cisd)
+    orb_start: str = ""
+    orb_end: str = ""
+
+    # Entry/flat windows
+    entry_start: str = ""
+    entry_end: str = ""
+    flat_start: str = ""
+    flat_end: str = ""
+
+    # RTH start override — used instead of orb_start for in_rth when set.
+    # LSI sessions use this since they have no ORB.
+    rth_start: str = ""
 
     # ATR-based parameters
-    stop_atr_pct: float  # stop distance as % of daily ATR
-    min_gap_atr_pct: float  # min FVG size as % of daily ATR
+    stop_atr_pct: float = 0.0  # stop distance as % of daily ATR
+    min_gap_atr_pct: float = 0.0  # min FVG size as % of daily ATR
     qualifying_move_atr_pct: float = 0.0  # min upward extension as % of ATR for inversion shorts (0 = disabled)
 
     # ORB-based parameters (override ATR-based when > 0)
@@ -72,7 +88,7 @@ class StrategyConfig:
     # Excluded dates (YYYYMMDD strings)
     excluded_dates: tuple[str, ...] = field(default_factory=tuple)
 
-    # Strategy type: "continuation", "reversal", "inversion", or "cisd"
+    # Strategy type: "continuation", "reversal", "inversion", "cisd", or "lsi"
     strategy: str = "continuation"
 
     # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
@@ -83,6 +99,29 @@ class StrategyConfig:
 
     # Bar magnifier: use 1m sub-bars for fill/exit simulation
     use_bar_magnifier: bool = True
+
+    # n-bar swing pivot width for liquidity sweep detection (10 = 10 bars left + 10 bars right)
+    swing_n_bars: int = 10
+
+    # LSI (Liquidity Sweep Inversion) params
+    lsi_n_left: int = 3       # swing left bars
+    lsi_n_right: int = 3      # swing right bars (also the confirmation lag)
+    lsi_fvg_window_left: int = 10   # bars BEFORE sweep where FVG can have formed (FVG → sweep)
+    lsi_fvg_window_right: int = 10  # bars AFTER sweep where FVG can form (sweep → FVG)
+    lsi_stop_mode: str = "absolute"  # "absolute" (full setup range) or "fvg" (FVG boundary)
+    lsi_entry_mode: str = "close"    # "close" (inversion bar close) or "fvg_limit" (limit at FVG boundary)
+    lsi_first_fvg_only: bool = False
+    # When True: per session-day, only keep the first (chronologically earliest)
+    # FVG in active_for_long/active_for_short. Prevents entering on the last
+    # (lowest-level) FVG which inverts first due to price proximity.
+
+    lsi_clean_path: bool = False
+    # When True: at inversion bar, skip if any opposing FVG zone exists in the
+    # price range [entry_price, tp1_estimated]. For longs: no bearish FVGs
+    # between entry and TP1. For shorts: no bullish FVGs between TP1 and entry.
+
+    lsi_be_swing_n_left: int = 0        # 0 = disabled; N > 0 = find left-only pivot N bars wide as internal swing BE trigger
+    lsi_cancel_on_swing: bool = False   # True = cancel pending limit order if internal swing swept before fill
 
     # Experiment metadata (not used in simulation, just for labeling results)
     name: str = ""

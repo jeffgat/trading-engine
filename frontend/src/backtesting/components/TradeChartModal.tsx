@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import {
   createChart,
   createSeriesMarkers,
+  BaselineSeries,
   CandlestickSeries,
   CrosshairMode,
   LineStyle,
   type IChartApi,
+  type BaselineSeriesOptions,
   type CandlestickSeriesOptions,
   type Time,
 } from "lightweight-charts";
@@ -50,6 +52,7 @@ export function TradeChartModal({
   const [candles, setCandles] = useState<CandleBar[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [timeframe, setTimeframe] = useState<"1m" | "5m">("1m");
 
   // Fetch candles when the dialog opens with a trade
   useEffect(() => {
@@ -63,7 +66,11 @@ export function TradeChartModal({
       instrument,
       date: trade.date,
       session: trade.session,
+      timeframe,
     });
+    if (trade.lsi_sweep_time) {
+      params.set("sweep_time", trade.lsi_sweep_time);
+    }
 
     fetch(`/bt-api/candles?${params}`)
       .then((res) => {
@@ -76,13 +83,16 @@ export function TradeChartModal({
       .then((data) => setCandles(data))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [trade?.date, trade?.session, instrument, open]);
+  }, [trade?.date, trade?.session, instrument, open, timeframe]);
 
   // Create/destroy chart when candles arrive
   useEffect(() => {
     if (!chartContainerRef.current || !candles.length || !trade) return;
 
     const container = chartContainerRef.current;
+
+    // Clear any residual Lightweight Charts DOM before creating a new instance
+    container.innerHTML = "";
 
     const chart = createChart(container, {
       width: container.clientWidth,
@@ -149,6 +159,9 @@ export function TradeChartModal({
     // Pin the Y-axis to the trade zone so large intraday moves (e.g. GC)
     // don't compress the entry/stop/TP levels into a tiny band at the top.
     const levels = [trade.stop_price, trade.entry_price, trade.tp1_price, trade.tp2_price];
+    if (trade.lsi_fvg_top) levels.push(trade.lsi_fvg_top);
+    if (trade.lsi_fvg_bottom) levels.push(trade.lsi_fvg_bottom);
+    if (trade.lsi_swept_level) levels.push(trade.lsi_swept_level);
     const zoneLow = Math.min(...levels);
     const zoneHigh = Math.max(...levels);
     const zonePad = (zoneHigh - zoneLow) * 3;
@@ -195,6 +208,38 @@ export function TradeChartModal({
       axisLabelVisible: true,
       title: "TP2",
     });
+
+    // LSI overlay: swept liquidity level (amber dashed horizontal line)
+    if (trade.lsi_swept_level) {
+      series.createPriceLine({
+        price: trade.lsi_swept_level,
+        color: "#f59e0b",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "Swept",
+      });
+    }
+
+    // LSI overlay: FVG inversion zone rectangle
+    // BaselineSeries fills from lsi_fvg_bottom (baseValue) to lsi_fvg_top (data line)
+    // over the time range [lsi_fvg_time, entry_time]
+    let fvgZoneSeries: ReturnType<IChartApi["addSeries"]> | null = null;
+    if (trade.lsi_fvg_top && trade.lsi_fvg_bottom && trade.lsi_fvg_time) {
+      fvgZoneSeries = chart.addSeries(BaselineSeries, {
+        baseValue: { type: "price", price: trade.lsi_fvg_bottom },
+        topFillColor1: "rgba(139, 92, 246, 0.3)",
+        topFillColor2: "rgba(139, 92, 246, 0.15)",
+        topLineColor: "rgba(139, 92, 246, 0.8)",
+        bottomFillColor1: "rgba(0, 0, 0, 0)",
+        bottomFillColor2: "rgba(0, 0, 0, 0)",
+        bottomLineColor: "rgba(0, 0, 0, 0)",
+        lineWidth: 1,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      } satisfies Partial<BaselineSeriesOptions>);
+    }
 
     // Fallback: approximate entry/exit times from candle data when
     // timestamps are missing (old backtests stored before fill_time was added).
@@ -253,6 +298,19 @@ export function TradeChartModal({
       }
     }
 
+    // Set FVG zone data now that entryTime is resolved
+    if (fvgZoneSeries && trade.lsi_fvg_time && trade.lsi_fvg_top) {
+      const fvgStart = toFakeUtcSeconds(trade.lsi_fvg_time) as unknown as Time;
+      // Extend the zone to entry time (or slightly beyond the last candle if no fill)
+      const zoneEnd = entryTime
+        ? (toFakeUtcSeconds(entryTime) as unknown as Time)
+        : (toFakeUtcSeconds(candles[candles.length - 1].time) as unknown as Time);
+      fvgZoneSeries.setData([
+        { time: fvgStart, value: trade.lsi_fvg_top },
+        { time: zoneEnd, value: trade.lsi_fvg_top },
+      ]);
+    }
+
     // Entry/exit arrow markers
     const markers: {
       time: Time;
@@ -261,6 +319,24 @@ export function TradeChartModal({
       shape: "arrowUp" | "arrowDown";
       text: string;
     }[] = [];
+
+    // Sweep marker (add before entry/exit so it sorts correctly)
+    if (trade.lsi_sweep_time) {
+      const sweepTimeSeconds = toFakeUtcSeconds(trade.lsi_sweep_time);
+      // Find candle closest to sweep time for position
+      const sweepCandle = chartData.find(
+        (c) => Math.abs((c.time as number) - sweepTimeSeconds) < 300
+      );
+      if (sweepCandle) {
+        markers.push({
+          time: sweepCandle.time,
+          position: trade.direction === "long" ? "aboveBar" : "belowBar",
+          color: "#f59e0b",
+          shape: trade.direction === "long" ? "arrowDown" : "arrowUp",
+          text: "Sweep",
+        });
+      }
+    }
 
     if (entryTime) {
       const isLong = trade.direction === "long";
@@ -317,7 +393,7 @@ export function TradeChartModal({
   const rMultiple = trade.pnl_usd / riskUsd;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) setTimeframe("1m"); onOpenChange(o); }}>
       <DialogContent
         className="max-h-[85vh] overflow-hidden"
         style={{ maxWidth: "80vw", width: "80vw" }}
@@ -362,6 +438,25 @@ export function TradeChartModal({
             </div>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Timeframe toggle */}
+        <div className="flex justify-end">
+          <div className="flex rounded-md overflow-hidden border border-border-subtle text-xs">
+            {(["1m", "5m"] as const).map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={`px-2.5 py-1 font-mono transition-colors ${
+                  timeframe === tf
+                    ? "bg-accent/20 text-accent"
+                    : "text-text-muted hover:text-text-secondary hover:bg-bg-card-hover"
+                }`}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Chart area */}
         <div className="mt-2">
@@ -443,6 +538,37 @@ export function TradeChartModal({
                   {EXIT_LABELS[trade.exit_type] ?? trade.exit_type}
                 </span>
               )}
+              {trade.lsi_swept_level ? (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-0.5 w-3 border-t border-dashed"
+                    style={{ borderColor: "#f59e0b" }}
+                  />
+                  Swept:{" "}
+                  {trade.lsi_swept_level.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              ) : null}
+              {trade.lsi_fvg_top && trade.lsi_fvg_bottom ? (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-3 w-3 rounded-sm border"
+                    style={{
+                      background: "rgba(139, 92, 246, 0.25)",
+                      borderColor: "rgba(139, 92, 246, 0.7)",
+                    }}
+                  />
+                  FVG:{" "}
+                  {trade.lsi_fvg_bottom.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                  })}
+                  {" – "}
+                  {trade.lsi_fvg_top.toLocaleString("en-US", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              ) : null}
             </div>
           )}
         </div>

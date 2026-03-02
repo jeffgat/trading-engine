@@ -1,0 +1,788 @@
+"""Gap Fill trade simulation engine.
+
+Hybrid approach (mirrors the ORB and VWAP engines):
+1. Vectorized signal generation detects overnight gaps (RTH open vs prior RTH close)
+2. Numba-compiled loop simulates exits per candidate (reuses ORB engine Numba functions)
+
+Strategy mechanics:
+- Gap UP (open > prior close)  -> SHORT (fade back down to prior close)
+- Gap DOWN (open < prior close) -> LONG (fade back up to prior close)
+- Entry: Market at RTH open (first 5m bar of RTH session) -- guaranteed fill
+- Target (TP2): Prior RTH close (full gap fill)
+- TP1: Partial exit at tp1_ratio * gap_size toward prior close
+- Stop: stop_multiplier * gap_size beyond the open (away from prior close)
+- EOD exit: Flatten at session's flat window
+- One trade per session-day
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+from ..gapfill_config import GapFillStrategyConfig, GapFillSessionConfig
+from ..signals.session import (
+    compute_session_days,
+    compute_date_strings,
+)
+from ..signals.daily_atr import compute_daily_atr
+
+# Reuse ALL trade simulation machinery from the ORB engine
+from .simulator import (
+    TradeResult,
+    EXIT_NO_FILL,
+    EXIT_SL,
+    EXIT_TP1_TP2,
+    EXIT_TP1_BE,
+    EXIT_TP1_EOD,
+    EXIT_EOD,
+    EXIT_TP2_SINGLE,
+    EXIT_NAMES,
+    _simulate_single_trade_hierarchical,
+    _simulate_single_trade,
+    _scan_fill_bar,
+    build_maps,
+    _resolve_time,
+    _precompute_day_boundaries,
+)
+
+
+# ---------------------------------------------------------------------------
+# Gap Fill session mask computation
+# ---------------------------------------------------------------------------
+
+def _compute_gapfill_session_masks(
+    timestamps: pd.DatetimeIndex,
+    session: GapFillSessionConfig,
+) -> dict[str, np.ndarray]:
+    """Compute boolean masks for a Gap Fill session's time windows.
+
+    Gap Fill sessions only need ``in_rth`` (from rth_open to flat_end) and
+    ``in_flat`` masks.  No entry window is needed since entry is always a
+    market order at the open bar.
+
+    An ``in_entry`` mask equal to ``in_rth`` is included so that
+    ``_precompute_day_boundaries`` can be reused without modification.
+
+    Returns:
+        Dict with keys:
+            'in_rth': True during regular trading hours (rth_open -> flat_end)
+            'in_flat': True during flat/EOD window
+            'in_entry': Alias for in_rth (needed by _precompute_day_boundaries)
+    """
+    from ..signals.session import _time_in_range
+
+    hour = timestamps.hour.values
+    minute = timestamps.minute.values
+
+    rth_start = session.session_open or session.rth_open
+    in_rth = _time_in_range(hour, minute, rth_start, session.flat_end)
+    in_flat = _time_in_range(hour, minute, session.flat_start, session.flat_end)
+
+    return {
+        "in_rth": in_rth,
+        "in_flat": in_flat,
+        "in_entry": in_rth,  # alias for _precompute_day_boundaries compatibility
+    }
+
+
+# ---------------------------------------------------------------------------
+# Gap Fill session days (duck-type for compute_session_days)
+# ---------------------------------------------------------------------------
+
+def _compute_gapfill_session_days(
+    timestamps: pd.DatetimeIndex,
+    session: GapFillSessionConfig,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute session-aware day boundaries for a Gap Fill session.
+
+    Delegates to the shared ``compute_session_days()`` but creates a
+    lightweight shim object so the function can read ``orb_start`` (mapped
+    to ``rth_open``) and ``flat_end``.
+    """
+
+    class _Shim:
+        """Duck-typed stand-in accepted by ``compute_session_days``."""
+
+        def __init__(self, gf_session: GapFillSessionConfig) -> None:
+            self.orb_start = gf_session.session_open or gf_session.rth_open
+            self.flat_end = gf_session.flat_end
+
+    shim = _Shim(session)
+    return compute_session_days(timestamps, shim)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Internal Gap Fill candidate
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _GapFillCandidate:
+    """Internal record for a gap fill signal, ready for trade simulation."""
+
+    date_str: str
+    session: str
+    direction: int  # +1 long (gap down, fade up), -1 short (gap up, fade down)
+    open_bar: int  # bar index of the RTH open bar
+    entry_price: float  # open price of RTH open bar
+    prior_close: float  # close price of prior RTH session's last bar
+    gap_size: float  # absolute gap size in points
+    daily_atr: float
+
+
+# ---------------------------------------------------------------------------
+# Signal cache keys
+# ---------------------------------------------------------------------------
+
+def _gapfill_session_key(session: GapFillSessionConfig) -> tuple:
+    """Hashable key identifying a Gap Fill session's time windows."""
+    return (
+        session.name,
+        session.rth_open,
+        session.flat_start,
+        session.flat_end,
+        session.session_open,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Signal extraction pipeline
+# ---------------------------------------------------------------------------
+
+def _extract_gapfill_candidates(
+    df: pd.DataFrame,
+    session: GapFillSessionConfig,
+    config: GapFillStrategyConfig,
+    _signal_cache: dict | None = None,
+) -> list[_GapFillCandidate]:
+    """Extract gap fill setup candidates for a session.
+
+    Signal pipeline:
+      1. Session masks (RTH/flat windows)
+      2. Session-day IDs (handles cross-midnight sessions)
+      3. Daily ATR
+      4. Find first RTH bar per session-day (open bar)
+      5. Find last RTH bar per session-day (prior close source)
+      6. Compute gap = open_price - prior_close
+      7. Staleness check (skip if prior session > N calendar days ago)
+      8. ATR-based gap filters (min/max gap as % of ATR)
+      9. Absolute gap filter (min_gap_points)
+      10. Direction determination (gap up -> short, gap down -> long)
+      11. Direction filter
+      12. Excluded dates filter
+
+    Args:
+        _signal_cache: Optional pre-computed signal cache from
+            :func:`build_gapfill_signal_cache`.  When provided, all signal
+            arrays are looked up instead of recomputed.
+    """
+    timestamps = df.index
+    open_ = df["open"].values
+    close = df["close"].values
+
+    # Get session masks and day IDs (from cache or compute)
+    if _signal_cache is not None:
+        skey = _gapfill_session_key(session)
+        sc = _signal_cache["session"][skey]
+        masks = sc["masks"]
+        session_day_id = sc["session_day_id"]
+        date_strs = sc["date_strs"]
+        daily_atr = _signal_cache["atr"][config.atr_length]
+    else:
+        masks = _compute_gapfill_session_masks(timestamps, session)
+        _, session_day_id = _compute_gapfill_session_days(timestamps, session)
+        date_strs = compute_date_strings(timestamps)
+        daily_atr = compute_daily_atr(df, config.atr_length)
+
+    in_rth = masks["in_rth"]
+    dates = timestamps.date
+
+    # Find first RTH bar per session-day
+    rth_indices = np.where(in_rth)[0]
+    if len(rth_indices) == 0:
+        return []
+
+    rth_day_ids = session_day_id[rth_indices]
+
+    # First RTH bar per session-day
+    unique_days, first_idx = np.unique(rth_day_ids, return_index=True)
+    first_rth_bars = rth_indices[first_idx]
+
+    # Last RTH bar per session-day (for prior close lookup)
+    # Reverse search: last occurrence of each day ID in RTH bars
+    _, last_idx_rev = np.unique(rth_day_ids[::-1], return_index=True)
+    last_rth_bars = rth_indices[len(rth_indices) - 1 - last_idx_rev]
+
+    # Build day_id -> last_rth_bar mapping for prior close lookup
+    day_to_last_bar = dict(zip(unique_days, last_rth_bars))
+
+    # Excluded dates set
+    excluded = set(config.excluded_dates)
+
+    # Direction filter
+    take_longs = config.direction_filter in ("both", "long")
+    take_shorts = config.direction_filter in ("both", "short")
+
+    candidates: list[_GapFillCandidate] = []
+
+    for i, (day_id, open_bar) in enumerate(zip(unique_days, first_rth_bars)):
+        # Skip first day (no prior close) — look for previous session-day
+        prev_day_id = day_id - 1
+        if prev_day_id not in day_to_last_bar:
+            continue
+
+        prev_last_bar = day_to_last_bar[prev_day_id]
+        prior_close = close[prev_last_bar]
+        open_price = open_[open_bar]
+
+        # Gap staleness check: skip if prior session-day is too far back
+        prev_date = dates[prev_last_bar]
+        curr_date = dates[open_bar]
+        staleness = (curr_date - prev_date).days
+        if staleness > config.max_gap_staleness_days:
+            continue
+
+        # Gap size: positive = gap up, negative = gap down
+        gap_signed = open_price - prior_close
+        abs_gap = abs(gap_signed)
+
+        if abs_gap < 1e-10:
+            continue  # no meaningful gap
+
+        # ATR filter
+        atr = daily_atr[open_bar]
+        if np.isnan(atr) or atr <= 0:
+            continue
+
+        gap_atr_pct = (abs_gap / atr) * 100.0
+        if gap_atr_pct < config.min_gap_atr_pct:
+            continue
+        if gap_atr_pct > config.max_gap_atr_pct:
+            continue
+
+        # Absolute minimum gap filter
+        if config.min_gap_points > 0 and abs_gap < config.min_gap_points:
+            continue
+
+        # Direction: gap up -> short (fade down), gap down -> long (fade up)
+        if gap_signed > 0:
+            direction = -1  # gap up -> short
+            if not take_shorts:
+                continue
+        else:
+            direction = 1  # gap down -> long
+            if not take_longs:
+                continue
+
+        # Excluded dates filter
+        date_str = str(curr_date)
+        date_str_compact = date_strs[open_bar]
+        if date_str_compact in excluded:
+            continue
+
+        candidates.append(_GapFillCandidate(
+            date_str=date_str,
+            session=session.name,
+            direction=direction,
+            open_bar=open_bar,
+            entry_price=open_price,
+            prior_close=prior_close,
+            gap_size=abs_gap,
+            daily_atr=atr,
+        ))
+
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# Internal prepared candidate (trade params computed, ready for Numba)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _GapFillPreparedCandidate:
+    """Candidate with all trade params computed, ready for simulation."""
+
+    cand: _GapFillCandidate
+    sd: int  # session_day_id
+    direction: int
+    entry_price: float
+    stop_price: float
+    tp1_price: float
+    tp2_price: float
+    be_price: float
+    risk_pts: float
+    qty: float
+    half_qty: float
+    is_single: bool
+    entry_bar_start: int
+    entry_bar_end: int
+    flat_bar_start: int
+    last_bar: int
+
+
+# ---------------------------------------------------------------------------
+# Main simulation orchestrator
+# ---------------------------------------------------------------------------
+
+def run_gapfill_backtest(
+    df: pd.DataFrame,
+    config: GapFillStrategyConfig,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    df_1m: pd.DataFrame | None = None,
+    df_30s: pd.DataFrame | None = None,
+    df_1s: pd.DataFrame | None = None,
+    _maps: dict | None = None,
+    _signal_cache: dict | None = None,
+) -> list[TradeResult]:
+    """Run the full Gap Fill backtest pipeline.
+
+    Same interface as ``run_backtest()`` from the ORB engine.  The only
+    difference is signal generation: overnight gap detection instead of
+    ORB + FVG.  Trade simulation is delegated entirely to the shared
+    Numba functions.
+
+    Args:
+        df: 5-minute OHLCV DataFrame (should include warmup data before
+            start_date).
+        config: Gap Fill strategy configuration.
+        start_date: Only return trades on or after this date (YYYY-MM-DD).
+        end_date: Exclude trades on or after this date (YYYY-MM-DD).
+        df_1m: Optional 1-minute OHLCV DataFrame for hierarchical drill-down.
+        df_30s: Optional 30-second OHLCV DataFrame.
+        df_1s: Optional 1-second OHLCV DataFrame.
+        _maps: Pre-built maps dict from :func:`build_maps`.
+        _signal_cache: Pre-computed signal cache from
+            :func:`build_gapfill_signal_cache`.
+
+    Returns:
+        List of TradeResult (including no-fills), sorted by date.
+    """
+    high = np.ascontiguousarray(df["high"].values, dtype=np.float64)
+    low = np.ascontiguousarray(df["low"].values, dtype=np.float64)
+    close = np.ascontiguousarray(df["close"].values, dtype=np.float64)
+    timestamps = df.index
+    n = len(df)
+
+    # ------------------------------------------------------------------
+    # Bar magnifier setup (identical to ORB engine)
+    # ------------------------------------------------------------------
+    use_magnifier = False  # legacy path, superseded by hierarchical
+
+    if _maps is not None:
+        use_hierarchical = _maps["has_1m"]
+        has_30s = _maps["has_30s"]
+        has_1s = _maps["has_1s"]
+        map_5m_1m_arr = _maps["map_5m_1m"]
+        map_1m_30s_arr = _maps["map_1m_30s"]
+        map_30s_1s_arr = _maps["map_30s_1s"]
+        map_1m_1s_arr = _maps["map_1m_1s"]
+        high_1m = _maps["high_1m"]
+        low_1m = _maps["low_1m"]
+        close_1m = _maps["close_1m"]
+        high_30s = _maps["high_30s"]
+        low_30s = _maps["low_30s"]
+        close_30s = _maps["close_30s"]
+        high_1s = _maps["high_1s"]
+        low_1s = _maps["low_1s"]
+        close_1s = _maps["close_1s"]
+        timestamps_1m = _maps["timestamps_1m"]
+        bar_map = map_5m_1m_arr
+    else:
+        has_30s = df_30s is not None
+        has_1s = df_1s is not None
+        use_hierarchical = df_1m is not None
+
+        bar_map = None
+        high_1m = low_1m = close_1m = None
+        map_5m_1m_arr = None
+        map_1m_30s_arr = np.empty((0, 2), dtype=np.int64)
+        map_30s_1s_arr = np.empty((0, 2), dtype=np.int64)
+        map_1m_1s_arr = np.empty((0, 2), dtype=np.int64)
+        high_30s = np.empty(0, dtype=np.float64)
+        low_30s = np.empty(0, dtype=np.float64)
+        close_30s = np.empty(0, dtype=np.float64)
+        high_1s = np.empty(0, dtype=np.float64)
+        low_1s = np.empty(0, dtype=np.float64)
+        close_1s = np.empty(0, dtype=np.float64)
+        timestamps_1m = np.empty(0, dtype="datetime64[ns]")
+
+        if use_hierarchical:
+            from ..data.bar_mapping import build_5m_to_1m_map
+            bar_map = build_5m_to_1m_map(df, df_1m)
+            map_5m_1m_arr = bar_map
+            high_1m = np.ascontiguousarray(df_1m["high"].values, dtype=np.float64)
+            low_1m = np.ascontiguousarray(df_1m["low"].values, dtype=np.float64)
+            close_1m = np.ascontiguousarray(df_1m["close"].values, dtype=np.float64)
+            timestamps_1m = df_1m.index.values.astype("datetime64[ns]")
+
+        if has_30s:
+            from ..data.bar_mapping import build_1m_to_30s_map
+            map_1m_30s_arr = build_1m_to_30s_map(df_1m, df_30s)
+            high_30s = np.ascontiguousarray(df_30s["high"].values, dtype=np.float64)
+            low_30s = np.ascontiguousarray(df_30s["low"].values, dtype=np.float64)
+            close_30s = np.ascontiguousarray(df_30s["close"].values, dtype=np.float64)
+
+        if has_1s:
+            high_1s = np.ascontiguousarray(df_1s["high"].values, dtype=np.float64)
+            low_1s = np.ascontiguousarray(df_1s["low"].values, dtype=np.float64)
+            close_1s = np.ascontiguousarray(df_1s["close"].values, dtype=np.float64)
+            if has_30s:
+                from ..data.bar_mapping import build_30s_to_1s_map
+                map_30s_1s_arr = build_30s_to_1s_map(df_30s, df_1s)
+            else:
+                from ..data.bar_mapping import build_1m_to_1s_map
+                map_1m_1s_arr = build_1m_to_1s_map(df_1m, df_1s)
+
+    # ------------------------------------------------------------------
+    # Per-session simulation
+    # ------------------------------------------------------------------
+    all_results: list[TradeResult] = []
+
+    for session in config.sessions:
+        # Extract gap fill candidates (vectorized)
+        candidates = _extract_gapfill_candidates(
+            df, session, config, _signal_cache=_signal_cache,
+        )
+
+        # Pre-simulation date filter
+        if start_date or end_date:
+            candidates = [
+                c for c in candidates
+                if (start_date is None or c.date_str >= start_date)
+                and (end_date is None or c.date_str < end_date)
+            ]
+
+        # Session signals: reuse from cache when available
+        if _signal_cache is not None:
+            skey = _gapfill_session_key(session)
+            sc = _signal_cache["session"][skey]
+            masks = sc["masks"]
+            session_day_id = sc["session_day_id"]
+            date_strs = sc["date_strs"]
+        else:
+            masks = _compute_gapfill_session_masks(timestamps, session)
+            _, session_day_id = _compute_gapfill_session_days(timestamps, session)
+            date_strs = compute_date_strings(timestamps)
+
+        # Half-day flat mask for NY
+        half_day_set = set(config.half_days) if session.name == "NY" else set()
+
+        # Precompute per-session-day bar boundaries
+        if _signal_cache is not None and not half_day_set:
+            day_bounds = sc["day_bounds_default"]
+        else:
+            day_bounds = _precompute_day_boundaries(
+                timestamps, masks, half_day_set, date_strs, session_day_id,
+            )
+
+        # Phase 1: Prepare all candidates (compute trade params + bar boundaries)
+        prepared: list[_GapFillPreparedCandidate] = []
+        for cand in candidates:
+            atr = cand.daily_atr
+            if np.isnan(atr) or atr <= 0:
+                continue
+
+            entry = cand.entry_price
+            direction = cand.direction
+            prior_close = cand.prior_close
+            gap = cand.gap_size  # always positive (abs)
+
+            # Compute stop, TP1, TP2
+            if direction == -1:  # Gap UP -> Short (fade down to prior close)
+                stop = entry + config.stop_multiplier * gap
+                tp2 = prior_close
+                tp1 = entry - config.tp1_ratio * gap
+            else:  # direction == 1, Gap DOWN -> Long (fade up to prior close)
+                stop = entry - config.stop_multiplier * gap
+                tp2 = prior_close
+                tp1 = entry + config.tp1_ratio * gap
+
+            # Risk in points
+            risk_pts = abs(entry - stop)  # = stop_multiplier * gap
+
+            if risk_pts <= 0:
+                continue
+
+            # Position sizing
+            qty_raw = config.risk_usd / (risk_pts * config.point_value)
+            qty = math.floor(qty_raw / config.qty_step) * config.qty_step
+            if qty < config.min_qty:
+                continue
+
+            is_single = qty <= config.min_qty
+            if is_single:
+                half_qty = qty
+            else:
+                half_qty = math.floor((qty / 2) / config.qty_step) * config.qty_step
+                half_qty = max(half_qty, config.min_qty)
+
+            # Breakeven price
+            be = entry
+
+            # Entry is market at open: guaranteed fill on the open bar
+            entry_bar_start = cand.open_bar
+            entry_bar_end = cand.open_bar
+
+            # Look up precomputed boundaries using the open bar's session day
+            sd = session_day_id[cand.open_bar]
+
+            bounds = day_bounds.get(sd)
+            if bounds is None:
+                continue
+
+            flat_bar_start = bounds["flat_first"]
+            if flat_bar_start < 0:
+                continue  # no flat window in this session-day's data — skip
+            last_bar = min(flat_bar_start + 20, n - 1)
+
+            # Skip open bars on or after flat_bar_start (no time to trade)
+            if cand.open_bar >= flat_bar_start:
+                continue
+
+            prepared.append(_GapFillPreparedCandidate(
+                cand=cand,
+                sd=sd,
+                direction=direction,
+                entry_price=entry,
+                stop_price=stop,
+                tp1_price=tp1,
+                tp2_price=tp2,
+                be_price=be,
+                risk_pts=risk_pts,
+                qty=qty,
+                half_qty=half_qty,
+                is_single=is_single,
+                entry_bar_start=entry_bar_start,
+                entry_bar_end=entry_bar_end,
+                flat_bar_start=flat_bar_start,
+                last_bar=last_bar,
+            ))
+
+        # Phase 2: Group by session-day and enforce one-trade-per-day.
+        # Gap fill produces at most one signal per session-day, but we still
+        # enforce the rule for safety.
+        sd_groups: dict[int, list[_GapFillPreparedCandidate]] = defaultdict(list)
+        for pc in prepared:
+            sd_groups[pc.sd].append(pc)
+
+        def _simulate_and_append(pc: _GapFillPreparedCandidate) -> None:
+            if use_hierarchical:
+                fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f = (
+                    _simulate_single_trade_hierarchical(
+                        high, low, close,
+                        pc.entry_bar_start, pc.entry_bar_end,
+                        pc.flat_bar_start, pc.last_bar,
+                        high_1m, low_1m, close_1m,
+                        high_30s, low_30s, close_30s,
+                        high_1s, low_1s, close_1s,
+                        map_5m_1m_arr, map_1m_30s_arr, map_30s_1s_arr, map_1m_1s_arr,
+                        has_30s, has_1s,
+                        pc.direction,
+                        pc.entry_price, pc.stop_price, pc.tp1_price, pc.tp2_price, pc.be_price,
+                        pc.is_single, pc.qty, pc.half_qty,
+                        config.point_value,
+                        config.commission_per_contract,
+                    )
+                )
+            else:
+                fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade(
+                    high, low, close,
+                    pc.entry_bar_start, pc.entry_bar_end,
+                    pc.flat_bar_start, pc.last_bar,
+                    pc.direction,
+                    pc.entry_price, pc.stop_price, pc.tp1_price, pc.tp2_price, pc.be_price,
+                    pc.is_single, pc.qty, pc.half_qty,
+                    config.point_value,
+                    config.commission_per_contract,
+                )
+                fill_1m_f = -1.0
+                exit_1m_f = -1.0
+
+            pnl_usd = pnl_pts * pc.qty * config.point_value
+            if exit_type != EXIT_NO_FILL:
+                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+            r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+
+            all_results.append(TradeResult(
+                date=pc.cand.date_str,
+                session=session.name,
+                direction=pc.direction,
+                signal_bar=pc.cand.open_bar,
+                fill_bar=fill_bar,
+                entry_price=pc.entry_price,
+                stop_price=pc.stop_price,
+                tp1_price=pc.tp1_price,
+                tp2_price=pc.tp2_price,
+                exit_type=exit_type,
+                exit_bar=exit_bar,
+                pnl_points=pnl_pts,
+                pnl_usd=pnl_usd,
+                r_multiple=r_multiple,
+                qty=pc.qty,
+                half_qty=pc.half_qty,
+                gap_size=pc.cand.gap_size,
+                risk_points=pc.risk_pts,
+                fill_time=_resolve_time(
+                    timestamps, fill_bar, timestamps_1m,
+                    fill_1m_f if use_hierarchical else -1.0,
+                ),
+                exit_time=_resolve_time(
+                    timestamps, exit_bar, timestamps_1m,
+                    exit_1m_f if use_hierarchical else -1.0,
+                ),
+            ))
+
+        def _append_no_fill(pc: _GapFillPreparedCandidate) -> None:
+            all_results.append(TradeResult(
+                date=pc.cand.date_str,
+                session=session.name,
+                direction=pc.direction,
+                signal_bar=pc.cand.open_bar,
+                fill_bar=-1,
+                entry_price=pc.entry_price,
+                stop_price=pc.stop_price,
+                tp1_price=pc.tp1_price,
+                tp2_price=pc.tp2_price,
+                exit_type=EXIT_NO_FILL,
+                exit_bar=-1,
+                pnl_points=0.0,
+                pnl_usd=0.0,
+                r_multiple=0.0,
+                qty=pc.qty,
+                half_qty=pc.half_qty,
+                gap_size=pc.cand.gap_size,
+                risk_points=pc.risk_pts,
+                fill_time="",
+                exit_time="",
+            ))
+
+        for sd in sorted(sd_groups):
+            group = sd_groups[sd]
+            if len(group) == 1:
+                _simulate_and_append(group[0])
+            else:
+                # Multiple candidates on same session-day (shouldn't happen
+                # for gap fill, but defensive).
+                # Market orders fill immediately, so use open_bar order.
+                fill_bars = []
+                for pc in group:
+                    fb = _scan_fill_bar(
+                        high, low,
+                        pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
+                        pc.direction, pc.entry_price,
+                    )
+                    fill_bars.append((pc, fb))
+
+                filled = [(pc, fb) for pc, fb in fill_bars if fb >= 0]
+                if not filled:
+                    for pc, _ in fill_bars:
+                        _append_no_fill(pc)
+                else:
+                    winner_pc, _ = min(
+                        filled, key=lambda x: (x[1], x[0].cand.open_bar),
+                    )
+                    _simulate_and_append(winner_pc)
+                    for pc, _ in fill_bars:
+                        if pc is not winner_pc:
+                            _append_no_fill(pc)
+
+    # Sort by date
+    all_results.sort(key=lambda t: t.date)
+
+    # Filter out warmup-period trades
+    if start_date is not None:
+        all_results = [t for t in all_results if t.date >= start_date]
+
+    return all_results
+
+
+# ---------------------------------------------------------------------------
+# Signal pre-computation cache (for parameter sweeps)
+# ---------------------------------------------------------------------------
+
+def build_gapfill_signal_cache(
+    df: pd.DataFrame,
+    configs: list[GapFillStrategyConfig],
+) -> dict:
+    """Pre-compute all signal arrays needed by a set of Gap Fill configs.
+
+    Call once before a parameter sweep, then pass the result as
+    ``_signal_cache=cache`` to :func:`run_gapfill_backtest`.
+
+    Groups configs by their signal-determining keys and computes each unique
+    combination exactly once:
+
+    - ``cache["atr"][atr_length]``                -> daily ATR array
+    - ``cache["session"][session_key]``           -> masks, day IDs, date strings
+
+    For a 1000-config sweep where only stop_multiplier/tp1_ratio vary, each
+    signal computation runs exactly once.
+    """
+    cache: dict = {"atr": {}, "session": {}}
+    timestamps = df.index
+
+    # Date strings: config-independent, computed exactly once
+    date_strs = compute_date_strings(timestamps)
+
+    # Collect unique keys
+    atr_lengths: set[int] = set()
+    unique_sessions: dict[tuple, GapFillSessionConfig] = {}
+
+    for config in configs:
+        atr_lengths.add(config.atr_length)
+        for session in config.sessions:
+            skey = _gapfill_session_key(session)
+            if skey not in unique_sessions:
+                unique_sessions[skey] = session
+
+    # --- Batch: ATR + session computations in parallel ---
+    def _compute_atr(atr_length: int) -> tuple[int, np.ndarray]:
+        return atr_length, compute_daily_atr(df, atr_length)
+
+    def _compute_session(
+        skey: tuple, session: GapFillSessionConfig,
+    ) -> tuple[tuple, dict]:
+        masks = _compute_gapfill_session_masks(timestamps, session)
+        _, session_day_id = _compute_gapfill_session_days(timestamps, session)
+        day_bounds_default = _precompute_day_boundaries(
+            timestamps, masks, set(), date_strs, session_day_id,
+        )
+        return skey, {
+            "masks": masks,
+            "session_day_id": session_day_id,
+            "date_strs": date_strs,
+            "day_bounds_default": day_bounds_default,
+        }
+
+    n_batch = len(atr_lengths) + len(unique_sessions)
+    max_workers = min(n_batch, (os.cpu_count() or 1))
+
+    if max_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            atr_futures = [executor.submit(_compute_atr, al) for al in atr_lengths]
+            session_futures = [
+                executor.submit(_compute_session, skey, session)
+                for skey, session in unique_sessions.items()
+            ]
+            for f in atr_futures:
+                atr_length, atr_arr = f.result()
+                cache["atr"][atr_length] = atr_arr
+            for f in session_futures:
+                skey, session_data = f.result()
+                cache["session"][skey] = session_data
+    else:
+        for atr_length in atr_lengths:
+            cache["atr"][atr_length] = compute_daily_atr(df, atr_length)
+        for skey, session in unique_sessions.items():
+            _, session_data = _compute_session(skey, session)
+            cache["session"][skey] = session_data
+
+    return cache

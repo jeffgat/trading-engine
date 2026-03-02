@@ -85,24 +85,43 @@ START_DATE = "2016-01-01"
 
 Generate `run_{asset}_{session}_variable_sweeps_{N}.py` in `python/scripts/`. N starts at 1 and increments each round.
 
-Sweep 12 dimensions in this fixed order, one at a time, all others held at anchor:
+Variable sweeps are split into two phases. Analysis of 30+ sweep rounds across NQ, ES, and GC showed that only 3 dimensions (Stop × RR × TP1) form a feedback loop requiring iterative convergence. The other 13 are largely independent — changes never trigger re-adoptions in other dimensions.
 
-| # | Dimension | Config field | Typical values |
-|---|-----------|-------------|----------------|
-| 1 | Stop ATR % | `stop_atr_pct` | 1.0, 2.0, 3.0, 4.0, 5.0, 7.5, 10.0, 12.0, 15.0 |
-| 2 | ORB window | `orb_start/orb_end/entry_start` | 5m, 10m, 15m, 20m, 25m, 30m, 45m |
-| 3 | ATR length | `atr_length` | 3, 5, 7, 10, 14, 20, 30, 50 |
-| 4 | Entry end time | `entry_end` | Session-appropriate times (NY: 11:00-15:30) |
-| 5 | Flat time | `flat_start` | Session-appropriate times |
-| 6 | Direction | `direction_filter` | both, long, short |
-| 7 | R:R ratio | `rr` | 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0 |
-| 8 | TP1 ratio | `tp1_ratio` | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 (min 0.2 — hard constraint) |
-| 9 | Min gap ATR % | `min_gap_atr_pct` | 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0 |
-| 10 | DOW exclusion | post-backtest filter | none, Mon, Tue, Wed, Thu, Fri, M+F, Th+F |
-| 11 | Max gap ATR % | `max_gap_atr_pct` | OFF, 20, 50, 75, 100, 150 |
-| 12 | ICF | `impulse_close_filter` | True, False |
+### Step 2a: Stand-Alone Sweeps (single pass, no re-sweep)
 
-> **Note on Dimension 11**: Some instruments use `max_gap_points` (absolute points) instead of `max_gap_atr_pct` (ATR-relative). Check the instrument's learnings file or existing configs to determine which applies.
+Sweep 13 dimensions once, in this order. Adopt any that pass the threshold. No re-sweeping — these are decided once and feed into the core loop as fixed context.
+
+| # | Dimension | Config field | Typical values | Why stand-alone |
+|---|-----------|-------------|----------------|-----------------|
+| 1 | Direction | `direction_filter` | both, long, short | One-time structural choice; never flips back once adopted |
+| 2 | Stop method | ATR vs ORB% | Tests alternative stop method to anchor | Structural — decides how stops scale; one-time decision |
+| 3 | ORB window | `orb_start/orb_end/entry_start` | 5m, 10m, 15m, 20m, 25m, 30m, 45m | Structural; weak cascade to entry end only |
+| 4 | Entry end time | `entry_end` | Session-appropriate times (NY: 11:00-15:30) | Session boundary; no cascade to core params |
+| 5 | Flat time | `flat_start` | Session-appropriate times | Session boundary; no cascade |
+| 6 | ATR length | `atr_length` | 5, 7, 10, 14, 20, 30 | Major lever for GC (+5.76 Calmar); decisive for NQ Asia/ES Asia (ATR 5); always test |
+| 7 | Min gap ATR % | `min_gap_atr_pct` | 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0 | Filter layer; orthogonal to stop/RR/TP1 risk engine |
+| 8 | DOW exclusion | post-backtest filter | none, Mon, Tue, Wed, Thu, Fri, M+F, Th+F | Post-filter; no cascade; data-mining risk |
+| 9 | ICF | `impulse_close_filter` | True, False | Binary; context-dependent — adopted at +2.72 on NQ Asia, harmful on NQ NY shorts |
+| 10 | SMA Trend Gate | `apply_sma_trend_gate(trades, df_5m, sma_period)` | OFF, 10, 20, 50, 100, 200 | Post-trade filter; independent of core risk engine |
+| 11 | Qualifying Move | `qualifying_move_atr_pct` on SessionConfig | 0 (off), 25, 50, 75, 100, 150, 200 | **Inversion only** — skip for continuation/reversal |
+| 12 | Weekly Loss Cap | `apply_weekly_loss_cap(trades, cap_r)` | OFF, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0 | Order-sensitive risk overlay; apply after DOW+SMA filters |
+| 13 | Monthly Loss Cap | `apply_monthly_loss_cap(trades, cap_r)` | OFF, 3.0, 5.0, 7.0, 10.0, 15.0 | Order-sensitive risk overlay; apply after DOW+SMA filters |
+
+After the stand-alone pass completes, update the anchor with any adoptions. This becomes the fixed context for the core convergence loop.
+
+### Step 2b: Core Convergence Loop (iterative re-sweep)
+
+Sweep 3 core dimensions iteratively until convergence (0 adoptions in a full pass):
+
+| # | Dimension | Config field | Typical values | Why core |
+|---|-----------|-------------|----------------|----------|
+| 1 | Stop size | `stop_atr_pct` or `stop_orb_pct` | ATR: 1.0–15.0% / ORB: 25–200% | PRIMARY cascade driver — changes force RR + TP1 re-evaluation |
+| 2 | R:R ratio | `rr` | 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0 | Tightly coupled to stop; re-adopted after every significant stop change |
+| 3 | TP1 ratio | `tp1_ratio` | 0.2, 0.3, 0.4, 0.5, 0.6, 0.7 (min 0.2 — hard constraint) | Weakly coupled to RR; adjusts after RR shifts |
+
+**Convergence**: Typically 2-3 rounds (vs 5-11 rounds when all 16 dims are re-swept). The stop-RR-TP1 loop is the only one that actually oscillates.
+
+### Sweep Script Requirements
 
 Each script must:
 - Print a formatted table per dimension with: Trades, WR, PF, Sharpe, Net R, R/yr, MaxDD, Calmar.
@@ -113,13 +132,21 @@ Each script must:
 **Adoption rule**: Calmar delta > +0.3 AND no new negative full years AND trade count stays >100 AND median stop >= 10 ticks.
 
 **Convergence logic**:
-- If any dimension is adopted: update anchor, increment N, re-sweep ALL 12 dimensions.
-- Converged when 0 adoptions in a full pass.
+- **Stand-alone (Step 2a)**: Single pass (13 dims). Adopt qualifying dims. Update anchor. Move to Step 2b.
+- **Core (Step 2b)**: If any of the 3 core dims is adopted, update anchor, increment N, re-sweep only the 3 core dims. Converged when 0 core adoptions in a full pass.
 - On convergence, print "Ready for grid sweep."
+
+**Script naming**: Stand-alone pass uses `_variable_sweeps_1.py`. Core rounds use `_variable_sweeps_2.py`, `_variable_sweeps_3.py`, etc. (N increments each core round).
 
 **DOW filter**: Applied post-backtest via `apply_dow_filter()`, not in config.
 
-**Progress**: After each round completes, update the progress file: append a Round entry to the Adoption Log with entering/exiting anchor and adoptions. Update Current Anchor Config/Metrics tables. Update Next Action. Add the sweep script to Scripts Generated.
+**SMA trend gate**: Applied post-backtest via `apply_sma_trend_gate()` from `gates.py`. Needs `df_5m`.
+
+**Qualifying move**: Uses `run_backtest_qm()` from `orb_backtest.engine.qualifying_move` instead of `run_backtest()`. Only applies to `strategy="inversion"` — skip for continuation/reversal.
+
+**Loss caps (weekly/monthly)**: Applied post-backtest via `apply_weekly_loss_cap()` / `apply_monthly_loss_cap()` from `gates.py`. Order-sensitive — apply LAST in the filter chain (after DOW and SMA filters).
+
+**Progress**: After each pass/round completes, update the progress file: append a Stand-alone or Core Round entry to the Adoption Log with entering/exiting anchor and adoptions. Update Current Anchor Config/Metrics tables. Update Next Action. Add the sweep script to Scripts Generated.
 
 **Experiment name**: Not saved to DB (these are diagnostic sweeps printed to stdout).
 
@@ -216,7 +243,7 @@ from orb_backtest.results.export import results_to_dict, save_backtest_result
 CONFIG = StrategyConfig(
     ...,
     name="{INSTRUMENT} {SESSION} {strategy} {direction} 2016-2026 Final",
-    notes="Post full-optimization pipeline. See run_{asset}_{session}_robust_pipeline.py.",
+    notes="Post orb-optimization pipeline. See run_{asset}_{session}_robust_pipeline.py.",
 )
 
 # Run backtest, print metrics, save to DB

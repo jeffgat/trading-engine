@@ -23,6 +23,7 @@ export function formatR(value: number): string {
 }
 
 export function formatNumber(value: number, decimals = 2): string {
+  if (typeof value !== "number" || !isFinite(value)) return "—";
   return value.toFixed(decimals);
 }
 

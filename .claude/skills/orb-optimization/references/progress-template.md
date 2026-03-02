@@ -27,6 +27,7 @@ Copy everything below this line into the progress file, filling in values as you
 | Parameter | Value |
 |-----------|-------|
 | stop_atr_pct | |
+| stop_orb_pct | |
 | orb_start | |
 | orb_end | |
 | entry_start | |
@@ -42,6 +43,10 @@ Copy everything below this line into the progress file, filling in values as you
 | max_gap_points | |
 | impulse_close_filter | |
 | dow_exclusion | |
+| sma_period | |
+| qualifying_move_atr_pct | |
+| weekly_loss_cap_r | |
+| monthly_loss_cap_r | |
 
 ## Current Anchor Metrics
 
@@ -60,20 +65,21 @@ Copy everything below this line into the progress file, filling in values as you
 
 ## Adoption Log
 
-<!-- Append one entry per sweep round. Keep ALL previous rounds — this is the history. -->
+<!-- Append one entry per sweep pass/round. Keep ALL previous entries — this is the history. -->
+<!-- Stand-alone pass runs once (13 dims). Core rounds iterate (3 dims) until converged. -->
 
-### Round R1
-- **Anchor entering**: {one-line config summary: stop=X%, rr=X, gap=X%, tp1=X, ...}
-- **Adoptions**: {dim: old→new (Calmar Δ+X.XX)} or "0 adoptions — CONVERGED"
+### Stand-Alone Pass (R1)
+- **Anchor entering**: {one-line config summary: stop=X%, rr=X, gap=X%, tp1=X, dir=X, ...}
+- **Adoptions**: {dim: old→new (Calmar Δ+X.XX)} or "0 stand-alone adoptions"
 - **Anchor exiting**: {updated one-line summary}
 - **Calmar**: {before} → {after}
 
-<!-- Copy this block for each new round:
-### Round R{N}
-- **Anchor entering**:
-- **Adoptions**:
-- **Anchor exiting**:
-- **Calmar**: →
+<!-- Copy this block for each core convergence round:
+### Core R{N}
+- **Anchor entering**: {one-line: stop=X%, rr=X, tp1=X}
+- **Adoptions**: {dim: old→new (Calmar Δ+X.XX)} or "0 core adoptions — CONVERGED"
+- **Anchor exiting**: {updated one-line summary}
+- **Calmar**: {before} → {after}
 -->
 
 ## Grid Sweep Log

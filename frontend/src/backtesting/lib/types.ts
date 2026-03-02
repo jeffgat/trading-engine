@@ -40,6 +40,7 @@ export interface BacktestSummary {
   pnl_by_year: Record<string, number>;
   pnl_by_month: Record<string, number>;
   pnl_by_dow: Record<string, number>;
+  r_by_year?: Record<string, number>;
   long_trades: number;
   short_trades: number;
   long_win_rate: number;
@@ -65,6 +66,12 @@ export interface Trade {
   risk_points: number;
   entry_time?: string;
   exit_time?: string;
+  // LSI overlay data (only present for lsi strategy trades)
+  lsi_swept_level?: number;
+  lsi_fvg_top?: number;
+  lsi_fvg_bottom?: number;
+  lsi_fvg_time?: string;
+  lsi_sweep_time?: string;
 }
 
 export interface CandleBar {

@@ -24,6 +24,41 @@ This repository contains a Python backtesting engine for Opening Range Breakout 
 - TP2: Remaining at full R:R target
 - Breakeven: Stop moves to entry after TP1 hit
 
+### Strategy Types
+
+The `StrategyConfig.strategy` field controls signal generation mode:
+
+- `"continuation"` — Bullish/bearish FVG in the direction of ORB breakout; entry at FVG retest
+- `"reversal"` — FVG forms against the ORB direction; entry at FVG retest (fade the breakout)
+- `"inversion"` — FVG forms, price trades through it (invalidation), then retests from the other side
+- `"cisd"` — Change in State of Delivery: FVG inverted, entry at the inversion bar close
+- `"lsi"` — Liquidity Sweep Inversion: swing level swept → FVG forms within N bars → FVG inverted → entry at inversion bar close
+
+### Liquidity Sweep Signal
+
+**Definition** (canonical — all agents must use this):
+
+A **swing high** at bar[i]: `high[i]` is strictly greater than all `n_bars` bars to its left AND all `n_bars` bars to its right. Equivalent to Pine Script's `ta.pivothigh(n_bars, n_bars)`.
+
+A **swing low** at bar[i]: `low[i]` is strictly less than all `n_bars` bars to its left AND all `n_bars` bars to its right.
+
+A **liquidity sweep** occurs when:
+- Price trades **above** a prior confirmed swing high → **high sweep** (buy-side liquidity taken)
+- Price trades **below** a prior confirmed swing low → **low sweep** (sell-side liquidity taken)
+
+**Implementation**: two modules work together:
+- `signals/swing.py` — low-level pivot detection: `detect_swing_highs(high, n_left, n_right)`, `detect_swing_lows(low, n_left, n_right)`
+- `signals/liquidity_sweep.py` — sweep pipeline (wraps `swing.py`):
+  - `detect_swing_pivots(high, low, n_bars)` → pivot bool + level arrays (confirmation delayed by `n_bars`)
+  - `track_latest_swing(...)` → forward-filled most recent pivot levels
+  - `detect_liquidity_sweeps(high, low, latest_swing_high, latest_swing_low)` → `{high_swept, low_swept, swept_high_level, swept_low_level}`
+
+**Sweep detection uses `>=` / `<=`** (not strict `>` / `<`) so tick-perfect touches count as sweeps, matching the Numba simulator's stop-fill logic.
+
+**Config parameter**: `StrategyConfig.swing_n_bars` (default 10). Controls the pivot width — higher values = fewer, more significant pivots.
+
+**When to use this**: Any agent asked to test "reversals off liquidity sweeps", "fade the sweep", or "sweep-and-reverse" must use this module. The ATR-based `qualifying_move_atr_pct` gate in `SessionConfig` is a separate, older concept that measures extension from ORB levels — it can be used alongside sweep detection but is not a substitute for it.
+
 ### Session Times
 - US: ORB 09:30-09:45 NY, entries until 12:00, flat by 15:50
 - Asia: ORB 09:00-09:30 JST, entries until 12:30, flat by 14:50

@@ -16,7 +16,8 @@ type SortKey =
     | 'calmar_ratio'
     | 'profit_factor'
     | 'rr'
-    | 'r_per_year';
+    | 'r_per_year'
+    | 'timestamp';
 
 function formatR(pnl: number, risk: number): string {
     const r = pnl / (risk || 50000);
@@ -39,6 +40,16 @@ function calcRPerYear(item: BacktestHistoryItem): number {
     const ms = new Date(item.date_end).getTime() - new Date(item.date_start).getTime();
     const years = ms / (365.25 * 24 * 60 * 60 * 1000);
     return years > 0 ? netR / years : 0;
+}
+
+function formatCreated(ts: string): string {
+    if (!ts) return '\u2014';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '\u2014';
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    const day = d.getDate();
+    const year = String(d.getFullYear()).slice(-2);
+    return `${month} ${day}, \u2018${year}`;
 }
 
 function formatDateRange(start: string, end: string): string {
@@ -107,6 +118,7 @@ export function BacktestHistoryPanel({
     const [instrumentFilter, setInstrumentFilter] = useState<string>('all');
     const [sessionFilter, setSessionFilter] = useState<string>('all');
     const [showHidden, setShowHidden] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
     const [selectMode, setSelectMode] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkLoading, setBulkLoading] = useState(false);
@@ -182,8 +194,15 @@ export function BacktestHistoryPanel({
         if (sessionFilter !== 'all') {
             items = items.filter((h) => h.sessions.includes(sessionFilter));
         }
+        if (searchQuery.trim()) {
+            const q = searchQuery.trim().toLowerCase();
+            items = items.filter((h) =>
+                (h.name ?? '').toLowerCase().includes(q) ||
+                h.instrument.toLowerCase().includes(q)
+            );
+        }
         return items;
-    }, [history, instrumentFilter, sessionFilter, showHidden, onHide]);
+    }, [history, instrumentFilter, sessionFilter, showHidden, onHide, searchQuery]);
 
     const sorted = useMemo(() => {
         const arr = [...filtered];
@@ -197,6 +216,14 @@ export function BacktestHistoryPanel({
                 return sortAsc
                     ? va.localeCompare(vb)
                     : vb.localeCompare(va);
+            }
+
+            if (sortKey === 'timestamp') {
+                va = a.timestamp || '';
+                vb = b.timestamp || '';
+                return sortAsc
+                    ? (va as string).localeCompare(vb as string)
+                    : (vb as string).localeCompare(va as string);
             }
 
             if (sortKey === 'r_per_year') {
@@ -310,6 +337,28 @@ export function BacktestHistoryPanel({
                         )}
                     </div>
                     <div className="flex items-center gap-2">
+                        <div className="relative">
+                            <svg className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-text-muted pointer-events-none" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <circle cx="6.5" cy="6.5" r="4" />
+                                <path d="M10 10l3 3" />
+                            </svg>
+                            <input
+                                type="text"
+                                placeholder="Search…"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-36 rounded border border-border bg-bg-secondary pl-6 pr-2 py-0.5 text-xs text-text-primary placeholder-text-muted outline-none focus:border-accent"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
+                                    <svg className="h-2.5 w-2.5" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+                                    </svg>
+                                </button>
+                            )}
+                        </div>
                         {onHide && hiddenCount > 0 && (
                             <button
                                 onClick={() => setShowHidden(!showHidden)}
@@ -386,6 +435,7 @@ export function BacktestHistoryPanel({
                             <SortHeader label="Sharpe" sortBy="sharpe_ratio" />
                             <SortHeader label="Calmar" sortBy="calmar_ratio" />
                             <SortHeader label="PF" sortBy="profit_factor" />
+                            <SortHeader label="Created" sortBy="timestamp" />
                             <th className="w-20 px-2 py-2" />
                         </tr>
                     </thead>
@@ -517,6 +567,9 @@ export function BacktestHistoryPanel({
                                     </td>
                                     <td className="px-3 py-2 text-right text-text-secondary">
                                         {pf.toFixed(2)}
+                                    </td>
+                                    <td className="whitespace-nowrap px-3 py-2 text-right text-text-muted">
+                                        {formatCreated(item.timestamp)}
                                     </td>
                                     <td className="px-2 py-2 text-center">
                                         {!selectMode && <span className="inline-flex items-center gap-0.5">

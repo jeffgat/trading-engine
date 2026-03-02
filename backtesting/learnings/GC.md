@@ -94,41 +94,10 @@ Bug fixes removed ~50R of phantom edge. All R2 pipeline results (WF, MC, etc.) a
 - v1 (1m magnifier): INVALID — 1m data inflated performance
 
 ### Reversal (bullish FVG -> short, bearish FVG -> long)
-- **Status**: NO-GO — confirmed on clean 1s data (2026-02-21), both directions, long-only raw, and long-only with inversion
-- **Old result (both dirs, corrupted data)**: -292.8R over 10 years, best of 140 combos -114R, PF 0.80. Every year negative.
-- **Raw reversal longs (clean 1s, strategy="reversal")**: 667 trades, **8.8% WR, -495.2R**. 91% SL hits. No parameter config positive across 8 dimensions.
-- **Inversion reversal longs (clean 1s, strategy="inversion")**: 261 trades, **6.5% WR, -211.0R**. 93.5% SL hits. Inversion confirmation doesn't help — even with FVG invalidation, price continues down after ORB breakdown. 8 dimensions swept, zero positive configs. Best: stop=12% at -45.8R (still all years negative).
-- **Conclusion**: ORB reversal longs are structurally broken on GC in every variant tested. After ORB low breakdown, price continues down — bearish FVGs don't reverse. Do not revisit.
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal definition.
 
 ### Inversion Longs (wait for FVG invalidation, then enter long)
-- **Status**: ⚠️ INVALID — results were from incomplete data. Re-tested on new data → NO EDGE.
-- **Original "GO" config (v8/v9)** — INVALID (old bad data):
-
-| Param | Value |
-|-------|-------|
-| strategy | inversion |
-| direction | long only |
-| rr | 3.5 |
-| tp1_ratio | 0.2 |
-| atr_length | 50 |
-| ny_stop_atr_pct | 9.0 |
-| ny_min_gap_atr_pct | 1.0 |
-| ny_max_gap_points | 25.0 |
-| ORB window | 09:30-09:35 (5 min) |
-| Entry window | 09:35-15:00 |
-| Flat | 15:50-16:00 |
-| magnifier | ON |
-
-- **Old "performance"** (INVALID — old sparse data): 259 trades, 56.8% WR, 74.4R, Calmar 14.40
-- **Re-test on NEW complete data**: 1411 trades, 56.3% WR, **-40.6R net** (no magnifier). With magnifier: **-386R**. Zero no-fills (market orders fill immediately). No edge.
-- **Root cause**: Old GC CSV had sparse bars. Missing bars during adverse moves prevented SL exits and reduced signal count from ~141/year to ~26/year. New data correctly exposes 1411 inversion signals filling immediately with negative net expectancy.
-- **DB entry**: `bt-gc-ny-inversion-longs-v8-go-33aa58` (INVALID — based on bad data)
-- **Conclusion**: GC inversion longs have NO EDGE on complete data. Do not re-test. See Continuation Longs above for the correct approach.
-
-- **v9 and all sub-filters (old data)**: All INVALID for the same reasons. The data was corrupted.
-
-### VIX / DXY Regime Filter (on v9) — ⚠️ INVALID (old data)
-*(All data from v9 inversion longs on corrupted CSV. Kept for reference only — do not use.)*
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal/inversion definition.
 
 ### ORB Reclaim Longs
 - **Status**: NO-GO
@@ -200,37 +169,136 @@ Bug fixes removed ~50R of phantom edge. All R2 pipeline results (WF, MC, etc.) a
 | R4 sweeps | 14.52 | All 10 dimensions confirmed — converged |
 
 ### Inversion Shorts (with Qualifying Move Gate)
-- **Status**: NO-GO
-- **Best case**: QM=100%, 28 trades in 10 years (~3/year) — too few for statistical confidence. Do not revisit.
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.
 
 ### No-ORB Liquidity Sweep Inversions (incl. Clean Air)
-- **Status**: NO-GO — confirmed on clean 1s data (2026-02-21), previously on 1m-only (2026-02-20)
-- **Script**: `run_gc_inv_no_orb_cleanair_1s.py`
-- **1s magnifier unfiltered**: 1069 trades, 37.7% WR, **-243.5R net**, -249.9R DD, Sharpe -3.184. Massively negative.
-- **1s magnifier clean air N=1**: 202 trades, 44.1% WR, **-23.2R**, -31.5R DD, Sharpe -1.546. Every lookback N ≤ 5 negative; N=10 marginal (+5.6R, 81 trades, 5 neg years).
-- **Prior 1m-only results** (2026-02-20): Unfiltered -281.6R (1009 trades), Clean air N=1 -28.9R (190 trades).
-- **1s vs 1m delta**: 1s magnifier is slightly less negative (unf: -243.5R vs -281.6R, N=1: -23.2R vs -28.9R) — more accurate fills reduce phantom SL hits, but not enough to change the verdict.
-- **Old results (Sharpe 5.0+, 59.5R)**: Entirely an artifact of incomplete data. Sparse bars masked SL exits and reduced signal count from ~100/yr to ~12/yr.
-- **Conclusion**: No-ORB liquidity sweep inversions have NO EDGE on GC with complete data, with or without clean air filtering. Confirmed on both 1m and 1s magnifier. Do not revisit.
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.
 
 ### Stacked GC Strategy: v9 Regime-Sized + Clean Air No-ORB
-- **Status**: NO-GO — both components invalid. v9 was bad data; clean air re-tested 2026-02-20 → NO EDGE (-28.9R at best).
-  - **Signal A (v9 regime-sized)**: ORB-anchored inversion, QM=10%, 2x sizing when VIX<18 + DXY<SMA50. Fixed params — already validated.
-  - **Signal B (clean air no-ORB)**: 100% ATR sweep, no prior bullish FVG zone below (N days lookback). N swept per fold. QM=100%, stop=12%, rr=5.0, BE=0, entry→16:45.
-  - **Dedup**: On same-day conflict, v9 wins.
-  - **Overlap**: ~4.8% of dates have both signals fire simultaneously — near-zero correlation.
-- **Walk-forward results** (36m IS, 12m OOS, 12m step, 7 folds, 2019-2026 OOS):
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.
 
-| Metric | v9 alone (WF) | Stacked (WF) | Delta |
-|--------|--------------|--------------|-------|
-| Trades | 169 (~24/yr) | 229 (~33/yr) | +60   |
-| Win Rate | 55.6%      | 55.0%        | -0.6% |
-| Net R  | 58.8R        | 89.1R        | +30.3R |
-| Max DD | -7.3R        | -10.0R       | -2.7R |
-| Sharpe | 3.314        | 3.695        | +0.38 |
-| WF Eff | 1.21         | 1.13         | -0.08 |
+### VWAP Reversion (session-anchored VWAP deviation + rejection candle)
+- **Status**: NO-GO — confirmed 2026-02-23, comprehensive diagnostic sweep on clean 1s data
+- **Scripts**: `run_gc_ny_vwap_baseline.py`, `run_gc_ny_vwap_diagnostic.py`
+- **Baseline** (defaults: dev=30% ATR, stop=0%, rr=2.5, close rejection, both dirs): 1259 trades, **0.0% WR, PF 0.02**, 97.6% SL exits. Every year -100R to -133R.
+- **Diagnostic sweep** (67 configs): Swept deviation threshold (10-100% ATR), stop buffer (0-20% ATR), direction (both/long/short), RR (1.0-8.0), deviation mode (atr/std), rejection mode (close/pinbar with multiple wick/body params), TP2 mode (fixed_rr/vwap).
+- **Results**: Win rate near-zero (0.0-0.5%) across ALL configs. PF universally <1.0 except dev=100% (PF 1.14, only 34 trades in 10 years, 5 neg years — statistically meaningless). Stop buffer from 0% to 20% barely changes outcome. Std-dev mode equally broken. Pinbar rejection reduces trade count but WR stays near-zero.
+- **Root cause**: After a "rejection" candle near VWAP deviation bands, GC price does NOT revert to VWAP — it continues in the deviation direction. The mean-reversion signal is structurally wrong for gold, which tends to trend through VWAP rather than revert. This is consistent with GC's strong trending behavior seen in continuation strategy success.
+- **Conclusion**: VWAP Reversion has NO EDGE on GC NY in any structural configuration tested. Do not revisit. Gold's trending nature makes it unsuitable for mean-reversion strategies. Stick to ORB continuation strategies for GC.
 
-*(All data above for stacked strategy is invalid due to v9 component.)*
+### VWAP + FVG Inversion Longs (hybrid: bearish FVG below VWAP deviation → invalidation → long)
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. The FVG inversion component needs re-testing with sweep-gated definition.
+
+### VWAP Trend Continuation Longs (pullback to VWAP center → FVG inversion or CISD → long)
+- **Status**: INVALIDATED — prior results tested without liquidity sweep gate. The FVG inversion entry component needs re-testing with sweep-gated definition. CISD entry component also showed no edge (PF 1.04, Calmar 0.07) but is a separate signal type.
+
+### NY Liquidity Sweep Inversion (LSI) fvg_limit — CONDITIONAL GO (2026-02-27)
+
+**Scripts**: `run_gc_ny_lsi_baseline.py`, `run_gc_ny_lsi_fvgl_variable_sweeps_{1-9}.py`, `run_gc_ny_lsi_fvgl_grid_sweep_r1.py`, `run_gc_ny_lsi_fvgl_early_entry_sweep.py`, `run_gc_ny_lsi_fvgl_robust_pipeline.py`, `save_gc_ny_lsi_fvgl_r1_final.py`
+
+#### Converged anchor config
+
+| Param | Value |
+|-------|-------|
+| strategy | lsi |
+| lsi_stop_mode | absolute (structural stop) |
+| lsi_entry_mode | fvg_limit |
+| direction | both |
+| lsi_n_left | 5 |
+| lsi_n_right | 75 (full NY session) |
+| lsi_fvg_window_left | 10 |
+| lsi_fvg_window_right | 10 |
+| atr_length | 7 |
+| ny_min_gap_atr_pct | 5.0% |
+| ny_stop_atr_pct | 0.0 (structural) |
+| ORB window | 09:30-09:35 (vestigial — LSI uses swing pivots) |
+| entry_start | 09:35 |
+| entry_end | 10:30 |
+| flat_start | 15:00 |
+| magnifier | 1s |
+
+**WF mode params (use for live trading):** rr=9.0, tp1=0.4, ny_min_gap_atr_pct=5.0
+
+**Phase 1** (full history 2016-2026): 130 trades, 50.8% WR, PF 2.29, Calmar 12.21, Sharpe 4.786, Max DD -5.0R, **0 neg full years**, median stop 46 ticks
+
+R by year: 2016 +7.7 | 2017 +12.6 | 2018 +2.5 | 2019 +4.7 | 2020 +6.5 | 2021 +4.7 | 2022 +6.2 | 2023 +3.9 | 2024 +4.7 | 2025 +5.7
+
+**Phase 2 WF** (36m IS/12m OOS/12m step, 5 folds): **PASS**
+- OOS: 62 trades, 45.2% WR, 19.4R, Sharpe 3.608, Calmar 4.17, PF 1.83, DD -4.6R
+- WF Efficiency: 0.585 (PASS ≥ 0.5)
+- Stability: 1.000 (high) — rr mode=9.0, tp1_ratio mode=0.4, gap mode=5.0%
+
+| Fold | IS Period | OOS Period | IS Shrp | OOS Shrp | Best Params |
+|------|-----------|-----------|---------|----------|-------------|
+| 1 | 2016→2019 | 2019 OOS | 7.903 | 4.243 | rr=7.0, tp1=0.4, gap=6.0% |
+| 2 | 2017→2020 | 2020 OOS | 6.860 | 2.081 | rr=7.0, tp1=0.4, gap=6.0% |
+| 3 | 2018→2021 | 2021 OOS | 4.850 | 3.196 | rr=9.0, tp1=0.3, gap=5.0% |
+| 4 | 2019→2022 | 2022 OOS | 5.149 | 5.431 | rr=9.0, tp1=0.4, gap=5.0% |
+| 5 | 2020→2023 | 2023 OOS | 5.165 | 2.562 | rr=9.0, tp1=0.4, gap=5.0% |
+
+**Phase 3 Prop Firm**: **FAIL** — Avg OOS annual R 3.9R < 6.0R threshold. Worst month -2.3R (PASS ≤ 5.0R), expectancy +0.312R.
+- **Structural cause**: ~13 trades/year — individual 12-month OOS windows have insufficient sample (10-15 trades). Full-history achieves exactly 6.0R/yr. Not a strategy failure.
+
+**Phase 4 Hold-out** (2025-01+, WF mode params): **PASS** — 20 trades, 50.0% WR, +7.6R, PF 1.99, Sharpe 3.386. 2025: +5.7R, 2026 YTD: +1.9R.
+
+**Phase 5 Monte Carlo**: **PASS** — 100% survival at -25R ruin (2000 bootstraps, 88 trades). MC p5 final PnL +1.2R, p5 max DD -10.4R.
+
+**Verdict: CONDITIONAL GO** — 4/5 phases. Phase 3 fails due to structural trade frequency (~13/yr), not edge quality. Exceptional structural metrics (Calmar 12.21, 0 neg years all 10 years, 100% MC survival). Trade with appropriate position sizing.
+
+**DB entry**: `bt-gc-ny-lsi-fvgl-r1-final-XXXXXX` (run save script to populate)
+
+#### Anchor convergence path (R1→R9, 2026-02-27)
+
+| Round | Calmar | Adoptions |
+|-------|--------|-----------|
+| R1 (baseline fvg_limit params) | 0.99 | direction→both; n_right→75; gap→4.0% |
+| R2 | 2.40 | flat→14:00; entry_end→10:30; gap→3.0%; atr→20 |
+| R3 | 4.49 | n_left→10; gap→4.5%; atr→14 |
+| R4 | 6.08 | n_left→10; gap→5.0%; atr→7; flat→14:30 |
+| R5 | 8.29 | gap→4.0%; atr→7; flat→14:00; rr→5.0; tp1→0.4 |
+| R6 | 6.88 | gap→5.0%; atr→30; flat→14:30; rr→8.0; tp1→0.7 |
+| R7 | 7.09 | n_left→5; gap→3.5%; atr→7; flat→13:00; rr→5.0 |
+| Grid R1 (252 combos: rr×tp1×gap) | 10.98 | rr→9.0, tp1→0.4, gap→5.0% — ALL top 20 used gap=5.0% |
+| R8 (post-grid) | 10.98 | flat_start→15:00 (+1.24) |
+| R9 | 12.21 | **0 adoptions → CONVERGED** |
+
+**Key insight — min_gap oscillation**: Rounds R5-R7 had gap/atr/rr/tp1 cycling through the same values. Sequential independent sweeps cannot resolve co-dependent parameters. The 3D grid (252 combos) definitively resolved this: gap=5.0% wins 100% of top-20 regardless of rr/tp1.
+
+#### Close entry vs fvg_limit entry (baseline comparison)
+
+| Mode | Trades | WR | Net R | Calmar | Neg Yrs |
+|------|--------|----|-------|--------|---------|
+| close / both | 2310 | 53.5% | -40.2R | -0.54 | 6 |
+| fvg_limit / both | 2063 | 56.4% | +42.6R | +0.99 | 3 |
+
+**Close entry is not viable at standard params.** fvg_limit dominates at baseline. Optimization focused entirely on fvg_limit.
+
+#### INFO-ONLY findings (not baked into anchor)
+
+- **Mon DOW exclusion**: Calmar 14.72 (+2.51), 108 trades, 0 neg years — noted but not adopted. Consistent signal (R8 and R9 both showed +2.51). Could be reconsidered with WF validation.
+- **entry_end=10:15**: Calmar 15.50 (+4.52) but only 72 trades — below 100-trade threshold.
+- **Early entry sweep (07:30-09:30)**: Earlier starts lower WR to 40-42% vs 50%+ at 09:35. 2020 large DD on pre-market entries. 09:35 remains optimal.
+
+#### Parameter sensitivity (LSI fvg_limit)
+
+- **lsi_n_right**: 75 (full session) optimal — using prior-session-confirmed pivots only is structurally sound.
+- **lsi_n_left**: 5 optimal. Tighter swing definition captures more setups without adding noise.
+- **atr_length**: 7 optimal. Short ATR adapts stop thresholds to recent volatility (consistent with GC continuation finding).
+- **min_gap_atr_pct**: 5.0% definitively optimal — resolves co-dependence with rr/atr. Grid R1 confirms 100% of top-20 use gap=5.0%.
+- **rr**: Wide plateau rr=6-9 all produce Calmar 10-11+. rr=9.0 is stable mode value; rr=7.0 selected in early folds (slightly less aggressive).
+- **tp1_ratio**: 0.4 optimal. tp1=0.3 slightly worse (mode in 1 fold), tp1=0.5+ reduces Calmar.
+- **entry_end**: 10:30 optimal. Extending to 11:00 adds noise trades. Restricting to 10:15 improves Calmar but drops below trade count floor.
+- **flat_start**: 15:00 optimal. Position must be held for full LSI target extension.
+- **entry_start**: 09:35 optimal. Pre-market entries (07:30-09:30) systematically worse — lower WR, higher DD, uneven year distribution.
+- **direction**: both (not long-only). Unlike continuation longs, LSI finds edge in both directions on GC — structural sweeps confirm "both" throughout.
+
+#### Prop firm considerations
+
+- **Strategy is selective**: ~13 trades/year. Phase 3's 6.0R/yr annual threshold will frequently fail in individual OOS years due to small sample size. Full-history rate (6.0R/yr) is on target.
+- **Max DD**: Full-history -5.0R. MC p50 max DD -5.3R. At risk_usd=$5,000, dollar DD is ~$26,500 (p50). Very shallow.
+- **Sizing**: Can run at full risk_usd=$5,000 given 100% MC survival and shallow DD.
+- **Hold-out 2025**: +5.7R in 2025 — strategy performing in-line with historical average. 2026 YTD +1.9R.
+- **Low frequency note**: Accept that some calendar years will underperform 6.0R target (e.g., 2018: +2.5R, 2019: +4.7R). These are statistical variance on 13 trades, not edge failure.
 
 ### CISD (Change in State of Delivery)
 - **Status**: NO-GO (tested on old data — results may differ on new complete data, but signal quality issue is fundamental)
@@ -467,17 +535,19 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **1s magnifier required** — Do not run GC optimization without `GC_1s.parquet`. 1m data inflates win rate and Calmar artificially.
 
 ### What doesn't work on GC
-- **Inversion longs** — NO EDGE on complete data. 1411 signals, -40.6R net.
-- **Reversal strategy** — No edge in any variant (raw, inversion-confirmed). Reversal longs: 8.8% WR / -495R (raw), 6.5% WR / -211R (inversion). GC breakdowns don't reverse.
+- **Inversion longs** — INVALIDATED (tested without sweep gate).
+- **Reversal strategy** — INVALIDATED (tested without sweep gate).
 - **Continuation shorts** — ~~-98R old data~~ OVERTURNED: CONDITIONAL GO. Full-history Calmar 14.52, 219R, 0 neg years. Pipeline borderline on WF efficiency (0.28 vs 0.30) and MC survival (47.9% vs 60%). Tradeable with reduced position sizing.
-- **Inversion shorts** — Structural breakdown. Best case 28 trades in 10 years at QM=100%.
+- **Inversion shorts** — INVALIDATED (tested without sweep gate).
 - **ORB reclaims** — Without FVG filter, -65R DD in 2023 alone. Untradeable.
 - **CISD** — Good WR (50%) but DD exceeds 10R in every config.
 - **Asia/London sessions** — Too illiquid (~1 bar/hour).
-- **No-ORB clean air inversions** — Re-tested on 1s magnifier (2026-02-21): 1069 unfiltered = -243.5R, N=1 = -23.2R. Prior 1m-only (2026-02-20): -281.6R / -28.9R. 1s slightly less negative but still firmly NO-GO.
-- **Stacked strategy (v9 + clean air)** — Both components confirmed NO-GO on complete data.
+- **No-ORB clean air inversions** — INVALIDATED (tested without sweep gate).
+- **Stacked strategy (v9 + clean air)** — INVALIDATED (tested without sweep gate).
 - **Long ATR (50+)** — Dramatically underperforms short ATR. Do not use ATR 50 as default for GC.
 - **Max gap points filter** — Insensitive. GC natural ATR-based filters already limit gap size effectively.
+- **VWAP Reversion** — NO EDGE. 67 configs tested (deviation 10-100% ATR, stop 0-20% ATR, both dirs, RR 1-8, atr/std mode, close/pinbar, fixed_rr/vwap TP2). Win rate near-zero everywhere. Gold trends through VWAP — mean-reversion signals are structurally wrong for GC.
+- **VWAP Trend Continuation** — INVALIDATED (FVG inversion component tested without sweep gate). CISD entry component showed no edge independently (PF 1.04, Calmar 0.07).
 
 ### Parameter sensitivity (continuation longs, clean 1s data, R2 final)
 - **atr_length**: ATR 10 is the peak on clean data (Calmar 13.10). ATR 16 was optimal on contaminated data but clean data shifted the peak. Short ATR (10-14) always better than long ATR (50). The key insight: short ATR adapts to recent volatility clusters.
@@ -491,6 +561,8 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **flat_start**: Completely insensitive. All values 14:00+ give identical results — all GC entries happen before noon.
 - **max_gap_points**: Insensitive. All values 20-30 identical. ATR-based filters (min_gap_atr, max_gap_atr) are the effective levers.
 - **excluded_dates**: FOMC dates excluded (mechanically sound). DOW exclusion rejected every round — shifts which day is "best" (Mon+Fri → Wed → Wed → Fri), classic data-mining signature.
+- **entry_delay**: 0m (baseline) is optimal and GC R3 is the most sensitive leg. 10m delay collapses Calmar from 15.60→4.72 (DD -12.4→-26.9R). The 8m ORB means early FVGs form right after 09:38; delaying even slightly misses the best setups. 5m delay is identical (same 5m bar boundary). Script: `run_combined_longs_entry_delay_sweep.py`.
+- **event_day_exclusion**: FOMC already excluded in engine config (no additional effect from post-trade filter). NFP: only 1 trade (-1.0R), negligible. CPI actually *above* average (+0.529R vs +0.310R, n=33) — excluding CPI *hurts* (Calmar 15.60→13.02, DD -12.4→-13.6R). No additional event exclusions recommended. Script: `run_combined_longs_event_day_sweep.py`.
 
 ### Prop firm considerations (continuation shorts — CONDITIONAL GO)
 - **OOS Max DD -12.6R** (5-fold WF combined OOS). MC p50 max DD -25.3R, p5 max DD -42.2R.

@@ -26,6 +26,7 @@ from ..signals.session import compute_session_masks, compute_trading_days, compu
 from ..signals.daily_atr import compute_daily_atr
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
+from ..signals.swing import detect_swing_highs, detect_swing_lows
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ EXIT_TP1_BE = 3
 EXIT_TP1_EOD = 4
 EXIT_EOD = 5
 EXIT_TP2_SINGLE = 6  # single contract, full target hit
+EXIT_BE_SL = 7       # swing-triggered BE, then stop at entry hit before TP1 — 0R
 
 EXIT_NAMES = {
     EXIT_NO_FILL: "no_fill",
@@ -47,6 +49,7 @@ EXIT_NAMES = {
     EXIT_TP1_EOD: "tp1_eod",
     EXIT_EOD: "eod",
     EXIT_TP2_SINGLE: "tp2_single",
+    EXIT_BE_SL:      "be_sl",
 }
 
 
@@ -73,6 +76,12 @@ class TradeResult(NamedTuple):
     risk_points: float
     fill_time: str  # ISO timestamp of fill bar ("" if no fill)
     exit_time: str  # ISO timestamp of exit bar ("" if no fill)
+    # LSI-specific overlay data (0.0/"" for non-LSI trades)
+    lsi_swept_level: float = 0.0   # swing pivot price that was swept
+    lsi_fvg_top: float = 0.0       # upper boundary of the inverting FVG zone
+    lsi_fvg_bottom: float = 0.0    # lower boundary of the inverting FVG zone
+    lsi_fvg_time: str = ""         # ISO timestamp of the FVG bar (bar[0] of 3-candle pattern)
+    lsi_sweep_time: str = ""       # ISO timestamp of the bar where the liquidity sweep occurred
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +107,8 @@ def _simulate_single_trade(
     half_qty: float,
     point_value: float,
     commission: float,
+    internal_swing_level: float = 1e38,
+    cancel_on_swing: bool = False,
 ) -> tuple:
     """Simulate a single trade from fill scan to exit.
 
@@ -120,12 +131,19 @@ def _simulate_single_trade(
             if high[i] >= entry_price:
                 fill_bar = i
                 break
+        # Cancel check: swing swept on a non-fill bar — don't enter
+        if cancel_on_swing:
+            if direction == 1 and high[i] >= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+            elif direction == -1 and low[i] <= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
     if fill_bar == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
     # Phase 2: Simulate exit (includes fill bar — price can hit SL/TP on same bar)
     tp1_hit = False
+    be_triggered = False
     current_stop = stop_price
     remaining_qty = qty
     pnl_points = 0.0
@@ -133,6 +151,16 @@ def _simulate_single_trade(
     scan_start = fill_bar
 
     for i in range(scan_start, last_bar + 1):
+        # Swing BE trigger: if swing level swept, move stop to entry
+        # Guard: skip fill bar itself (fill bar low <= entry price ≈ swing level)
+        if not be_triggered and not tp1_hit and i > fill_bar:
+            if direction == 1 and high[i] >= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+            elif direction == -1 and low[i] <= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+
         # Check if we've entered flat window
         is_flat_bar = i >= flat_bar_start
 
@@ -152,6 +180,8 @@ def _simulate_single_trade(
 
             if sl_hit and not tp1_hit:
                 # Full stop loss (before TP1)
+                if be_triggered:
+                    return fill_bar, EXIT_BE_SL, i, 0.0, 0.0, 0.0
                 pnl_points = current_stop - entry_price
                 return fill_bar, EXIT_SL, i, pnl_points, 0.0, 0.0
 
@@ -159,6 +189,7 @@ def _simulate_single_trade(
                 # Single contract: check if price touched TP1 level (BE trigger)
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = low[i] <= current_stop
                 if tp2_trigger:
@@ -171,6 +202,8 @@ def _simulate_single_trade(
                 # Multi-contract
                 if sl_hit and tp1_trigger:
                     # Same bar conflict: conservative = SL wins
+                    if be_triggered:
+                        return fill_bar, EXIT_BE_SL, i, 0.0, 0.0, 0.0
                     pnl_points = current_stop - entry_price
                     return fill_bar, EXIT_SL, i, pnl_points, 0.0, 0.0
 
@@ -179,6 +212,7 @@ def _simulate_single_trade(
                     leg1_pnl = (tp1_price - entry_price) * (half_qty / qty)
                     pnl_points += leg1_pnl
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if low[i] <= be_price:
@@ -208,12 +242,15 @@ def _simulate_single_trade(
                     return fill_bar, EXIT_EOD, i, pnl_points, 0.0, 0.0
 
             if sl_hit and not tp1_hit:
+                if be_triggered:
+                    return fill_bar, EXIT_BE_SL, i, 0.0, 0.0, 0.0
                 pnl_points = entry_price - current_stop
                 return fill_bar, EXIT_SL, i, pnl_points, 0.0, 0.0
 
             if is_single:
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = high[i] >= current_stop
                 if tp2_trigger:
@@ -224,6 +261,8 @@ def _simulate_single_trade(
                     return fill_bar, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
             else:
                 if sl_hit and tp1_trigger:
+                    if be_triggered:
+                        return fill_bar, EXIT_BE_SL, i, 0.0, 0.0, 0.0
                     pnl_points = entry_price - current_stop
                     return fill_bar, EXIT_SL, i, pnl_points, 0.0, 0.0
 
@@ -231,6 +270,7 @@ def _simulate_single_trade(
                     leg1_pnl = (entry_price - tp1_price) * (half_qty / qty)
                     pnl_points += leg1_pnl
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if high[i] >= be_price:
@@ -300,6 +340,7 @@ def _simulate_exit_magnifier(
     is_single: bool,
     qty: float,
     half_qty: float,
+    internal_swing_level: float = 1e38,
 ) -> tuple:
     """Simulate exit on 1m bars. Returns (exit_type, exit_bar_1m, pnl_points).
 
@@ -307,6 +348,7 @@ def _simulate_exit_magnifier(
     but operating on 1m OHLC arrays for higher precision.
     """
     tp1_hit = False
+    be_triggered = False
     current_stop = stop_price
     remaining_qty = qty
     pnl_points = 0.0
@@ -315,6 +357,16 @@ def _simulate_exit_magnifier(
     scan_start = fill_bar_1m
 
     for i in range(scan_start, last_bar_1m + 1):
+        # Swing BE trigger
+        # Guard: skip fill bar itself (fill bar low <= entry price ≈ swing level)
+        if not be_triggered and not tp1_hit and i > fill_bar_1m:
+            if direction == 1 and high_1m[i] >= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+            elif direction == -1 and low_1m[i] <= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+
         is_flat_bar = i >= flat_start_1m
 
         if direction == 1:  # LONG
@@ -331,12 +383,15 @@ def _simulate_exit_magnifier(
                     return EXIT_EOD, i, pnl_points
 
             if sl_hit and not tp1_hit:
+                if be_triggered:
+                    return EXIT_BE_SL, i, 0.0
                 pnl_points = current_stop - entry_price
                 return EXIT_SL, i, pnl_points
 
             if is_single:
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
@@ -347,6 +402,8 @@ def _simulate_exit_magnifier(
                     return EXIT_TP1_BE, i, pnl_points
             else:
                 if sl_hit and tp1_trigger:
+                    if be_triggered:
+                        return EXIT_BE_SL, i, 0.0
                     pnl_points = current_stop - entry_price
                     return EXIT_SL, i, pnl_points
 
@@ -354,6 +411,7 @@ def _simulate_exit_magnifier(
                     leg1_pnl = (tp1_price - entry_price) * (half_qty / qty)
                     pnl_points += leg1_pnl
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if low_1m[i] <= be_price:
@@ -383,12 +441,15 @@ def _simulate_exit_magnifier(
                     return EXIT_EOD, i, pnl_points
 
             if sl_hit and not tp1_hit:
+                if be_triggered:
+                    return EXIT_BE_SL, i, 0.0
                 pnl_points = entry_price - current_stop
                 return EXIT_SL, i, pnl_points
 
             if is_single:
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
@@ -399,6 +460,8 @@ def _simulate_exit_magnifier(
                     return EXIT_TP1_BE, i, pnl_points
             else:
                 if sl_hit and tp1_trigger:
+                    if be_triggered:
+                        return EXIT_BE_SL, i, 0.0
                     pnl_points = entry_price - current_stop
                     return EXIT_SL, i, pnl_points
 
@@ -406,6 +469,7 @@ def _simulate_exit_magnifier(
                     leg1_pnl = (entry_price - tp1_price) * (half_qty / qty)
                     pnl_points += leg1_pnl
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if high_1m[i] >= be_price:
@@ -449,6 +513,8 @@ def _simulate_single_trade_magnifier(
     half_qty: float,
     point_value: float,
     commission: float,
+    internal_swing_level: float = 1e38,
+    cancel_on_swing: bool = False,
 ) -> tuple:
     """Simulate fill + exit on 1m bars.
 
@@ -470,6 +536,12 @@ def _simulate_single_trade_magnifier(
             if high_1m[i] >= entry_price:
                 fill_bar_1m = i
                 break
+        # Cancel check: swing swept on a non-fill bar
+        if cancel_on_swing:
+            if direction == 1 and high_1m[i] >= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+            elif direction == -1 and low_1m[i] <= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
     if fill_bar_1m == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
@@ -481,6 +553,7 @@ def _simulate_single_trade_magnifier(
         direction,
         entry_price, stop_price, tp1_price, tp2_price, be_price,
         is_single, qty, half_qty,
+        internal_swing_level,
     )
 
     return fill_bar_1m, exit_type, exit_bar_1m, pnl_points, 0.0, 0.0
@@ -1022,6 +1095,8 @@ def _simulate_single_trade_hierarchical(
     half_qty: float,
     point_value: float,
     commission: float,
+    internal_swing_level: float = 1e38,
+    cancel_on_swing: bool = False,
 ) -> tuple:
     """Hierarchical fill+exit simulation: 5m primary, 1m on ambiguous bars, 30s on ambiguous 1m bars, 1s on ambiguous 30s bars.
 
@@ -1047,12 +1122,19 @@ def _simulate_single_trade_hierarchical(
             if high_5m[i] >= entry_price:
                 fill_bar_5m = i
                 break
+        # Cancel check: swing swept on a non-fill bar
+        if cancel_on_swing:
+            if direction == 1 and high_5m[i] >= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+            elif direction == -1 and low_5m[i] <= internal_swing_level:
+                return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
 
     if fill_bar_5m == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
 
     # State
     tp1_hit = False
+    be_triggered = False
     current_stop = stop_price
     remaining_qty = qty
     pnl_points = 0.0
@@ -1100,6 +1182,15 @@ def _simulate_single_trade_hierarchical(
 
     # Phase 2b: Scan subsequent 5m bars
     for i in range(fill_bar_5m + 1, last_bar + 1):
+        # Swing BE trigger
+        if not be_triggered and not tp1_hit:
+            if direction == 1 and high_5m[i] >= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+            elif direction == -1 and low_5m[i] <= internal_swing_level:
+                be_triggered = True
+                current_stop = be_price
+
         is_flat_bar = i >= flat_bar_start
 
         if direction == 1:
@@ -1116,12 +1207,15 @@ def _simulate_single_trade_hierarchical(
                     return fill_bar_5m, EXIT_EOD, i, pnl_points, float(fill_bar_1m), -1.0
 
             if sl_hit and not tp1_hit:
+                if be_triggered:
+                    return fill_bar_5m, EXIT_BE_SL, i, 0.0, float(fill_bar_1m), -1.0
                 pnl_points += current_stop - entry_price
                 return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
             if is_single:
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = low_5m[i] <= current_stop
                 if tp2_trigger:
@@ -1163,6 +1257,7 @@ def _simulate_single_trade_hierarchical(
                 if tp1_trigger:
                     pnl_points += (tp1_price - entry_price) * (half_qty / qty)
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if low_5m[i] <= be_price:
@@ -1192,12 +1287,15 @@ def _simulate_single_trade_hierarchical(
                     return fill_bar_5m, EXIT_EOD, i, pnl_points, float(fill_bar_1m), -1.0
 
             if sl_hit and not tp1_hit:
+                if be_triggered:
+                    return fill_bar_5m, EXIT_BE_SL, i, 0.0, float(fill_bar_1m), -1.0
                 pnl_points += entry_price - current_stop
                 return fill_bar_5m, EXIT_SL, i, pnl_points, float(fill_bar_1m), -1.0
 
             if is_single:
                 if tp1_trigger:
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     sl_hit = high_5m[i] >= current_stop
                 if tp2_trigger:
@@ -1237,6 +1335,7 @@ def _simulate_single_trade_hierarchical(
                 if tp1_trigger:
                     pnl_points += (entry_price - tp1_price) * (half_qty / qty)
                     tp1_hit = True
+                    be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
                     if high_5m[i] >= be_price:
@@ -1286,6 +1385,9 @@ class _PreparedCandidate:
     entry_end_1m: int = -1
     flat_start_1m: int = -1
     last_bar_1m: int = -1
+    # Internal swing level for LSI BE trigger (1e38/-1e38 = disabled)
+    internal_swing_level: float = 1e38
+    cancel_on_swing: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -1304,6 +1406,14 @@ class _SetupCandidate:
     gap_size: float
     daily_atr: float
     orb_range: float
+    structural_stop_price: float = 0.0
+    # LSI overlay data (0.0/-1 for non-LSI candidates)
+    lsi_swept_level: float = 0.0
+    lsi_fvg_top: float = 0.0
+    lsi_fvg_bottom: float = 0.0
+    lsi_fvg_bar: int = -1
+    lsi_sweep_bar: int = -1
+    lsi_internal_swing_level: float = 1e38  # sentinel: 1e38=disabled (longs), -1e38=disabled (shorts)
 
 
 def _session_key(session: SessionConfig) -> tuple:
@@ -1439,7 +1549,35 @@ def _extract_setup_candidates(
     dates = timestamps.date
     close = df["close"].values
 
-    if config.strategy == "cisd":
+    if config.strategy == "lsi":
+        # LSI uses ORB-free FVG detection — no directional ORB filter, no orb_ready gate
+        from ..signals.fvg import detect_fvg_no_orb
+        fvg_lsi = detect_fvg_no_orb(
+            df["high"].values,
+            df["low"].values,
+            daily_atr,
+            session.min_gap_atr_pct,
+        )
+        valid_long_lsi = fvg_lsi["long_fvg"] & masks["in_entry"] & masks["in_rth"]
+        valid_short_lsi = fvg_lsi["short_fvg"] & masks["in_entry"] & masks["in_rth"]
+        candidates = _extract_lsi_candidates(
+            df, fvg_lsi, valid_long_lsi, valid_short_lsi, session_day_id,
+            masks["in_entry"], masks["in_rth"], dates, close,
+            daily_atr, orb_high, orb_low, session,
+            n_left=config.lsi_n_left,
+            n_right=config.lsi_n_right,
+            fvg_window_left=config.lsi_fvg_window_left,
+            fvg_window_right=config.lsi_fvg_window_right,
+            direction_filter=config.direction_filter,
+            stop_mode=config.lsi_stop_mode,
+            entry_mode=config.lsi_entry_mode,
+            first_fvg_only=config.lsi_first_fvg_only,
+            clean_path=config.lsi_clean_path,
+            rr=config.rr,
+            tp1_ratio=config.tp1_ratio,
+            be_swing_n_left=config.lsi_be_swing_n_left,
+        )
+    elif config.strategy == "cisd":
         # CISD mode: ORB liquidity sweep + displacement candle reversal.
         # Price breaks beyond ORB (sweep), then a displacement candle reverses
         # and closes beyond the prior candle's body — entry at that close.
@@ -1764,6 +1902,365 @@ def _extract_inversion_candidates(
         # Clean up pending FVGs from previous session days
         pending_long = [p for p in pending_long if p[4] >= sd]
         pending_short = [p for p in pending_short if p[4] >= sd]
+
+    return candidates
+
+
+def _extract_lsi_candidates(
+    df: pd.DataFrame,
+    fvg: dict[str, np.ndarray],
+    valid_long: np.ndarray,
+    valid_short: np.ndarray,
+    session_day_id: np.ndarray,
+    in_entry: np.ndarray,
+    in_rth: np.ndarray,
+    dates,
+    close: np.ndarray,
+    daily_atr: np.ndarray,
+    orb_high: np.ndarray,
+    orb_low: np.ndarray,
+    session,
+    n_left: int = 3,
+    n_right: int = 3,
+    fvg_window_left: int = 10,
+    fvg_window_right: int = 10,
+    direction_filter: str = "both",
+    stop_mode: str = "absolute",
+    entry_mode: str = "close",
+    first_fvg_only: bool = False,
+    clean_path: bool = False,
+    rr: float = 2.5,
+    tp1_ratio: float = 0.5,
+    be_swing_n_left: int = 0,
+) -> list[_SetupCandidate]:
+    """Extract Liquidity Sweep Inversion (LSI) candidates.
+
+    LSI combines three events:
+    1. A confirmed swing high/low (pivot detection with n_left/n_right bars)
+    2. A liquidity sweep — price crosses above swing high (for shorts) or below swing low (for longs)
+    3. An FVG that forms within fvg_window bars before OR after the sweep
+    4. That FVG is inverted — close < FVG bottom (for shorts) or close > FVG top (for longs)
+    5. Entry at the close of the inversion candle
+
+    Direction logic:
+    - SHORT LSI: swing HIGH swept → bullish FVG nearby → bullish FVG inverted → short at close
+    - LONG LSI: swing LOW swept → bearish FVG nearby → bearish FVG inverted → long at close
+    """
+    n = len(df)
+    high = df["high"].values
+    low = df["low"].values
+
+    take_shorts = direction_filter in ("both", "short")
+    take_longs = direction_filter in ("both", "long")
+
+    # --- Phase 1: Vectorized swing and sweep detection ---
+
+    # Detect confirmed swing pivots
+    # swing_highs[i] = True means bar i - n_right was a confirmed swing high
+    swing_highs = detect_swing_highs(high, n_left, n_right)
+    swing_lows = detect_swing_lows(low, n_left, n_right)
+
+    # Build forward-filled latest confirmed swing levels
+    # The pivot level is the actual price of the pivot candle: high[i - n_right] when confirmed at bar i
+    pivot_high_vals = np.where(swing_highs, np.roll(high, n_right), np.nan).astype(float)
+    pivot_high_vals[:n_right] = np.nan  # first n_right bars have no valid pivot reference
+
+    pivot_low_vals = np.where(swing_lows, np.roll(low, n_right), np.nan).astype(float)
+    pivot_low_vals[:n_right] = np.nan
+
+    latest_sh = pd.Series(pivot_high_vals).ffill().values  # forward-fill swing high level
+    latest_sl = pd.Series(pivot_low_vals).ffill().values   # forward-fill swing low level
+
+    # Sweep detection uses the PRIOR bar's level (prev_sh/prev_sl) to avoid same-bar lookahead
+    prev_sh = np.roll(latest_sh, 1)
+    prev_sh[0] = np.nan
+    prev_sl = np.roll(latest_sl, 1)
+    prev_sl[0] = np.nan
+
+    # Sweep of swing high → short setup trigger (price goes above prior swing high)
+    is_sweep_high = in_rth & (high > prev_sh) & ~np.isnan(prev_sh)
+    # Sweep of swing low → long setup trigger (price goes below prior swing low)
+    is_sweep_low = in_rth & (low < prev_sl) & ~np.isnan(prev_sl)
+
+    # Cumulative sums for O(1) window queries: "did a sweep happen in [i-window, i]?"
+    sh_cumsum = np.cumsum(is_sweep_high.astype(int))
+    sl_cumsum = np.cumsum(is_sweep_low.astype(int))
+
+    # FVG zone boundaries
+    long_fvg_bottom = fvg["long_fvg_bottom"]  # high[2] — inversion level for shorts
+    short_fvg_top = fvg["short_fvg_top"]      # low[2] — inversion level for longs
+
+    # Pre-extract FVG boundary arrays for clean-path scanning
+    short_fvg_bool = fvg["short_fvg"]          # bearish FVGs (obstacles for longs)
+    short_fvg_top_arr = fvg["short_fvg_top"]    # low[j-2] — upper boundary of bearish FVG zone
+    short_fvg_bot_arr = fvg["short_entry_price"] # high[j] — lower boundary of bearish FVG zone
+    long_fvg_bool = fvg["long_fvg"]             # bullish FVGs (obstacles for shorts)
+    long_fvg_top_arr = fvg["long_entry_price"]  # low[j] — upper boundary of bullish FVG zone
+    long_fvg_bot_arr = fvg["long_fvg_bottom"]   # high[j-2] — lower boundary of bullish FVG zone
+
+    # --- Phase 2: Sequential state machine ---
+
+    # Pending bullish FVGs waiting for a nearby sweep → then awaiting inversion for SHORT
+    # (fvg_bar, inversion_level, gap_size, atr, sd)
+    detected_bullish_fvgs: list = []  # bullish FVGs seen, no sweep yet within window
+    active_for_short: list = []       # bullish FVGs with confirmed nearby sweep → await inversion
+
+    # Pending bearish FVGs waiting for a nearby sweep → then awaiting inversion for LONG
+    detected_bearish_fvgs: list = []  # bearish FVGs seen, no sweep yet
+    active_for_long: list = []        # bearish FVGs with confirmed nearby sweep → await inversion
+
+    seen_days: set = set()            # one trade per session-day
+    candidates: list[_SetupCandidate] = []
+
+    for i in range(n):
+        sd = session_day_id[i]
+
+        # A) Register new bullish FVG (valid_long[i] means in_entry + in_rth + orb_ready)
+        if valid_long[i] and take_shorts:
+            # Check if a sweep_high already occurred within [i-fvg_window_right, i]
+            lo = max(0, i - fvg_window_right)
+            recent_sh = sh_cumsum[i] - (sh_cumsum[lo - 1] if lo > 0 else 0)
+            base_entry = (i, long_fvg_bottom[i], fvg["long_gap_size"][i], daily_atr[i], sd)
+            if recent_sh > 0:
+                # Find exact sweep bar (most recent is_sweep_high in [lo, i])
+                _sweep_bar = i
+                for _sb in range(i, lo - 1, -1):
+                    if is_sweep_high[_sb]:
+                        _sweep_bar = _sb
+                        break
+                _swept = float(prev_sh[_sweep_bar]) if not np.isnan(prev_sh[_sweep_bar]) else 0.0
+                # 8-element: adds swept_level + fvg_other_bound + sweep_bar
+                active_entry = base_entry + (_swept, float(long_fvg_top_arr[i]), _sweep_bar)
+                if first_fvg_only:
+                    if not any(p[4] == sd for p in active_for_short):
+                        active_for_short.append(active_entry)
+                else:
+                    active_for_short.append(active_entry)
+            else:
+                detected_bullish_fvgs.append(base_entry)
+
+        # B) Register new bearish FVG
+        if valid_short[i] and take_longs:
+            lo = max(0, i - fvg_window_right)
+            recent_sl = sl_cumsum[i] - (sl_cumsum[lo - 1] if lo > 0 else 0)
+            base_entry = (i, short_fvg_top[i], fvg["short_gap_size"][i], daily_atr[i], sd)
+            if recent_sl > 0:
+                # Find exact sweep bar (most recent is_sweep_low in [lo, i])
+                _sweep_bar = i
+                for _sb in range(i, lo - 1, -1):
+                    if is_sweep_low[_sb]:
+                        _sweep_bar = _sb
+                        break
+                _swept = float(prev_sl[_sweep_bar]) if not np.isnan(prev_sl[_sweep_bar]) else 0.0
+                # 8-element: adds swept_level + fvg_other_bound + sweep_bar
+                active_entry = base_entry + (_swept, float(short_fvg_bot_arr[i]), _sweep_bar)
+                if first_fvg_only:
+                    if not any(p[4] == sd for p in active_for_long):
+                        active_for_long.append(active_entry)
+                else:
+                    active_for_long.append(active_entry)
+            else:
+                detected_bearish_fvgs.append(base_entry)
+
+        # C) Sweep of swing HIGH at bar i → promote bullish FVGs within window → active_for_short
+        if is_sweep_high[i] and take_shorts:
+            _swept_c = float(prev_sh[i]) if not np.isnan(prev_sh[i]) else 0.0
+            still_pending = []
+            to_promote = []
+            for pending in detected_bullish_fvgs:
+                fvg_bar, inv_level, gap_sz, atr_v, fvg_sd = pending
+                if fvg_sd == sd and abs(i - fvg_bar) <= fvg_window_left:
+                    # Upgrade to 8-element: add swept_level + fvg_other_bound + sweep_bar (FVG top = low[fvg_bar])
+                    to_promote.append((fvg_bar, inv_level, gap_sz, atr_v, fvg_sd, _swept_c, float(long_fvg_top_arr[fvg_bar]), i))
+                else:
+                    still_pending.append(pending)
+            if first_fvg_only:
+                if to_promote and not any(p[4] == sd for p in active_for_short):
+                    first = min(to_promote, key=lambda p: p[0])
+                    active_for_short.append(first)
+            else:
+                active_for_short.extend(to_promote)
+            detected_bullish_fvgs = still_pending
+
+        # D) Sweep of swing LOW at bar i → promote bearish FVGs within window → active_for_long
+        if is_sweep_low[i] and take_longs:
+            _swept_d = float(prev_sl[i]) if not np.isnan(prev_sl[i]) else 0.0
+            still_pending = []
+            to_promote = []
+            for pending in detected_bearish_fvgs:
+                fvg_bar, inv_level, gap_sz, atr_v, fvg_sd = pending
+                if fvg_sd == sd and abs(i - fvg_bar) <= fvg_window_left:
+                    # Upgrade to 8-element: add swept_level + fvg_other_bound + sweep_bar (FVG bottom = high[fvg_bar])
+                    to_promote.append((fvg_bar, inv_level, gap_sz, atr_v, fvg_sd, _swept_d, float(short_fvg_bot_arr[fvg_bar]), i))
+                else:
+                    still_pending.append(pending)
+            if first_fvg_only:
+                if to_promote and not any(p[4] == sd for p in active_for_long):
+                    first = min(to_promote, key=lambda p: p[0])
+                    active_for_long.append(first)
+            else:
+                active_for_long.extend(to_promote)
+            detected_bearish_fvgs = still_pending
+
+        # E) Check active setups for inversion — runs on every bar, discards past-entry-window
+        # entries explicitly (mirrors _extract_inversion_candidates pattern).
+        remaining_short_active = []
+        for pending in active_for_short:
+            fvg_bar, inv_level, gap_sz, atr_v, fvg_sd, swept_lv, fvg_other_bound, sweep_bar = pending
+            if fvg_sd != sd or i <= fvg_bar:
+                remaining_short_active.append(pending)
+                continue
+            if not in_entry[i]:
+                # Past entry window — discard
+                continue
+            if close[i] < inv_level and sd not in seen_days:
+                seen_days.add(sd)
+                _orb_r = orb_high[i] - orb_low[i]
+                # SHORT: stop above the setup — absolute high from fvg_bar through inversion bar, or FVG top
+                if stop_mode == "fvg":
+                    _structural_stop = float(low[fvg_bar])  # long_fvg_top = low of fvg bar
+                else:  # "absolute"
+                    _structural_stop = float(np.max(high[fvg_bar:i + 1]))
+                _entry_price = inv_level if entry_mode == "fvg_limit" else close[i]
+                _signal_bar = i if entry_mode == "fvg_limit" else i - 1
+                if clean_path:
+                    _risk = _structural_stop - _entry_price
+                    _tp1_est = _entry_price - rr * _risk * tp1_ratio
+                    _path_clear = True
+                    scan_start = max(0, i - 100)
+                    for j in range(scan_start, i + 1):
+                        if long_fvg_bool[j]:
+                            fvg_bot = long_fvg_bot_arr[j]
+                            fvg_top = long_fvg_top_arr[j]
+                            # Overlap with [_tp1_est, _entry_price]:
+                            if fvg_bot < _entry_price and fvg_top > _tp1_est:
+                                _path_clear = False
+                                break
+                    if not _path_clear:
+                        remaining_short_active.append(pending)
+                        seen_days.discard(sd)
+                        continue
+                # Internal swing LOW: search BEFORE the FVG (not [fvg_bar, signal_bar-1] as originally
+                # specced). For fvg_limit shorts, bars between fvg_bar and signal_bar have lows ABOVE
+                # inv_level (entry price) by LSI definition, so that range yields no valid pivots below
+                # entry. The pre-FVG region is where meaningful swing lows reside.
+                # SHORT trade: if price falls to sweep swing low after entry, liquidity exhausted → BE
+                _swing_level = -1e38  # sentinel = disabled (low[i] <= -1e38 never fires)
+                if be_swing_n_left > 0:
+                    _search_start = fvg_bar - 3  # bar before the 3-candle FVG pattern
+                    for _j in range(_search_start, max(-1, _search_start - 50), -1):
+                        _is_pivot = True
+                        for _k in range(1, be_swing_n_left + 1):
+                            if _j - _k < 0 or low[_j] >= low[_j - _k]:
+                                _is_pivot = False
+                                break
+                        if _is_pivot and low[_j] < _entry_price:
+                            _swing_level = float(low[_j])
+                            break
+                # SHORT LSI FVG zone: fvg_other_bound = long_entry_price[fvg_bar] = low[fvg_bar] (top),
+                #                     inv_level = long_fvg_bottom[fvg_bar] = high[fvg_bar-2] (bottom)
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=-1,
+                    signal_bar=_signal_bar,
+                    entry_price=_entry_price,
+                    gap_size=gap_sz,
+                    daily_atr=atr_v,
+                    orb_range=_orb_r,
+                    structural_stop_price=_structural_stop,
+                    lsi_swept_level=swept_lv,
+                    lsi_fvg_bar=fvg_bar,
+                    lsi_sweep_bar=sweep_bar,
+                    lsi_fvg_top=fvg_other_bound,
+                    lsi_fvg_bottom=inv_level,
+                    lsi_internal_swing_level=_swing_level,
+                ))
+                continue
+            remaining_short_active.append(pending)
+        active_for_short = remaining_short_active
+
+        remaining_long_active = []
+        for pending in active_for_long:
+            fvg_bar, inv_level, gap_sz, atr_v, fvg_sd, swept_lv, fvg_other_bound, sweep_bar = pending
+            if fvg_sd != sd or i <= fvg_bar:
+                remaining_long_active.append(pending)
+                continue
+            if not in_entry[i]:
+                # Past entry window — discard
+                continue
+            if close[i] > inv_level and sd not in seen_days:
+                seen_days.add(sd)
+                _orb_r = orb_high[i] - orb_low[i]
+                # LONG: stop below the setup — absolute low from fvg_bar through inversion bar, or FVG bottom
+                if stop_mode == "fvg":
+                    _structural_stop = float(high[fvg_bar])  # short_fvg_bottom = high of fvg bar
+                else:  # "absolute"
+                    _structural_stop = float(np.min(low[fvg_bar:i + 1]))
+                _entry_price = inv_level if entry_mode == "fvg_limit" else close[i]
+                _signal_bar = i if entry_mode == "fvg_limit" else i - 1
+                if clean_path:
+                    _risk = _entry_price - _structural_stop
+                    _tp1_est = _entry_price + rr * _risk * tp1_ratio
+                    _path_clear = True
+                    scan_start = max(0, i - 100)
+                    for j in range(scan_start, i + 1):
+                        if short_fvg_bool[j]:
+                            fvg_bot = short_fvg_bot_arr[j]
+                            fvg_top = short_fvg_top_arr[j]
+                            # Overlap with [_entry_price, _tp1_est]:
+                            if fvg_bot < _tp1_est and fvg_top > _entry_price:
+                                _path_clear = False
+                                break
+                    if not _path_clear:
+                        remaining_long_active.append(pending)
+                        seen_days.discard(sd)
+                        continue
+                # Internal swing HIGH: search BEFORE the FVG (not [fvg_bar, signal_bar-1] as originally
+                # specced). For fvg_limit longs, bars between fvg_bar and signal_bar have highs BELOW
+                # inv_level (entry price) by LSI definition, so that range yields no valid pivots above
+                # entry. The pre-FVG region is where meaningful swing highs reside.
+                # LONG trade: if price rises to sweep swing high after entry, liquidity exhausted → BE
+                _swing_level = 1e38  # sentinel = disabled (high[i] >= 1e38 never fires)
+                if be_swing_n_left > 0:
+                    _search_start = fvg_bar - 3  # bar before the 3-candle FVG pattern
+                    for _j in range(_search_start, max(-1, _search_start - 50), -1):
+                        _is_pivot = True
+                        for _k in range(1, be_swing_n_left + 1):
+                            if _j - _k < 0 or high[_j] <= high[_j - _k]:
+                                _is_pivot = False
+                                break
+                        if _is_pivot and high[_j] > _entry_price:
+                            _swing_level = float(high[_j])
+                            break
+                # LONG LSI FVG zone: inv_level = short_fvg_top[fvg_bar] = low[fvg_bar-2] (top),
+                #                    fvg_other_bound = short_entry_price[fvg_bar] = high[fvg_bar] (bottom)
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=1,
+                    signal_bar=_signal_bar,
+                    entry_price=_entry_price,
+                    gap_size=gap_sz,
+                    daily_atr=atr_v,
+                    orb_range=_orb_r,
+                    structural_stop_price=_structural_stop,
+                    lsi_swept_level=swept_lv,
+                    lsi_fvg_bar=fvg_bar,
+                    lsi_sweep_bar=sweep_bar,
+                    lsi_fvg_top=inv_level,
+                    lsi_fvg_bottom=fvg_other_bound,
+                    lsi_internal_swing_level=_swing_level,
+                ))
+                continue
+            remaining_long_active.append(pending)
+        active_for_long = remaining_long_active
+
+        # F) Cleanup: discard entries from older session days
+        detected_bullish_fvgs = [p for p in detected_bullish_fvgs if p[4] >= sd]
+        detected_bearish_fvgs = [p for p in detected_bearish_fvgs if p[4] >= sd]
+        active_for_short = [p for p in active_for_short if p[4] >= sd]
+        active_for_long = [p for p in active_for_long if p[4] >= sd]
 
     return candidates
 
@@ -2291,7 +2788,10 @@ def run_backtest(
             direction = cand.direction
 
             # Compute stop, TP1, TP2, BE prices
-            if session.stop_orb_pct > 0 and cand.orb_range > 0:
+            if cand.structural_stop_price > 0.0:
+                # Structural stop: pre-computed stop price from candidate extraction
+                stop_dist = abs(cand.entry_price - cand.structural_stop_price)
+            elif session.stop_orb_pct > 0 and cand.orb_range > 0:
                 stop_dist = (session.stop_orb_pct / 100.0) * cand.orb_range
             else:
                 stop_dist = (session.stop_atr_pct / 100.0) * atr
@@ -2351,12 +2851,10 @@ def run_backtest(
 
             flat_bar_start = bounds["flat_first"]
             if flat_bar_start < 0:
-                # No flat window found in this session day — check next session day
-                next_sd_bounds = day_bounds.get(sd + 1)
-                if next_sd_bounds is not None:
-                    flat_bar_start = next_sd_bounds["flat_first"]
-                if flat_bar_start < 0:
-                    flat_bar_start = min(entry_bar_end + 200, n - 1)
+                # No flat window found (e.g., holiday early close).
+                # Use the end of the entry window as the effective flat point
+                # so we don't scan into the next overnight session.
+                flat_bar_start = entry_bar_end
 
             # Last bar for scanning (end of RTH or end of data)
             last_bar = min(flat_bar_start + 20, n - 1)  # buffer past flat window
@@ -2373,6 +2871,15 @@ def run_backtest(
                 flat_start_1m_val = bar_map[min(flat_bar_start, len(bar_map) - 1), 0]
                 last_bar_1m_val = bar_map[min(last_bar, len(bar_map) - 1), 1] - 1
 
+            # Compute direction-aware safe sentinel for internal swing level.
+            # LONG check: high[i] >= internal_swing_level → disabled sentinel = 1e38
+            # SHORT check: low[i] <= internal_swing_level → disabled sentinel = -1e38
+            # Non-LSI candidates default to 1e38; for SHORT we override to -1e38 so the
+            # check never fires on non-LSI trades.
+            raw_swing = cand.lsi_internal_swing_level
+            if raw_swing >= 1e37 and direction == -1:
+                # Default sentinel (1e38) on a SHORT would always fire (low[i] <= 1e38) — use SHORT safe sentinel
+                raw_swing = -1e38
             prepared.append(_PreparedCandidate(
                 cand=cand,
                 sd=sd,
@@ -2395,6 +2902,8 @@ def run_backtest(
                 entry_end_1m=entry_end_1m,
                 flat_start_1m=flat_start_1m_val,
                 last_bar_1m=last_bar_1m_val,
+                internal_swing_level=raw_swing,
+                cancel_on_swing=config.lsi_cancel_on_swing,
             ))
 
         # Phase 2: Group by session-day and enforce one-trade-per-day.
@@ -2424,6 +2933,8 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pc.internal_swing_level,
+                    pc.cancel_on_swing,
                 )
             elif use_magnifier and pc.entry_start_1m >= 0:
                 fill_bar_1m, exit_type, exit_bar_1m, pnl_pts, _, _ = _simulate_single_trade_magnifier(
@@ -2435,6 +2946,8 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pc.internal_swing_level,
+                    pc.cancel_on_swing,
                 )
                 # Map 1m indices back to 5m for TradeResult timestamps
                 fill_bar = map_1m_to_5m(fill_bar_1m, bar_map) if fill_bar_1m >= 0 else -1
@@ -2449,6 +2962,8 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pc.internal_swing_level,
+                    pc.cancel_on_swing,
                 )
             pnl_usd = pnl_pts * pc.qty * config.point_value
             if exit_type != EXIT_NO_FILL:
@@ -2465,6 +2980,11 @@ def run_backtest(
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
                 fill_time=_resolve_time(timestamps, fill_bar, timestamps_1m, fill_1m_f if use_hierarchical else -1.0),
                 exit_time=_resolve_time(timestamps, exit_bar, timestamps_1m, exit_1m_f if use_hierarchical else -1.0),
+                lsi_swept_level=pc.cand.lsi_swept_level,
+                lsi_fvg_top=pc.cand.lsi_fvg_top,
+                lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
+                lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
+                lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:
@@ -2478,6 +2998,11 @@ def run_backtest(
                 r_multiple=0.0, qty=pc.qty, half_qty=pc.half_qty,
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
                 fill_time="", exit_time="",
+                lsi_swept_level=pc.cand.lsi_swept_level,
+                lsi_fvg_top=pc.cand.lsi_fvg_top,
+                lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
+                lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
+                lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
             ))
 
         for sd in sorted(sd_groups):

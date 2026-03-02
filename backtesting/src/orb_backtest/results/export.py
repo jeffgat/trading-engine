@@ -62,11 +62,15 @@ def _slugify(text: str, max_len: int = 40) -> str:
 
 def _sessions_from_config(config: dict) -> list[str]:
     """Extract sorted session names from a config dict."""
-    return sorted(
-        key.split("_")[0].upper()
-        for key in config
-        if key.endswith("_orb_window")
-    )
+    seen: set[str] = set()
+    result: list[str] = []
+    for key in config:
+        if key.endswith("_orb_window") or key.endswith("_entry_window"):
+            sess = key.split("_")[0].upper()
+            if sess not in seen:
+                seen.add(sess)
+                result.append(sess)
+    return sorted(result)
 
 
 def generate_backtest_id(result: dict) -> str:
@@ -181,8 +185,230 @@ def results_to_dict(
             config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
         if sess.qualifying_move_atr_pct > 0:
             config_dict[f"{prefix}_qualifying_move_atr_pct"] = sess.qualifying_move_atr_pct
-        config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"
+        if sess.orb_start and sess.orb_end:
+            config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"
+        if sess.rth_start:
+            config_dict[f"{prefix}_rth_start"] = sess.rth_start
         config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
+        config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
+
+    if config.instrument:
+        config_dict["instrument"] = config.instrument.symbol
+        config_dict["point_value"] = config.instrument.point_value
+
+    result = {
+        "config": config_dict,
+        "summary": metrics,
+    }
+
+    if config.name:
+        result["name"] = config.name
+    if config.notes:
+        result["notes"] = config.notes
+
+    if include_equity_curve:
+        result["equity_curve"] = _build_equity_curve(trades)
+
+    if include_trades:
+        result["trades"] = [
+            {
+                "date": t.date,
+                "session": t.session,
+                "direction": "long" if t.direction == 1 else "short",
+                "entry_price": round(t.entry_price, 4),
+                "stop_price": round(t.stop_price, 4),
+                "tp1_price": round(t.tp1_price, 4),
+                "tp2_price": round(t.tp2_price, 4),
+                "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
+                "pnl_usd": round(t.pnl_usd, 2),
+                "pnl_points": round(t.pnl_points, 4),
+                "r_multiple": round(t.r_multiple, 3),
+                "qty": t.qty,
+                "gap_size": round(t.gap_size, 4),
+                "risk_points": round(t.risk_points, 4),
+                "entry_time": t.fill_time,
+                "exit_time": t.exit_time,
+                "lsi_swept_level": t.lsi_swept_level if t.lsi_swept_level else None,
+                "lsi_fvg_top": t.lsi_fvg_top if t.lsi_fvg_top else None,
+                "lsi_fvg_bottom": t.lsi_fvg_bottom if t.lsi_fvg_bottom else None,
+                "lsi_fvg_time": t.lsi_fvg_time if t.lsi_fvg_time else None,
+                "lsi_sweep_time": t.lsi_sweep_time if t.lsi_sweep_time else None,
+            }
+            for t in trades
+        ]
+
+    return result
+
+
+def vwap_results_to_dict(
+    trades: list[TradeResult],
+    config,  # VWAPStrategyConfig
+    include_trades: bool = True,
+    include_equity_curve: bool = False,
+) -> dict:
+    """Convert VWAP backtest results to a structured dict.
+
+    Same shape as results_to_dict() but flattens VWAPStrategyConfig
+    with VWAP-specific session-prefixed params.
+    """
+    metrics = compute_metrics(trades)
+
+    config_dict = {
+        "rr": config.rr,
+        "tp1_ratio": config.tp1_ratio,
+        "risk_usd": config.risk_usd,
+        "atr_length": config.atr_length,
+        "min_qty": config.min_qty,
+        "qty_step": config.qty_step,
+        "tp2_mode": config.tp2_mode,
+        "strategy": "vwap_reversion",
+    }
+
+    if config.direction_filter:
+        config_dict["direction_filter"] = config.direction_filter
+    if config.use_bar_magnifier:
+        config_dict["bar_magnifier"] = "ON"
+
+    # Add per-session params
+    for sess in config.sessions:
+        prefix = sess.name.lower()
+        config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
+        config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
+        config_dict[f"{prefix}_deviation_atr_pct"] = sess.deviation_atr_pct
+        config_dict[f"{prefix}_deviation_std"] = sess.deviation_std
+        config_dict[f"{prefix}_deviation_mode"] = sess.deviation_mode
+        config_dict[f"{prefix}_rejection_mode"] = sess.rejection_mode
+        config_dict[f"{prefix}_stop_atr_pct"] = sess.stop_atr_pct
+        config_dict[f"{prefix}_vwap_anchor"] = sess.vwap_anchor
+        if sess.min_wick_atr_pct > 0:
+            config_dict[f"{prefix}_min_wick_atr_pct"] = sess.min_wick_atr_pct
+        if sess.max_body_atr_pct > 0:
+            config_dict[f"{prefix}_max_body_atr_pct"] = sess.max_body_atr_pct
+
+    if config.instrument:
+        config_dict["instrument"] = config.instrument.symbol
+        config_dict["point_value"] = config.instrument.point_value
+
+    # Flatten VWAP-specific params to top level for DB column matching
+    # Take from first session (for single-session configs)
+    if config.sessions:
+        first_sess = config.sessions[0]
+        config_dict["deviation_atr_pct"] = first_sess.deviation_atr_pct
+        config_dict["deviation_std"] = first_sess.deviation_std
+        config_dict["deviation_mode"] = first_sess.deviation_mode
+        config_dict["rejection_mode"] = first_sess.rejection_mode
+        config_dict["tp2_mode"] = config.tp2_mode
+        config_dict["vwap_anchor"] = first_sess.vwap_anchor
+        config_dict["stop_atr_buffer_pct"] = first_sess.stop_atr_pct
+
+    result = {
+        "config": config_dict,
+        "summary": metrics,
+    }
+
+    if config.name:
+        result["name"] = config.name
+    if config.notes:
+        result["notes"] = config.notes
+
+    if include_equity_curve:
+        result["equity_curve"] = _build_equity_curve(trades)
+
+    if include_trades:
+        result["trades"] = [
+            {
+                "date": t.date,
+                "session": t.session,
+                "direction": "long" if t.direction == 1 else "short",
+                "entry_price": round(t.entry_price, 4),
+                "stop_price": round(t.stop_price, 4),
+                "tp1_price": round(t.tp1_price, 4),
+                "tp2_price": round(t.tp2_price, 4),
+                "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
+                "pnl_usd": round(t.pnl_usd, 2),
+                "pnl_points": round(t.pnl_points, 4),
+                "r_multiple": round(t.r_multiple, 3),
+                "qty": t.qty,
+                "gap_size": round(t.gap_size, 4),
+                "risk_points": round(t.risk_points, 4),
+                "entry_time": t.fill_time,
+                "exit_time": t.exit_time,
+            }
+            for t in trades
+        ]
+
+    return result
+
+
+def vwap_grid_results_to_dict(
+    all_results: list[tuple],  # list of (VWAPStrategyConfig, list[TradeResult])
+    swept_params: dict[str, list] | None = None,
+) -> dict:
+    """Convert VWAP grid sweep results to a summary dict."""
+    summaries = []
+    for config, trades in all_results:
+        d = vwap_results_to_dict(trades, config, include_trades=False)
+        summaries.append(d)
+
+    filled_summaries = [s for s in summaries if s["summary"]["total_trades"] > 0]
+
+    best_by_sharpe = max(filled_summaries, key=lambda s: s["summary"]["sharpe_ratio"]) if filled_summaries else None
+    best_by_pnl = max(filled_summaries, key=lambda s: s["summary"]["total_pnl_usd"]) if filled_summaries else None
+    best_by_pf = max(filled_summaries, key=lambda s: s["summary"]["profit_factor"]) if filled_summaries else None
+    best_by_calmar = max(filled_summaries, key=lambda s: s["summary"].get("calmar_ratio", 0)) if filled_summaries else None
+
+    result = {
+        "total_combinations": len(summaries),
+        "best_by_sharpe": best_by_sharpe,
+        "best_by_pnl": best_by_pnl,
+        "best_by_profit_factor": best_by_pf,
+        "best_by_calmar": best_by_calmar,
+        "all_results": summaries,
+    }
+
+    if swept_params is not None:
+        def _coerce(v):
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return v
+        result["swept_params"] = {k: [_coerce(v) for v in vs] for k, vs in swept_params.items()}
+
+    return result
+
+
+def gapfill_results_to_dict(
+    trades: list[TradeResult],
+    config,  # GapFillStrategyConfig
+    include_trades: bool = True,
+    include_equity_curve: bool = False,
+) -> dict:
+    """Convert Gap Fill backtest results to a structured dict."""
+    metrics = compute_metrics(trades)
+
+    config_dict = {
+        "stop_multiplier": config.stop_multiplier,
+        "tp1_ratio": config.tp1_ratio,
+        "risk_usd": config.risk_usd,
+        "atr_length": config.atr_length,
+        "min_gap_atr_pct": config.min_gap_atr_pct,
+        "max_gap_atr_pct": config.max_gap_atr_pct,
+        "min_gap_points": config.min_gap_points,
+        "max_gap_staleness_days": config.max_gap_staleness_days,
+        "min_qty": config.min_qty,
+        "qty_step": config.qty_step,
+        "strategy": "gap_fill",
+    }
+
+    if config.direction_filter:
+        config_dict["direction_filter"] = config.direction_filter
+    if config.use_bar_magnifier:
+        config_dict["bar_magnifier"] = "ON"
+
+    # Per-session params
+    for sess in config.sessions:
+        prefix = sess.name.lower()
+        config_dict[f"{prefix}_rth_open"] = sess.rth_open
         config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
 
     if config.instrument:
@@ -224,6 +450,43 @@ def results_to_dict(
             }
             for t in trades
         ]
+
+    return result
+
+
+def gapfill_grid_results_to_dict(
+    all_results: list[tuple],  # list of (GapFillStrategyConfig, list[TradeResult])
+    swept_params: dict[str, list] | None = None,
+) -> dict:
+    """Convert Gap Fill grid sweep results to a summary dict."""
+    summaries = []
+    for config, trades in all_results:
+        d = gapfill_results_to_dict(trades, config, include_trades=False)
+        summaries.append(d)
+
+    filled_summaries = [s for s in summaries if s["summary"]["total_trades"] > 0]
+
+    best_by_sharpe = max(filled_summaries, key=lambda s: s["summary"]["sharpe_ratio"]) if filled_summaries else None
+    best_by_pnl = max(filled_summaries, key=lambda s: s["summary"]["total_pnl_usd"]) if filled_summaries else None
+    best_by_pf = max(filled_summaries, key=lambda s: s["summary"]["profit_factor"]) if filled_summaries else None
+    best_by_calmar = max(filled_summaries, key=lambda s: s["summary"].get("calmar_ratio", 0)) if filled_summaries else None
+
+    result = {
+        "total_combinations": len(summaries),
+        "best_by_sharpe": best_by_sharpe,
+        "best_by_pnl": best_by_pnl,
+        "best_by_profit_factor": best_by_pf,
+        "best_by_calmar": best_by_calmar,
+        "all_results": summaries,
+    }
+
+    if swept_params is not None:
+        def _coerce(v):
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return v
+        result["swept_params"] = {k: [_coerce(v) for v in vs] for k, vs in swept_params.items()}
 
     return result
 
