@@ -1,8 +1,8 @@
 # ORB Trader — 7-Leg Combined Longs Portfolio Configuration
 #
 # Portfolio: NQ NY R11 + NQ Asia R9 + GC NY R3 + ES NY Final + ES Asia Final
-#            + NQ LDN (G5 gated) + NQ NY LSI (IFVG 2x)
-# Legs 1-6 are long-only FVG continuation strategies. Leg 7 is IFVG reversal.
+#            + NQ LDN (G5 gated) + NQ NY LSI (LSI 2x)
+# Legs 1-6 are long-only FVG continuation strategies. Leg 7 is LSI reversal.
 # API keys should be set via environment variables, not in this file.
 
 [general]
@@ -31,7 +31,7 @@ max_single_risk_usd = 300   # Max $ risk when 1 contract exceeds risk_usd
 
 [sessions]
 enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia", "NQ_LDN"]
-ifvg_enabled = ["NQ_Asia_LSI", "NQ_NY_LSI"]
+lsi_enabled = ["NQ_Asia_LSI", "NQ_NY_LSI"]
 
 # Per-session overrides (optional — defaults from [risk] and 5-leg spec in main.py)
 # Use dotted keys matching lowercase session name with underscore → dot:

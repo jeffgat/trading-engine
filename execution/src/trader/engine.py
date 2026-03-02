@@ -1,6 +1,6 @@
 """Session state machine for live trade management.
 
-Each SessionEngine tracks one trading session through its daily lifecycle:
+Each ORBEngine tracks one trading session through its daily lifecycle:
 ORB building → FVG scanning → order placement → position management.
 
 Supports the 5-leg combined longs portfolio:
@@ -114,7 +114,7 @@ def _time_in_range(t: time, start: time, end: time) -> bool:
 # ---------------------------------------------------------------------------
 
 @dataclass
-class SessionEngine:
+class ORBEngine:
     """Manages one session's daily trade lifecycle.
 
     Args:

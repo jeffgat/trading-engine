@@ -5,6 +5,7 @@ import type { SessionStatus } from "@/execution/lib/types";
 
 interface SessionCardProps {
   engine: SessionStatus;
+  strategyType?: "continuation" | "lsi";
 }
 
 function PriceRow({ label, value }: { label: string; value: number | null }) {
@@ -19,7 +20,8 @@ function PriceRow({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-export function SessionCard({ engine }: SessionCardProps) {
+export function SessionCard({ engine, strategyType }: SessionCardProps) {
+  const isLsi = strategyType === "lsi";
   const stateColor =
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
   const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
@@ -39,6 +41,17 @@ export function SessionCard({ engine }: SessionCardProps) {
           <CardTitle className="text-base font-semibold">
             {engine.session}
           </CardTitle>
+          {strategyType && (
+            <span
+              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                isLsi
+                  ? "text-violet-400 bg-violet-400/10"
+                  : "text-emerald-400 bg-emerald-400/10"
+              }`}
+            >
+              {isLsi ? "LSI" : "ORB"}
+            </span>
+          )}
           {engine.config_name && (
             <span
               className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${

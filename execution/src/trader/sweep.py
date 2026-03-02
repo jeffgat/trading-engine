@@ -1,4 +1,4 @@
-"""Incremental sweep detection for live IFVG engine.
+"""Incremental sweep detection for live LSI engine.
 
 Stateful (bar-by-bar) version of the backtester's vectorized sweep module.
 Detects first-per-day sweep of each liquidity level (KZ high/low, PDH/PDL).

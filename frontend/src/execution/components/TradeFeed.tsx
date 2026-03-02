@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TradeEventRow } from "./TradeEventRow";
-import type { TradeLogEntry } from "@/execution/lib/types";
+import type { ConfigResponse, TradeLogEntry } from "@/execution/lib/types";
 
 interface TradeFeedProps {
   entries: TradeLogEntry[];
@@ -9,6 +9,17 @@ interface TradeFeedProps {
   loading: boolean;
   loadMore: () => void;
   activeConfig: string;
+  config: ConfigResponse | null;
+}
+
+function buildStrategyLookup(config: ConfigResponse | null): Record<string, "continuation" | "lsi"> {
+  const map: Record<string, "continuation" | "lsi"> = {};
+  if (!config?.sessions) return map;
+  for (const [key, cfg] of Object.entries(config.sessions)) {
+    const short = key.includes(":") ? key.split(":")[1] : key;
+    map[short] = cfg.type === "continuation" ? "continuation" : "lsi";
+  }
+  return map;
 }
 
 export function TradeFeed({
@@ -17,7 +28,10 @@ export function TradeFeed({
   loading,
   loadMore,
   activeConfig,
+  config,
 }: TradeFeedProps) {
+  const stratLookup = buildStrategyLookup(config);
+
   const filtered = useMemo(() => {
     if (activeConfig === "ALL") return entries;
     return entries.filter((e) => e.config === activeConfig);
@@ -47,7 +61,7 @@ export function TradeFeed({
       <ScrollArea className="h-[calc(100vh-220px)] rounded-md border border-border bg-bg-card">
         <div>
           {filtered.map((entry, i) => (
-            <TradeEventRow key={`${entry.timestamp}-${i}`} entry={entry} />
+            <TradeEventRow key={`${entry.timestamp}-${i}`} entry={entry} strategyType={stratLookup[entry.session]} />
           ))}
           {entries.length < total && (
             <button

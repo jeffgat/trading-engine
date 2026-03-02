@@ -15,7 +15,7 @@
       "ES_Asia": { "risk_usd": 100 },
       "NQ_LDN": { "risk_usd": 150 }
     },
-    "ifvg_sessions": {
+    "lsi_sessions": {
       "NQ_Asia_LSI": { "risk_usd": 250 },
       "NQ_NY_LSI": { "risk_usd": 250 }
     }
@@ -28,7 +28,7 @@
       "NQ_Asia": { "risk_usd": 130 },
       "GC_NY": { "risk_usd": 90 }
     },
-    "ifvg_sessions": {
+    "lsi_sessions": {
       "NQ_Asia_LSI": { "risk_usd": 161 },
       "NQ_NY_LSI": { "risk_usd": 200 }
     }

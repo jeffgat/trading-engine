@@ -1,17 +1,17 @@
-"""IFVG (Inverse Fair Value Gap) engine for live LSI reversal strategy.
+"""LSI (Inverse Fair Value Gap) engine for live LSI reversal strategy.
 
 State machine:
     IDLE → MONITORING → WAITING_FOR_GAP → COLLECTING_GAPS →
     WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING → FLAT
 
-Unlike SessionEngine (continuation FVG after ORB), this engine detects:
+Unlike ORBEngine (continuation FVG after ORB), this engine detects:
     1. Liquidity sweep (KZ/PDH/PDL levels)
     2. Opposite-direction FVG formation after sweep
     3. Price inversion through the gap
     4. Limit entry at gap edge
     5. Position management (SL/TP1/TP2/BE/EOD)
 
-Implements the same on_bar() / on_tick() interface as SessionEngine.
+Implements the same on_bar() / on_tick() interface as ORBEngine.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 trade_logger = logging.getLogger("trader.trades")
 
 
-class IFVGState(enum.Enum):
+class LSIState(enum.Enum):
     IDLE = "idle"
     MONITORING = "monitoring"  # in entry window, watching for sweeps
     WAITING_FOR_GAP = "waiting_for_gap"  # sweep detected, scanning for FVG
@@ -60,8 +60,8 @@ class GapInfo:
     bar_index: int  # bar count when gap was detected
 
 
-class IFVGEngine:
-    """Live execution engine for the IFVG/LSI reversal strategy."""
+class LSIEngine:
+    """Live execution engine for the LSI/LSI reversal strategy."""
 
     def __init__(
         self,
@@ -149,7 +149,7 @@ class IFVGEngine:
         self._sweeps = SweepTracker(long_only=long_only)
 
         # State
-        self._state = IFVGState.IDLE
+        self._state = LSIState.IDLE
         self._current_date = ""
         self._daily_atr: float = 0.0
         self._bar_count: int = 0
@@ -170,6 +170,8 @@ class IFVGEngine:
         # Position state
         self._levels: TradeLevels | None = None
         self._tp1_hit: bool = False
+        self._tp1_bar_count: int = -1  # _bar_count when TP1 detected (guards 5m BE false trigger)
+        self._fill_bar_count: int = -1  # _bar_count when fill detected (guards 5m fill-bar exits)
         self._fill_timestamp: datetime | None = None
 
         # Callbacks
@@ -311,15 +313,17 @@ class IFVGEngine:
 
         # New day reset
         if bar_date != self._current_date:
-            if self._state == IFVGState.MANAGING:
+            if self._state == LSIState.MANAGING:
                 # Force flat on day change (shouldn't happen in normal flow)
                 await self._exit_position(bar, "eod")
             self._current_date = bar_date
-            self._state = IFVGState.IDLE
+            self._state = LSIState.IDLE
             self._active_sweep = None
             self._active_gap = None
             self._levels = None
             self._tp1_hit = False
+            self._tp1_bar_count = -1
+            self._fill_bar_count = -1
             self._fill_timestamp = None
 
         # Feed sweep tracker
@@ -327,15 +331,15 @@ class IFVGEngine:
         sweep = self._sweeps.on_bar(bar, levels)
 
         # State machine
-        if self._state == IFVGState.IDLE:
+        if self._state == LSIState.IDLE:
             if self._in_entry(bar_time) and not self._is_excluded_day(bar):
-                self._state = IFVGState.MONITORING
+                self._state = LSIState.MONITORING
                 self._notify_state_change()
 
-        if self._state == IFVGState.MONITORING:
+        if self._state == LSIState.MONITORING:
             if not self._in_entry(bar_time):
                 self._log_trade("NO_SETUP", "entry window closed")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -347,7 +351,7 @@ class IFVGEngine:
                 if not (self.long_only and sweep.direction != 1):
                     self._active_sweep = sweep
                     self._sweep_bar_index = self._bar_count
-                    self._state = IFVGState.WAITING_FOR_GAP
+                    self._state = LSIState.WAITING_FOR_GAP
                     self._log_trade(
                         "SWEEP_DETECTED",
                         "source=%s level=%.2f dir=%s bar_count=%d"
@@ -355,9 +359,9 @@ class IFVGEngine:
                     )
                     self._notify_state_change()
 
-        if self._state == IFVGState.WAITING_FOR_GAP:
+        if self._state == LSIState.WAITING_FOR_GAP:
             if not self._in_entry(bar_time):
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -365,7 +369,7 @@ class IFVGEngine:
             bars_since = self._bar_count - self._sweep_bar_index
             if bars_since > self.max_bars_after_sweep:
                 self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since)
-                self._state = IFVGState.MONITORING
+                self._state = LSIState.MONITORING
                 self._active_sweep = None
                 self._notify_state_change()
                 return
@@ -379,7 +383,7 @@ class IFVGEngine:
                 need_bearish = sweep.direction == 1
                 if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
                     self._active_gap = gap
-                    self._state = IFVGState.WAITING_FOR_INVERSION
+                    self._state = LSIState.WAITING_FOR_INVERSION
                     self._log_trade(
                         "GAP_DETECTED",
                         "type=%s top=%.2f bottom=%.2f size=%.2f"
@@ -388,9 +392,9 @@ class IFVGEngine:
                     )
                     self._notify_state_change()
 
-        if self._state == IFVGState.WAITING_FOR_INVERSION:
+        if self._state == LSIState.WAITING_FOR_INVERSION:
             if not self._in_entry(bar_time):
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -399,7 +403,7 @@ class IFVGEngine:
             bars_since_gap = self._bar_count - gap.bar_index
             if self.max_inversion_bars > 0 and bars_since_gap > self.max_inversion_bars:
                 self._log_trade("INVERSION_EXPIRED", "bars_since_gap=%d" % bars_since_gap)
-                self._state = IFVGState.MONITORING
+                self._state = LSIState.MONITORING
                 self._active_sweep = None
                 self._active_gap = None
                 self._notify_state_change()
@@ -419,17 +423,17 @@ class IFVGEngine:
                 # Bearish FVG inverted → LONG setup
                 await self._place_limit_order(gap, direction=1, daily_atr=daily_atr)
 
-        if self._state == IFVGState.ARMED_LIMIT:
+        if self._state == LSIState.ARMED_LIMIT:
             if self._in_flat(bar):
                 self._log_trade("LIMIT_EXPIRED_EOD", "flat window reached")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
             # Check limit fill on 5m bar
             await self._check_limit_fill(bar, daily_atr)
 
-        if self._state == IFVGState.MANAGING:
+        if self._state == LSIState.MANAGING:
             await self._handle_managing(bar, daily_atr)
 
     # ------------------------------------------------------------------
@@ -448,7 +452,7 @@ class IFVGEngine:
             self._limit_stop = gap.impulse_high
 
         self._limit_direction = direction
-        self._state = IFVGState.ARMED_LIMIT
+        self._state = LSIState.ARMED_LIMIT
         dir_str = "long" if direction == 1 else "short"
         self._log_trade(
             "LIMIT_PLACED",
@@ -493,12 +497,16 @@ class IFVGEngine:
         gap = self._active_gap
         gap_size = gap.top - gap.bottom if gap else 0.0
 
+        # Use min_stop_pts = impulse-derived stop distance so compute_trade_levels
+        # can size qty correctly (stop_atr_pct=0.0 alone would give risk_pts=0 → None)
+        impulse_stop_dist = abs(entry - raw_stop)
         levels = compute_trade_levels(
             entry=entry,
             direction=direction,
             gap_size=gap_size,
             daily_atr=daily_atr,
             stop_atr_pct=0.0,  # not used — stop from impulse candle
+            min_stop_pts=impulse_stop_dist,
             rr=self.rr,
             tp1_ratio=self.tp1_ratio,
             risk_usd=self.risk_usd,
@@ -513,7 +521,7 @@ class IFVGEngine:
 
         if levels is None:
             self._log_trade("LIMIT_REJECTED", "qty below minimum")
-            self._state = IFVGState.FLAT
+            self._state = LSIState.FLAT
             self._notify_state_change()
             return
 
@@ -533,7 +541,7 @@ class IFVGEngine:
                 qty = self.min_qty
             else:
                 self._log_trade("LIMIT_REJECTED", "risk too high for 1 contract")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -571,14 +579,16 @@ class IFVGEngine:
                 % ("long" if is_long else "short", entry, raw_stop),
             )
             self._emit_trade_record("sl")
-            self._state = IFVGState.FLAT
+            self._state = LSIState.FLAT
             self._notify_state_change()
             return
 
         # Filled successfully
         self._tp1_hit = False
+        self._tp1_bar_count = -1
+        self._fill_bar_count = self._bar_count
         self._fill_timestamp = bar.timestamp
-        self._state = IFVGState.MANAGING
+        self._state = LSIState.MANAGING
 
         dir_str = "long" if is_long else "short"
         self._log_trade(
@@ -603,7 +613,7 @@ class IFVGEngine:
         """Manage open position on 5m bars."""
         levels = self._levels
         if levels is None:
-            self._state = IFVGState.FLAT
+            self._state = LSIState.FLAT
             return
 
         is_long = levels.direction == 1
@@ -612,6 +622,18 @@ class IFVGEngine:
         # EOD flat
         if self._in_flat(bar):
             await self._exit_position(bar, "tp1_eod" if self._tp1_hit else "eod")
+            return
+
+        # Gate: don't check exits on the fill bar itself (same-bar prevention)
+        if self._bar_count <= self._fill_bar_count:
+            return
+
+        # Gate: skip the 5m bar that contains the TP1 hit.
+        # When TP1 is detected on a 1s tick mid-bar, the enclosing 5m bar's
+        # low includes pre-TP1 price action near the entry, making
+        # bar.low <= BE trivially true and causing a false BE_HIT.
+        # The 1s tick path is authoritative for exits on this bar.
+        if self._tp1_hit and self._tp1_bar_count >= 0 and self._bar_count <= self._tp1_bar_count:
             return
 
         # Pre-TP1 phase
@@ -630,6 +652,7 @@ class IFVGEngine:
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f" % (dir_str, levels.tp1, levels.be))
                     await self.broker.send_tp1_single(
@@ -668,7 +691,7 @@ class IFVGEngine:
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
         await self.broker.send_flatten(ticker=self.exec_ticker)
         self._emit_trade_record(exit_type)
-        self._state = IFVGState.FLAT
+        self._state = LSIState.FLAT
         self._notify_state_change()
 
     # ------------------------------------------------------------------
@@ -682,16 +705,16 @@ class IFVGEngine:
         # Feed liquidity tracker with tick data too
         self._liquidity.on_bar(tick)
 
-        if self._state == IFVGState.ARMED_LIMIT:
+        if self._state == LSIState.ARMED_LIMIT:
             await self._check_limit_fill(tick, daily_atr)
             return
 
-        if self._state != IFVGState.MANAGING:
+        if self._state != LSIState.MANAGING:
             return
 
         levels = self._levels
         if levels is None:
-            self._state = IFVGState.FLAT
+            self._state = LSIState.FLAT
             return
 
         is_long = levels.direction == 1
@@ -702,7 +725,7 @@ class IFVGEngine:
             self._log_trade("EOD_FLAT", "dir=%s tick_time=%s resolution=1s" % (dir_str, tick.timestamp))
             await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
-            self._state = IFVGState.FLAT
+            self._state = LSIState.FLAT
             self._notify_state_change()
             return
 
@@ -719,7 +742,7 @@ class IFVGEngine:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f (1s ambiguous) resolution=1s" % (dir_str, levels.stop))
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -727,12 +750,13 @@ class IFVGEngine:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f resolution=1s" % (dir_str, levels.stop))
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f resolution=1s" % (dir_str, levels.tp1, levels.be))
                     await self.broker.send_tp1_single(direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
@@ -749,7 +773,7 @@ class IFVGEngine:
                 self._log_trade("TP2_DIRECT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -762,7 +786,7 @@ class IFVGEngine:
                 self._log_trade("BE_HIT", "dir=%s be=%.2f resolution=1s" % (dir_str, levels.be))
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -770,7 +794,7 @@ class IFVGEngine:
                 self._log_trade("TP2_HIT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
-                self._state = IFVGState.FLAT
+                self._state = LSIState.FLAT
                 self._notify_state_change()
                 return
 
@@ -779,12 +803,12 @@ class IFVGEngine:
     # ------------------------------------------------------------------
 
     @property
-    def state(self) -> IFVGState:
+    def state(self) -> LSIState:
         return self._state
 
     @property
     def is_active(self) -> bool:
-        return self._state not in (IFVGState.IDLE, IFVGState.FLAT)
+        return self._state not in (LSIState.IDLE, LSIState.FLAT)
 
     def status_dict(self) -> dict:
         levels = self._levels
@@ -793,7 +817,7 @@ class IFVGEngine:
             "config_name": self.config_name,
             "session": self.name,
             "state": self._state.value,
-            "type": "ifvg",
+            "type": "lsi",
             "date": self._current_date,
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
             "kz_high": round(liq.kz_high, 2) if not math.isnan(liq.kz_high) else None,

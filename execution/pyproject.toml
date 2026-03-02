@@ -28,5 +28,14 @@ packages = ["src/trader"]
 core = { path = "../python/src/core" }
 orb_continuation = { path = "../python/src/orb_continuation" }
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "aioresponses>=0.7",
+    "pytest-cov>=5.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"

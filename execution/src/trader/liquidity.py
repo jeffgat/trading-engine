@@ -1,4 +1,4 @@
-"""Incremental liquidity level tracking for live IFVG engine.
+"""Incremental liquidity level tracking for live LSI engine.
 
 Stateful (bar-by-bar) version of the backtester's vectorized liquidity module.
 Tracks killzone session highs/lows and previous day high/low (PDH/PDL).
@@ -58,7 +58,7 @@ class LiquidityTracker:
     """Incremental bar-by-bar liquidity level tracker.
 
     Processes ALL bars (including pre-market/overnight) to track killzone
-    sessions and daily highs/lows. Unlike SessionEngine which filters to
+    sessions and daily highs/lows. Unlike ORBEngine which filters to
     entry windows, this needs the full price stream.
     """
 

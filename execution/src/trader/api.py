@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from .overrides import EDITABLE_FIELDS, load_overrides, save_overrides, validate_fields
 
 if TYPE_CHECKING:
-    from .engine import SessionEngine, TradeRecord
+    from .engine import ORBEngine, TradeRecord
 
 logger = logging.getLogger(__name__)
 
@@ -456,19 +456,19 @@ def create_app(state: DashboardState) -> FastAPI:
 
     @app.patch("/api/config/sessions/{session_name}")
     async def update_session_config(session_name: str, body: SessionOverrideRequest):
-        from .overrides import IFVG_EDITABLE_FIELDS
+        from .overrides import LSI_EDITABLE_FIELDS
         engine = _find_engine(state, session_name)
         if engine is None:
             raise HTTPException(404, f"Session '{session_name}' not found")
 
-        allowed = IFVG_EDITABLE_FIELDS if _is_ifvg_engine(engine) else None
+        allowed = LSI_EDITABLE_FIELDS if _is_lsi_engine(engine) else None
         valid_fields, errors = validate_fields(body.overrides, allowed=allowed)
         if errors:
             raise HTTPException(422, detail=errors)
         if not valid_fields:
             raise HTTPException(400, "No valid fields to update")
 
-        # Safety: reject if engine is mid-trade (covers both SessionEngine and IFVGEngine states)
+        # Safety: reject if engine is mid-trade (covers both ORBEngine and LSIEngine states)
         blocked_states = {"armed_long", "filled", "managing", "armed_limit"}
         if engine._state.value in blocked_states:
             raise HTTPException(
@@ -721,7 +721,7 @@ def _find_engine(state: DashboardState, name: str):
 
 
 def _apply_overrides_to_engine(engine, fields: dict) -> None:
-    """Apply override fields to a live SessionEngine or IFVGEngine."""
+    """Apply override fields to a live ORBEngine or LSIEngine."""
     from .engine import _parse_time
 
     time_fields = {"orb_start", "orb_end", "entry_start", "entry_end",
@@ -744,14 +744,14 @@ def _apply_overrides_to_engine(engine, fields: dict) -> None:
 def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
     """Reset engine fields back to config defaults."""
     from .engine import _parse_time
-    from .main import SESSION_CONFIGS, IFVG_SESSION_CONFIGS
-    from .overrides import IFVG_EDITABLE_FIELDS
+    from .main import SESSION_CONFIGS, LSI_SESSION_CONFIGS
+    from .overrides import LSI_EDITABLE_FIELDS
 
     risk = config.get("risk", {})
 
-    if _is_ifvg_engine(engine):
-        defaults = IFVG_SESSION_CONFIGS.get(session_name, {})
-        for key in IFVG_EDITABLE_FIELDS:
+    if _is_lsi_engine(engine):
+        defaults = LSI_SESSION_CONFIGS.get(session_name, {})
+        for key in LSI_EDITABLE_FIELDS:
             if key in defaults:
                 setattr(engine, key, defaults[key])
             elif key == "risk_usd":
@@ -782,19 +782,19 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
     engine._flat_end_t = _parse_time(engine.flat_end)
 
 
-def _is_ifvg_engine(engine) -> bool:
-    """Check if an engine is an IFVGEngine (vs SessionEngine)."""
+def _is_lsi_engine(engine) -> bool:
+    """Check if an engine is an LSIEngine (vs ORBEngine)."""
     return hasattr(engine, "qty_multiplier") and not hasattr(engine, "orb_start")
 
 
 def _defaults_for_session(name: str) -> dict:
     """Get the raw config defaults for a session (editable fields only)."""
-    from .main import SESSION_CONFIGS, IFVG_SESSION_CONFIGS
+    from .main import SESSION_CONFIGS, LSI_SESSION_CONFIGS
 
-    cfg = IFVG_SESSION_CONFIGS.get(name)
+    cfg = LSI_SESSION_CONFIGS.get(name)
     if cfg is not None:
-        from .overrides import IFVG_EDITABLE_FIELDS
-        return {k: v for k, v in cfg.items() if k in IFVG_EDITABLE_FIELDS}
+        from .overrides import LSI_EDITABLE_FIELDS
+        return {k: v for k, v in cfg.items() if k in LSI_EDITABLE_FIELDS}
 
     cfg = SESSION_CONFIGS.get(name, {})
     return {k: v for k, v in cfg.items() if k in EDITABLE_FIELDS}
@@ -802,9 +802,9 @@ def _defaults_for_session(name: str) -> dict:
 
 def _session_info(engine) -> dict:
     """Extract session config info from an engine instance."""
-    if _is_ifvg_engine(engine):
+    if _is_lsi_engine(engine):
         return {
-            "type": "ifvg",
+            "type": "lsi",
             "config_name": engine.config_name,
             "entry_start": engine.entry_start,
             "entry_end": engine.entry_end,

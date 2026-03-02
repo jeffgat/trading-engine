@@ -5,9 +5,11 @@ import type { TradeLogEntry } from "@/execution/lib/types";
 
 interface TradeEventRowProps {
   entry: TradeLogEntry;
+  strategyType?: "continuation" | "lsi";
 }
 
-export function TradeEventRow({ entry }: TradeEventRowProps) {
+export function TradeEventRow({ entry, strategyType }: TradeEventRowProps) {
+  const isLsi = strategyType === "lsi";
   const eventColor =
     EVENT_COLORS[entry.event] ?? "bg-text-muted/20 text-text-muted";
   const [datePart, timePart] = entry.timestamp.split(" ");
@@ -39,6 +41,19 @@ export function TradeEventRow({ entry }: TradeEventRowProps) {
 
       {/* Session */}
       <SessionTag session={entry.session} />
+
+      {/* Strategy type */}
+      {strategyType && (
+        <span
+          className={`text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${
+            isLsi
+              ? "text-violet-400 bg-violet-400/10"
+              : "text-emerald-400 bg-emerald-400/10"
+          }`}
+        >
+          {isLsi ? "LSI" : "ORB"}
+        </span>
+      )}
 
       {/* Event badge */}
       <Badge variant="outline" className={`border-0 text-xs ${eventColor}`}>

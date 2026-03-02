@@ -5,7 +5,7 @@ Live execution engine for the ORB+FVG continuation strategy. Streams market data
 ## Architecture
 
 ```
-DataBento (1m+1s bars)  →  Feed (aggregates to 5m)  →  SessionEngine (state machine)  →  TradersPost (webhooks)
+DataBento (1m+1s bars)  →  Feed (aggregates to 5m)  →  ORBEngine (state machine)  →  TradersPost (webhooks)
                                                      →  FastAPI Dashboard (REST + WS)   →  React Frontend
 ```
 

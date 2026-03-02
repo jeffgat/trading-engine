@@ -29,7 +29,6 @@ export function ExecutionApp() {
     const [activeConfig, setActiveConfig] = useState<string>('ALL');
     const { connected, subscribe } = useWebSocket();
     const {
-        status,
         uptime,
         loading: statusLoading,
         configEngines,
@@ -51,9 +50,6 @@ export function ExecutionApp() {
         updateWebhookMultiplier,
         flattenWebhook,
     } = useConfig(subscribe);
-
-    const mode = status?.mode ?? '\u2014';
-    const isLive = mode === 'LIVE';
 
     // Derive config names from the status response
     const configNames = useMemo(() => {
@@ -130,6 +126,7 @@ export function ExecutionApp() {
                         uptime={uptime}
                         loading={statusLoading}
                         activeConfig={activeConfig}
+                        config={config}
                     />
                 )}
                 {activeTab === 'trades' && (
@@ -139,6 +136,7 @@ export function ExecutionApp() {
                         loading={tradeLogs.loading}
                         loadMore={tradeLogs.loadMore}
                         activeConfig={activeConfig}
+                        config={config}
                     />
                 )}
                 {activeTab === 'logs' && (

@@ -82,7 +82,25 @@ function getRValue(
   return null;
 }
 
+/** Build lookups by short session name (strips "FAST:" prefix from config keys).
+ *  Normalizes "ifvg" → "lsi" for display. */
+function buildSessionLookups(config: ConfigResponse | null) {
+  const cfgByShort: Record<string, SessionCfg> = {};
+  const typeByShort: Record<string, "continuation" | "lsi"> = {};
+  if (config?.sessions) {
+    for (const [key, cfg] of Object.entries(config.sessions)) {
+      const short = key.includes(":") ? key.split(":")[1] : key;
+      if (!cfgByShort[short]) {
+        cfgByShort[short] = cfg as SessionCfg;
+        typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
+      }
+    }
+  }
+  return { cfgByShort, typeByShort };
+}
+
 function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): PerfRow[] {
+  const { cfgByShort, typeByShort } = buildSessionLookups(config);
   const ordered = [...entries].reverse();
   // Key open trades by config:session to handle multiple configs
   const openByKey = new Map<string, OpenTrade>();
@@ -113,9 +131,10 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
 
     const entryParts = splitTs(open.entryTs);
     const exitParts = splitTs(entry.timestamp);
-    const sessionCfg = (config?.sessions?.[open.session] ?? {}) as SessionCfg;
+    const sessionCfg = cfgByShort[open.session] ?? {};
     const rValue = getRValue(entry.event, sessionCfg);
 
+    const stratType = typeByShort[open.session];
     rows.push({
       id: `${open.id}-${entry.event}-${entry.timestamp}`,
       entryDate: entryParts.date,
@@ -127,7 +146,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       config: open.config,
       direction: open.direction,
       rValue,
-      strategy: "ORB",
+      strategy: stratType === "lsi" ? "LSI" : "ORB",
       notes: "",
       sortTs: entry.timestamp,
     });
@@ -136,6 +155,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
 
   for (const open of openByKey.values()) {
     const entryParts = splitTs(open.entryTs);
+    const openStratType = typeByShort[open.session];
     rows.push({
       id: `${open.id}-open`,
       entryDate: entryParts.date,
@@ -147,7 +167,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       config: open.config,
       direction: open.direction,
       rValue: null,
-      strategy: "ORB",
+      strategy: openStratType === "lsi" ? "LSI" : "ORB",
       notes: "active",
       sortTs: open.entryTs,
     });
@@ -162,7 +182,7 @@ function Pill({
   tone = "neutral",
 }: {
   label: string;
-  tone?: "neutral" | "long" | "short" | "rpos" | "rneg" | "ticker-nq" | "ticker-es" | "ticker-gc" | "session-ny" | "session-ldn" | "session-asia";
+  tone?: "neutral" | "long" | "short" | "rpos" | "rneg" | "ticker-nq" | "ticker-es" | "ticker-gc" | "session-ny" | "session-ldn" | "session-asia" | "strat-orb" | "strat-lsi";
 }) {
   const toneClasses: Record<string, string> = {
     "ticker-nq": "bg-info/20 text-info border-info/30",
@@ -175,6 +195,8 @@ function Pill({
     "session-ny": "bg-[#3b82f6]/20 text-[#60a5fa] border-[#3b82f6]/30",
     "session-ldn": "bg-[#a855f7]/20 text-[#c084fc] border-[#a855f7]/30",
     "session-asia": "bg-[#f97316]/20 text-[#fb923c] border-[#f97316]/30",
+    "strat-orb": "bg-emerald-400/10 text-emerald-400 border-emerald-400/30",
+    "strat-lsi": "bg-violet-400/10 text-violet-400 border-violet-400/30",
     neutral: "bg-[#26262d] text-text-secondary border-border",
   };
   const toneClass = toneClasses[tone] ?? toneClasses.neutral;
@@ -285,7 +307,7 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
                         <Pill label={row.rValue.toFixed(1)} tone={rTone} />
                       )}
                     </td>
-                    <td className="px-3 py-2"><Pill label={row.strategy} /></td>
+                    <td className="px-3 py-2"><Pill label={row.strategy} tone={row.strategy === "LSI" ? "strat-lsi" : "strat-orb"} /></td>
                   </tr>
                 );
               })

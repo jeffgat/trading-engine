@@ -1,6 +1,6 @@
 import { SessionCard } from "./SessionCard";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
-import type { SessionStatus } from "@/execution/lib/types";
+import type { ConfigResponse, SessionStatus } from "@/execution/lib/types";
 
 interface StatusPanelProps {
   configEngines: Record<string, SessionStatus[]>;
@@ -8,9 +8,25 @@ interface StatusPanelProps {
   uptime: number;
   loading: boolean;
   activeConfig: string;
+  config: ConfigResponse | null;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig }: StatusPanelProps) {
+/** Build a map from short session name (e.g. "NQ_NY") to normalized strategy type.
+ *  Config keys may be prefixed like "FAST:NQ_NY", so we strip the prefix.
+ *  Backend may send "ifvg" — normalize to "lsi" for display. */
+function buildStrategyLookup(config: ConfigResponse | null): Record<string, "continuation" | "lsi"> {
+  const map: Record<string, "continuation" | "lsi"> = {};
+  if (!config?.sessions) return map;
+  for (const [key, cfg] of Object.entries(config.sessions)) {
+    const short = key.includes(":") ? key.split(":")[1] : key;
+    map[short] = cfg.type === "continuation" ? "continuation" : "lsi";
+  }
+  return map;
+}
+
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, config }: StatusPanelProps) {
+  const stratLookup = buildStrategyLookup(config);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
@@ -41,7 +57,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {selectedEngines.map((engine) => (
-            <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} />
+            <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} />
           ))}
         </div>
       </div>
@@ -75,7 +91,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {groupEngines.map((engine) => (
-                <SessionCard key={`${configName}-${engine.session}`} engine={engine} />
+                <SessionCard key={`${configName}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} />
               ))}
             </div>
           </div>

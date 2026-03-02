@@ -343,7 +343,7 @@ function SessionConfigCard({
   const [cardError, setCardError] = useState<string | null>(null);
 
   const hasOverrides = Object.keys(overrides).length > 0;
-  const isIfvg = cfg.type === "ifvg";
+  const isLsi = cfg.type !== "continuation";
 
   const stopIsOrb = cfg.stop_basis === "orb";
   const gapIsOrb = cfg.gap_filter_basis === "orb";
@@ -354,7 +354,7 @@ function SessionConfigCard({
 
   // Start editing — populate draft from current cfg values
   const startEditing = useCallback(() => {
-    if (isIfvg) {
+    if (isLsi) {
       setDraft({
         entry_start: cfg.entry_start,
         entry_end: cfg.entry_end,
@@ -397,7 +397,7 @@ function SessionConfigCard({
     }
     setCardError(null);
     setEditing(true);
-  }, [cfg, isIfvg]);
+  }, [cfg, isLsi]);
 
   const cancelEditing = () => {
     setEditing(false);
@@ -410,7 +410,7 @@ function SessionConfigCard({
   };
 
   // Build field lists based on engine type
-  const numericFields = isIfvg
+  const numericFields = isLsi
     ? [
         "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_atr_pct",
         "max_bars_after_sweep", "max_inversion_bars", "qty_multiplier",
@@ -421,7 +421,7 @@ function SessionConfigCard({
         "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
         "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
       ];
-  const timeFields = isIfvg
+  const timeFields = isLsi
     ? ["entry_start", "entry_end", "flat_start", "flat_end"]
     : ["orb_start", "orb_end", "entry_start", "entry_end", "flat_start", "flat_end"];
 
@@ -504,7 +504,7 @@ function SessionConfigCard({
           {/* Session Times */}
           <div className="space-y-0.5">
             <SectionLabel>Session Times</SectionLabel>
-            {!isIfvg && (
+            {!isLsi && (
               <>
                 <EditableField
                   label="ORB Start"
@@ -544,7 +544,7 @@ function SessionConfigCard({
               onChange={(v) => setField("flat_end", v)}
               overridden={isOverridden("flat_end")}
             />
-            {!isIfvg && (
+            {!isLsi && (
               <SelectField
                 label="Skip Day"
                 value={draft.excluded_dow == null ? "" : String(draft.excluded_dow)}
@@ -573,7 +573,7 @@ function SessionConfigCard({
               type="number"
               overridden={isOverridden("tp1_ratio")}
             />
-            {isIfvg ? (
+            {isLsi ? (
               <>
                 <EditableField
                   label="Gap ATR %"
@@ -677,7 +677,7 @@ function SessionConfigCard({
               type="number"
               overridden={isOverridden("max_single_risk_usd")}
             />
-            {isIfvg && (
+            {isLsi && (
               <EditableField
                 label="Qty Multiplier"
                 value={String(draft.qty_multiplier ?? "")}
@@ -750,12 +750,12 @@ function SessionConfigCard({
             </CardTitle>
             <span
               className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                isIfvg
+                isLsi
                   ? "text-violet-400 bg-violet-400/10"
                   : "text-emerald-400 bg-emerald-400/10"
               }`}
             >
-              {isIfvg ? "LSI" : "ORB"}
+              {isLsi ? "LSI" : "ORB"}
             </span>
             {hasOverrides && (
               <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
@@ -775,7 +775,7 @@ function SessionConfigCard({
         {/* Session Times */}
         <div className="space-y-1">
           <SectionLabel>Session Times</SectionLabel>
-          {!isIfvg && (
+          {!isLsi && (
             <ConfigItem
               label="ORB"
               value={`${cfg.orb_start} - ${cfg.orb_end}`}
@@ -810,7 +810,7 @@ function SessionConfigCard({
             value={cfg.tp1_ratio.toString()}
             overridden={isOverridden("tp1_ratio")}
           />
-          {isIfvg ? (
+          {isLsi ? (
             <>
               <ConfigItem
                 label="Gap ATR %"
@@ -895,7 +895,7 @@ function SessionConfigCard({
             value={`$${maxSingleRisk}`}
             overridden={maxRiskOverridden || isOverridden("max_single_risk_usd")}
           />
-          {isIfvg && (
+          {isLsi && (
             <ConfigItem
               label="Qty Multiplier"
               value={`${cfg.qty_multiplier}x`}
@@ -1120,30 +1120,30 @@ export function ConfigView({
                         webhooks={meta.webhooks ?? []}
                         onSave={onUpdateWebhooks}
                       />
-                      {(meta.sessions.length > 0 || meta.ifvg_sessions.length > 0) && (() => {
+                      {((meta.sessions?.length ?? 0) > 0 || (meta.lsi_sessions?.length ?? 0) > 0) && (() => {
                         // Build a lookup: short name → session type from config.sessions
-                        const typeByShort: Record<string, "continuation" | "ifvg"> = {};
-                        Object.entries(config.sessions).forEach(([fullName, cfg]) => {
+                        const typeByShort: Record<string, "continuation" | "lsi"> = {};
+                        Object.entries(config.sessions ?? {}).forEach(([fullName, cfg]) => {
                           const short = fullName.includes(":") ? fullName.split(":")[1] : fullName;
-                          typeByShort[short] = cfg.type;
+                          typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
                         });
                         const allSessions = [
-                          ...meta.sessions.map((s) => ({ name: s, isIfvg: typeByShort[s] === "ifvg" })),
-                          ...meta.ifvg_sessions.map((s) => ({ name: s, isIfvg: true })),
+                          ...(meta.sessions ?? []).map((s) => ({ name: s, isLsi: typeByShort[s] !== "continuation" })),
+                          ...(meta.lsi_sessions ?? []).map((s) => ({ name: s, isLsi: true })),
                         ];
                         return (
                           <div className="flex justify-between pb-1 pt-8 gap-2">
                             <span className="text-text-muted text-xs shrink-0">Sessions</span>
                             <div className="flex flex-wrap gap-1 justify-end">
-                              {allSessions.map(({ name: s, isIfvg }) => (
+                              {allSessions.map(({ name: s, isLsi }) => (
                                 <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
                                   {s}
                                   <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
-                                    isIfvg
+                                    isLsi
                                       ? "text-violet-400 bg-violet-400/10"
                                       : "text-emerald-400 bg-emerald-400/10"
                                   }`}>
-                                    {isIfvg ? "LSI" : "ORB"}
+                                    {isLsi ? "LSI" : "ORB"}
                                   </span>
                                 </span>
                               ))}

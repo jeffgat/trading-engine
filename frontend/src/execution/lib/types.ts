@@ -49,7 +49,7 @@ export interface LogResponse<T> {
 }
 
 export interface SessionConfig {
-  type: "continuation" | "ifvg";
+  type: "continuation" | "lsi" | "ifvg";
   // ORB fields (continuation only)
   orb_start: string;
   orb_end: string;
@@ -66,7 +66,7 @@ export interface SessionConfig {
   max_gap_atr_pct: number;
   gap_filter_basis: string;
   min_gap_orb_pct: number;
-  // IFVG strategy fields
+  // LSI strategy fields
   min_stop_atr_pct: number;
   max_bars_after_sweep: number;
   max_inversion_bars: number;
@@ -99,7 +99,7 @@ export interface ExecConfigMeta {
   /** New multi-webhook format */
   webhooks: WebhookEntry[];
   sessions: string[];
-  ifvg_sessions: string[];
+  lsi_sessions: string[];
 }
 
 export interface ConfigResponse {

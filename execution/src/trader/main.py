@@ -2,7 +2,7 @@
 
 Runs the 7-leg combined longs portfolio:
   NQ NY R11, NQ Asia R9, GC NY R3, ES NY Final, ES Asia Final,
-  NQ LDN (G5 gated), NQ NY LSI (IFVG 2x)
+  NQ LDN (G5 gated), NQ NY LSI (LSI 2x)
 
 Usage:
     # Live mode (dry-run by default)
@@ -235,11 +235,11 @@ SESSION_CONFIGS = {
 
 
 # ---------------------------------------------------------------------------
-# IFVG reversal (LSI) session configs — separate from continuation legs
+# LSI reversal session configs — separate from continuation legs
 # ---------------------------------------------------------------------------
 
-IFVG_SESSION_CONFIGS = {
-    # --- NQ Asia LSI (IFVG reversal, limit entry) ---
+LSI_SESSION_CONFIGS = {
+    # --- NQ Asia LSI (LSI reversal, limit entry) ---
     "NQ_Asia_LSI": {
         "entry_start": "20:40",
         "entry_end": "23:30",
@@ -261,7 +261,7 @@ IFVG_SESSION_CONFIGS = {
         "max_single_risk_usd": 300,
         "killzones": [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
     },
-    # --- NQ NY LSI (IFVG reversal, 2x sizing, limit entry) ---
+    # --- NQ NY LSI (LSI reversal, 2x sizing, limit entry) ---
     "NQ_NY_LSI": {
         "entry_start": "09:30",
         "entry_end": "15:30",
@@ -336,7 +336,7 @@ class ExecutionConfig:
     enabled: bool = True
     webhooks: list[WebhookEntry] = field(default_factory=list)
     session_overrides: dict[str, dict] = field(default_factory=dict)
-    ifvg_session_overrides: dict[str, dict] = field(default_factory=dict)
+    lsi_session_overrides: dict[str, dict] = field(default_factory=dict)
 
     @property
     def webhook_url(self) -> str:
@@ -381,7 +381,7 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
                 enabled=data.get("enabled", True),
                 webhooks=_parse_webhooks(data),
                 session_overrides=data.get("sessions", {}),
-                ifvg_session_overrides=data.get("ifvg_sessions", {}),
+                lsi_session_overrides=data.get("lsi_sessions", {}),
             ))
         if configs:
             return configs
@@ -391,13 +391,13 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
     sessions_enabled = cfg.get("sessions", {}).get("enabled", [
         "NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia",
     ])
-    ifvg_enabled = cfg.get("sessions", {}).get("ifvg_enabled", [])
+    lsi_enabled = cfg.get("sessions", {}).get("lsi_enabled", [])
     return [ExecutionConfig(
         name="DEFAULT",
         enabled=True,
         webhooks=[],
         session_overrides={s: {} for s in sessions_enabled},
-        ifvg_session_overrides={s: {} for s in ifvg_enabled},
+        lsi_session_overrides={s: {} for s in lsi_enabled},
     )]
 
 
@@ -409,7 +409,7 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
             "enabled": ec.enabled,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": ec.session_overrides,
-            "ifvg_sessions": ec.ifvg_session_overrides,
+            "lsi_sessions": ec.lsi_session_overrides,
         }
     with open(EXEC_CONFIGS_PATH, "w") as f:
         json.dump(raw, f, indent=2)
@@ -428,7 +428,7 @@ def build_engines(
     session_list: list[str] | None = None,
     exec_overrides: dict[str, dict] | None = None,
 ) -> tuple[list, dict[str, list], dict[str, int]]:
-    """Build SessionEngine instances from config.
+    """Build ORBEngine instances from config.
 
     Args:
         config: TOML config dict.
@@ -442,7 +442,7 @@ def build_engines(
         - symbol_map maps DataBento symbol (e.g. "NQ.FUT") to engines.
         - atr_lengths maps DataBento symbol to the ATR period for that feed.
     """
-    from .engine import SessionEngine
+    from .engine import ORBEngine
     from .overrides import load_overrides
 
     general = config.get("general", {})
@@ -499,7 +499,7 @@ def build_engines(
         sess_atr_length = merged.get("atr_length", 14)
         atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
 
-        engine = SessionEngine(
+        engine = ORBEngine(
             name=sess_name,
             broker=broker,
             exec_ticker=exec_ticker,
@@ -548,26 +548,26 @@ def build_engines(
     return engines, symbol_map, atr_lengths
 
 
-def build_ifvg_engines(
+def build_lsi_engines(
     config: dict,
     broker,
     symbol_map: dict[str, list],
     atr_lengths: dict[str, int],
     *,
     config_name: str = "",
-    ifvg_list: list[str] | None = None,
-    ifvg_overrides: dict[str, dict] | None = None,
+    lsi_list: list[str] | None = None,
+    lsi_overrides: dict[str, dict] | None = None,
 ) -> list:
-    """Build IFVGEngine instances for IFVG/LSI sessions.
+    """Build LSIEngine instances for LSI reversal sessions.
 
     Mutates symbol_map and atr_lengths in-place to register the new engines.
     """
-    from .ifvg_engine import IFVGEngine
+    from .lsi_engine import LSIEngine
 
     risk = config.get("risk", {})
-    ifvg_enabled = ifvg_list if ifvg_list is not None else config.get("sessions", {}).get("ifvg_enabled", [])
-    ifvg_overrides = ifvg_overrides or {}
-    if not ifvg_enabled:
+    lsi_enabled = lsi_list if lsi_list is not None else config.get("sessions", {}).get("lsi_enabled", [])
+    lsi_overrides = lsi_overrides or {}
+    if not lsi_enabled:
         return []
 
     half_days = tuple(config.get("dates", {}).get("half_days", [
@@ -576,10 +576,10 @@ def build_ifvg_engines(
     excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
 
     engines = []
-    for sess_name in ifvg_enabled:
-        sess_cfg = IFVG_SESSION_CONFIGS.get(sess_name)
+    for sess_name in lsi_enabled:
+        sess_cfg = LSI_SESSION_CONFIGS.get(sess_name)
         if sess_cfg is None:
-            logger.warning("Unknown IFVG session '%s', skipping", sess_name)
+            logger.warning("Unknown LSI session '%s', skipping", sess_name)
             continue
 
         sess_instrument = sess_cfg.get("instrument", "NQ")
@@ -592,12 +592,12 @@ def build_ifvg_engines(
         atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
 
         # Merge exec config overrides (e.g. risk_usd) on top of base config
-        merged = {**sess_cfg, **ifvg_overrides.get(sess_name, {})}
+        merged = {**sess_cfg, **lsi_overrides.get(sess_name, {})}
 
         # Handle excluded_dow as list → first value for single exclusion
         excl_dow = merged.get("excluded_dow")
 
-        engine = IFVGEngine(
+        engine = LSIEngine(
             name=sess_name,
             broker=broker,
             exec_ticker=exec_ticker,
@@ -631,7 +631,7 @@ def build_ifvg_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] IFVG engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s)",
+            "[%s] LSI engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s)",
             config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
             merged.get("qty_multiplier", 1.0), merged.get("risk_usd", "?"),
         )
@@ -716,16 +716,16 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             exec_overrides=ec.session_overrides,
         )
 
-        # Build IFVG engines for this config's IFVG sessions
-        ifvg_list = list(ec.ifvg_session_overrides.keys())
-        ifvg_engines = build_ifvg_engines(
+        # Build LSI engines for this config's LSI sessions
+        lsi_list = list(ec.lsi_session_overrides.keys())
+        lsi_engines = build_lsi_engines(
             config, broker, sym_map, atr_lens,
             config_name=ec.name,
-            ifvg_list=ifvg_list,
-            ifvg_overrides=ec.ifvg_session_overrides,
+            lsi_list=lsi_list,
+            lsi_overrides=ec.lsi_session_overrides,
         )
 
-        config_engines = engines + ifvg_engines
+        config_engines = engines + lsi_engines
         engines_by_config[ec.name] = config_engines
 
         # Merge into global maps (feed routes bars to ALL engines across all configs)
@@ -739,12 +739,12 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             "enabled": ec.enabled,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": session_list,
-            "ifvg_sessions": ifvg_list,
+            "lsi_sessions": lsi_list,
         }
 
         logger.info(
-            "[%s] Built %d engines: sessions=%s ifvg=%s",
-            ec.name, len(config_engines), session_list, ifvg_list,
+            "[%s] Built %d engines: sessions=%s lsi=%s",
+            ec.name, len(config_engines), session_list, lsi_list,
         )
 
     all_engines = [e for engines in engines_by_config.values() for e in engines]
@@ -761,7 +761,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         multi_brokers_by_config=multi_brokers_by_config,
     )
 
-    # Wire callbacks into each engine (both SessionEngine and IFVGEngine)
+    # Wire callbacks into each engine (both ORBEngine and LSIEngine)
     for engine in all_engines:
         engine.on_state_change = dashboard.on_state_change
         engine.on_trade_exit = dashboard.record_trade
