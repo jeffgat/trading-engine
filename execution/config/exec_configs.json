@@ -1,7 +1,7 @@
 {
   "FAST": {
     "enabled": true,
-    "webhook_url": "",
+    "webhook_url": "https://webhooks.traderspost.io/trading/webhook/bec59e1d-3b90-483e-a9cb-d9abae795727/f0a27e4f0013f55720819685d26f8edf",
     "sessions": {
       "NQ_NY": { "risk_usd": 200 },
       "NQ_Asia": { "risk_usd": 150 },
