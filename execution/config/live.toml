@@ -31,7 +31,7 @@ max_single_risk_usd = 300   # Max $ risk when 1 contract exceeds risk_usd
 
 [sessions]
 enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia", "NQ_LDN"]
-ifvg_enabled = ["NQ_NY_LSI"]
+ifvg_enabled = ["NQ_Asia_LSI", "NQ_NY_LSI"]
 
 # Per-session overrides (optional — defaults from [risk] and 5-leg spec in main.py)
 # Use dotted keys matching lowercase session name with underscore → dot:

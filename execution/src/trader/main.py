@@ -92,7 +92,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
-        "risk_usd": 199,
+        "risk_usd": 200,
         "max_single_risk_usd": 300,
     },
     # --- NQ Asia R9 (ORB-based stop, Tuesday exclusion) ---
@@ -120,7 +120,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
-        "risk_usd": 163,
+        "risk_usd": 150,
         "max_single_risk_usd": 300,
     },
     # --- GC NY R3 (ATR-based stop, Friday+FOMC exclusion, ICF ON) ---
@@ -146,7 +146,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": True,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
-        "risk_usd": 112,
+        "risk_usd": 250,
         "max_single_risk_usd": 300,
     },
     # --- ES NY Final (ATR-based stop, Thursday exclusion, dual floor) ---
@@ -172,7 +172,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
-        "risk_usd": 202,
+        "risk_usd": 250,
         "max_single_risk_usd": 300,
     },
     # --- ES Asia Final (ORB-based stop, ATR-based gap, no DOW excl, dual floor) ---
@@ -200,7 +200,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
-        "risk_usd": 132,
+        "risk_usd": 100,
         "max_single_risk_usd": 300,
     },
     # --- NQ LDN (ATR-based stop, G5 gated — skip when Asia hit TP1) ---
@@ -226,7 +226,7 @@ SESSION_CONFIGS = {
         "fomc_exclusion": False,
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
-        "risk_usd": 72,
+        "risk_usd": 150,
         "max_single_risk_usd": 300,
     },
 }
@@ -237,6 +237,28 @@ SESSION_CONFIGS = {
 # ---------------------------------------------------------------------------
 
 IFVG_SESSION_CONFIGS = {
+    # --- NQ Asia LSI (IFVG reversal, limit entry) ---
+    "NQ_Asia_LSI": {
+        "entry_start": "20:40",
+        "entry_end": "23:30",
+        "flat_start": "04:00",
+        "flat_end": "07:00",
+        "rr": 2.0,
+        "tp1_ratio": 0.7,
+        "min_gap_atr_pct": 1.75,  # 1.75% ATR-40
+        "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
+        "max_bars_after_sweep": 20,
+        "max_inversion_bars": 10,
+        "instrument": "NQ",
+        "atr_length": 40,
+        "long_only": True,
+        "excluded_dow": None,  # no DOW exclusion
+        "qty_multiplier": 1.0,
+        "be_offset_ticks": 4,
+        "risk_usd": 250,
+        "max_single_risk_usd": 300,
+        "killzones": [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
+    },
     # --- NQ NY LSI (IFVG reversal, 2x sizing, limit entry) ---
     "NQ_NY_LSI": {
         "entry_start": "09:30",
@@ -597,7 +619,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     )
 
     # Seed ATR from historical daily bars so it's ready on first live bar
-    feed.warm_up(lookback_days=30)
+    feed.warm_up(lookback_days=60)
 
     # Seed engines with warmup ATR values so the dashboard shows ATR
     # immediately (before the first live bar arrives for that symbol).
