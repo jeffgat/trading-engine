@@ -127,7 +127,8 @@
       "WebFetch(domain:www.tradingview.com)",
       "WebFetch(domain:pinewizards.com)",
       "Bash(claude mcp add:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(pgrep -fl \"orb-trader\\\\|uvicorn.*trader\")"
     ]
   }
 }

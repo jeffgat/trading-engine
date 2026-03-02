@@ -81,13 +81,14 @@ class SweepTracker:
         sweep = None
 
         # For long_only, we only care about low sweeps (bullish reversal)
+        # Use <= / >= so tick-perfect touches count as sweeps (matches backtester spec)
         # Low sweep of KZ low
-        if not self._kz_low_swept and not math.isnan(levels.kz_low) and bar.low < levels.kz_low:
+        if not self._kz_low_swept and not math.isnan(levels.kz_low) and bar.low <= levels.kz_low:
             self._kz_low_swept = True
             sweep = SweepEvent(source="kz_low", level=levels.kz_low, direction=1, bar_index=self._bar_count)
 
         # Low sweep of PDL
-        if not self._pdl_swept and not math.isnan(levels.pdl) and bar.low < levels.pdl:
+        if not self._pdl_swept and not math.isnan(levels.pdl) and bar.low <= levels.pdl:
             self._pdl_swept = True
             # Prefer KZ sweep if both happened on same bar
             if sweep is None:
@@ -95,13 +96,13 @@ class SweepTracker:
 
         if not self._long_only:
             # High sweep of KZ high (bearish)
-            if not self._kz_high_swept and not math.isnan(levels.kz_high) and bar.high > levels.kz_high:
+            if not self._kz_high_swept and not math.isnan(levels.kz_high) and bar.high >= levels.kz_high:
                 self._kz_high_swept = True
                 if sweep is None:
                     sweep = SweepEvent(source="kz_high", level=levels.kz_high, direction=-1, bar_index=self._bar_count)
 
             # High sweep of PDH (bearish)
-            if not self._pdh_swept and not math.isnan(levels.pdh) and bar.high > levels.pdh:
+            if not self._pdh_swept and not math.isnan(levels.pdh) and bar.high >= levels.pdh:
                 self._pdh_swept = True
                 if sweep is None:
                     sweep = SweepEvent(source="pdh", level=levels.pdh, direction=-1, bar_index=self._bar_count)

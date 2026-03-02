@@ -341,18 +341,19 @@ class IFVGEngine:
 
             # Check for sweep events
             if sweep is not None:
-                # For long_only: only accept long setups (low sweeps)
-                if self.long_only and sweep.direction != 1:
-                    return
-                self._active_sweep = sweep
-                self._sweep_bar_index = self._bar_count
-                self._state = IFVGState.WAITING_FOR_GAP
-                self._log_trade(
-                    "SWEEP_DETECTED",
-                    "source=%s level=%.2f dir=%s bar_count=%d"
-                    % (sweep.source, sweep.level, "long" if sweep.direction == 1 else "short", self._bar_count),
-                )
-                self._notify_state_change()
+                # For long_only: only accept long setups (low sweeps).
+                # Use continue-style logic: skip sweep but don't return so
+                # WAITING_FOR_GAP / WAITING_FOR_INVERSION blocks still run.
+                if not (self.long_only and sweep.direction != 1):
+                    self._active_sweep = sweep
+                    self._sweep_bar_index = self._bar_count
+                    self._state = IFVGState.WAITING_FOR_GAP
+                    self._log_trade(
+                        "SWEEP_DETECTED",
+                        "source=%s level=%.2f dir=%s bar_count=%d"
+                        % (sweep.source, sweep.level, "long" if sweep.direction == 1 else "short", self._bar_count),
+                    )
+                    self._notify_state_change()
 
         if self._state == IFVGState.WAITING_FOR_GAP:
             if not self._in_entry(bar_time):
