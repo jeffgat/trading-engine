@@ -48,6 +48,7 @@ class DashboardState:
     start_time: float = field(default_factory=time.time)
     trade_history: list[TradeRecord] = field(default_factory=list)
     exec_configs: dict[str, dict] = field(default_factory=dict)
+    multi_brokers_by_config: dict[str, Any] = field(default_factory=dict)
     _ws_clients: set[WebSocket] = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
@@ -535,7 +536,8 @@ def create_app(state: DashboardState) -> FastAPI:
 
         # Update metadata so the API reflects the change immediately
         state.exec_configs[config_name]["webhooks"] = [
-            {"url": w.url, "label": w.label} for w in new_webhooks
+            {"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier}
+            for w in new_webhooks
         ]
 
         await state.broadcast({"type": "config_update", "data": {
@@ -544,6 +546,82 @@ def create_app(state: DashboardState) -> FastAPI:
         }})
 
         return {"config": config_name, "webhooks": state.exec_configs[config_name]["webhooks"]}
+
+    @app.patch("/api/config/exec/{config_name}/webhooks/{webhook_index}")
+    async def patch_webhook(config_name: str, webhook_index: int, body: "WebhookPatchRequest"):
+        """Update pause state or multiplier for a single webhook entry."""
+        from .main import load_exec_configs, save_exec_configs
+
+        if config_name not in state.exec_configs:
+            raise HTTPException(404, f"Exec config '{config_name}' not found")
+
+        wh_list = state.exec_configs[config_name].get("webhooks", [])
+        if webhook_index < 0 or webhook_index >= len(wh_list):
+            raise HTTPException(404, f"Webhook index {webhook_index} out of range")
+
+        if body.multiplier is not None and body.multiplier <= 0:
+            raise HTTPException(422, "multiplier must be > 0")
+
+        # Persist to disk
+        configs = load_exec_configs()
+        target = next((c for c in configs if c.name == config_name), None)
+        if target and webhook_index < len(target.webhooks):
+            wh = target.webhooks[webhook_index]
+            if body.paused is not None:
+                wh.paused = body.paused
+            if body.multiplier is not None:
+                wh.multiplier = body.multiplier
+            save_exec_configs(configs)
+
+        # Apply to live runtime broker (no restart needed)
+        multi_broker = state.multi_brokers_by_config.get(config_name)
+        if multi_broker and webhook_index < len(multi_broker._brokers):
+            live_broker = multi_broker._brokers[webhook_index]
+            if body.paused is not None:
+                live_broker.paused = body.paused
+            if body.multiplier is not None:
+                live_broker.multiplier = body.multiplier
+
+        # Update in-memory metadata
+        wh_meta = state.exec_configs[config_name]["webhooks"][webhook_index]
+        if body.paused is not None:
+            wh_meta["paused"] = body.paused
+        if body.multiplier is not None:
+            wh_meta["multiplier"] = body.multiplier
+
+        await state.broadcast({"type": "accounts_update", "data": {
+            "exec_config": config_name,
+            "webhooks": state.exec_configs[config_name]["webhooks"],
+        }})
+
+        return {"config": config_name, "webhook_index": webhook_index, "webhook": wh_meta}
+
+    @app.post("/api/config/exec/{config_name}/webhooks/{webhook_index}/flatten")
+    async def flatten_webhook(config_name: str, webhook_index: int):
+        """Send a flatten payload to a single specific webhook account."""
+        if config_name not in state.exec_configs:
+            raise HTTPException(404, f"Exec config '{config_name}' not found")
+
+        multi_broker = state.multi_brokers_by_config.get(config_name)
+        if multi_broker is None:
+            raise HTTPException(404, f"No broker found for config '{config_name}'")
+
+        if webhook_index < 0 or webhook_index >= len(multi_broker._brokers):
+            raise HTTPException(404, f"Webhook index {webhook_index} out of range")
+
+        broker = multi_broker._brokers[webhook_index]
+
+        # Collect distinct exec tickers from all engines in this config
+        cfg_engines = state.engines_by_config.get(config_name, [])
+        tickers = list({e.exec_ticker for e in cfg_engines}) or ["MNQ"]
+
+        for t in tickers:
+            await broker.send_flatten(ticker=t)
+
+        label = (state.exec_configs[config_name].get("webhooks", [{}])[webhook_index] or {}).get("label", "")
+        logger.info("[%s] Per-account flatten sent to index=%d label=%s tickers=%s", config_name, webhook_index, label, tickers)
+
+        return {"config": config_name, "webhook_index": webhook_index, "tickers": tickers, "status": "sent"}
 
     @app.delete("/api/config/sessions/{session_name}")
     async def reset_session_config(session_name: str):
@@ -621,6 +699,13 @@ class ExecWebhooksRequest(BaseModel):
     """Replacement webhooks list for an execution config."""
 
     webhooks: list[dict[str, str]]
+
+
+class WebhookPatchRequest(BaseModel):
+    """Partial update for a single webhook entry (pause state or multiplier)."""
+
+    paused: bool | None = None
+    multiplier: float | None = None
 
 
 # ---------------------------------------------------------------------------

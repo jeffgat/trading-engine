@@ -46,6 +46,8 @@ class TradersPostClient:
         self.config_name = config_name
         self.timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._session: aiohttp.ClientSession | None = None
+        self.paused: bool = False
+        self.multiplier: float = 1.0
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -256,36 +258,57 @@ class MultiBroker:
         await asyncio.gather(*[b.close() for b in self._brokers], return_exceptions=True)
 
     async def send_entry(self, action, qty, price, tp2, stop, ticker=None):
-        results = await asyncio.gather(
-            *[b.send_entry(action, qty, price, tp2, stop, ticker=ticker) for b in self._brokers],
-            return_exceptions=True,
-        )
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return []
+
+        async def _send_entry(b: TradersPostClient):
+            scaled_qty = max(1, round(qty * b.multiplier))
+            return await b.send_entry(action, scaled_qty, price, tp2, stop, ticker=ticker)
+
+        results = await asyncio.gather(*[_send_entry(b) for b in active], return_exceptions=True)
         return results[0] if results else []
 
     async def send_tp1_multi(self, direction, half_qty, be_price, tp2, ticker=None):
-        results = await asyncio.gather(
-            *[b.send_tp1_multi(direction, half_qty, be_price, tp2, ticker=ticker) for b in self._brokers],
-            return_exceptions=True,
-        )
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return []
+
+        async def _send_tp1_multi(b: TradersPostClient):
+            scaled_half = max(1, round(half_qty * b.multiplier))
+            return await b.send_tp1_multi(direction, scaled_half, be_price, tp2, ticker=ticker)
+
+        results = await asyncio.gather(*[_send_tp1_multi(b) for b in active], return_exceptions=True)
         return results[0] if results else []
 
     async def send_tp1_single(self, direction, qty, be_price, ticker=None):
-        results = await asyncio.gather(
-            *[b.send_tp1_single(direction, qty, be_price, ticker=ticker) for b in self._brokers],
-            return_exceptions=True,
-        )
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return None
+
+        async def _send_tp1_single(b: TradersPostClient):
+            scaled_qty = max(1, round(qty * b.multiplier))
+            return await b.send_tp1_single(direction, scaled_qty, be_price, ticker=ticker)
+
+        results = await asyncio.gather(*[_send_tp1_single(b) for b in active], return_exceptions=True)
         return results[0] if results else None
 
     async def send_flatten(self, ticker=None):
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return None
         results = await asyncio.gather(
-            *[b.send_flatten(ticker=ticker) for b in self._brokers],
+            *[b.send_flatten(ticker=ticker) for b in active],
             return_exceptions=True,
         )
         return results[0] if results else None
 
     async def send_cancel(self, ticker=None):
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return None
         results = await asyncio.gather(
-            *[b.send_cancel(ticker=ticker) for b in self._brokers],
+            *[b.send_cancel(ticker=ticker) for b in active],
             return_exceptions=True,
         )
         return results[0] if results else None

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
+import type { AccountsUpdatePayload, ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 
-export function useConfig() {
+export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void) => () => void) {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -20,6 +20,26 @@ export function useConfig() {
   useEffect(() => {
     fetchConfig().finally(() => setLoading(false));
   }, [fetchConfig]);
+
+  // React to accounts_update WebSocket messages to keep execConfigs in sync
+  useEffect(() => {
+    if (!subscribe) return;
+    return subscribe("accounts_update", (data) => {
+      const payload = data as AccountsUpdatePayload;
+      setConfig((prev) => {
+        if (!prev?.exec_configs) return prev;
+        const ec = prev.exec_configs[payload.exec_config];
+        if (!ec) return prev;
+        return {
+          ...prev,
+          exec_configs: {
+            ...prev.exec_configs,
+            [payload.exec_config]: { ...ec, webhooks: payload.webhooks },
+          },
+        };
+      });
+    });
+  }, [subscribe]);
 
   const updateSession = useCallback(
     async (sessionName: string, overrides: Partial<SessionConfig>) => {
@@ -111,9 +131,110 @@ export function useConfig() {
     [fetchConfig],
   );
 
+  const pauseWebhook = useCallback(
+    async (configName: string, idx: number) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/webhooks/${idx}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paused: true }),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        }
+        await fetchConfig();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to pause");
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchConfig],
+  );
+
+  const resumeWebhook = useCallback(
+    async (configName: string, idx: number) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/webhooks/${idx}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paused: false }),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        }
+        await fetchConfig();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to resume");
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchConfig],
+  );
+
+  const updateWebhookMultiplier = useCallback(
+    async (configName: string, idx: number, multiplier: number) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/webhooks/${idx}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ multiplier }),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        }
+        await fetchConfig();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to update multiplier");
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchConfig],
+  );
+
+  const flattenWebhook = useCallback(
+    async (configName: string, idx: number) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/webhooks/${idx}/flatten`, {
+          method: "POST",
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to flatten");
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
   const execConfigs: Record<string, ExecConfigMeta> = useMemo(() => {
     return config?.exec_configs ?? {};
   }, [config]);
 
-  return { config, loading, saving, error, updateSession, resetSession, updateWebhooks, execConfigs };
+  return {
+    config, loading, saving, error,
+    updateSession, resetSession, updateWebhooks, execConfigs,
+    pauseWebhook, resumeWebhook, updateWebhookMultiplier, flattenWebhook,
+  };
 }

@@ -90,6 +90,8 @@ export interface SessionConfig {
 export interface WebhookEntry {
   url: string;
   label: string;
+  paused?: boolean;
+  multiplier?: number;
 }
 
 export interface ExecConfigMeta {
@@ -108,7 +110,13 @@ export interface ConfigResponse {
   exec_configs?: Record<string, ExecConfigMeta>;
 }
 
+export interface AccountsUpdatePayload {
+  exec_config: string;
+  webhooks: WebhookEntry[];
+}
+
 export type WsMessage =
   | { type: "status"; data: StatusResponse }
   | { type: "trade_log"; data: TradeLogEntry }
-  | { type: "log"; data: MainLogEntry };
+  | { type: "log"; data: MainLogEntry }
+  | { type: "accounts_update"; data: AccountsUpdatePayload };

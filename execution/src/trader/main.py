@@ -324,6 +324,8 @@ class WebhookEntry:
 
     url: str
     label: str = ""
+    paused: bool = False
+    multiplier: float = 1.0
 
 
 @dataclass
@@ -347,7 +349,12 @@ def _parse_webhooks(data: dict) -> list[WebhookEntry]:
     # New format: webhooks array
     if "webhooks" in data:
         return [
-            WebhookEntry(url=w.get("url", ""), label=w.get("label", ""))
+            WebhookEntry(
+                url=w.get("url", ""),
+                label=w.get("label", ""),
+                paused=w.get("paused", False),
+                multiplier=float(w.get("multiplier", 1.0)),
+            )
             for w in data["webhooks"]
             if w.get("url")
         ]
@@ -400,7 +407,7 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
     for ec in configs:
         raw[ec.name] = {
             "enabled": ec.enabled,
-            "webhooks": [{"url": w.url, "label": w.label} for w in ec.webhooks],
+            "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": ec.session_overrides,
             "ifvg_sessions": ec.ifvg_session_overrides,
         }
@@ -667,6 +674,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     global_symbol_map: dict[str, list] = {}
     global_atr_lengths: dict[str, int] = {}
     exec_configs_meta: dict[str, dict] = {}  # metadata for API
+    multi_brokers_by_config: dict[str, "MultiBroker"] = {}  # for per-account API control
 
     for ec in exec_configs:
         if not ec.enabled:
@@ -689,12 +697,15 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
                 dry_run=dry_run,
                 config_name=f"{ec.name}[{wh.label}]" if wh.label else ec.name,
             )
+            b.paused = wh.paused
+            b.multiplier = wh.multiplier
             config_brokers.append(b)
             brokers.append(b)
 
         # Multi-broker fan-out: wrap list so engines send to all accounts
         from .broker import MultiBroker
         broker = MultiBroker(config_brokers)
+        multi_brokers_by_config[ec.name] = broker
 
         # Build continuation engines for this config's sessions
         session_list = list(ec.session_overrides.keys())
@@ -726,7 +737,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         # Store metadata for API
         exec_configs_meta[ec.name] = {
             "enabled": ec.enabled,
-            "webhooks": [{"url": w.url, "label": w.label} for w in ec.webhooks],
+            "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": session_list,
             "ifvg_sessions": ifvg_list,
         }
@@ -747,6 +758,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         config=config,
         mode=mode,
         exec_configs=exec_configs_meta,
+        multi_brokers_by_config=multi_brokers_by_config,
     )
 
     # Wire callbacks into each engine (both SessionEngine and IFVGEngine)

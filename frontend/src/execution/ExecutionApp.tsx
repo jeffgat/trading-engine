@@ -1,3 +1,4 @@
+import { AccountsView } from "@/execution/components/AccountsView";
 import { ConfigView } from "@/execution/components/ConfigView";
 import { ConnectionStatus } from "@/execution/components/ConnectionStatus";
 import { LogViewer } from "@/execution/components/LogViewer";
@@ -13,7 +14,7 @@ import { useTradeLogs } from "@/execution/hooks/useTradeLogs";
 import { useWebSocket } from "@/execution/hooks/useWebSocket";
 import { useMemo, useState } from "react";
 
-type Tab = "status" | "trades" | "performance" | "logs" | "config";
+type Tab = "status" | "trades" | "performance" | "logs" | "config" | "accounts";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "status", label: "Status" },
@@ -21,6 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "performance", label: "Performance" },
   { key: "logs", label: "Logs" },
   { key: "config", label: "Config" },
+  { key: "accounts", label: "Accounts" },
 ];
 
 export function ExecutionApp() {
@@ -39,7 +41,11 @@ export function ExecutionApp() {
     resetSession,
     updateWebhooks,
     execConfigs,
-  } = useConfig();
+    pauseWebhook,
+    resumeWebhook,
+    updateWebhookMultiplier,
+    flattenWebhook,
+  } = useConfig(subscribe);
 
   const mode = status?.mode ?? "\u2014";
   const isLive = mode === "LIVE";
@@ -91,8 +97,8 @@ export function ExecutionApp() {
           </nav>
         </div>
 
-        {/* Config selector pills — hidden on config tab (has its own tabs) */}
-        {configNames.length > 0 && activeTab !== "config" && (
+        {/* Config selector pills — hidden on config/accounts tabs */}
+        {configNames.length > 0 && activeTab !== "config" && activeTab !== "accounts" && (
           <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2">
             <div className="flex gap-1.5">
               <button
@@ -178,6 +184,16 @@ export function ExecutionApp() {
             onResetSession={resetSession}
             onUpdateWebhooks={updateWebhooks}
             execConfigs={execConfigs}
+          />
+        )}
+        {activeTab === "accounts" && (
+          <AccountsView
+            execConfigs={execConfigs}
+            onPause={pauseWebhook}
+            onResume={resumeWebhook}
+            onUpdateMultiplier={updateWebhookMultiplier}
+            onFlatten={flattenWebhook}
+            onUpdateWebhooks={updateWebhooks}
           />
         )}
       </main>

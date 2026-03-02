@@ -1132,7 +1132,7 @@ export function ConfigView({
                           ...meta.ifvg_sessions.map((s) => ({ name: s, isIfvg: true })),
                         ];
                         return (
-                          <div className="flex justify-between py-1 gap-2">
+                          <div className="flex justify-between pb-1 pt-8 gap-2">
                             <span className="text-text-muted text-xs shrink-0">Sessions</span>
                             <div className="flex flex-wrap gap-1 justify-end">
                               {allSessions.map(({ name: s, isIfvg }) => (
