@@ -26,6 +26,8 @@ rsync -avz --delete \
     --exclude '*.pyc' \
     --exclude '.env' \
     --exclude 'logs/' \
+    --exclude 'config/checkpoint.json' \
+    --exclude 'config/trade_history.json' \
     "$LOCAL_DIR/" "$DROPLET:$REMOTE_DIR/"
 
 echo "--- Installing dependencies ---"
