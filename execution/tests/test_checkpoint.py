@@ -19,7 +19,7 @@ from trader.broker import TradersPostClient, WebhookResult
 from trader.engine import Bar, ORBEngine, State, TradeRecord
 from trader.lsi_engine import GapInfo, LSIEngine, LSIState
 from trader.sizing import TradeLevels
-from trader.sweep import SweepEvent
+from trader.swing import SweepEvent
 from trader.checkpoint import (
     _atomic_write,
     _deserialize_bar,
@@ -351,7 +351,7 @@ class TestLSIEngineCheckpoint:
         engine._limit_price = 19450.0
         engine._limit_direction = 1
         engine._limit_stop = 19430.0
-        engine._active_sweep = SweepEvent("kz_low", 19420.0, 1, 12)
+        engine._active_sweep = SweepEvent("swing_low", 19420.0, 1, 12)
         engine._active_gap = GapInfo(19450.0, 19435.0, False, 19460.0, 19430.0, 16)
 
         data = serialize_lsi_engine(engine)
@@ -362,7 +362,7 @@ class TestLSIEngineCheckpoint:
         assert new_engine._state == LSIState.ARMED_LIMIT
         assert new_engine._limit_price == 19450.0
         assert new_engine._active_sweep is not None
-        assert new_engine._active_sweep.source == "kz_low"
+        assert new_engine._active_sweep.source == "swing_low"
         assert new_engine._active_gap is not None
         assert new_engine._active_gap.top == 19450.0
 
@@ -388,10 +388,10 @@ class TestLSIEngineCheckpoint:
         assert new_engine._levels.entry == 19540.0
         assert new_engine._fill_bar_count == 15
 
-    def test_monitoring_not_restored(self):
+    def test_waiting_for_sweep_not_restored(self):
         broker = _mock_broker()
         engine = _make_lsi_engine(broker)
-        engine._state = LSIState.MONITORING
+        engine._state = LSIState.WAITING_FOR_SWEEP
 
         data = serialize_lsi_engine(engine)
         new_engine = _make_lsi_engine(_mock_broker())

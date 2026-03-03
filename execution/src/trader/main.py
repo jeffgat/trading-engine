@@ -260,7 +260,8 @@ LSI_SESSION_CONFIGS = {
         "be_offset_ticks": 4,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
-        "killzones": [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
+        "lsi_n_left": 3,
+        "lsi_n_right": 3,
     },
     # --- NQ NY LSI (LSI reversal, 2x sizing, limit entry) ---
     "NQ_NY_LSI": {
@@ -282,7 +283,8 @@ LSI_SESSION_CONFIGS = {
         "be_offset_ticks": 4,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
-        "killzones": [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
+        "lsi_n_left": 3,
+        "lsi_n_right": 3,
     },
 }
 
@@ -627,7 +629,8 @@ def build_lsi_engines(
             half_days=half_days,
             half_day_flat_start=config.get("dates", {}).get("half_day_flat_start", "12:50"),
             half_day_flat_end=config.get("dates", {}).get("half_day_flat_end", "13:00"),
-            killzones=merged.get("killzones"),
+            lsi_n_left=merged.get("lsi_n_left", 3),
+            lsi_n_right=merged.get("lsi_n_right", 3),
         )
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)

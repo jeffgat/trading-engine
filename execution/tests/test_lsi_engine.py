@@ -1,6 +1,6 @@
 """Tests for LSIEngine — LSI reversal strategy state machine.
 
-State machine: IDLE → MONITORING → WAITING_FOR_GAP →
+State machine: IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP →
                WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING → FLAT
 
 Note on LSIEngine.broker.send_entry: unlike ORBEngine, this engine calls
@@ -19,7 +19,6 @@ import pytest
 from trader.broker import TradersPostClient, WebhookResult
 from trader.engine import Bar
 from trader.lsi_engine import GapInfo, LSIEngine, LSIState
-from trader.liquidity import LiquidityLevels
 
 ET = ZoneInfo("America/New_York")
 
@@ -77,48 +76,104 @@ def make_lsi_engine(broker=None, **overrides) -> LSIEngine:
         long_only=True,
         max_bars_after_sweep=20,
         max_inversion_bars=10,
-        killzones=[("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")],
+        lsi_n_left=3,
+        lsi_n_right=3,
     )
     defaults.update(overrides)
     return LSIEngine(**defaults)
 
 
-async def feed_asia_kz_and_lock(eng: LSIEngine, kz_high: float = 19700.0, kz_low: float = 19300.0):
-    """Feed Asia KZ bars and a post-session bar to lock KZ levels."""
-    eng._liquidity.on_bar(make_bar("2025-01-14 21:00", kz_high, kz_high, kz_low, kz_low))
-    eng._liquidity.on_bar(make_bar("2025-01-15 00:05", 19500, 19510, 19490, 19500))
+async def feed_swing_low_and_sweep(
+    eng: LSIEngine,
+    swing_low: float = 19400.0,
+    base_price: float = 19500.0,
+):
+    """Build a confirmed swing low pivot and then sweep it.
+
+    With n_left=3, n_right=3 (window=7):
+    - Bars 1-3 (left): highs/lows above swing_low
+    - Bar 4 (pivot): low = swing_low (strictly less than all neighbors)
+    - Bars 5-7 (right): highs/lows above swing_low
+    - Bar 8: one more bar so the confirmed level shifts to _prev_swing_low
+    - Bar 9 (09:30): entry window starts, triggers WAITING_FOR_SWEEP
+    - Bar 10 (09:35): sweep bar — low ≤ swing_low
+
+    All pre-entry bars use times before the entry window (09:30).
+    """
+    # Bars with lows above swing_low (left side of pivot)
+    for i in range(3):
+        bar = make_bar(
+            f"2025-01-15 08:{30 + i * 5:02d}",
+            base_price, base_price + 10, base_price - 10, base_price,
+        )
+        await eng.on_bar(bar, 300.0)
+
+    # Pivot bar: low = swing_low (strictly less than all neighbors)
+    await eng.on_bar(
+        make_bar("2025-01-15 08:45", base_price - 50, base_price - 40, swing_low, base_price - 60),
+        300.0,
+    )
+
+    # Right side of pivot (3 bars with lows above swing_low)
+    for i in range(3):
+        bar = make_bar(
+            f"2025-01-15 09:{i * 5:02d}",
+            base_price, base_price + 10, base_price - 10, base_price,
+        )
+        await eng.on_bar(bar, 300.0)
+    # After bar 7 (09:10), pivot is confirmed → _latest_swing_low = swing_low
+
+    # Bar 8: one more bar to shift the level into _prev_swing_low
+    await eng.on_bar(
+        make_bar("2025-01-15 09:15", base_price, base_price + 10, base_price - 10, base_price),
+        300.0,
+    )
+
+    # Bar 9: entry window opens → IDLE → WAITING_FOR_SWEEP
+    await eng.on_bar(
+        make_bar("2025-01-15 09:30", base_price, base_price + 10, base_price - 10, base_price),
+        300.0,
+    )
+    assert eng._state == LSIState.WAITING_FOR_SWEEP
+
+    # Bar 10: sweep bar — low ≤ swing_low → WAITING_FOR_GAP
+    await eng.on_bar(
+        make_bar("2025-01-15 09:35", swing_low + 30, swing_low + 40, swing_low - 10, swing_low + 20),
+        300.0,
+    )
+    assert eng._state == LSIState.WAITING_FOR_GAP
 
 
 # =============================================================================
-# IDLE → MONITORING
+# IDLE → WAITING_FOR_SWEEP
 # =============================================================================
 
-class TestIdleToMonitoring:
-    async def test_entry_window_starts_monitoring(self):
+class TestIdleToWaitingForSweep:
+    async def test_entry_window_starts_waiting_for_sweep(self):
         eng = make_lsi_engine()
         bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
         await eng.on_bar(bar, 300.0)
-        assert eng._state == LSIState.MONITORING
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
 
-    async def test_excluded_date_does_not_start_monitoring(self):
+    async def test_excluded_date_does_not_start_waiting_for_sweep(self):
         eng = make_lsi_engine(excluded_dates=("20250115",))
         bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
         await eng.on_bar(bar, 300.0)
-        assert eng._state != LSIState.MONITORING
+        assert eng._state != LSIState.WAITING_FOR_SWEEP
 
-    async def test_excluded_dow_does_not_start_monitoring(self):
+    async def test_excluded_dow_does_not_start_waiting_for_sweep(self):
         # Jan 15 2025 is Wednesday (weekday=2)
         eng = make_lsi_engine(excluded_dow=2)
         bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
         await eng.on_bar(bar, 300.0)
-        assert eng._state != LSIState.MONITORING
+        assert eng._state != LSIState.WAITING_FOR_SWEEP
 
-    async def test_monitoring_to_flat_past_entry_end(self):
+    async def test_waiting_for_sweep_to_flat_past_entry_end(self):
         eng = make_lsi_engine()
-        # First get to MONITORING
+        # First get to WAITING_FOR_SWEEP
         bar1 = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
         await eng.on_bar(bar1, 300.0)
-        assert eng._state == LSIState.MONITORING
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
         # Bar past entry_end
         bar2 = make_bar("2025-01-15 15:05", 19500, 19510, 19490, 19500)
         await eng.on_bar(bar2, 300.0)
@@ -126,42 +181,72 @@ class TestIdleToMonitoring:
 
 
 # =============================================================================
-# MONITORING → WAITING_FOR_GAP (sweep detection)
+# WAITING_FOR_SWEEP → WAITING_FOR_GAP (sweep detection)
 # =============================================================================
 
-class TestMonitoringToWaitingForGap:
+class TestWaitingForSweepToWaitingForGap:
     async def test_low_sweep_triggers_waiting_for_gap(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-
-        # Get to MONITORING
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        assert eng._state == LSIState.MONITORING
-
-        # Feed bar that sweeps kz_low=19400 (bar.low ≤ kz_low)
-        sweep_bar = make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430)
-        await eng.on_bar(sweep_bar, 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
+        # feed_swing_low_and_sweep asserts WAITING_FOR_GAP internally
         assert eng._state == LSIState.WAITING_FOR_GAP
 
     async def test_long_only_high_sweep_ignored(self):
-        eng = make_lsi_engine(long_only=True)
-        await feed_asia_kz_and_lock(eng, kz_high=19600.0)
+        """In long_only mode, high sweeps are ignored — stays WAITING_FOR_SWEEP.
 
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        # High sweep
-        sweep_bar = make_bar("2025-01-15 09:35", 19590, 19620, 19580, 19610)
+        Build a confirmed swing high, then sweep it upward. With long_only=True,
+        the high sweep should be ignored.
+        """
+        eng = make_lsi_engine(long_only=True)
+        base_price = 19500.0
+        swing_high = 19600.0
+
+        # Left side (3 bars with highs below swing_high)
+        for i in range(3):
+            bar = make_bar(
+                f"2025-01-15 08:{30 + i * 5:02d}",
+                base_price, base_price + 10, base_price - 10, base_price,
+            )
+            await eng.on_bar(bar, 300.0)
+
+        # Pivot bar: high = swing_high (strictly greater than all neighbors)
+        await eng.on_bar(
+            make_bar("2025-01-15 08:45", base_price + 50, swing_high, base_price + 40, base_price + 60),
+            300.0,
+        )
+
+        # Right side (3 bars with highs below swing_high)
+        for i in range(3):
+            bar = make_bar(
+                f"2025-01-15 09:{i * 5:02d}",
+                base_price, base_price + 10, base_price - 10, base_price,
+            )
+            await eng.on_bar(bar, 300.0)
+
+        # Shift bar
+        await eng.on_bar(
+            make_bar("2025-01-15 09:15", base_price, base_price + 10, base_price - 10, base_price),
+            300.0,
+        )
+
+        # Entry window opens
+        await eng.on_bar(
+            make_bar("2025-01-15 09:30", base_price, base_price + 10, base_price - 10, base_price),
+            300.0,
+        )
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
+
+        # High sweep bar — high >= swing_high
+        sweep_bar = make_bar("2025-01-15 09:35", swing_high - 10, swing_high + 20, swing_high - 20, swing_high + 10)
         await eng.on_bar(sweep_bar, 300.0)
         # In long_only mode, high sweeps are ignored
-        assert eng._state == LSIState.MONITORING
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
 
     async def test_active_sweep_set_on_transition(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        sweep_bar = make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430)
-        await eng.on_bar(sweep_bar, 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         assert eng._active_sweep is not None
-        assert eng._active_sweep.source == "kz_low"
+        assert eng._active_sweep.source == "swing_low"
 
 
 # =============================================================================
@@ -171,10 +256,7 @@ class TestMonitoringToWaitingForGap:
 class TestWaitingForGapToInversion:
     async def _advance_to_waiting_for_gap(self, long_only=True):
         eng = make_lsi_engine(long_only=long_only)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        # Sweep kz_low
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         assert eng._state == LSIState.WAITING_FOR_GAP
         return eng
 
@@ -222,33 +304,27 @@ class TestWaitingForGapToInversion:
         eng.broker.send_entry.assert_not_called()
 
     async def test_sweep_expires_after_max_bars(self):
-        """After max_bars_after_sweep bars with no FVG, returns to MONITORING.
+        """After max_bars_after_sweep bars with no FVG, returns to WAITING_FOR_SWEEP.
 
         Bar geometry: H=19510, L=19490 → no bearish FVG (bar0.high ≥ prior bar2.low),
         no bullish FVG (bar2.high ≥ bar0.low when bars are consistent).
         """
         eng = make_lsi_engine(max_bars_after_sweep=3)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         assert eng._state == LSIState.WAITING_FOR_GAP
 
         # Feed 4 bars without FVG: H=19510, L=19490 → overlapping range, no gap
-        # H ≥ prior bar2.low(19490) prevents bearish FVG
-        # L ≤ prior bar2.high(19510) prevents bullish FVG from these bars
         for i in range(4):
             bar = make_bar(f"2025-01-15 09:{40 + i * 5:02d}", 19495, 19510, 19490, 19500)
             await eng.on_bar(bar, 300.0)
-        # Should return to MONITORING after expiry
-        assert eng._state == LSIState.MONITORING
+        # Should return to WAITING_FOR_SWEEP after expiry
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
         assert eng._active_sweep is None
 
     async def test_gap_too_small_stays_waiting(self):
         """Gap smaller than min_gap_atr_pct * atr → stays WAITING_FOR_GAP."""
         eng = make_lsi_engine(min_gap_atr_pct=50.0)  # need 50% of 300 = 150pts
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
 
         # Tiny gap (2pts), should not pass min_gap filter
         bar2 = make_bar("2025-01-15 09:40", 19480, 19490, 19460, 19465)
@@ -267,9 +343,7 @@ class TestWaitingForGapToInversion:
 class TestInversionToArmedLimit:
     async def _advance_to_waiting_for_inversion(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
 
         # Bearish FVG: top=19450, bottom=19430
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
@@ -328,9 +402,7 @@ class TestInversionToArmedLimit:
 
     async def test_inversion_expires_after_max_bars(self):
         eng = make_lsi_engine(max_inversion_bars=2)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -346,7 +418,7 @@ class TestInversionToArmedLimit:
             bar = make_bar(f"2025-01-15 {t}", 19410, 19420, 19395, gap.top - 10)
             await eng.on_bar(bar, 300.0)
 
-        assert eng._state == LSIState.MONITORING
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
         assert eng._active_gap is None
 
 
@@ -357,9 +429,7 @@ class TestInversionToArmedLimit:
 class TestArmedLimitFill:
     async def _advance_to_armed_limit(self, **overrides):
         eng = make_lsi_engine(**overrides)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -429,9 +499,7 @@ class TestArmedLimitFill:
 class TestManagingExits:
     async def _advance_to_managing(self, **overrides):
         eng = make_lsi_engine(**overrides)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -512,9 +580,7 @@ class TestFillBarGuard:
 
     async def _advance_to_armed_limit(self, **overrides):
         eng = make_lsi_engine(**overrides)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -597,9 +663,7 @@ class TestTP1BarGuard:
 
     async def _advance_to_managing(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -685,9 +749,7 @@ class TestTP1BarGuard:
 class TestTickPath:
     async def _advance_to_managing(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -721,9 +783,7 @@ class TestTickPath:
 
     async def test_tick_tp1_multi(self):
         eng = make_lsi_engine(risk_usd=2000)
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)
@@ -762,9 +822,7 @@ class TestTickPath:
 
     async def test_tick_fill_in_armed_limit(self):
         eng = make_lsi_engine()
-        await feed_asia_kz_and_lock(eng, kz_low=19400.0)
-        await eng.on_bar(make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500), 300.0)
-        await eng.on_bar(make_bar("2025-01-15 09:35", 19420, 19440, 19390, 19430), 300.0)
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         bar2 = make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460)
         bar1 = make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380)
         bar0 = make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400)

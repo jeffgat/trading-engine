@@ -1,7 +1,7 @@
 """LSI (Inverse Fair Value Gap) engine for live LSI reversal strategy.
 
 State machine:
-    IDLE → MONITORING → WAITING_FOR_GAP → COLLECTING_GAPS →
+    IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP → COLLECTING_GAPS →
     WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING → FLAT
 
 Unlike ORBEngine (continuation FVG after ORB), this engine detects:
@@ -25,9 +25,8 @@ from typing import Callable
 
 from .broker import TradersPostClient
 from .engine import Bar, TradeRecord
-from .liquidity import LiquidityTracker
 from .sizing import TradeLevels, compute_trade_levels
-from .sweep import SweepEvent, SweepTracker
+from .swing import SweepEvent, SwingTracker
 
 logger = logging.getLogger(__name__)
 trade_logger = logging.getLogger("trader.trades")
@@ -35,7 +34,7 @@ trade_logger = logging.getLogger("trader.trades")
 
 class LSIState(enum.Enum):
     IDLE = "idle"
-    MONITORING = "monitoring"  # in entry window, watching for sweeps
+    WAITING_FOR_SWEEP = "waiting_for_sweep"  # in entry window, watching for sweeps
     WAITING_FOR_GAP = "waiting_for_gap"  # sweep detected, scanning for FVG
     COLLECTING_GAPS = "collecting_gaps"  # singular gap validation
     WAITING_FOR_INVERSION = "waiting_for_inversion"  # gap found, waiting for close inversion
@@ -97,8 +96,9 @@ class LSIEngine:
         half_days: tuple[str, ...] = (),
         half_day_flat_start: str = "12:50",
         half_day_flat_end: str = "13:00",
-        # Killzones
-        killzones: list[tuple[str, str, str]] | None = None,
+        # Swing pivot detection
+        lsi_n_left: int = 3,
+        lsi_n_right: int = 3,
         # Execution config name
         config_name: str = "",
     ) -> None:
@@ -143,10 +143,8 @@ class LSIEngine:
         self._half_day_flat_start_t = _parse_time(half_day_flat_start)
         self._half_day_flat_end_t = _parse_time(half_day_flat_end)
 
-        # Trackers
-        kz_list = killzones or [("Asia", "20:00", "00:00"), ("London", "02:00", "05:00")]
-        self._liquidity = LiquidityTracker(kz_list)
-        self._sweeps = SweepTracker(long_only=long_only)
+        # Swing pivot tracker (replaces KZ/PDH/PDL liquidity tracking)
+        self._swings = SwingTracker(n_left=lsi_n_left, n_right=lsi_n_right, long_only=long_only)
 
         # State
         self._state = LSIState.IDLE
@@ -315,9 +313,6 @@ class LSIEngine:
         if len(self._bars) > 3:
             self._bars.pop(0)
 
-        # Feed liquidity tracker (needs ALL bars, not just entry window)
-        self._liquidity.on_bar(bar)
-
         bar_date = bar.timestamp.strftime("%Y%m%d")
         bar_time = bar.timestamp.time()
 
@@ -337,18 +332,17 @@ class LSIEngine:
             self._fill_timestamp = None
             self._request_checkpoint()
 
-        # Feed sweep tracker
-        levels = self._liquidity.levels
-        sweep = self._sweeps.on_bar(bar, levels)
+        # Feed swing tracker (pivot detection + sweep check)
+        sweep = self._swings.on_bar(bar)
 
         # State machine
         if self._state == LSIState.IDLE:
             if self._in_entry(bar_time) and not self._is_excluded_day(bar):
-                self._state = LSIState.MONITORING
+                self._state = LSIState.WAITING_FOR_SWEEP
                 self._request_checkpoint()
                 self._notify_state_change()
 
-        if self._state == LSIState.MONITORING:
+        if self._state == LSIState.WAITING_FOR_SWEEP:
             if not self._in_entry(bar_time):
                 self._log_trade("NO_SETUP", "entry window closed")
                 self._state = LSIState.FLAT
@@ -384,7 +378,7 @@ class LSIEngine:
             bars_since = self._bar_count - self._sweep_bar_index
             if bars_since > self.max_bars_after_sweep:
                 self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since)
-                self._state = LSIState.MONITORING
+                self._state = LSIState.WAITING_FOR_SWEEP
                 self._active_sweep = None
                 self._notify_state_change()
                 return
@@ -420,7 +414,7 @@ class LSIEngine:
             bars_since_gap = self._bar_count - gap.bar_index
             if self.max_inversion_bars > 0 and bars_since_gap > self.max_inversion_bars:
                 self._log_trade("INVERSION_EXPIRED", "bars_since_gap=%d" % bars_since_gap)
-                self._state = LSIState.MONITORING
+                self._state = LSIState.WAITING_FOR_SWEEP
                 self._active_sweep = None
                 self._active_gap = None
                 self._notify_state_change()
@@ -728,9 +722,6 @@ class LSIEngine:
         """Process a 1s bar for fine-grained exit management."""
         self._daily_atr = daily_atr
 
-        # Feed liquidity tracker with tick data too
-        self._liquidity.on_bar(tick)
-
         if self._state == LSIState.ARMED_LIMIT:
             await self._check_limit_fill(tick, daily_atr)
             return
@@ -846,7 +837,7 @@ class LSIEngine:
 
     def status_dict(self) -> dict:
         levels = self._levels
-        liq = self._liquidity.levels
+        sw = self._swings
         return {
             "config_name": self.config_name,
             "session": self.name,
@@ -854,11 +845,8 @@ class LSIEngine:
             "type": "lsi",
             "date": self._current_date,
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
-            "kz_high": round(liq.kz_high, 2) if not math.isnan(liq.kz_high) else None,
-            "kz_low": round(liq.kz_low, 2) if not math.isnan(liq.kz_low) else None,
-            "kz_source": liq.kz_source or None,
-            "pdh": round(liq.pdh, 2) if not math.isnan(liq.pdh) else None,
-            "pdl": round(liq.pdl, 2) if not math.isnan(liq.pdl) else None,
+            "latest_swing_high": round(sw.latest_swing_high, 2) if not math.isnan(sw.latest_swing_high) else None,
+            "latest_swing_low": round(sw.latest_swing_low, 2) if not math.isnan(sw.latest_swing_low) else None,
             "entry": round(levels.entry, 2) if levels else None,
             "stop": round(levels.stop, 2) if levels else None,
             "tp1": round(levels.tp1, 2) if levels else None,

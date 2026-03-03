@@ -130,7 +130,7 @@ def _deserialize_sweep(data: dict | None) -> Any:
     """Deserialize a SweepEvent dict."""
     if data is None:
         return None
-    from .sweep import SweepEvent
+    from .swing import SweepEvent
     return SweepEvent(**data)
 
 
@@ -253,6 +253,7 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "fill_bar_count": engine._fill_bar_count,
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
+        "swing_tracker": engine._swings.to_dict(),
     }
 
 
@@ -297,6 +298,10 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     engine._fill_timestamp = datetime.fromisoformat(fill_ts) if fill_ts else None
 
     engine._bars = [_deserialize_bar(b) for b in data.get("bars", [])]
+
+    swing_data = data.get("swing_tracker")
+    if swing_data:
+        engine._swings.restore(swing_data)
 
     logger.info(
         "[%s] Restored from checkpoint: state=%s date=%s levels=%s tp1_hit=%s",
