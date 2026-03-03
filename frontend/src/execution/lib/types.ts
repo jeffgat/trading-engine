@@ -17,6 +17,7 @@ export interface SessionStatus {
   levels: TradeLevels | null;
   tp1_hit: boolean;
   config_name?: string;
+  paused?: boolean;
 }
 
 export interface StatusResponse {

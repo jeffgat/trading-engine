@@ -49,6 +49,8 @@ export function ExecutionApp() {
         resumeWebhook,
         updateWebhookMultiplier,
         flattenWebhook,
+        pauseEngine,
+        resumeEngine,
     } = useConfig(subscribe);
 
     // Derive config names from the status response
@@ -127,6 +129,8 @@ export function ExecutionApp() {
                         loading={statusLoading}
                         activeConfig={activeConfig}
                         config={config}
+                        onPause={pauseEngine}
+                        onResume={resumeEngine}
                     />
                 )}
                 {activeTab === 'trades' && (

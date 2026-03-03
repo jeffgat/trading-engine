@@ -106,6 +106,7 @@ class LSIEngine:
         self.broker = broker
         self.exec_ticker = exec_ticker
         self.config_name = config_name
+        self.paused: bool = False
 
         # Time windows
         self.entry_start = entry_start
@@ -219,6 +220,85 @@ class LSIEngine:
             elif dow == self.excluded_dow:
                 return True
         return False
+
+    # ------------------------------------------------------------------
+    # Startup recovery
+    # ------------------------------------------------------------------
+
+    @property
+    def _crosses_midnight(self) -> bool:
+        """True if the session's entry window spans midnight."""
+        return self._entry_start_t > self._flat_end_t
+
+    def recover_session_state(self, bars: list[Bar], now: datetime) -> bool:
+        """Recover session state after restart (parallel to ORBEngine.recover_opening_range).
+
+        Determines the correct state based on current time and feeds
+        historical bars through the swing tracker to warm pivot levels.
+        Returns True if the engine was set to a non-IDLE state.
+        """
+        from datetime import timedelta as _td
+
+        now_t = now.time()
+
+        # For cross-midnight sessions, if we're in the post-midnight
+        # portion, the session started on the previous calendar day.
+        if self._crosses_midnight and now_t < self._entry_start_t:
+            session_date = now - _td(days=1)
+            date_str = session_date.strftime("%Y%m%d")
+        else:
+            date_str = now.strftime("%Y%m%d")
+
+        self._current_date = date_str
+
+        # Check exclusions
+        dummy_bar = Bar(timestamp=now, open=0.0, high=0.0, low=0.0, close=0.0, volume=0)
+        if self._is_excluded_day(dummy_bar):
+            self._state = LSIState.FLAT
+            self._notify_state_change()
+            logger.info("[%s] Session excluded for %s, set FLAT", self.name, date_str)
+            return True
+
+        # Feed historical bars through swing tracker to warm pivot levels.
+        # Filter to session-relevant bars (today + yesterday for cross-midnight).
+        if self._crosses_midnight:
+            valid_dates = {date_str, (datetime.strptime(date_str, "%Y%m%d") + _td(days=1)).strftime("%Y%m%d")}
+            session_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") in valid_dates]
+        else:
+            session_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") == date_str]
+
+        for b in session_bars:
+            self._swings.on_bar(b)
+        self._bar_count = len(session_bars)
+        self._bars = session_bars[-3:] if session_bars else []
+
+        # Determine state based on current time
+        if self._in_entry(now_t):
+            self._state = LSIState.WAITING_FOR_SWEEP
+        elif self._in_flat(dummy_bar):
+            self._state = LSIState.FLAT
+        else:
+            # Between entry_end and flat_start, or outside session entirely
+            # Check if we're in the post-entry / pre-flat zone (session active but no new entries)
+            self._state = LSIState.FLAT
+
+        logger.info(
+            "[%s] Session recovered: state=%s date=%s bars_fed=%d "
+            "swing_high=%.2f swing_low=%.2f",
+            self.name, self._state.value, date_str, len(session_bars),
+            self._swings.latest_swing_high, self._swings.latest_swing_low,
+        )
+        self._notify_state_change()
+        return self._state != LSIState.IDLE
+
+    # ------------------------------------------------------------------
+    # Pause guard
+    # ------------------------------------------------------------------
+
+    @property
+    def _should_send(self) -> bool:
+        """Whether this engine should send broker payloads."""
+        return not self.paused
 
     # ------------------------------------------------------------------
     # Logging
@@ -615,11 +695,12 @@ class LSIEngine:
                self._levels.tp1, self._levels.tp2, self._levels.qty),
         )
 
-        await self.broker.send_entry(
-            direction=dir_str,
-            qty=self._levels.qty,
-            ticker=self.exec_ticker,
-        )
+        if self._should_send:
+            await self.broker.send_entry(
+                direction=dir_str,
+                qty=self._levels.qty,
+                ticker=self.exec_ticker,
+            )
         self._notify_state_change()
 
     # ------------------------------------------------------------------
@@ -674,14 +755,16 @@ class LSIEngine:
                 self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f" % (dir_str, levels.tp1, levels.be))
-                    await self.broker.send_tp1_single(
-                        direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
+                    if self._should_send:
+                        await self.broker.send_tp1_single(
+                            direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
                 else:
                     self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f"
                                     % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
-                    await self.broker.send_tp1_multi(
-                        direction=dir_str, half_qty=levels.half_qty, be_price=levels.be,
-                        tp2=levels.tp2, ticker=self.exec_ticker)
+                    if self._should_send:
+                        await self.broker.send_tp1_multi(
+                            direction=dir_str, half_qty=levels.half_qty, be_price=levels.be,
+                            tp2=levels.tp2, ticker=self.exec_ticker)
                 self._notify_state_change()
                 return
 
@@ -708,7 +791,8 @@ class LSIEngine:
         levels = self._levels
         dir_str = "long" if (levels and levels.direction == 1) else "short"
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
-        await self.broker.send_flatten(ticker=self.exec_ticker)
+        if self._should_send:
+            await self.broker.send_flatten(ticker=self.exec_ticker)
         self._emit_trade_record(exit_type)
         self._state = LSIState.FLAT
         self._request_checkpoint()
@@ -741,7 +825,8 @@ class LSIEngine:
         # EOD flat
         if self._in_flat(tick):
             self._log_trade("EOD_FLAT", "dir=%s tick_time=%s resolution=1s" % (dir_str, tick.timestamp))
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = LSIState.FLAT
             self._request_checkpoint()
@@ -759,7 +844,8 @@ class LSIEngine:
 
             if sl_hit and tp1_touched:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f (1s ambiguous) resolution=1s" % (dir_str, levels.stop))
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -768,7 +854,8 @@ class LSIEngine:
 
             if sl_hit:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f resolution=1s" % (dir_str, levels.stop))
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -781,11 +868,13 @@ class LSIEngine:
                 self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f resolution=1s" % (dir_str, levels.tp1, levels.be))
-                    await self.broker.send_tp1_single(direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
+                    if self._should_send:
+                        await self.broker.send_tp1_single(direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
                 else:
                     self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f resolution=1s"
                                     % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
-                    await self.broker.send_tp1_multi(direction=dir_str, half_qty=levels.half_qty, be_price=levels.be, tp2=levels.tp2, ticker=self.exec_ticker)
+                    if self._should_send:
+                        await self.broker.send_tp1_multi(direction=dir_str, half_qty=levels.half_qty, be_price=levels.be, tp2=levels.tp2, ticker=self.exec_ticker)
                 self._notify_state_change()
                 return
 
@@ -793,7 +882,8 @@ class LSIEngine:
             tp2_hit = (is_long and tick.high >= levels.tp2) or (not is_long and tick.low <= levels.tp2)
             if tp2_hit:
                 self._log_trade("TP2_DIRECT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -807,7 +897,8 @@ class LSIEngine:
 
             if be_hit:
                 self._log_trade("BE_HIT", "dir=%s be=%.2f resolution=1s" % (dir_str, levels.be))
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -816,7 +907,8 @@ class LSIEngine:
 
             if tp2_hit:
                 self._log_trade("TP2_HIT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -854,4 +946,5 @@ class LSIEngine:
             "direction": levels.direction if levels else None,
             "qty": levels.qty if levels else None,
             "tp1_hit": self._tp1_hit,
+            "paused": self.paused,
         }

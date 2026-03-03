@@ -658,6 +658,55 @@ def create_app(state: DashboardState) -> FastAPI:
             "overrides": {},
         }
 
+    # ── Engine pause/resume endpoints ─────────────────────────────
+
+    @app.post("/api/engines/{session_name}/pause")
+    async def pause_engine(session_name: str, config: str | None = None):
+        """Pause a single engine leg. Sends cancel/flatten if mid-trade."""
+        engine = _find_engine(state, session_name, config)
+        if engine is None:
+            raise HTTPException(404, f"Engine '{session_name}' not found")
+        if engine.paused:
+            return {"session": session_name, "paused": True, "action": "already_paused"}
+
+        # Safe cleanup: cancel pending orders or flatten open positions
+        state_val = engine._state.value
+        action_taken = "none"
+
+        if state_val in ("armed_long", "armed_limit"):
+            await engine.broker.send_cancel(ticker=engine.exec_ticker)
+            action_taken = "cancelled"
+            logger.info("[%s] Pause: cancelled pending order", engine.name)
+        elif state_val in ("managing", "filled"):
+            await engine.broker.send_flatten(ticker=engine.exec_ticker)
+            action_taken = "flattened"
+            logger.info("[%s] Pause: flattened open position", engine.name)
+
+        engine.paused = True
+        logger.info("[%s] Engine paused (action=%s)", engine.name, action_taken)
+
+        # Trigger status broadcast so frontend updates immediately
+        state.on_state_change(engine.status_dict())
+
+        return {"session": session_name, "paused": True, "action": action_taken}
+
+    @app.post("/api/engines/{session_name}/resume")
+    async def resume_engine(session_name: str, config: str | None = None):
+        """Resume a paused engine leg."""
+        engine = _find_engine(state, session_name, config)
+        if engine is None:
+            raise HTTPException(404, f"Engine '{session_name}' not found")
+        if not engine.paused:
+            return {"session": session_name, "paused": False, "action": "already_running"}
+
+        engine.paused = False
+        logger.info("[%s] Engine resumed", engine.name)
+
+        # Trigger status broadcast
+        state.on_state_change(engine.status_dict())
+
+        return {"session": session_name, "paused": False}
+
     # ── WebSocket ───────────────────────────────────────────────────
 
     @app.websocket("/api/ws")
@@ -715,11 +764,12 @@ class WebhookPatchRequest(BaseModel):
 # Config helpers
 # ---------------------------------------------------------------------------
 
-def _find_engine(state: DashboardState, name: str):
-    """Find engine by session name (returns first match across configs)."""
+def _find_engine(state: DashboardState, name: str, config_name: str | None = None):
+    """Find engine by session name, optionally scoped to a config."""
     for e in state.all_engines:
         if e.name == name:
-            return e
+            if config_name is None or e.config_name == config_name:
+                return e
     return None
 
 

@@ -9,6 +9,8 @@ interface StatusPanelProps {
   loading: boolean;
   activeConfig: string;
   config: ConfigResponse | null;
+  onPause?: (sessionName: string, configName?: string) => Promise<void>;
+  onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
 
 /** Build a map from short session name (e.g. "NQ_NY") to normalized strategy type.
@@ -24,7 +26,7 @@ function buildStrategyLookup(config: ConfigResponse | null): Record<string, "con
   return map;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, config }: StatusPanelProps) {
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, config, onPause, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
 
   if (loading) {
@@ -57,7 +59,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {selectedEngines.map((engine) => (
-            <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} />
+            <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
           ))}
         </div>
       </div>
@@ -91,7 +93,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {groupEngines.map((engine) => (
-                <SessionCard key={`${configName}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} />
+                <SessionCard key={`${configName}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
               ))}
             </div>
           </div>

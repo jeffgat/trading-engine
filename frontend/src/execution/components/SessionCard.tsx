@@ -1,11 +1,25 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
-import { Badge } from "@/shared/ui/badge";
-import { STATE_COLORS, STATE_LABELS, CONFIG_COLORS } from "@/execution/lib/constants";
+import { CONFIG_COLORS, STATE_COLORS, STATE_LABELS } from "@/execution/lib/constants";
 import type { SessionStatus } from "@/execution/lib/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/shared/ui/alert-dialog";
+import { Badge } from "@/shared/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { useState } from "react";
 
 interface SessionCardProps {
   engine: SessionStatus;
   strategyType?: "continuation" | "lsi";
+  onPause?: (sessionName: string, configName?: string) => Promise<void>;
+  onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
 
 function PriceRow({ label, value }: { label: string; value: number | null }) {
@@ -20,8 +34,10 @@ function PriceRow({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-export function SessionCard({ engine, strategyType }: SessionCardProps) {
+export function SessionCard({ engine, strategyType, onPause, onResume }: SessionCardProps) {
+  const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
+  const isPaused = engine.paused ?? false;
   const stateColor =
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
   const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
@@ -34,10 +50,23 @@ export function SessionCard({ engine, strategyType }: SessionCardProps) {
         ? "Short"
         : null;
 
+  const handleToggle = async () => {
+    setSaving(true);
+    try {
+      if (isPaused) {
+        await onResume?.(engine.session, engine.config_name);
+      } else {
+        await onPause?.(engine.session, engine.config_name);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <Card className="border-border bg-bg-card">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <div className="flex items-center gap-2">
+    <Card className={`bg-bg-card flex flex-col ${isPaused ? "border-loss/80 opacity-60" : "border-border"}`}>
+      <CardHeader className="pb-2 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-base font-semibold">
             {engine.session}
           </CardTitle>
@@ -62,11 +91,18 @@ export function SessionCard({ engine, strategyType }: SessionCardProps) {
             </span>
           )}
         </div>
-        <Badge variant="outline" className={`border-0 ${stateColor}`}>
-          {stateLabel}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {isPaused && (
+            <Badge variant="outline" className="border-0 bg-loss/20 text-loss">
+              Paused
+            </Badge>
+          )}
+          <Badge variant="outline" className={`border-0 ${stateColor}`}>
+            {stateLabel}
+          </Badge>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex flex-col flex-1 gap-3">
         {/* Date + ATR */}
         <div className="flex justify-between text-xs">
           <span className="text-text-muted">
@@ -142,6 +178,46 @@ export function SessionCard({ engine, strategyType }: SessionCardProps) {
         {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
           <div className="text-center text-text-muted text-xs py-4">
             Waiting for session...
+          </div>
+        )}
+
+        {/* Pause/Resume button */}
+        {(onPause || onResume) && (
+          <div className="mt-auto flex justify-end">
+            {isPaused ? (
+              <button
+                onClick={handleToggle}
+                disabled={saving}
+                className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-profit/20 text-profit hover:bg-profit/30 border-profit/30"
+              >
+                {saving ? "..." : "Resume"}
+              </button>
+            ) : (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    disabled={saving}
+                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/20 text-loss hover:bg-loss/30 border-loss/30"
+                  >
+                    {saving ? "..." : "Pause"}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Pause {engine.session}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will stop the engine from taking new trades. Any open position will remain active.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleToggle}>
+                      Pause
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         )}
       </CardContent>

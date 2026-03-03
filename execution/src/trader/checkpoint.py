@@ -178,14 +178,21 @@ def serialize_orb_engine(engine: Any) -> dict:
         "fill_bar_idx": engine._fill_bar_idx,
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
+        "paused": engine.paused,
     }
 
 
 def restore_orb_engine(engine: Any, data: dict) -> bool:
     """Restore an ORBEngine's mutable state from checkpoint data.
 
-    Only restores states with financial exposure (ARMED_LONG, MANAGING).
-    Returns True if the engine was restored to an active state.
+    Restores all checkpointed states, then validates against the current
+    time to ensure the restored state is still appropriate:
+    - ARMED_LONG / MANAGING: restore as-is (financial exposure)
+    - SCANNING / ORB_BUILDING: check if entry/ORB window still open
+    - FLAT: restore as FLAT
+    - IDLE: skip (normal on_bar flow will handle it)
+
+    Returns True if the engine was restored to a non-IDLE state.
     """
     from .engine import State
 
@@ -196,14 +203,11 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
         logger.warning("[%s] Unknown checkpoint state '%s', skipping", engine.name, state_str)
         return False
 
-    if target_state not in (State.ARMED_LONG, State.MANAGING):
-        logger.info(
-            "[%s] Checkpoint state '%s' has no financial exposure, skipping",
-            engine.name, state_str,
-        )
+    if target_state == State.IDLE:
+        logger.debug("[%s] Checkpoint state is IDLE, skipping", engine.name)
         return False
 
-    engine._state = target_state
+    # Restore all mutable fields from checkpoint
     engine._current_date = data.get("current_date", "")
     engine._orb_high = data.get("orb_high", float("nan"))
     engine._orb_low = data.get("orb_low", float("nan"))
@@ -220,13 +224,69 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     engine._fill_timestamp = datetime.fromisoformat(fill_ts) if fill_ts else None
 
     engine._bars = [_deserialize_bar(b) for b in data.get("bars", [])]
+    engine.paused = data.get("paused", False)
+
+    # Time-validate: ensure the restored state is still appropriate
+    now = datetime.now(tz=ET)
+    now_t = now.time()
+    validated_state = _validate_orb_state(engine, target_state, now_t)
+    engine._state = validated_state
 
     logger.info(
-        "[%s] Restored from checkpoint: state=%s date=%s levels=%s tp1_hit=%s",
-        engine.name, state_str, engine._current_date,
-        bool(engine._levels), engine._tp1_hit,
+        "[%s] Restored from checkpoint: state=%s (checkpoint=%s) date=%s "
+        "orb=%.2f/%.2f levels=%s tp1_hit=%s paused=%s",
+        engine.name, validated_state.value, state_str, engine._current_date,
+        engine._orb_high, engine._orb_low,
+        bool(engine._levels), engine._tp1_hit, engine.paused,
     )
     return True
+
+
+def _validate_orb_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
+    """Validate a checkpoint state against the current time for ORBEngine.
+
+    If the checkpoint state is no longer valid (e.g. entry window closed),
+    return the appropriate adjusted state.
+    """
+    from .engine import State
+
+    # Financial exposure states — always trust the checkpoint
+    if checkpoint_state in (State.ARMED_LONG, State.MANAGING):
+        return checkpoint_state
+
+    # FLAT — keep as flat
+    if checkpoint_state == State.FLAT:
+        return State.FLAT
+
+    # SCANNING — valid only if entry window is still open
+    if checkpoint_state == State.SCANNING:
+        if engine._in_entry(now_t):
+            return State.SCANNING
+        logger.info(
+            "[%s] Checkpoint was SCANNING but entry window closed — setting FLAT",
+            engine.name,
+        )
+        return State.FLAT
+
+    # ORB_BUILDING — check if ORB window or entry window is still open
+    if checkpoint_state == State.ORB_BUILDING:
+        if engine._in_orb(now_t):
+            return State.ORB_BUILDING
+        # ORB window closed — advance based on time
+        if engine._in_entry(now_t):
+            # ORB data was already restored, advance to SCANNING
+            return State.SCANNING
+        logger.info(
+            "[%s] Checkpoint was ORB_BUILDING but session window closed — setting FLAT",
+            engine.name,
+        )
+        return State.FLAT
+
+    # FILLED — treat like MANAGING (transient state)
+    if checkpoint_state == State.FILLED:
+        return State.MANAGING
+
+    return checkpoint_state
 
 
 # ---------------------------------------------------------------------------
@@ -254,14 +314,22 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
         "swing_tracker": engine._swings.to_dict(),
+        "paused": engine.paused,
     }
 
 
 def restore_lsi_engine(engine: Any, data: dict) -> bool:
     """Restore an LSIEngine's mutable state from checkpoint data.
 
-    Only restores states with financial exposure (ARMED_LIMIT, MANAGING).
-    Returns True if the engine was restored to an active state.
+    Restores all checkpointed states, then validates against the current
+    time to ensure the restored state is still appropriate:
+    - ARMED_LIMIT / MANAGING: restore as-is (financial exposure)
+    - WAITING_FOR_SWEEP / WAITING_FOR_GAP / WAITING_FOR_INVERSION:
+      check if entry window still open
+    - FLAT: restore as FLAT
+    - IDLE: skip (normal on_bar flow will handle it)
+
+    Returns True if the engine was restored to a non-IDLE state.
     """
     from .lsi_engine import LSIState
 
@@ -272,14 +340,11 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
         logger.warning("[%s] Unknown checkpoint state '%s', skipping", engine.name, state_str)
         return False
 
-    if target_state not in (LSIState.ARMED_LIMIT, LSIState.MANAGING):
-        logger.info(
-            "[%s] Checkpoint state '%s' has no financial exposure, skipping",
-            engine.name, state_str,
-        )
+    if target_state == LSIState.IDLE:
+        logger.debug("[%s] Checkpoint state is IDLE, skipping", engine.name)
         return False
 
-    engine._state = target_state
+    # Restore all mutable fields from checkpoint
     engine._current_date = data.get("current_date", "")
     engine._daily_atr = data.get("daily_atr", 0.0)
     engine._bar_count = data.get("bar_count", 0)
@@ -303,12 +368,56 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     if swing_data:
         engine._swings.restore(swing_data)
 
+    engine.paused = data.get("paused", False)
+
+    # Time-validate: ensure the restored state is still appropriate
+    now = datetime.now(tz=ET)
+    now_t = now.time()
+    validated_state = _validate_lsi_state(engine, target_state, now_t)
+    engine._state = validated_state
+
     logger.info(
-        "[%s] Restored from checkpoint: state=%s date=%s levels=%s tp1_hit=%s",
-        engine.name, state_str, engine._current_date,
-        bool(engine._levels), engine._tp1_hit,
+        "[%s] Restored from checkpoint: state=%s (checkpoint=%s) date=%s "
+        "levels=%s tp1_hit=%s paused=%s",
+        engine.name, validated_state.value, state_str, engine._current_date,
+        bool(engine._levels), engine._tp1_hit, engine.paused,
     )
     return True
+
+
+def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
+    """Validate a checkpoint state against the current time for LSIEngine.
+
+    If the checkpoint state is no longer valid (e.g. entry window closed),
+    return the appropriate adjusted state.
+    """
+    from .lsi_engine import LSIState
+
+    # Financial exposure states — always trust the checkpoint
+    if checkpoint_state in (LSIState.ARMED_LIMIT, LSIState.MANAGING):
+        return checkpoint_state
+
+    # FLAT — keep as flat
+    if checkpoint_state == LSIState.FLAT:
+        return LSIState.FLAT
+
+    # Setup-discovery states — valid only if entry window still open
+    _discovery_states = (
+        LSIState.WAITING_FOR_SWEEP,
+        LSIState.WAITING_FOR_GAP,
+        LSIState.COLLECTING_GAPS,
+        LSIState.WAITING_FOR_INVERSION,
+    )
+    if checkpoint_state in _discovery_states:
+        if engine._in_entry(now_t):
+            return checkpoint_state
+        logger.info(
+            "[%s] Checkpoint was %s but entry window closed — setting FLAT",
+            engine.name, checkpoint_state.value,
+        )
+        return LSIState.FLAT
+
+    return checkpoint_state
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +522,7 @@ def restore_engines(
                 if restore_lsi_engine(engine, engine_data):
                     restored += 1
 
-    logger.info("Checkpoint recovery: %d engine(s) restored to active state", restored)
+    logger.info("Checkpoint recovery: %d engine(s) restored", restored)
     return restored
 
 

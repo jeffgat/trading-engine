@@ -860,7 +860,7 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             for engine in target_engines:
                 engine._daily_atr = atr
 
-    # recover current-day opening ranges from recent intraday history
+    # recover current-day opening ranges / session state from recent intraday history
     intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
     now_et = datetime.now(tz=ET)
     recovered = 0
@@ -869,8 +869,10 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         for engine in target_engines:
             if hasattr(engine, "recover_opening_range") and engine.recover_opening_range(bars, now_et):
                 recovered += 1
+            elif hasattr(engine, "recover_session_state") and engine.recover_session_state(bars, now_et):
+                recovered += 1
     logger.info(
-        "startup recovery complete: recovered_or=%d total_engines=%d",
+        "startup recovery complete: recovered=%d total_engines=%d",
         recovered, len(all_engines),
     )
 
@@ -879,11 +881,12 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
     if dashboard.trade_history:
         logger.info("Restored %d trade(s) from history file", len(dashboard.trade_history))
 
-    # Restore active trade state from checkpoint (ARMED/MANAGING)
+    # Restore engine state from checkpoint — overwrites time-based recovery
+    # with the actual last-known state (now handles all states, not just ARMED/MANAGING)
     checkpoint_restored = restore_engines(engines_by_config)
     if checkpoint_restored > 0:
         logger.info(
-            "Checkpoint recovery: %d engine(s) restored to active trade state",
+            "Checkpoint recovery: %d engine(s) restored from checkpoint",
             checkpoint_restored,
         )
 

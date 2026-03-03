@@ -228,6 +228,34 @@ export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void
     [],
   );
 
+  const pauseEngine = useCallback(
+    async (sessionName: string, configName?: string) => {
+      const params = configName ? `?config=${encodeURIComponent(configName)}` : "";
+      const r = await fetch(`/exec-api/engines/${sessionName}/pause${params}`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+      }
+    },
+    [],
+  );
+
+  const resumeEngine = useCallback(
+    async (sessionName: string, configName?: string) => {
+      const params = configName ? `?config=${encodeURIComponent(configName)}` : "";
+      const r = await fetch(`/exec-api/engines/${sessionName}/resume${params}`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+      }
+    },
+    [],
+  );
+
   const execConfigs: Record<string, ExecConfigMeta> = useMemo(() => {
     return config?.exec_configs ?? {};
   }, [config]);
@@ -236,5 +264,6 @@ export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void
     config, loading, saving, error,
     updateSession, resetSession, updateWebhooks, execConfigs,
     pauseWebhook, resumeWebhook, updateWebhookMultiplier, flattenWebhook,
+    pauseEngine, resumeEngine,
   };
 }

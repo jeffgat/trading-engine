@@ -214,6 +214,9 @@ class ORBEngine:
     # Execution config name (e.g. "FAST", "SLOW")
     config_name: str = ""
 
+    # Per-leg pause: when True, all broker.send_*() calls are suppressed
+    paused: bool = False
+
     # Optional callback for dashboard state change notifications
     on_state_change: Callable[[dict], None] | None = None
     # Optional callback for recording completed trades (G5 gate, history)
@@ -256,6 +259,11 @@ class ORBEngine:
         self._flat_start_t = _parse_time(self.flat_start)
         self._flat_end_t = _parse_time(self.flat_end)
         self._asset_tag = self._resolve_asset_tag()
+
+    @property
+    def _should_send(self) -> bool:
+        """Whether this engine should send broker payloads."""
+        return not self.paused
 
     def _resolve_asset_tag(self) -> str:
         """resolve canonical asset tag for trade logs."""
@@ -612,7 +620,8 @@ class ORBEngine:
             # If we were in a session and left RTH, cancel any pending
             if self._state == State.ARMED_LONG:
                 self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
-                await self.broker.send_cancel(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_cancel(ticker=self.exec_ticker)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -638,7 +647,7 @@ class ORBEngine:
                     self.name, self._current_date, date_str,
                     bar_time, self._state.value,
                 )
-                if self._state == State.ARMED_LONG:
+                if self._state == State.ARMED_LONG and self._should_send:
                     await self.broker.send_cancel(ticker=self.exec_ticker)
                 self._reset_day(date_str)
 
@@ -797,14 +806,15 @@ class ORBEngine:
                             ),
                         )
                         self._notify_state_change()
-                        await self.broker.send_entry(
-                            action="buy",
-                            qty=levels.qty,
-                            price=levels.entry,
-                            tp2=levels.tp2,
-                            stop=levels.stop,
-                            ticker=self.exec_ticker,
-                        )
+                        if self._should_send:
+                            await self.broker.send_entry(
+                                action="buy",
+                                qty=levels.qty,
+                                price=levels.entry,
+                                tp2=levels.tp2,
+                                stop=levels.stop,
+                                ticker=self.exec_ticker,
+                            )
                         return
                     else:
                         logger.debug(
@@ -871,14 +881,15 @@ class ORBEngine:
                         ),
                     )
                     self._notify_state_change()
-                    await self.broker.send_entry(
-                        action="sell",
-                        qty=levels.qty,
-                        price=levels.entry,
-                        tp2=levels.tp2,
-                        stop=levels.stop,
-                        ticker=self.exec_ticker,
-                    )
+                    if self._should_send:
+                        await self.broker.send_entry(
+                            action="sell",
+                            qty=levels.qty,
+                            price=levels.entry,
+                            tp2=levels.tp2,
+                            stop=levels.stop,
+                            ticker=self.exec_ticker,
+                        )
                     return
 
     async def _handle_armed(self, bar: Bar, bar_time: time) -> None:
@@ -895,7 +906,8 @@ class ORBEngine:
                 "CANCELLED_LIMITS",
                 "entry window expired entry=%.2f" % levels.entry,
             )
-            await self.broker.send_cancel(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -938,7 +950,8 @@ class ORBEngine:
                 "EOD_FLAT",
                 f"dir={direction_str} bar_time={bar.timestamp} resolution=5m",
             )
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
             self._request_checkpoint()
@@ -972,7 +985,8 @@ class ORBEngine:
                 "dir=%s stop=%.2f bar_time=%s resolution=5m"
                 % (direction_str, levels.stop, bar.timestamp),
             )
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("sl")
             self._state = State.FLAT
             self._request_checkpoint()
@@ -997,12 +1011,13 @@ class ORBEngine:
                     "dir=%s tp1=%.2f be=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp1, levels.be, bar.timestamp),
                 )
-                await self.broker.send_tp1_single(
-                    direction=direction_str,
-                    qty=levels.qty,
-                    be_price=levels.be,
-                    ticker=self.exec_ticker,
-                )
+                if self._should_send:
+                    await self.broker.send_tp1_single(
+                        direction=direction_str,
+                        qty=levels.qty,
+                        be_price=levels.be,
+                        ticker=self.exec_ticker,
+                    )
             else:
                 self._log_trade(
                     "TP1_PARTIAL",
@@ -1016,13 +1031,14 @@ class ORBEngine:
                         bar.timestamp,
                     ),
                 )
-                await self.broker.send_tp1_multi(
-                    direction=direction_str,
-                    half_qty=levels.half_qty,
-                    be_price=levels.be,
-                    tp2=levels.tp2,
-                    ticker=self.exec_ticker,
-                )
+                if self._should_send:
+                    await self.broker.send_tp1_multi(
+                        direction=direction_str,
+                        half_qty=levels.half_qty,
+                        be_price=levels.be,
+                        tp2=levels.tp2,
+                        ticker=self.exec_ticker,
+                    )
 
             self._notify_state_change()
             return
@@ -1041,7 +1057,8 @@ class ORBEngine:
                     "dir=%s be=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.be, bar.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1060,7 +1077,8 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1080,7 +1098,8 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1120,7 +1139,8 @@ class ORBEngine:
                 "CANCELLED_LIMITS",
                 "entry window expired (1s) entry=%.2f" % levels.entry,
             )
-            await self.broker.send_cancel(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1167,7 +1187,8 @@ class ORBEngine:
                 "EOD_FLAT",
                 f"dir={direction_str} tick_time={tick.timestamp} resolution=1s",
             )
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            if self._should_send:
+                await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
             self._request_checkpoint()
@@ -1194,7 +1215,8 @@ class ORBEngine:
                     "dir=%s stop=%.2f (1s ambiguous, pessimistic) tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1207,7 +1229,8 @@ class ORBEngine:
                     "dir=%s stop=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1224,12 +1247,13 @@ class ORBEngine:
                         "dir=%s tp1=%.2f be=%.2f tick_time=%s resolution=1s"
                         % (direction_str, levels.tp1, levels.be, tick.timestamp),
                     )
-                    await self.broker.send_tp1_single(
-                        direction=direction_str,
-                        qty=levels.qty,
-                        be_price=levels.be,
-                        ticker=self.exec_ticker,
-                    )
+                    if self._should_send:
+                        await self.broker.send_tp1_single(
+                            direction=direction_str,
+                            qty=levels.qty,
+                            be_price=levels.be,
+                            ticker=self.exec_ticker,
+                        )
                 else:
                     self._log_trade(
                         "TP1_PARTIAL",
@@ -1243,13 +1267,14 @@ class ORBEngine:
                             tick.timestamp,
                         ),
                     )
-                    await self.broker.send_tp1_multi(
-                        direction=direction_str,
-                        half_qty=levels.half_qty,
-                        be_price=levels.be,
-                        tp2=levels.tp2,
-                        ticker=self.exec_ticker,
-                    )
+                    if self._should_send:
+                        await self.broker.send_tp1_multi(
+                            direction=direction_str,
+                            half_qty=levels.half_qty,
+                            be_price=levels.be,
+                            tp2=levels.tp2,
+                            ticker=self.exec_ticker,
+                        )
                 self._notify_state_change()
                 return
 
@@ -1262,7 +1287,8 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1282,7 +1308,8 @@ class ORBEngine:
                     "dir=%s be=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.be, tick.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1295,7 +1322,8 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                if self._should_send:
+                    await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1338,4 +1366,5 @@ class ORBEngine:
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,
+            "paused": self.paused,
         }
