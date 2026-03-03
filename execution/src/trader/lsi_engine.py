@@ -1,15 +1,16 @@
 """LSI (Inverse Fair Value Gap) engine for live LSI reversal strategy.
 
 State machine:
-    IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP → COLLECTING_GAPS →
-    WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING → FLAT
+    IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP →
+    WAITING_FOR_INVERSION → MANAGING → FLAT
 
 Unlike ORBEngine (continuation FVG after ORB), this engine detects:
-    1. Liquidity sweep (KZ/PDH/PDL levels)
-    2. Opposite-direction FVG formation after sweep
-    3. Price inversion through the gap
-    4. Limit entry at gap edge
-    5. Position management (SL/TP1/TP2/BE/EOD)
+    1. Liquidity sweep of confirmed swing pivots
+    2. Opposite-direction FVG formation near sweep (before or after)
+    3. Price-close inversion through the gap
+    4. Entry at inversion bar close (matches backtester entry_mode="close")
+    5. Absolute-range stop (matches backtester stop_mode="absolute")
+    6. Position management (SL/TP1/TP2/BE/EOD)
 
 Implements the same on_bar() / on_tick() interface as ORBEngine.
 """
@@ -77,8 +78,8 @@ class LSIEngine:
         tp1_ratio: float = 0.3,
         min_gap_atr_pct: float = 5.0,
         min_stop_atr_pct: float = 0.05,
-        max_bars_after_sweep: int = 20,
-        max_inversion_bars: int = 10,
+        max_bars_after_sweep: int = 10,
+        fvg_window_left: int = 10,
         # Risk params
         risk_usd: float = 250.0,
         point_value: float = 2.0,
@@ -124,7 +125,7 @@ class LSIEngine:
         self.min_gap_atr_pct = min_gap_atr_pct
         self.min_stop_atr_pct = min_stop_atr_pct
         self.max_bars_after_sweep = max_bars_after_sweep
-        self.max_inversion_bars = max_inversion_bars
+        self.fvg_window_left = fvg_window_left
 
         # Risk
         self.risk_usd = risk_usd
@@ -153,18 +154,27 @@ class LSIEngine:
         self._daily_atr: float = 0.0
         self._bar_count: int = 0
 
-        # Bar history (last 3 for FVG detection)
+        # Bar history — keep enough for absolute stop computation
+        # (FVG bar through inversion bar can span ~30 bars)
         self._bars: list[Bar] = []
+        self._MAX_BAR_HISTORY = 50
 
         # Sweep + gap state
         self._active_sweep: SweepEvent | None = None
         self._active_gap: GapInfo | None = None
         self._sweep_bar_index: int = 0
+        # Recent FVGs awaiting a sweep (for fvg_window_left lookback)
+        # Each entry: (bar_index, GapInfo)
+        self._recent_fvgs: list[tuple[int, GapInfo]] = []
 
-        # Limit order state
-        self._limit_price: float = 0.0
-        self._limit_direction: int = 0
-        self._limit_stop: float = 0.0
+        # Entry state — inversion-bar-close entry (no limit order)
+        self._entry_price: float = 0.0
+        self._entry_direction: int = 0
+        self._entry_stop: float = 0.0
+
+        # Trade resolution (persists until next session reset)
+        self._exit_type: str | None = None
+        self._r_result: float | None = None
 
         # Position state
         self._levels: TradeLevels | None = None
@@ -270,7 +280,7 @@ class LSIEngine:
         for b in session_bars:
             self._swings.on_bar(b)
         self._bar_count = len(session_bars)
-        self._bars = session_bars[-3:] if session_bars else []
+        self._bars = session_bars[-self._MAX_BAR_HISTORY:] if session_bars else []
 
         # Determine state based on current time
         if self._in_entry(now_t):
@@ -318,6 +328,8 @@ class LSIEngine:
             self.on_state_change(self.status_dict())
 
     def _emit_trade_record(self, exit_type: str) -> None:
+        self._exit_type = exit_type
+        self._r_result = self._compute_r_result(exit_type)
         if self.on_trade_exit is None:
             return
         levels = self._levels
@@ -335,6 +347,25 @@ class LSIEngine:
             config_name=self.config_name,
         )
         self.on_trade_exit(record)
+
+    def _compute_r_result(self, exit_type: str) -> float:
+        """Compute theoretical R-multiple for a trade exit."""
+        levels = self._levels
+        is_single = levels.is_single_contract if levels else True
+        rr = self.rr
+        tp1r = self.tp1_ratio
+
+        if exit_type == "sl":
+            return -1.0
+        elif exit_type in ("tp1_be", "tp1_eod"):
+            return tp1r * rr if is_single else (tp1r * rr) / 2.0
+        elif exit_type == "tp1_tp2":
+            return rr if is_single else (tp1r * rr + rr) / 2.0
+        elif exit_type == "tp2_direct":
+            return rr
+        elif exit_type == "eod":
+            return 0.0
+        return 0.0
 
     # ------------------------------------------------------------------
     # FVG detection (3-candle pattern, no ORB filter)
@@ -384,13 +415,21 @@ class LSIEngine:
     # ------------------------------------------------------------------
 
     async def on_bar(self, bar: Bar, daily_atr: float) -> None:
-        """Process a 5m bar — runs all signal detection."""
+        """Process a 5m bar — runs all signal detection.
+
+        Mirrors the backtester's _extract_lsi_candidates logic:
+        - Tracks recent FVGs and sweeps in parallel
+        - FVGs formed before a sweep (within fvg_window_left) are promoted
+        - FVGs formed after a sweep (within max_bars_after_sweep) are promoted
+        - Entry at inversion-bar close with absolute-range stop
+        - No max_inversion_bars limit (waits until entry window closes)
+        """
         self._daily_atr = daily_atr
         self._bar_count += 1
 
-        # Store bar history (keep last 3)
+        # Store bar history (keep enough for absolute stop computation)
         self._bars.append(bar)
-        if len(self._bars) > 3:
+        if len(self._bars) > self._MAX_BAR_HISTORY:
             self._bars.pop(0)
 
         bar_date = bar.timestamp.strftime("%Y%m%d")
@@ -399,17 +438,19 @@ class LSIEngine:
         # New day reset
         if bar_date != self._current_date:
             if self._state == LSIState.MANAGING:
-                # Force flat on day change (shouldn't happen in normal flow)
                 await self._exit_position(bar, "eod")
             self._current_date = bar_date
             self._state = LSIState.IDLE
             self._active_sweep = None
             self._active_gap = None
+            self._recent_fvgs.clear()
             self._levels = None
             self._tp1_hit = False
             self._tp1_bar_count = -1
             self._fill_bar_count = -1
             self._fill_timestamp = None
+            self._exit_type = None
+            self._r_result = None
             self._request_checkpoint()
 
         # Feed swing tracker (pivot detection + sweep check)
@@ -430,22 +471,46 @@ class LSIEngine:
                 self._notify_state_change()
                 return
 
+            # Register any new FVG into the recent buffer (for lookback pairing)
+            found, is_bullish, gap = self._check_fvg(daily_atr)
+            if found and gap is not None:
+                self._recent_fvgs.append((self._bar_count, gap))
+
             # Check for sweep events
             if sweep is not None:
-                # For long_only: only accept long setups (low sweeps).
-                # Use continue-style logic: skip sweep but don't return so
-                # WAITING_FOR_GAP / WAITING_FOR_INVERSION blocks still run.
                 if not (self.long_only and sweep.direction != 1):
                     self._active_sweep = sweep
                     self._sweep_bar_index = self._bar_count
-                    self._state = LSIState.WAITING_FOR_GAP
-                    self._request_checkpoint()
                     self._log_trade(
                         "SWEEP_DETECTED",
                         "source=%s level=%.2f dir=%s bar_count=%d"
                         % (sweep.source, sweep.level, "long" if sweep.direction == 1 else "short", self._bar_count),
                     )
-                    self._notify_state_change()
+
+                    # Check if any recent FVG (within fvg_window_left) already qualifies
+                    promoted_gap = self._promote_recent_fvg(sweep)
+                    if promoted_gap is not None:
+                        self._active_gap = promoted_gap
+                        self._state = LSIState.WAITING_FOR_INVERSION
+                        self._request_checkpoint()
+                        self._log_trade(
+                            "GAP_DETECTED",
+                            "type=%s top=%.2f bottom=%.2f size=%.2f (pre-sweep)"
+                            % ("bearish" if not promoted_gap.is_bullish else "bullish",
+                               promoted_gap.top, promoted_gap.bottom,
+                               promoted_gap.top - promoted_gap.bottom),
+                        )
+                        self._notify_state_change()
+                    else:
+                        self._state = LSIState.WAITING_FOR_GAP
+                        self._request_checkpoint()
+                        self._notify_state_change()
+
+            # Prune stale FVGs from buffer
+            self._recent_fvgs = [
+                (idx, g) for idx, g in self._recent_fvgs
+                if self._bar_count - idx <= self.fvg_window_left + self.max_bars_after_sweep
+            ]
 
         if self._state == LSIState.WAITING_FOR_GAP:
             if not self._in_entry(bar_time):
@@ -466,10 +531,8 @@ class LSIEngine:
             # Look for opposite-direction FVG
             found, is_bullish, gap = self._check_fvg(daily_atr)
             if found and gap is not None:
-                sweep = self._active_sweep
-                # After low sweep (long setup): need bearish FVG
-                # After high sweep (short setup): need bullish FVG
-                need_bearish = sweep.direction == 1
+                sweep_dir = self._active_sweep.direction
+                need_bearish = sweep_dir == 1
                 if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
                     self._active_gap = gap
                     self._state = LSIState.WAITING_FOR_INVERSION
@@ -490,95 +553,74 @@ class LSIEngine:
                 return
 
             gap = self._active_gap
-            # Expire if inversion took too long
-            bars_since_gap = self._bar_count - gap.bar_index
-            if self.max_inversion_bars > 0 and bars_since_gap > self.max_inversion_bars:
-                self._log_trade("INVERSION_EXPIRED", "bars_since_gap=%d" % bars_since_gap)
-                self._state = LSIState.WAITING_FOR_SWEEP
-                self._active_sweep = None
-                self._active_gap = None
-                self._notify_state_change()
-                return
+            # No max_inversion_bars limit — backtest waits until entry window closes
 
             # Only check inversion on bars AFTER the gap formed
             if self._bar_count <= gap.bar_index:
                 return
 
-            sweep = self._active_sweep
-            # Price-close inversion
+            # Price-close inversion → immediate entry at bar close
             if gap.is_bullish and bar.close < gap.bottom:
-                # Bullish FVG inverted → SHORT setup
                 if not self.long_only:
-                    await self._place_limit_order(gap, direction=-1, daily_atr=daily_atr)
+                    await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
             elif not gap.is_bullish and bar.close > gap.top:
-                # Bearish FVG inverted → LONG setup
-                await self._place_limit_order(gap, direction=1, daily_atr=daily_atr)
-
-        if self._state == LSIState.ARMED_LIMIT:
-            if self._in_flat(bar):
-                self._log_trade("LIMIT_EXPIRED_EOD", "flat window reached")
-                self._state = LSIState.FLAT
-                self._request_checkpoint()
-                self._notify_state_change()
-                return
-
-            # Check limit fill on 5m bar
-            await self._check_limit_fill(bar, daily_atr)
+                await self._enter_at_close(bar, gap, direction=1, daily_atr=daily_atr)
 
         if self._state == LSIState.MANAGING:
             await self._handle_managing(bar, daily_atr)
 
     # ------------------------------------------------------------------
-    # Limit order placement
+    # FVG lookback promotion (backtest's "FVG before sweep" pairing)
     # ------------------------------------------------------------------
 
-    async def _place_limit_order(self, gap: GapInfo, direction: int, daily_atr: float) -> None:
-        """Place limit order at gap edge after inversion."""
-        if direction == 1:
-            # LONG: limit at gap bottom (bearish gap inverted upward)
-            self._limit_price = gap.bottom
-            self._limit_stop = gap.impulse_low
-        else:
-            # SHORT: limit at gap top (bullish gap inverted downward)
-            self._limit_price = gap.top
-            self._limit_stop = gap.impulse_high
+    def _promote_recent_fvg(self, sweep: SweepEvent) -> GapInfo | None:
+        """Check if any recently buffered FVG pairs with this sweep.
 
-        self._limit_direction = direction
-        self._state = LSIState.ARMED_LIMIT
-        self._request_checkpoint()
-        dir_str = "long" if direction == 1 else "short"
-        self._log_trade(
-            "LIMIT_PLACED",
-            "dir=%s limit=%.2f stop=%.2f gap_size=%.2f"
-            % (dir_str, self._limit_price, self._limit_stop, gap.top - gap.bottom),
-        )
-        self._notify_state_change()
+        Mirrors the backtester's phase C/D: when a sweep occurs, check
+        detected FVGs within fvg_window_left bars for opposite-direction match.
+        Returns the first qualifying GapInfo, or None.
+        """
+        need_bearish = sweep.direction == 1  # low sweep → need bearish FVG
+        for fvg_idx, gap in self._recent_fvgs:
+            bars_ago = self._bar_count - fvg_idx
+            if bars_ago > self.fvg_window_left:
+                continue
+            # Direction check: low sweep needs bearish FVG, high sweep needs bullish
+            if need_bearish and not gap.is_bullish:
+                return gap
+            if not need_bearish and gap.is_bullish:
+                return gap
+        return None
 
     # ------------------------------------------------------------------
-    # Limit fill check
+    # Inversion-bar-close entry (replaces limit order placement)
     # ------------------------------------------------------------------
 
-    async def _check_limit_fill(self, bar: Bar, daily_atr: float) -> None:
-        """Check if limit order is filled on this bar."""
-        direction = self._limit_direction
+    async def _enter_at_close(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
+        """Enter at inversion bar close with absolute-range stop.
+
+        Matches the backtester's default entry_mode="close" and stop_mode="absolute":
+        - Entry price = bar.close (the inversion candle's close)
+        - Stop = absolute min(low) or max(high) from FVG bar through inversion bar
+        """
+        entry = bar.close
         is_long = direction == 1
+        dir_str = "long" if is_long else "short"
 
-        # Long limit: fill when low <= limit_price
-        # Short limit: fill when high >= limit_price
-        filled = (is_long and bar.low <= self._limit_price) or \
-                 (not is_long and bar.high >= self._limit_price)
+        # Compute absolute-range stop (matching backtester's stop_mode="absolute")
+        # Find bars from FVG bar through current bar (inversion bar)
+        fvg_bar_offset = self._bar_count - gap.bar_index
+        if fvg_bar_offset >= len(self._bars):
+            fvg_bar_offset = len(self._bars) - 1
+        start_idx = max(0, len(self._bars) - 1 - fvg_bar_offset)
+        range_bars = self._bars[start_idx:]
 
-        if not filled:
-            return
-
-        # Determine entry price (handle gap-open slippage)
         if is_long:
-            entry = min(bar.open, self._limit_price) if bar.open < self._limit_price else self._limit_price
+            raw_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
         else:
-            entry = max(bar.open, self._limit_price) if bar.open > self._limit_price else self._limit_price
+            raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
 
-        # Compute stop with minimum distance
-        raw_stop = self._limit_stop
+        # Apply minimum stop distance
         min_stop_dist = daily_atr * self.min_stop_atr_pct
         if is_long:
             if entry - raw_stop < min_stop_dist:
@@ -587,40 +629,9 @@ class LSIEngine:
             if raw_stop - entry < min_stop_dist:
                 raw_stop = entry + min_stop_dist
 
-        gap = self._active_gap
-        gap_size = gap.top - gap.bottom if gap else 0.0
+        gap_size = gap.top - gap.bottom
 
-        # Use min_stop_pts = impulse-derived stop distance so compute_trade_levels
-        # can size qty correctly (stop_atr_pct=0.0 alone would give risk_pts=0 → None)
-        impulse_stop_dist = abs(entry - raw_stop)
-        levels = compute_trade_levels(
-            entry=entry,
-            direction=direction,
-            gap_size=gap_size,
-            daily_atr=daily_atr,
-            stop_atr_pct=0.0,  # not used — stop from impulse candle
-            min_stop_pts=impulse_stop_dist,
-            rr=self.rr,
-            tp1_ratio=self.tp1_ratio,
-            risk_usd=self.risk_usd,
-            point_value=self.point_value,
-            min_qty=self.min_qty,
-            qty_step=self.qty_step,
-            be_offset_ticks=self.be_offset_ticks,
-            min_tick=self.min_tick,
-            max_single_risk_usd=self.max_single_risk_usd,
-            qty_multiplier=self.qty_multiplier,
-        )
-
-        if levels is None:
-            self._log_trade("LIMIT_REJECTED", "qty below minimum")
-            self._state = LSIState.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
-            return
-
-        # Override stop with our computed stop (not ATR-based)
-        # We need to reconstruct TradeLevels with the correct stop
+        # Size the position
         risk_pts = abs(entry - raw_stop)
         tp1_dist = self.rr * risk_pts * self.tp1_ratio
         tp2_dist = self.rr * risk_pts
@@ -634,9 +645,10 @@ class LSIEngine:
             if single_risk <= self.max_single_risk_usd:
                 qty = self.min_qty
             else:
-                self._log_trade("LIMIT_REJECTED", "risk too high for 1 contract")
-                self._state = LSIState.FLAT
-                self._request_checkpoint()
+                self._log_trade("ENTRY_REJECTED", "risk too high for 1 contract: risk=%.2f" % single_risk)
+                self._state = LSIState.WAITING_FOR_SWEEP
+                self._active_sweep = None
+                self._active_gap = None
                 self._notify_state_change()
                 return
 
@@ -665,21 +677,8 @@ class LSIEngine:
             gap_size=gap_size,
         )
 
-        # Check same-bar stop hit (pessimistic)
-        sl_hit = (is_long and bar.low <= raw_stop) or (not is_long and bar.high >= raw_stop)
-        if sl_hit:
-            self._log_trade(
-                "SL_HIT",
-                "dir=%s (same-bar fill+stop) entry=%.2f stop=%.2f"
-                % ("long" if is_long else "short", entry, raw_stop),
-            )
-            self._emit_trade_record("sl")
-            self._state = LSIState.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
-            return
-
-        # Filled successfully
+        # Entry is at bar close — no same-bar stop check needed (backtest
+        # uses signal_bar = i - 1, meaning fill is checked on the NEXT bar)
         self._tp1_hit = False
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
@@ -687,12 +686,11 @@ class LSIEngine:
         self._state = LSIState.MANAGING
         self._request_checkpoint()
 
-        dir_str = "long" if is_long else "short"
         self._log_trade(
             "FILLED",
-            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f"
-            % (dir_str, self._levels.entry, self._levels.stop,
-               self._levels.tp1, self._levels.tp2, self._levels.qty),
+            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (inversion-bar-close)"
+            % (dir_str, entry, raw_stop,
+               self._levels.tp1, self._levels.tp2, qty),
         )
 
         if self._should_send:
@@ -805,10 +803,6 @@ class LSIEngine:
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
         """Process a 1s bar for fine-grained exit management."""
         self._daily_atr = daily_atr
-
-        if self._state == LSIState.ARMED_LIMIT:
-            await self._check_limit_fill(tick, daily_atr)
-            return
 
         if self._state != LSIState.MANAGING:
             return
@@ -946,5 +940,7 @@ class LSIEngine:
             "direction": levels.direction if levels else None,
             "qty": levels.qty if levels else None,
             "tp1_hit": self._tp1_hit,
+            "exit_type": self._exit_type,
+            "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "paused": self.paused,
         }

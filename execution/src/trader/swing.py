@@ -11,9 +11,8 @@ A confirmed swing high at bar j requires:
 Because we need n_right bars after j, the confirmation is known at bar
 i = j + n_right. The rolling window must hold n_left + 1 + n_right bars.
 
-Sweep detection uses >= / <= (not strict > / <) so tick-perfect touches
-count as sweeps, matching the backtester's liquidity_sweep.py spec and
-the Numba simulator's stop-fill logic.
+Sweep detection uses strict > / < to match the backtesting simulator's
+_extract_lsi_candidates logic (high > prev_sh, low < prev_sl).
 """
 
 from __future__ import annotations
@@ -156,13 +155,13 @@ class SwingTracker:
         """Check if bar sweeps the previous bar's swing level.
 
         Uses previous bar's level (1-bar shift) to avoid same-bar
-        lookahead. Uses >= / <= (not strict) so tick-perfect touches
-        count as sweeps.
+        lookahead. Uses strict > / < to match the backtester's
+        _extract_lsi_candidates sweep detection.
         """
         sweep = None
 
         # Low sweep of swing low → bullish setup (direction=+1)
-        if not math.isnan(self._prev_swing_low) and bar.low <= self._prev_swing_low:
+        if not math.isnan(self._prev_swing_low) and bar.low < self._prev_swing_low:
             sweep = SweepEvent(
                 source="swing_low",
                 level=self._prev_swing_low,
@@ -172,7 +171,7 @@ class SwingTracker:
 
         # High sweep of swing high → bearish setup (direction=-1)
         if not self.long_only:
-            if not math.isnan(self._prev_swing_high) and bar.high >= self._prev_swing_high:
+            if not math.isnan(self._prev_swing_high) and bar.high > self._prev_swing_high:
                 # Low sweep takes priority (same as old tracker preferring kz_low)
                 if sweep is None:
                     sweep = SweepEvent(
@@ -185,14 +184,18 @@ class SwingTracker:
         return sweep
 
     def _on_new_day(self, new_date: str) -> None:
-        """Reset state for new trading day."""
+        """Update date tracking for new trading day.
+
+        Swing levels are NOT reset — the backtester's vectorized ffill()
+        carries swing levels across day boundaries, so the live engine
+        must preserve them as well.  Only the rolling window is cleared
+        so pivot detection restarts cleanly.
+        """
         self._current_date = new_date
         self._highs.clear()
         self._lows.clear()
-        self._latest_swing_high = float("nan")
-        self._latest_swing_low = float("nan")
-        self._prev_swing_high = float("nan")
-        self._prev_swing_low = float("nan")
+        # NOTE: _latest_swing_high/low and _prev_swing_high/low are
+        # intentionally preserved across days to match the backtester.
 
     def reset(self) -> None:
         """Full reset (e.g. on service restart)."""

@@ -34,7 +34,7 @@ def client_and_captured():
     Each _post() call appends the payload to captured_list.
     No real HTTP is made.
     """
-    c = TradersPostClient("http://fake-webhook.test/hook", ticker="MNQ", dry_run=True)
+    c = TradersPostClient("http://fake-webhook.test/hook", ticker="MNQ")
     captured: list[dict] = []
 
     async def capture(payload: dict) -> WebhookResult:
@@ -269,17 +269,26 @@ class TestTickerResolution:
 
 class TestDryRun:
     async def test_dry_run_returns_status_none(self):
-        client = TradersPostClient("http://x", ticker="MNQ", dry_run=True)
+        client = TradersPostClient("", ticker="MNQ")
         result = await client._post({"ticker": "MNQ", "action": "exit"})
         assert result.status is None
         assert result.dry_run is True
 
     async def test_dry_run_no_http(self):
-        """Confirm no real HTTP connection is attempted in dry_run mode."""
-        client = TradersPostClient("http://should-not-be-called.test/hook", ticker="MNQ", dry_run=True)
-        # If this makes real HTTP, it would fail; dry_run prevents it
+        """Confirm no real HTTP connection is attempted when URL is empty."""
+        client = TradersPostClient("", ticker="MNQ")
         result = await client.send_flatten()
         assert result.status is None
+
+    async def test_dry_run_auto_derived_from_empty_url(self):
+        """Empty URL auto-derives dry_run=True."""
+        client = TradersPostClient("", ticker="MNQ")
+        assert client.dry_run is True
+
+    async def test_live_auto_derived_from_real_url(self):
+        """Real URL auto-derives dry_run=False."""
+        client = TradersPostClient("http://real.test/hook", ticker="MNQ")
+        assert client.dry_run is False
 
 
 # =============================================================================
@@ -288,7 +297,7 @@ class TestDryRun:
 
 class TestLiveMode:
     async def test_live_200_returns_status(self):
-        client = TradersPostClient("http://fake/hook", ticker="MNQ", dry_run=False)
+        client = TradersPostClient("http://fake/hook", ticker="MNQ")
         with aioresponses() as m:
             m.post("http://fake/hook", status=200, payload={"ok": True})
             result = await client._post({"ticker": "MNQ", "action": "exit"})
@@ -298,7 +307,7 @@ class TestLiveMode:
 
     async def test_http_error_no_raise(self):
         """400 response must NOT raise — return result with status=400."""
-        client = TradersPostClient("http://fake/hook", ticker="MNQ", dry_run=False)
+        client = TradersPostClient("http://fake/hook", ticker="MNQ")
         with aioresponses() as m:
             m.post("http://fake/hook", status=400, payload={"error": "bad"})
             result = await client._post({"action": "exit"})
@@ -308,7 +317,7 @@ class TestLiveMode:
     async def test_connection_error_no_raise(self):
         """Network exception must NOT raise — return result with status=None."""
         import aiohttp
-        client = TradersPostClient("http://fake/hook", ticker="MNQ", dry_run=False)
+        client = TradersPostClient("http://fake/hook", ticker="MNQ")
         with aioresponses() as m:
             m.post("http://fake/hook", exception=aiohttp.ClientConnectionError())
             result = await client._post({"action": "exit"})

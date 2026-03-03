@@ -81,15 +81,12 @@ For a fresh droplet, see `deploy/setup.sh` and `deploy/install-service.sh`.
 ## Running Locally
 
 ```bash
-cd execution/python
+cd execution
 
-# Dry-run (default — logs webhooks but doesn't send)
+# Run (configs with webhooks send live; others are dry-run)
 uv run orb-trader
 
-# Live mode (sends real webhooks)
-uv run orb-trader --live
-
-# Replay historical data
+# Replay historical data (always dry-run)
 uv run orb-trader --replay /path/to/NQ_5m.csv --start 2025-01-01
 
 # Custom config
@@ -129,4 +126,4 @@ Eastern Time automatically handles EST/EDT transitions (UTC-5 in winter, UTC-4 i
 - **Dual-resolution bars**: 5m for signals (ORB, FVG), 1s for fill/exit precision
 - **OCO simulation**: TradersPost doesn't have native OCO — the broker uses `cancel: true/false` sequencing to maintain BE stop + TP2 limit simultaneously
 - **Idempotent flatten**: `{"action": "exit"}` is safe to send redundantly — TradersPost treats it as a no-op if no position exists
-- **Dry-run default**: All webhooks log only unless `--live` is explicitly passed
+- **Auto-derived dry-run**: Each execution config is live if it has webhooks, dry-run if it doesn't — no global flag needed

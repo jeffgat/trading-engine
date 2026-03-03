@@ -304,9 +304,9 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "active_sweep": _serialize_sweep(engine._active_sweep),
         "active_gap": _serialize_gap(engine._active_gap),
         "sweep_bar_index": engine._sweep_bar_index,
-        "limit_price": engine._limit_price,
-        "limit_direction": engine._limit_direction,
-        "limit_stop": engine._limit_stop,
+        "entry_price": engine._entry_price,
+        "entry_direction": engine._entry_direction,
+        "entry_stop": engine._entry_stop,
         "levels": _serialize_levels(engine._levels),
         "tp1_hit": engine._tp1_hit,
         "tp1_bar_count": engine._tp1_bar_count,
@@ -323,7 +323,8 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
 
     Restores all checkpointed states, then validates against the current
     time to ensure the restored state is still appropriate:
-    - ARMED_LIMIT / MANAGING: restore as-is (financial exposure)
+    - MANAGING: restore as-is (financial exposure)
+    - ARMED_LIMIT: restore as MANAGING (legacy checkpoint compat)
     - WAITING_FOR_SWEEP / WAITING_FOR_GAP / WAITING_FOR_INVERSION:
       check if entry window still open
     - FLAT: restore as FLAT
@@ -351,9 +352,10 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     engine._active_sweep = _deserialize_sweep(data.get("active_sweep"))
     engine._active_gap = _deserialize_gap(data.get("active_gap"))
     engine._sweep_bar_index = data.get("sweep_bar_index", 0)
-    engine._limit_price = data.get("limit_price", 0.0)
-    engine._limit_direction = data.get("limit_direction", 0)
-    engine._limit_stop = data.get("limit_stop", 0.0)
+    # Backward compat: old checkpoints have limit_price/direction/stop, new have entry_*
+    engine._entry_price = data.get("entry_price", data.get("limit_price", 0.0))
+    engine._entry_direction = data.get("entry_direction", data.get("limit_direction", 0))
+    engine._entry_stop = data.get("entry_stop", data.get("limit_stop", 0.0))
     engine._levels = _deserialize_levels(data.get("levels"))
     engine._tp1_hit = data.get("tp1_hit", False)
     engine._tp1_bar_count = data.get("tp1_bar_count", -1)

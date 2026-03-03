@@ -309,7 +309,9 @@ class TestORBEngineCheckpoint:
         assert result is False
         assert new_engine._state == State.IDLE
 
-    async def test_scanning_not_restored(self):
+    async def test_scanning_not_restored_outside_entry(self):
+        """SCANNING is downgraded to FLAT when entry window is closed."""
+        from unittest.mock import patch
         broker = _mock_broker()
         engine = _make_orb_engine(broker)
         await advance_to_scanning(engine)
@@ -317,8 +319,14 @@ class TestORBEngineCheckpoint:
 
         data = serialize_orb_engine(engine)
         new_engine = _make_orb_engine(_mock_broker())
-        result = restore_orb_engine(new_engine, data)
-        assert result is False
+        # Mock time to be outside entry window (e.g. 23:00 ET)
+        fake_now = datetime(2026, 3, 3, 23, 0, tzinfo=ET)
+        with patch("trader.checkpoint.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            result = restore_orb_engine(new_engine, data)
+        assert result is True  # restore succeeds (state is FLAT, not IDLE)
+        assert new_engine._state == State.FLAT
 
     def test_unknown_state_not_restored(self):
         data = {"state": "nonexistent_state"}
@@ -344,13 +352,13 @@ class TestLSIEngineCheckpoint:
         broker = _mock_broker()
         engine = _make_lsi_engine(broker)
 
-        # Manually set state to ARMED_LIMIT
+        # Manually set state to ARMED_LIMIT (legacy state, kept for checkpoint compat)
         engine._state = LSIState.ARMED_LIMIT
         engine._current_date = "20260302"
         engine._daily_atr = 300.0
-        engine._limit_price = 19450.0
-        engine._limit_direction = 1
-        engine._limit_stop = 19430.0
+        engine._entry_price = 19450.0
+        engine._entry_direction = 1
+        engine._entry_stop = 19430.0
         engine._active_sweep = SweepEvent("swing_low", 19420.0, 1, 12)
         engine._active_gap = GapInfo(19450.0, 19435.0, False, 19460.0, 19430.0, 16)
 
@@ -360,7 +368,7 @@ class TestLSIEngineCheckpoint:
 
         assert result is True
         assert new_engine._state == LSIState.ARMED_LIMIT
-        assert new_engine._limit_price == 19450.0
+        assert new_engine._entry_price == 19450.0
         assert new_engine._active_sweep is not None
         assert new_engine._active_sweep.source == "swing_low"
         assert new_engine._active_gap is not None
@@ -388,15 +396,23 @@ class TestLSIEngineCheckpoint:
         assert new_engine._levels.entry == 19540.0
         assert new_engine._fill_bar_count == 15
 
-    def test_waiting_for_sweep_not_restored(self):
+    def test_waiting_for_sweep_not_restored_outside_entry(self):
+        """WAITING_FOR_SWEEP is downgraded to FLAT when entry window is closed."""
+        from unittest.mock import patch
         broker = _mock_broker()
         engine = _make_lsi_engine(broker)
         engine._state = LSIState.WAITING_FOR_SWEEP
 
         data = serialize_lsi_engine(engine)
         new_engine = _make_lsi_engine(_mock_broker())
-        result = restore_lsi_engine(new_engine, data)
-        assert result is False
+        # Mock time to be outside entry window (e.g. 23:00 ET)
+        fake_now = datetime(2026, 3, 3, 23, 0, tzinfo=ET)
+        with patch("trader.checkpoint.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            result = restore_lsi_engine(new_engine, data)
+        assert result is True  # restore succeeds (state is FLAT, not IDLE)
+        assert new_engine._state == LSIState.FLAT
 
 
 # =============================================================================

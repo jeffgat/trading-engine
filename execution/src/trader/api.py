@@ -209,6 +209,37 @@ def parse_main_log_line(line: str) -> dict | None:
     }
 
 
+def parse_webhook_log_line(line: str) -> dict | None:
+    """Parse a webhook log line into a structured dict.
+
+    Format: YYYY-MM-DD HH:MM:SS | CONFIG[ACCOUNT] | STATUS | HTTP_CODE | LATENCYms | PAYLOAD
+    DRY-RUN: YYYY-MM-DD HH:MM:SS | CONFIG[ACCOUNT] | DRY-RUN | LATENCYms | PAYLOAD
+    """
+    line = line.strip()
+    if not line:
+        return None
+
+    parts = [p.strip() for p in line.split(" | ", maxsplit=5)]
+    if len(parts) < 4:
+        return None
+
+    result: dict = {
+        "timestamp": parts[0],
+        "account": parts[1],
+        "status": parts[2],  # OK, FAILED, DRY-RUN, ERROR
+    }
+
+    if parts[2] == "DRY-RUN":
+        result["latency"] = parts[3] if len(parts) > 3 else ""
+        result["payload"] = parts[4] if len(parts) > 4 else ""
+    else:
+        result["http_code"] = parts[3] if len(parts) > 3 else ""
+        result["latency"] = parts[4] if len(parts) > 4 else ""
+        result["payload"] = parts[5] if len(parts) > 5 else ""
+
+    return result
+
+
 def _read_log_lines(
     path: Path,
     limit: int = 50,
@@ -284,9 +315,10 @@ class LogTailer:
         """Poll log files forever, broadcasting new lines."""
         trade_log = LOG_DIR / "trades.log"
         main_log = LOG_DIR / "trader.log"
+        webhook_log = LOG_DIR / "webhooks.log"
 
         # Seek to end of existing files
-        for path in [trade_log, main_log]:
+        for path in [trade_log, main_log, webhook_log]:
             if path.exists():
                 self._positions[str(path)] = path.stat().st_size
                 self._inodes[str(path)] = path.stat().st_ino
@@ -299,6 +331,7 @@ class LogTailer:
 
             await self._tail_file(trade_log, "trade_log", parse_trade_log_line)
             await self._tail_file(main_log, "log", parse_main_log_line)
+            await self._tail_file(webhook_log, "webhook_log", parse_webhook_log_line)
 
     async def _tail_file(self, path: Path, msg_type: str, parser) -> None:
         """Read new lines from a log file and broadcast."""
@@ -417,6 +450,22 @@ def create_app(state: DashboardState) -> FastAPI:
             search=search,
             level=level,
             parser=parse_main_log_line,
+        )
+        return {"entries": entries, "total": total, "limit": limit, "offset": offset}
+
+    @app.get("/api/logs/webhooks")
+    async def get_webhook_logs(
+        limit: int = Query(50, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        search: str = Query(""),
+        account: str = Query("", description="Filter by account/config name"),
+    ):
+        entries, total = _read_log_lines(
+            LOG_DIR / "webhooks.log",
+            limit=limit,
+            offset=offset,
+            search=search if not account else account,
+            parser=parse_webhook_log_line,
         )
         return {"entries": entries, "total": total, "limit": limit, "offset": offset}
 
@@ -868,7 +917,7 @@ def _session_info(engine) -> dict:
             "min_gap_atr_pct": engine.min_gap_atr_pct,
             "min_stop_atr_pct": engine.min_stop_atr_pct,
             "max_bars_after_sweep": engine.max_bars_after_sweep,
-            "max_inversion_bars": engine.max_inversion_bars,
+            "fvg_window_left": engine.fvg_window_left,
             "risk_usd": engine.risk_usd,
             "point_value": engine.point_value,
             "min_qty": engine.min_qty,

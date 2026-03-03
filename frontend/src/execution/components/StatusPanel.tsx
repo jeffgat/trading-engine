@@ -40,7 +40,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
   if (engines.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
-        No session engines running
+        No strategies running
       </div>
     );
   }
@@ -88,7 +88,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
                 {configName}
               </span>
               <span className="text-xs text-text-muted">
-                {groupEngines.length} engine{groupEngines.length !== 1 ? "s" : ""}
+                {groupEngines.length} strateg{groupEngines.length !== 1 ? "ies" : "y"}
               </span>
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

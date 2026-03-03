@@ -8,22 +8,18 @@ Modules
 Module	Purpose
 feed.py	- DataBento live streaming + 1m→5m aggregation + incremental daily ATR (Wilder's). Also has ReplayFeed for historical CSV replay testing.
 engine.py	- Per-session state machine: IDLE → ORB_BUILDING → SCANNING → ARMED → FILLED → MANAGING → FLAT. Handles FVG detection, fill inference, TP1/TP2/SL/BE/EOD management.
-broker.py	- Async TradersPost webhook client. All 7 JSON payload formats match HEAD_prod_nq_ny_asia.pine exactly. Dry-run mode logs without sending.
+broker.py	- Async TradersPost webhook client. All 7 JSON payload formats match HEAD_prod_nq_ny_asia.pine exactly. Live/dry-run auto-derived from webhook URL.
 sizing.py	- Position sizing + trade level computation (entry, stop, TP1, TP2, BE, qty). Identical math to Pine Script.
-main.py	- CLI entry point. Self-contained production configs (no backtester import needed). Supports --live, --replay, --config.
-logging_config.py	- Structured logging to console + rotating files. Separate trades.log for audit trail.
+main.py	- CLI entry point. Self-contained production configs (no backtester import needed). Supports --replay, --config.
+logging_config.py	- Structured logging to console + rotating files. Separate trades.log, webhooks.log for audit trail.
 
 Usage
 # Install dependencies
 cd execution && uv sync
 
-# Dry-run (logs webhooks, doesn't send)
-uv run orb-trader
-
-# Live mode
+# Run (configs with webhooks send live; others are dry-run)
 export DATABENTO_API_KEY=db-xxxxx
-export TRADERSPOST_WEBHOOK_URL=https://traderspost.io/api/v1/webhook/xxxxx
-uv run orb-trader --live
+uv run orb-trader
 
 # Replay historical data for reconciliation
 uv run orb-trader --replay ../python/data/raw/NQ_5m.csv --start 2025-01-01

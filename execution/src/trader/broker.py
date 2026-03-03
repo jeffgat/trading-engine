@@ -1,7 +1,8 @@
 """TradersPost webhook client.
 
 Sends JSON payloads matching the exact format from HEAD_prod_nq_ny_asia.pine.
-Supports dry-run mode for testing without hitting the real endpoint.
+Dry-run mode is auto-derived from the webhook URL: if no URL is configured
+(or the URL contains "dry-run"), the broker logs payloads without sending.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 import aiohttp
 
 logger = logging.getLogger(__name__)
+webhook_logger = logging.getLogger("trader.webhooks")
 
 
 @dataclass
@@ -30,19 +32,20 @@ class TradersPostClient:
     """Async HTTP client for TradersPost webhooks.
 
     All payload formats match HEAD_prod_nq_ny_asia.pine exactly.
+    Dry-run mode is derived automatically: a broker is live only if it
+    has a real webhook URL.
     """
 
     def __init__(
         self,
         webhook_url: str,
         ticker: str = "MNQ",
-        dry_run: bool = True,
         timeout_s: float = 10.0,
         config_name: str = "",
     ) -> None:
         self.webhook_url = webhook_url
         self.ticker = ticker
-        self.dry_run = dry_run
+        self.dry_run = not webhook_url or "dry-run" in webhook_url
         self.config_name = config_name
         self.timeout = aiohttp.ClientTimeout(total=timeout_s)
         self._session: aiohttp.ClientSession | None = None
@@ -65,10 +68,11 @@ class TradersPostClient:
     async def _post(self, payload: dict) -> WebhookResult:
         """Send a single webhook POST. Logs payload in both live and dry-run."""
         t0 = time.monotonic()
+        tag = self.config_name or "DEFAULT"
 
         if self.dry_run:
             latency = (time.monotonic() - t0) * 1000
-            logger.info("[DRY-RUN] [%s] webhook: %s", self.config_name or "DEFAULT", payload)
+            webhook_logger.info("%s | DRY-RUN | 0.0ms | %s", tag, payload)
             return WebhookResult(payload=payload, status=None, latency_ms=latency, dry_run=True)
 
         session = await self._ensure_session()
@@ -77,19 +81,21 @@ class TradersPostClient:
                 latency = (time.monotonic() - t0) * 1000
                 body = await resp.text()
                 if resp.status >= 400:
-                    logger.error(
-                        "Webhook FAILED (%d) %.1fms: %s → %s",
-                        resp.status, latency, payload, body,
+                    webhook_logger.error(
+                        "%s | FAILED | %d | %.1fms | %s | %s",
+                        tag, resp.status, latency, payload, body,
                     )
                 else:
-                    logger.info(
-                        "Webhook OK (%d) %.1fms: %s",
-                        resp.status, latency, payload,
+                    webhook_logger.info(
+                        "%s | OK | %d | %.1fms | %s",
+                        tag, resp.status, latency, payload,
                     )
                 return WebhookResult(payload=payload, status=resp.status, latency_ms=latency, dry_run=False)
         except Exception:
             latency = (time.monotonic() - t0) * 1000
-            logger.exception("Webhook ERROR %.1fms: %s", latency, payload)
+            webhook_logger.exception(
+                "%s | ERROR | %.1fms | %s", tag, latency, payload,
+            )
             return WebhookResult(payload=payload, status=None, latency_ms=latency, dry_run=False)
 
     # ------------------------------------------------------------------

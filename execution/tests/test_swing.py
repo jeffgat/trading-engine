@@ -4,8 +4,8 @@ Covers:
 - Pivot detection (confirmed after n_right bars, strict comparison)
 - Forward-fill (latest swing level persists until replaced)
 - 1-bar shift (sweep uses previous bar's level)
-- Sweep detection (>= / <= semantics, tick-perfect touches count)
-- Day reset (new day clears pivot history and swing levels)
+- Sweep detection (strict > / < semantics, matching backtester)
+- Day reset (rolling window clears, swing levels persist across days)
 - Long-only mode (high sweeps ignored)
 - Serialization round-trip
 """
@@ -258,16 +258,13 @@ class TestSweepDetection:
         # Feed one more bar so the confirmed level is in _prev_swing_low
         tracker.on_bar(make_bar("2025-01-15 10:05", h=level + 15, l=level + 8))
 
-    def test_tick_perfect_touch_counts_as_sweep(self):
-        """bar.low == swing_low triggers a sweep (<= not strict <)."""
+    def test_tick_perfect_touch_does_not_sweep(self):
+        """bar.low == swing_low does NOT trigger a sweep (strict <, matching backtester)."""
         tracker = SwingTracker(n_left=3, n_right=3)
         self._build_confirmed_swing_low(tracker, level=90.0)
 
         sweep = tracker.on_bar(make_bar("2025-01-15 10:10", h=100, l=90.0))
-        assert sweep is not None
-        assert sweep.level == 90.0
-        assert sweep.direction == 1
-        assert sweep.source == "swing_low"
+        assert sweep is None
 
     def test_no_sweep_when_above_level(self):
         """bar.low > swing_low → no sweep."""
@@ -334,8 +331,9 @@ class TestLongOnly:
 # =============================================================================
 
 class TestDayReset:
-    def test_new_day_clears_swing_levels(self):
-        """Swing levels are cleared on day boundary."""
+    def test_new_day_preserves_swing_levels(self):
+        """Swing levels persist across day boundaries (matching backtester ffill).
+        Only the rolling window is cleared on a new day."""
         tracker = SwingTracker(n_left=3, n_right=3)
 
         # Confirm a pivot on day 1
@@ -352,11 +350,12 @@ class TestDayReset:
             tracker.on_bar(bar)
         assert tracker.latest_swing_low == 90.0
 
-        # New day bar → should reset
-        import math
+        # New day bar → swing levels preserved, rolling window cleared
         tracker.on_bar(make_bar("2025-01-16 09:30", h=105, l=100))
-        assert math.isnan(tracker.latest_swing_low)
-        assert math.isnan(tracker.latest_swing_high)
+        assert tracker.latest_swing_low == 90.0
+        # Rolling window should be cleared (only the new bar is in it)
+        assert len(tracker._highs) == 1
+        assert len(tracker._lows) == 1
 
 
 # =============================================================================

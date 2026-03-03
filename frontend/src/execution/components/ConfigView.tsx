@@ -366,7 +366,7 @@ function SessionConfigCard({
         min_gap_atr_pct: cfg.min_gap_atr_pct,
         min_stop_atr_pct: cfg.min_stop_atr_pct,
         max_bars_after_sweep: cfg.max_bars_after_sweep,
-        max_inversion_bars: cfg.max_inversion_bars,
+        fvg_window_left: cfg.fvg_window_left,
         qty_multiplier: cfg.qty_multiplier,
         risk_usd: cfg.risk_usd,
         min_qty: cfg.min_qty,
@@ -413,7 +413,7 @@ function SessionConfigCard({
   const numericFields = isLsi
     ? [
         "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_atr_pct",
-        "max_bars_after_sweep", "max_inversion_bars", "qty_multiplier",
+        "max_bars_after_sweep", "fvg_window_left", "qty_multiplier",
         "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
       ]
     : [
@@ -598,10 +598,10 @@ function SessionConfigCard({
                 />
                 <EditableField
                   label="Max Inversion Bars"
-                  value={String(draft.max_inversion_bars ?? "")}
-                  onChange={(v) => setField("max_inversion_bars", v)}
+                  value={String(draft.fvg_window_left ?? "")}
+                  onChange={(v) => setField("fvg_window_left", v)}
                   type="number"
-                  overridden={isOverridden("max_inversion_bars")}
+                  overridden={isOverridden("fvg_window_left")}
                 />
               </>
             ) : (
@@ -710,7 +710,7 @@ function SessionConfigCard({
                 <DialogHeader>
                   <DialogTitle>Reset {name} to Defaults?</DialogTitle>
                   <DialogDescription>
-                    This will remove all overrides for this session and restore the
+                    This will remove all overrides for this strategy and restore the
                     original configuration.
                   </DialogDescription>
                 </DialogHeader>
@@ -819,18 +819,18 @@ function SessionConfigCard({
               />
               <ConfigItem
                 label="Min Stop ATR %"
-                value={`${cfg.min_stop_atr_pct}%`}
+                value={cfg.min_stop_atr_pct != null ? `${cfg.min_stop_atr_pct}%` : "—"}
                 overridden={isOverridden("min_stop_atr_pct")}
               />
               <ConfigItem
                 label="Max Sweep Bars"
-                value={cfg.max_bars_after_sweep.toString()}
+                value={cfg.max_bars_after_sweep?.toString() ?? "—"}
                 overridden={isOverridden("max_bars_after_sweep")}
               />
               <ConfigItem
                 label="Max Inversion Bars"
-                value={cfg.max_inversion_bars.toString()}
-                overridden={isOverridden("max_inversion_bars")}
+                value={cfg.fvg_window_left?.toString() ?? "—"}
+                overridden={isOverridden("fvg_window_left")}
               />
             </>
           ) : (
@@ -895,7 +895,7 @@ function SessionConfigCard({
             value={`$${maxSingleRisk}`}
             overridden={maxRiskOverridden || isOverridden("max_single_risk_usd")}
           />
-          {isLsi && (
+          {isLsi && cfg.qty_multiplier != null && (
             <ConfigItem
               label="Qty Multiplier"
               value={`${cfg.qty_multiplier}x`}
@@ -929,7 +929,7 @@ function SessionConfigCard({
               <DialogHeader>
                 <DialogTitle>Reset {name} to Defaults?</DialogTitle>
                 <DialogDescription>
-                  This will remove all overrides for this session and restore the
+                  This will remove all overrides for this strategy and restore the
                   original configuration.
                 </DialogDescription>
               </DialogHeader>
@@ -1000,7 +1000,7 @@ function SessionConfigsSection({
     <div>
       <div className="flex items-center gap-4 mb-3">
         <h3 className="text-sm font-semibold text-text-secondary">
-          Session Configurations
+          Strategy Configurations
         </h3>
         <div className="flex items-center gap-1">
           {tabs.map((tab) => (
@@ -1133,7 +1133,7 @@ export function ConfigView({
                         ];
                         return (
                           <div className="flex justify-between pb-1 pt-8 gap-2">
-                            <span className="text-text-muted text-xs shrink-0">Sessions</span>
+                            <span className="text-text-muted text-xs shrink-0">Strategies</span>
                             <div className="flex flex-wrap gap-1 justify-end">
                               {allSessions.map(({ name: s, isLsi }) => (
                                 <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
@@ -1185,7 +1185,7 @@ export function ConfigView({
         </Card>
       </div>
 
-      {/* Session configs */}
+      {/* Strategy configs */}
       <SessionConfigsSection
         sessions={config.sessions}
         overrides={config.overrides ?? {}}

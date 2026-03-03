@@ -15,6 +15,24 @@ import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { useState } from "react";
 
+const EXIT_LABELS: Record<string, string> = {
+  sl: "SL Hit",
+  tp1_be: "BE Hit",
+  tp1_tp2: "TP2 Hit",
+  tp1_eod: "EOD Exit",
+  tp2_direct: "TP2 Hit",
+  eod: "EOD Exit",
+};
+
+const EXIT_COLORS: Record<string, { dot: string; text: string }> = {
+  sl: { dot: "bg-loss", text: "text-loss" },
+  tp1_be: { dot: "bg-text-muted", text: "text-text-muted" },
+  tp1_tp2: { dot: "bg-profit", text: "text-profit" },
+  tp1_eod: { dot: "bg-text-muted", text: "text-text-muted" },
+  tp2_direct: { dot: "bg-profit", text: "text-profit" },
+  eod: { dot: "bg-text-muted", text: "text-text-muted" },
+};
+
 interface SessionCardProps {
   engine: SessionStatus;
   strategyType?: "continuation" | "lsi";
@@ -158,10 +176,27 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
             <PriceRow label="Stop" value={engine.levels!.stop} />
             <PriceRow label="TP1" value={engine.levels!.tp1} />
             <PriceRow label="TP2" value={engine.levels!.tp2} />
-            {engine.tp1_hit && (
+            {/* Active trade: show TP1 Hit while managing */}
+            {engine.tp1_hit && !engine.exit_type && (
               <div className="flex items-center gap-1 mt-1">
                 <div className="h-1.5 w-1.5 rounded-full bg-profit" />
                 <span className="text-xs text-profit">TP1 Hit</span>
+              </div>
+            )}
+            {/* Resolved trade: show exit type + R result */}
+            {engine.exit_type && (
+              <div className="flex items-center justify-between mt-1.5">
+                <div className="flex items-center gap-1">
+                  <div className={`h-1.5 w-1.5 rounded-full ${EXIT_COLORS[engine.exit_type]?.dot ?? "bg-text-muted"}`} />
+                  <span className={`text-xs ${EXIT_COLORS[engine.exit_type]?.text ?? "text-text-muted"}`}>
+                    {EXIT_LABELS[engine.exit_type] ?? engine.exit_type}
+                  </span>
+                </div>
+                {engine.r_result != null && (
+                  <span className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}>
+                    {engine.r_result > 0 ? "+" : ""}{engine.r_result.toFixed(2)}R
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -177,7 +212,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
         {/* Idle — no data yet */}
         {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
           <div className="text-center text-text-muted text-xs py-4">
-            Waiting for session...
+            Waiting for data...
           </div>
         )}
 
@@ -206,7 +241,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
                   <AlertDialogHeader>
                     <AlertDialogTitle>Pause {engine.session}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will stop the engine from taking new trades. Any open position will remain active.
+                      This will stop the strategy from taking new trades. Any open position will remain active.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

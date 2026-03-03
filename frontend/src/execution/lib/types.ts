@@ -16,6 +16,8 @@ export interface SessionStatus {
   daily_atr: number;
   levels: TradeLevels | null;
   tp1_hit: boolean;
+  exit_type: string | null;
+  r_result: number | null;
   config_name?: string;
   paused?: boolean;
 }
@@ -70,7 +72,7 @@ export interface SessionConfig {
   // LSI strategy fields
   min_stop_atr_pct: number;
   max_bars_after_sweep: number;
-  max_inversion_bars: number;
+  fvg_window_left: number;
   qty_multiplier: number;
   // Common strategy fields
   rr: number;

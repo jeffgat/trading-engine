@@ -242,6 +242,8 @@ class ORBEngine:
     _current_date: str = field(default="", init=False)
     _daily_atr: float = field(default=0.0, init=False)
     _asset_tag: str = field(default="", init=False)
+    _exit_type: str | None = field(default=None, init=False)
+    _r_result: float | None = field(default=None, init=False)
 
     # Parsed times (computed on first bar)
     _orb_start_t: time | None = field(default=None, init=False, repr=False)
@@ -308,6 +310,8 @@ class ORBEngine:
 
     def _emit_trade_record(self, exit_type: str) -> None:
         """Record a completed trade for cross-session history (G5 gate etc.)."""
+        self._exit_type = exit_type
+        self._r_result = self._compute_r_result(exit_type)
         if self.on_trade_exit is None:
             return
         levels = self._levels
@@ -325,6 +329,34 @@ class ORBEngine:
             config_name=self.config_name,
         )
         self.on_trade_exit(record)
+
+    def _compute_r_result(self, exit_type: str) -> float:
+        """Compute theoretical R-multiple for a trade exit.
+
+        R values per exit type (multi-contract splits half/half):
+          sl        → -1R
+          tp1_be    → single: tp1_ratio × rr, multi: (tp1_ratio × rr) / 2
+          tp1_tp2   → single: rr, multi: (tp1_ratio × rr + rr) / 2
+          tp1_eod   → same as tp1_be (conservative — runner at ~BE)
+          tp2_direct→ rr
+          eod       → 0R
+        """
+        levels = self._levels
+        is_single = levels.is_single_contract if levels else True
+        rr = self.rr
+        tp1r = self.tp1_ratio
+
+        if exit_type == "sl":
+            return -1.0
+        elif exit_type in ("tp1_be", "tp1_eod"):
+            return tp1r * rr if is_single else (tp1r * rr) / 2.0
+        elif exit_type == "tp1_tp2":
+            return rr if is_single else (tp1r * rr + rr) / 2.0
+        elif exit_type == "tp2_direct":
+            return rr
+        elif exit_type == "eod":
+            return 0.0
+        return 0.0
 
     # ------------------------------------------------------------------
     # Time checks
@@ -410,6 +442,8 @@ class ORBEngine:
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
+        self._exit_type = None
+        self._r_result = None
         self._current_date = date_str
         logger.info("[%s] New session day: %s", self.name, date_str)
         if notify:
@@ -1363,6 +1397,8 @@ class ORBEngine:
                 "direction": self._levels.direction,
             } if self._levels else None,
             "tp1_hit": self._tp1_hit,
+            "exit_type": self._exit_type,
+            "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,

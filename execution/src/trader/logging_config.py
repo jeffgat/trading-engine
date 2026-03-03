@@ -67,3 +67,18 @@ def setup_logging(level: str = "INFO") -> None:
     trade_file.setFormatter(trade_fmt)
     trade_logger.addHandler(trade_file)
     trade_logger.propagate = True  # also goes to main log
+
+    # Separate webhook log — per-account HTTP results for audit/debugging
+    wh_logger = logging.getLogger("trader.webhooks")
+    wh_fmt = _ETFormatter(
+        "%(asctime)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    wh_file = logging.handlers.RotatingFileHandler(
+        LOG_DIR / "webhooks.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+    )
+    wh_file.setFormatter(wh_fmt)
+    wh_logger.addHandler(wh_file)
+    wh_logger.propagate = True  # also goes to main log

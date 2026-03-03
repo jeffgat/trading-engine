@@ -5,11 +5,8 @@ Runs the 7-leg combined longs portfolio:
   NQ LDN (G5 gated), NQ NY LSI (LSI 2x)
 
 Usage:
-    # Live mode (dry-run by default)
+    # Configs with webhooks send live; others are dry-run
     uv run orb-trader
-
-    # Live mode with real webhooks
-    uv run orb-trader --live
 
     # Replay historical data for reconciliation
     uv run orb-trader --replay /path/to/NQ_5m.csv --start 2025-01-01
@@ -240,7 +237,7 @@ SESSION_CONFIGS = {
 # ---------------------------------------------------------------------------
 
 LSI_SESSION_CONFIGS = {
-    # --- NQ Asia LSI (LSI reversal, limit entry) ---
+    # --- NQ Asia LSI (LSI reversal, inversion-bar-close entry) ---
     "NQ_Asia_LSI": {
         "entry_start": "20:40",
         "entry_end": "23:30",
@@ -250,8 +247,8 @@ LSI_SESSION_CONFIGS = {
         "tp1_ratio": 0.7,
         "min_gap_atr_pct": 1.75,  # 1.75% ATR-40
         "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
-        "max_bars_after_sweep": 20,
-        "max_inversion_bars": 10,
+        "max_bars_after_sweep": 10,  # backtest default fvg_window_right
+        "fvg_window_left": 10,  # backtest default fvg_window_left
         "instrument": "NQ",
         "atr_length": 40,
         "long_only": True,
@@ -263,7 +260,7 @@ LSI_SESSION_CONFIGS = {
         "lsi_n_left": 3,
         "lsi_n_right": 3,
     },
-    # --- NQ NY LSI (LSI reversal, 2x sizing, limit entry) ---
+    # --- NQ NY LSI (LSI reversal, 2x sizing, inversion-bar-close entry) ---
     "NQ_NY_LSI": {
         "entry_start": "09:30",
         "entry_end": "15:30",
@@ -273,8 +270,8 @@ LSI_SESSION_CONFIGS = {
         "tp1_ratio": 0.3,
         "min_gap_atr_pct": 5.0,  # 5% ATR-10
         "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
-        "max_bars_after_sweep": 20,
-        "max_inversion_bars": 10,
+        "max_bars_after_sweep": 10,  # backtest default fvg_window_right
+        "fvg_window_left": 10,  # backtest default fvg_window_left
         "instrument": "NQ",
         "atr_length": 10,
         "long_only": True,
@@ -613,8 +610,8 @@ def build_lsi_engines(
             tp1_ratio=merged["tp1_ratio"],
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
             min_stop_atr_pct=merged.get("min_stop_atr_pct", 0.05),
-            max_bars_after_sweep=merged.get("max_bars_after_sweep", 20),
-            max_inversion_bars=merged.get("max_inversion_bars", 10),
+            max_bars_after_sweep=merged.get("max_bars_after_sweep", 10),
+            fvg_window_left=merged.get("fvg_window_left", 10),
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
@@ -647,7 +644,7 @@ def build_lsi_engines(
 # Main async loop
 # ---------------------------------------------------------------------------
 
-async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> None:
+async def run_live(config: dict, api_port: int = 8000) -> None:
     """Run the live execution service."""
     import uvicorn
 
@@ -657,16 +654,6 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
 
     general = config.get("general", {})
     db_cfg = config.get("databento", {})
-    tp_cfg = config.get("traderspost", {})
-
-    dry_run = not live
-    mode = "LIVE" if not dry_run else "DRY-RUN"
-
-    # Global webhook URL fallback
-    global_webhook_url = _env_or_key(tp_cfg, "webhook_url")
-    if not global_webhook_url and not dry_run:
-        logger.error("TRADERSPOST_WEBHOOK_URL not set — cannot run in live mode")
-        sys.exit(1)
 
     # Load execution configs (FAST, SLOW, etc.)
     exec_configs = load_exec_configs(config)
@@ -685,20 +672,16 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             logger.info("Execution config '%s' is disabled, skipping", ec.name)
             continue
 
-        # One broker per webhook endpoint; fall back to global URL or dry-run stub
+        # One broker per webhook endpoint; no webhooks = dry-run stub
         config_brokers: list[TradersPostClient] = []
         webhook_entries = ec.webhooks or []
-        if not webhook_entries and global_webhook_url:
-            webhook_entries = [WebhookEntry(url=global_webhook_url, label="Default")]
         if not webhook_entries:
-            # Dry-run stub — no real URL needed
-            webhook_entries = [WebhookEntry(url="https://traderspost.io/api/v1/webhook/dry-run", label="")]
+            webhook_entries = [WebhookEntry(url="", label="")]
 
         for wh in webhook_entries:
             b = TradersPostClient(
                 webhook_url=wh.url,
                 ticker=general.get("instrument", "MNQ"),
-                dry_run=dry_run,
                 config_name=f"{ec.name}[{wh.label}]" if wh.label else ec.name,
             )
             b.paused = wh.paused
@@ -746,9 +729,11 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
             "lsi_sessions": lsi_list,
         }
 
+        n_live_wh = sum(1 for b in config_brokers if not b.dry_run)
+        config_mode = "LIVE (%d webhook%s)" % (n_live_wh, "s" if n_live_wh != 1 else "") if n_live_wh else "DRY-RUN (no webhooks)"
         logger.info(
-            "[%s] Built %d engines: sessions=%s lsi=%s",
-            ec.name, len(config_engines), session_list, lsi_list,
+            "[%s] %s — %d engines: sessions=%s lsi=%s",
+            ec.name, config_mode, len(config_engines), session_list, lsi_list,
         )
 
     all_engines = [e for engines in engines_by_config.values() for e in engines]
@@ -757,6 +742,8 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         sys.exit(1)
 
     # Dashboard API — pass engines grouped by config
+    has_live = any(not b.dry_run for b in brokers)
+    mode = "LIVE" if has_live else "DRY-RUN"
     dashboard = DashboardState(
         engines_by_config=engines_by_config,
         config=config,
@@ -891,8 +878,8 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         )
 
     logger.info(
-        "Starting ORB Trader [%s] — configs=%s feeds=%s total_engines=%d api=:%d",
-        mode, list(engines_by_config.keys()), feed_symbols, len(all_engines), api_port,
+        "Starting ORB Trader — configs=%s feeds=%s total_engines=%d api=:%d",
+        list(engines_by_config.keys()), feed_symbols, len(all_engines), api_port,
     )
 
     # Graceful shutdown handler — cancel/flatten active positions on SIGTERM/SIGINT
@@ -949,7 +936,6 @@ async def run_replay(config: dict, csv_path: str, start: str | None, end: str | 
     broker = TradersPostClient(
         webhook_url="",
         ticker="MNQ",
-        dry_run=True,
     )
 
     engines, _symbol_map, atr_lengths = build_engines(config, broker)
@@ -998,9 +984,8 @@ def cli() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  uv run orb-trader                           # Dry-run with default config
-  uv run orb-trader --live                    # Live mode (sends real webhooks)
-  uv run orb-trader --replay NQ_5m.csv       # Replay historical data
+  uv run orb-trader                           # Configs with webhooks send live; others dry-run
+  uv run orb-trader --replay NQ_5m.csv       # Replay historical data (always dry-run)
   uv run orb-trader --config my_config.toml   # Custom config
 
 5-Leg Portfolio:
@@ -1015,10 +1000,6 @@ Examples:
     parser.add_argument(
         "--config", type=Path, default=DEFAULT_CONFIG,
         help="Path to TOML config file",
-    )
-    parser.add_argument(
-        "--live", action="store_true",
-        help="Enable live mode (sends real webhooks to TradersPost)",
     )
     parser.add_argument(
         "--replay", type=str, default=None,
@@ -1057,7 +1038,7 @@ Examples:
     if args.replay:
         asyncio.run(run_replay(config, args.replay, args.start, args.end))
     else:
-        asyncio.run(run_live(config, live=args.live, api_port=args.port))
+        asyncio.run(run_live(config, api_port=args.port))
 
 
 if __name__ == "__main__":
