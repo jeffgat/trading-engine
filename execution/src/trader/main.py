@@ -25,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -761,10 +762,33 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         multi_brokers_by_config=multi_brokers_by_config,
     )
 
+    # Checkpoint persistence — debounced to one write per event loop turn
+    from .checkpoint import (
+        save_checkpoint, restore_engines, load_trade_history, save_trade_history,
+    )
+    _checkpoint_pending = False
+
+    def _request_checkpoint():
+        nonlocal _checkpoint_pending
+        if _checkpoint_pending:
+            return
+        _checkpoint_pending = True
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon(_do_checkpoint)
+        except RuntimeError:
+            _do_checkpoint()
+
+    def _do_checkpoint():
+        nonlocal _checkpoint_pending
+        _checkpoint_pending = False
+        save_checkpoint(engines_by_config)
+
     # Wire callbacks into each engine (both ORBEngine and LSIEngine)
     for engine in all_engines:
         engine.on_state_change = dashboard.on_state_change
         engine.on_trade_exit = dashboard.record_trade
+        engine.on_checkpoint = _request_checkpoint
 
     # Wire G5 gate for NQ_LDN: skip when Asia hit TP1 the prior night.
     # Scoped per config — only checks trade_history from the same config.
@@ -847,23 +871,68 @@ async def run_live(config: dict, live: bool = False, api_port: int = 8000) -> No
         recovered, len(all_engines),
     )
 
+    # Restore trade history from disk (G5 gate)
+    dashboard.trade_history = load_trade_history()
+    if dashboard.trade_history:
+        logger.info("Restored %d trade(s) from history file", len(dashboard.trade_history))
+
+    # Restore active trade state from checkpoint (ARMED/MANAGING)
+    checkpoint_restored = restore_engines(engines_by_config)
+    if checkpoint_restored > 0:
+        logger.info(
+            "Checkpoint recovery: %d engine(s) restored to active trade state",
+            checkpoint_restored,
+        )
+
     logger.info(
         "Starting ORB Trader [%s] — configs=%s feeds=%s total_engines=%d api=:%d",
         mode, list(engines_by_config.keys()), feed_symbols, len(all_engines), api_port,
     )
+
+    # Graceful shutdown handler — cancel/flatten active positions on SIGTERM/SIGINT
+    shutdown_event = asyncio.Event()
+
+    def _handle_shutdown_signal(signum, _frame):
+        sig_name = signal.Signals(signum).name
+        logger.info("Received %s, initiating graceful shutdown...", sig_name)
+        shutdown_event.set()
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, _handle_shutdown_signal)
+
+    async def _shutdown_watcher():
+        await shutdown_event.wait()
+        logger.info("Graceful shutdown: cancelling/flattening active positions...")
+        for engine in all_engines:
+            try:
+                state_val = engine._state.value if hasattr(engine._state, "value") else str(engine._state)
+                if state_val in ("armed_long", "armed_limit"):
+                    logger.info("[%s] Shutdown: cancelling pending order", engine.name)
+                    await engine.broker.send_cancel(ticker=engine.exec_ticker)
+                elif state_val == "managing":
+                    logger.info("[%s] Shutdown: flattening open position", engine.name)
+                    await engine.broker.send_flatten(ticker=engine.exec_ticker)
+            except Exception:
+                logger.exception("[%s] Error during shutdown cleanup", engine.name)
+
+        # Final checkpoint
+        save_checkpoint(engines_by_config)
+        save_trade_history(dashboard.trade_history)
+        logger.info("Graceful shutdown complete. Final checkpoint saved.")
+        server.should_exit = True
 
     try:
         await asyncio.gather(
             feed.run(),
             server.serve(),
             tailer.run(),
+            _shutdown_watcher(),
         )
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
     finally:
         for broker in brokers:
             await broker.close()
-        server.should_exit = True
 
 
 async def run_replay(config: dict, csv_path: str, start: str | None, end: str | None) -> None:

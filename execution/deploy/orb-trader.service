@@ -20,6 +20,10 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=orb-trader
 
+# Graceful shutdown — allow time for cancel/flatten webhooks
+TimeoutStopSec=30
+KillMode=mixed
+
 # Safety limits
 LimitNOFILE=65536
 MemoryMax=512M

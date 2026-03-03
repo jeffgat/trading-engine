@@ -220,6 +220,8 @@ class ORBEngine:
     on_trade_exit: Callable[[TradeRecord], None] | None = None
     # G5 gate: callback returns True if session should be skipped for a date
     g5_gate_check: Callable[[str], bool] | None = None
+    # Optional callback to request a state checkpoint to disk (crash recovery)
+    on_checkpoint: Callable[[], None] | None = None
 
     # Internal state (reset daily)
     _state: State = field(default=State.IDLE, init=False)
@@ -270,6 +272,11 @@ class ORBEngine:
             "MGC": "gc",
         }
         return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
+
+    def _request_checkpoint(self) -> None:
+        """Request a state checkpoint to disk for crash recovery."""
+        if self.on_checkpoint is not None:
+            self.on_checkpoint()
 
     def _log_trade(self, event: str, details: str = "") -> None:
         """emit trade log with config + asset + session tags."""
@@ -399,6 +406,7 @@ class ORBEngine:
         logger.info("[%s] New session day: %s", self.name, date_str)
         if notify:
             self._notify_state_change()
+        self._request_checkpoint()
 
     def _expected_orb_bar_count(self) -> int:
         """How many 5m bars should exist in the full ORB window."""
@@ -606,6 +614,7 @@ class ORBEngine:
                 self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
                 await self.broker.send_cancel(ticker=self.exec_ticker)
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
             return
 
@@ -665,6 +674,7 @@ class ORBEngine:
         """Waiting for ORB window to start."""
         if self._in_orb(bar_time):
             self._state = State.ORB_BUILDING
+            self._request_checkpoint()
             self._orb_high = bar.high
             self._orb_low = bar.low
             logger.info(
@@ -678,6 +688,7 @@ class ORBEngine:
             # did not find historical bars).
             self._log_trade("NO_SETUP", "missed ORB window (late start)")
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
 
     async def _handle_orb_building(self, bar: Bar, bar_time: time) -> None:
@@ -697,11 +708,13 @@ class ORBEngine:
             if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
                 self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
             # Ready to scan
             self._state = State.SCANNING
+            self._request_checkpoint()
             self._log_trade(
                 "ORB_READY",
                 "high=%.2f low=%.2f range=%.2f atr=%.2f"
@@ -724,6 +737,7 @@ class ORBEngine:
             # Past entry window — cancel and go flat
             self._log_trade("NO_SETUP", "entry window closed")
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -764,6 +778,7 @@ class ORBEngine:
                     if levels is not None:
                         self._levels = levels
                         self._state = State.ARMED_LONG
+                        self._request_checkpoint()
                         self._log_trade(
                             "LONG_SETUP",
                             (
@@ -838,6 +853,7 @@ class ORBEngine:
                     # Re-use ARMED_LONG state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
                     self._state = State.ARMED_LONG
+                    self._request_checkpoint()
                     self._log_trade(
                         "SHORT_SETUP",
                         (
@@ -870,6 +886,7 @@ class ORBEngine:
         levels = self._levels
         if levels is None:
             self._state = State.FLAT
+            self._request_checkpoint()
             return
 
         # Cancel if past entry window
@@ -880,6 +897,7 @@ class ORBEngine:
             )
             await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -901,6 +919,7 @@ class ORBEngine:
             )
             # Immediately transition to managing — but don't check exits on fill bar
             self._state = State.MANAGING
+            self._request_checkpoint()
             self._notify_state_change()
 
     async def _handle_managing(self, bar: Bar, bar_time: time) -> None:
@@ -908,6 +927,7 @@ class ORBEngine:
         levels = self._levels
         if levels is None:
             self._state = State.FLAT
+            self._request_checkpoint()
             return
 
         direction_str = "long" if levels.direction == 1 else "short"
@@ -921,6 +941,7 @@ class ORBEngine:
             await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -954,6 +975,7 @@ class ORBEngine:
             await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("sl")
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -966,6 +988,7 @@ class ORBEngine:
 
         if tp1_touched and not self._tp1_hit:
             self._tp1_hit = True
+            self._request_checkpoint()
             self._tp1_bar_count = self._bar_count
 
             if levels.is_single_contract:
@@ -1021,6 +1044,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1039,6 +1063,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
         else:
@@ -1058,6 +1083,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1083,6 +1109,7 @@ class ORBEngine:
         levels = self._levels
         if levels is None:
             self._state = State.FLAT
+            self._request_checkpoint()
             return
 
         tick_time = tick.timestamp.time()
@@ -1095,6 +1122,7 @@ class ORBEngine:
             )
             await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -1110,6 +1138,7 @@ class ORBEngine:
             self._fill_timestamp = tick.timestamp
             self._fill_bar_idx = self._bar_count
             self._state = State.MANAGING
+            self._request_checkpoint()
             self._log_trade(
                 "FILLED",
                 "dir=%s entry=%.2f tick_time=%s resolution=1s"
@@ -1127,6 +1156,7 @@ class ORBEngine:
         levels = self._levels
         if levels is None:
             self._state = State.FLAT
+            self._request_checkpoint()
             return
 
         direction_str = "long" if levels.direction == 1 else "short"
@@ -1140,6 +1170,7 @@ class ORBEngine:
             await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = State.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -1166,6 +1197,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1178,11 +1210,13 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade(
@@ -1231,6 +1265,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1250,6 +1285,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1262,6 +1298,7 @@ class ORBEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 

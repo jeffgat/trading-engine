@@ -5,3 +5,5 @@ __pycache__/
 .venv/
 *.egg-info/
 dist/
+config/checkpoint.json
+config/trade_history.json

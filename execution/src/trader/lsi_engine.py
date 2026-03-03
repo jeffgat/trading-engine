@@ -177,6 +177,16 @@ class LSIEngine:
         # Callbacks
         self.on_state_change: Callable[[dict], None] | None = None
         self.on_trade_exit: Callable[[TradeRecord], None] | None = None
+        self.on_checkpoint: Callable[[], None] | None = None
+
+    # ------------------------------------------------------------------
+    # Checkpoint
+    # ------------------------------------------------------------------
+
+    def _request_checkpoint(self) -> None:
+        """Request a state checkpoint to disk for crash recovery."""
+        if self.on_checkpoint is not None:
+            self.on_checkpoint()
 
     # ------------------------------------------------------------------
     # Time helpers
@@ -325,6 +335,7 @@ class LSIEngine:
             self._tp1_bar_count = -1
             self._fill_bar_count = -1
             self._fill_timestamp = None
+            self._request_checkpoint()
 
         # Feed sweep tracker
         levels = self._liquidity.levels
@@ -334,12 +345,14 @@ class LSIEngine:
         if self._state == LSIState.IDLE:
             if self._in_entry(bar_time) and not self._is_excluded_day(bar):
                 self._state = LSIState.MONITORING
+                self._request_checkpoint()
                 self._notify_state_change()
 
         if self._state == LSIState.MONITORING:
             if not self._in_entry(bar_time):
                 self._log_trade("NO_SETUP", "entry window closed")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -352,6 +365,7 @@ class LSIEngine:
                     self._active_sweep = sweep
                     self._sweep_bar_index = self._bar_count
                     self._state = LSIState.WAITING_FOR_GAP
+                    self._request_checkpoint()
                     self._log_trade(
                         "SWEEP_DETECTED",
                         "source=%s level=%.2f dir=%s bar_count=%d"
@@ -362,6 +376,7 @@ class LSIEngine:
         if self._state == LSIState.WAITING_FOR_GAP:
             if not self._in_entry(bar_time):
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -384,6 +399,7 @@ class LSIEngine:
                 if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
                     self._active_gap = gap
                     self._state = LSIState.WAITING_FOR_INVERSION
+                    self._request_checkpoint()
                     self._log_trade(
                         "GAP_DETECTED",
                         "type=%s top=%.2f bottom=%.2f size=%.2f"
@@ -395,6 +411,7 @@ class LSIEngine:
         if self._state == LSIState.WAITING_FOR_INVERSION:
             if not self._in_entry(bar_time):
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -427,6 +444,7 @@ class LSIEngine:
             if self._in_flat(bar):
                 self._log_trade("LIMIT_EXPIRED_EOD", "flat window reached")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -453,6 +471,7 @@ class LSIEngine:
 
         self._limit_direction = direction
         self._state = LSIState.ARMED_LIMIT
+        self._request_checkpoint()
         dir_str = "long" if direction == 1 else "short"
         self._log_trade(
             "LIMIT_PLACED",
@@ -522,6 +541,7 @@ class LSIEngine:
         if levels is None:
             self._log_trade("LIMIT_REJECTED", "qty below minimum")
             self._state = LSIState.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -542,6 +562,7 @@ class LSIEngine:
             else:
                 self._log_trade("LIMIT_REJECTED", "risk too high for 1 contract")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -580,6 +601,7 @@ class LSIEngine:
             )
             self._emit_trade_record("sl")
             self._state = LSIState.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -589,6 +611,7 @@ class LSIEngine:
         self._fill_bar_count = self._bar_count
         self._fill_timestamp = bar.timestamp
         self._state = LSIState.MANAGING
+        self._request_checkpoint()
 
         dir_str = "long" if is_long else "short"
         self._log_trade(
@@ -614,6 +637,7 @@ class LSIEngine:
         levels = self._levels
         if levels is None:
             self._state = LSIState.FLAT
+            self._request_checkpoint()
             return
 
         is_long = levels.direction == 1
@@ -652,6 +676,7 @@ class LSIEngine:
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f" % (dir_str, levels.tp1, levels.be))
@@ -692,6 +717,7 @@ class LSIEngine:
         await self.broker.send_flatten(ticker=self.exec_ticker)
         self._emit_trade_record(exit_type)
         self._state = LSIState.FLAT
+        self._request_checkpoint()
         self._notify_state_change()
 
     # ------------------------------------------------------------------
@@ -715,6 +741,7 @@ class LSIEngine:
         levels = self._levels
         if levels is None:
             self._state = LSIState.FLAT
+            self._request_checkpoint()
             return
 
         is_long = levels.direction == 1
@@ -726,6 +753,7 @@ class LSIEngine:
             await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
             self._state = LSIState.FLAT
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -743,6 +771,7 @@ class LSIEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -751,11 +780,13 @@ class LSIEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
             if tp1_touched:
                 self._tp1_hit = True
+                self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f resolution=1s" % (dir_str, levels.tp1, levels.be))
@@ -774,6 +805,7 @@ class LSIEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -787,6 +819,7 @@ class LSIEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -795,6 +828,7 @@ class LSIEngine:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 

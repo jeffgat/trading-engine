@@ -79,6 +79,9 @@ class DashboardState:
             record.config_name, record.session, record.date,
             record.exit_type, record.tp1_hit,
         )
+        # Persist to disk for crash recovery
+        from .checkpoint import save_trade_history
+        save_trade_history(self.trade_history)
 
     def asia_tp1_hit_for_date(self, date: str, config_name: str = "") -> bool:
         """Check if any Asia session hit TP1 on the given date (for G5 gate).
