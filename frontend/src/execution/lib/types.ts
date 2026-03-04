@@ -41,6 +41,10 @@ export interface SessionStatus {
   tp2?: number | null;
   direction?: number | null;
   qty?: number | null;
+  // LSI overlay fields
+  swept_level?: number | null;
+  fvg_top?: number | null;
+  fvg_bottom?: number | null;
 }
 
 export interface ConfigGroup {

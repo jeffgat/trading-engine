@@ -78,241 +78,6 @@ function PriceRow({ label, value }: { label: string; value: number | null | unde
   );
 }
 
-function ExitInfo({ engine }: { engine: SessionStatus }) {
-  if (!engine.exit_type) return null;
-  return (
-    <div className="flex items-center justify-between mt-1.5">
-      <div className="flex items-center gap-1">
-        <div className={`h-1.5 w-1.5 rounded-full ${EXIT_COLORS[engine.exit_type]?.dot ?? "bg-text-muted"}`} />
-        <span className={`text-xs ${EXIT_COLORS[engine.exit_type]?.text ?? "text-text-muted"}`}>
-          {EXIT_LABELS[engine.exit_type] ?? engine.exit_type}
-        </span>
-      </div>
-      {engine.r_result != null && (
-        <span className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}>
-          {engine.r_result > 0 ? "+" : ""}{engine.r_result.toFixed(2)}R
-        </span>
-      )}
-    </div>
-  );
-}
-
-function OrbCard({ engine }: { engine: SessionStatus }) {
-  const hasLevels = engine.levels != null;
-  const dirLabel =
-    engine.levels?.direction === 1
-      ? "Long"
-      : engine.levels?.direction === -1
-        ? "Short"
-        : null;
-
-  return (
-    <>
-      {/* Date + ATR */}
-      <div className="flex justify-between text-xs">
-        <span className="text-text-muted">
-          {engine.date
-            ? `${engine.date.slice(0, 4)}-${engine.date.slice(4, 6)}-${engine.date.slice(6)}`
-            : "—"}
-        </span>
-        <span className="text-text-muted">
-          ATR{" "}
-          <span className="font-mono text-text-secondary">
-            {engine.daily_atr > 0 ? engine.daily_atr.toFixed(2) : "—"}
-          </span>
-        </span>
-      </div>
-
-      {/* Skip days */}
-      {(() => {
-        const skipDays = getSkipDays(engine);
-        if (skipDays.length === 0) return null;
-        return (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-text-muted">Skip:</span>
-            {skipDays.map((day) => (
-              <span
-                key={day}
-                className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400"
-              >
-                {day}
-              </span>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* ORB levels */}
-      {(engine.orb_high != null || engine.orb_low != null) && (
-        <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
-          <div className="text-xs text-text-muted font-medium mb-1">
-            ORB Range
-          </div>
-          <PriceRow label="High" value={engine.orb_high} />
-          <PriceRow label="Low" value={engine.orb_low} />
-          {engine.orb_high != null && engine.orb_low != null && (
-            <PriceRow
-              label="Range"
-              value={engine.orb_high - engine.orb_low}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Trade levels */}
-      {hasLevels && (
-        <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-muted font-medium">
-              Trade
-            </span>
-            {dirLabel && (
-              <span
-                className={`text-xs font-medium ${
-                  engine.levels!.direction === 1
-                    ? "text-profit"
-                    : "text-loss"
-                }`}
-              >
-                {dirLabel} x{engine.levels!.qty}
-              </span>
-            )}
-          </div>
-          <PriceRow label="Entry" value={engine.levels!.entry} />
-          <PriceRow label="Stop" value={engine.levels!.stop} />
-          <PriceRow label="TP1" value={engine.levels!.tp1} />
-          <PriceRow label="TP2" value={engine.levels!.tp2} />
-          {/* Active trade: show TP1 Hit while managing */}
-          {engine.tp1_hit && !engine.exit_type && (
-            <div className="flex items-center gap-1 mt-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-profit" />
-              <span className="text-xs text-profit">TP1 Hit</span>
-            </div>
-          )}
-          <ExitInfo engine={engine} />
-        </div>
-      )}
-
-      {/* Flat with ORB but no trade */}
-      {engine.state === "flat" && !hasLevels && engine.orb_high != null && (
-        <div className="text-center text-text-muted text-xs py-2">
-          No setup today
-        </div>
-      )}
-
-      {/* Idle — no data yet */}
-      {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
-        <div className="text-center text-text-muted text-xs py-4">
-          Waiting for session...
-        </div>
-      )}
-    </>
-  );
-}
-
-function IfvgCard({ engine }: { engine: SessionStatus }) {
-  const hasLevels = engine.entry != null;
-  const dirLabel =
-    engine.direction === 1
-      ? "Long"
-      : engine.direction === -1
-        ? "Short"
-        : null;
-
-  return (
-    <>
-      {/* Date + ATR */}
-      <div className="flex justify-between text-xs">
-        <span className="text-text-muted">
-          {engine.date
-            ? `${engine.date.slice(0, 4)}-${engine.date.slice(4, 6)}-${engine.date.slice(6)}`
-            : "—"}
-        </span>
-        <span className="text-text-muted">
-          ATR{" "}
-          <span className="font-mono text-text-secondary">
-            {engine.daily_atr > 0 ? engine.daily_atr.toFixed(2) : "—"}
-          </span>
-        </span>
-      </div>
-
-      {/* Kill Zone levels */}
-      {(engine.kz_high != null || engine.kz_low != null) && (
-        <div className="rounded-md border border-violet-500/30 bg-violet-500/5 p-2 space-y-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-violet-300 font-medium">
-              Kill Zone
-            </span>
-            {engine.kz_source && (
-              <span className="text-[10px] text-violet-400/70">
-                {engine.kz_source}
-              </span>
-            )}
-          </div>
-          <PriceRow label="KZ High" value={engine.kz_high} />
-          <PriceRow label="KZ Low" value={engine.kz_low} />
-        </div>
-      )}
-
-      {/* PDH/PDL */}
-      {(engine.pdh != null || engine.pdl != null) && (
-        <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
-          <div className="text-xs text-text-muted font-medium mb-1">
-            Prior Day
-          </div>
-          <PriceRow label="PDH" value={engine.pdh} />
-          <PriceRow label="PDL" value={engine.pdl} />
-        </div>
-      )}
-
-      {/* Trade levels (flat fields) */}
-      {hasLevels && (
-        <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-muted font-medium">
-              Trade
-            </span>
-            {dirLabel && (
-              <span
-                className={`text-xs font-medium ${
-                  engine.direction === 1 ? "text-profit" : "text-loss"
-                }`}
-              >
-                {dirLabel} x{engine.qty}
-              </span>
-            )}
-          </div>
-          <PriceRow label="Entry" value={engine.entry} />
-          <PriceRow label="Stop" value={engine.stop} />
-          <PriceRow label="TP1" value={engine.tp1} />
-          <PriceRow label="TP2" value={engine.tp2} />
-          {engine.tp1_hit && !engine.exit_type && (
-            <div className="flex items-center gap-1 mt-1">
-              <div className="h-1.5 w-1.5 rounded-full bg-profit" />
-              <span className="text-xs text-profit">TP1 Hit</span>
-            </div>
-          )}
-          <ExitInfo engine={engine} />
-        </div>
-      )}
-
-      {/* Flat with no trade */}
-      {engine.state === "flat" && !hasLevels && (
-        <div className="text-center text-text-muted text-xs py-2">
-          No setup today
-        </div>
-      )}
-
-      {/* Idle/Scanning — waiting */}
-      {(engine.state === "idle" || engine.state === "scanning") && !hasLevels && (
-        <div className="text-center text-text-muted text-xs py-4">
-          Waiting for sweep...
-        </div>
-      )}
-    </>
-  );
-}
-
 export function SessionCard({ engine, strategyType, onPause, onResume }: SessionCardProps) {
   const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
@@ -320,7 +85,6 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
   const stateColor =
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
   const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
-  const isIfvg = engine.type === "ifvg";
 
   const handleToggle = async () => {
     setSaving(true);
@@ -375,7 +139,131 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
         </div>
       </CardHeader>
       <CardContent className="flex flex-col flex-1 gap-3">
-        {isIfvg ? <IfvgCard engine={engine} /> : <OrbCard engine={engine} />}
+        {/* Date + ATR */}
+        <div className="flex justify-between text-xs">
+          <span className="text-text-muted">
+            {engine.date
+              ? `${engine.date.slice(0, 4)}-${engine.date.slice(4, 6)}-${engine.date.slice(6)}`
+              : "—"}
+          </span>
+          <span className="text-text-muted">
+            ATR{" "}
+            <span className="font-mono text-text-secondary">
+              {engine.daily_atr > 0 ? engine.daily_atr.toFixed(2) : "—"}
+            </span>
+          </span>
+        </div>
+
+        {/* Skip days */}
+        {(() => {
+          const skipDays = getSkipDays(engine);
+          if (skipDays.length === 0) return null;
+          return (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-text-muted">Skip:</span>
+              {skipDays.map((day) => (
+                <span
+                  key={day}
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400"
+                >
+                  {day}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ORB levels (continuation strategies) */}
+        {!isLsi && (engine.orb_high != null || engine.orb_low != null) && (
+          <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
+            <div className="text-xs text-text-muted font-medium mb-1">
+              ORB Range
+            </div>
+            <PriceRow label="High" value={engine.orb_high} />
+            <PriceRow label="Low" value={engine.orb_low} />
+            {engine.orb_high != null && engine.orb_low != null && (
+              <PriceRow
+                label="Range"
+                value={engine.orb_high - engine.orb_low}
+              />
+            )}
+          </div>
+        )}
+
+        {/* LSI overlay: swept level + FVG zone */}
+        {isLsi && (engine.swept_level != null || engine.fvg_top != null) && (
+          <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
+            <div className="text-xs text-text-muted font-medium mb-1">
+              Sweep &amp; Gap
+            </div>
+            <PriceRow label="Swept Level" value={engine.swept_level ?? null} />
+            <PriceRow label="FVG High" value={engine.fvg_top ?? null} />
+            <PriceRow label="FVG Low" value={engine.fvg_bottom ?? null} />
+          </div>
+        )}
+
+        {/* Trade levels */}
+        {hasLevels && (
+          <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-muted font-medium">
+                Trade
+              </span>
+              {dirLabel && (
+                <span
+                  className={`text-xs font-medium ${
+                    engine.levels!.direction === 1
+                      ? "text-profit"
+                      : "text-loss"
+                  }`}
+                >
+                  {dirLabel} x{engine.levels!.qty}
+                </span>
+              )}
+            </div>
+            <PriceRow label="Entry" value={engine.levels!.entry} />
+            <PriceRow label="Stop" value={engine.levels!.stop} />
+            <PriceRow label="TP1" value={engine.levels!.tp1} />
+            <PriceRow label="TP2" value={engine.levels!.tp2} />
+            {/* TP1 Hit indicator (shown while managing AND on resolved trades where TP1 was hit) */}
+            {engine.tp1_hit && (
+              <div className="flex items-center gap-1 mt-1">
+                <div className="h-1.5 w-1.5 rounded-full bg-profit" />
+                <span className="text-xs text-profit">TP1 Hit</span>
+              </div>
+            )}
+            {/* Resolved trade: show exit type + R result */}
+            {engine.exit_type && (
+              <div className="flex items-center justify-between mt-1">
+                <div className="flex items-center gap-1">
+                  <div className={`h-1.5 w-1.5 rounded-full ${EXIT_COLORS[engine.exit_type]?.dot ?? "bg-text-muted"}`} />
+                  <span className={`text-xs ${EXIT_COLORS[engine.exit_type]?.text ?? "text-text-muted"}`}>
+                    {EXIT_LABELS[engine.exit_type] ?? engine.exit_type}
+                  </span>
+                </div>
+                {engine.r_result != null && (
+                  <span className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}>
+                    {engine.r_result > 0 ? "+" : ""}{engine.r_result.toFixed(2)}R
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Flat with no trade */}
+        {engine.state === "flat" && !hasLevels && (
+          <div className="text-center text-text-muted text-xs py-2">
+            No setup today
+          </div>
+        )}
+
+        {/* Idle — no data yet */}
+        {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
+          <div className="text-center text-text-muted text-xs py-4">
+            Waiting for data...
+          </div>
+        )}
 
         {/* Pause/Resume button */}
         {(onPause || onResume) && (

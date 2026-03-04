@@ -180,6 +180,11 @@ class LSIEngine:
         self._limit_gap: GapInfo | None = None
         self._limit_daily_atr: float = 0.0
 
+        # LSI overlay (swept level + FVG zone, persists until next session reset)
+        self._swept_level: float | None = None
+        self._fvg_top: float | None = None
+        self._fvg_bottom: float | None = None
+
         # Trade resolution (persists until next session reset)
         self._exit_type: str | None = None
         self._r_result: float | None = None
@@ -488,6 +493,9 @@ class LSIEngine:
                 self._fill_timestamp = None
                 self._exit_type = None
                 self._r_result = None
+                self._swept_level = None
+                self._fvg_top = None
+                self._fvg_bottom = None
                 self._request_checkpoint()
 
         # Feed swing tracker (pivot detection + sweep check)
@@ -798,6 +806,11 @@ class LSIEngine:
             gap_size=gap_size,
         )
 
+        # Persist LSI overlay for dashboard display
+        self._swept_level = self._active_sweep.level if self._active_sweep else None
+        self._fvg_top = gap.top
+        self._fvg_bottom = gap.bottom
+
         self._tp1_hit = False
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
@@ -1059,7 +1072,7 @@ class LSIEngine:
     def status_dict(self) -> dict:
         levels = self._levels
         sw = self._swings
-        result = {
+        result: dict = {
             "config_name": self.config_name,
             "session": self.name,
             "state": self._state.value,
@@ -1068,18 +1081,25 @@ class LSIEngine:
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
             "latest_swing_high": round(sw.latest_swing_high, 2) if not math.isnan(sw.latest_swing_high) else None,
             "latest_swing_low": round(sw.latest_swing_low, 2) if not math.isnan(sw.latest_swing_low) else None,
-            "entry": round(levels.entry, 2) if levels else None,
-            "stop": round(levels.stop, 2) if levels else None,
-            "tp1": round(levels.tp1, 2) if levels else None,
-            "tp2": round(levels.tp2, 2) if levels else None,
-            "direction": levels.direction if levels else None,
-            "qty": levels.qty if levels else None,
+            # Nested levels dict — matches ORB engine format for frontend
+            "levels": {
+                "entry": round(levels.entry, 2),
+                "stop": round(levels.stop, 2),
+                "tp1": round(levels.tp1, 2),
+                "tp2": round(levels.tp2, 2),
+                "qty": levels.qty,
+                "direction": levels.direction,
+            } if levels else None,
             "tp1_hit": self._tp1_hit,
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "entry_mode": self.lsi_entry_mode,
+            # LSI overlay — swept level + FVG zone (persists into FLAT)
+            "swept_level": round(self._swept_level, 2) if self._swept_level is not None else None,
+            "fvg_top": round(self._fvg_top, 2) if self._fvg_top is not None else None,
+            "fvg_bottom": round(self._fvg_bottom, 2) if self._fvg_bottom is not None else None,
         }
         if self._state == LSIState.ARMED_LIMIT:
             result["limit_price"] = round(self._limit_price, 2)
