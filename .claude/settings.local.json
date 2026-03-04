@@ -138,7 +138,13 @@
       "Bash(cat requirements*.txt)",
       "Bash(/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/.venv/bin/pytest /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/tests/ -x -q)",
       "Bash(uvicorn orb_backtest.api:app:*)",
-      "Bash(PYTHONPATH=src uvicorn orb_backtest.api:app:*\\\\)"
+      "Bash(git rebase --continue)",
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(GIT_SEQUENCE_EDITOR=true EDITOR=true git rebase --continue)",
+      "Bash(GIT_EDITOR=cat git rebase --continue)",
+      "Bash(GIT_TRACE=1 git rebase --continue)",
+      "Bash(GIT_TRACE=2 git rebase --continue)",
+      "Bash(EDITOR=true git commit --no-edit)"
     ]
   }
 }
