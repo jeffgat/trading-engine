@@ -650,7 +650,7 @@ function CombinedCard({
               </span>
               {/* Per-strategy stats */}
               {s.data && filled.length > 0 && (
-                <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
                   <span className="text-[10px] font-mono" style={{ color: pnlColor(rPerYear) }}>
                     {rPerYear >= 0 ? "+" : ""}{rPerYear.toFixed(1)}R/yr
                   </span>
@@ -665,13 +665,13 @@ function CombinedCard({
                   </span>
                 </div>
               )}
-              <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent flex-shrink-0">
+              <span className="rounded bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent shrink-0">
                 {s.meta.instrument}
               </span>
               {s.meta.sessions.map((sess) => (
                 <SessionTag key={sess} session={sess} />
               ))}
-              <label className="text-[10px] text-text-muted font-display flex-shrink-0">Risk ($)</label>
+              <label className="text-[10px] text-text-muted font-display shrink-0">Risk ($)</label>
               <input
                 type="number"
                 step={50}
@@ -685,11 +685,11 @@ function CombinedCard({
                   const rounded = Math.max(100, Math.round(s.riskSize / 50) * 50);
                   if (rounded !== s.riskSize) onRiskChange(s.id, rounded);
                 }}
-                className="w-20 rounded border border-border bg-bg-primary px-2 py-0.5 text-xs font-mono text-text-primary outline-none focus:border-accent flex-shrink-0"
+                className="w-20 rounded border border-border bg-bg-primary px-2 py-0.5 text-xs font-mono text-text-primary outline-none focus:border-accent shrink-0"
               />
               <button
                 onClick={() => onToggleHide(s.id)}
-                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary flex-shrink-0"
+                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary shrink-0"
                 title={s.hidden ? "Show strategy" : "Hide strategy"}
               >
                 {s.hidden ? (
@@ -707,7 +707,7 @@ function CombinedCard({
               </button>
               <button
                 onClick={() => onRemove(s.id)}
-                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary flex-shrink-0"
+                className="rounded p-1 text-text-muted transition-colors hover:bg-bg-primary hover:text-text-primary shrink-0"
                 title="Remove strategy"
               >
                 <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor">
@@ -715,10 +715,10 @@ function CombinedCard({
                 </svg>
               </button>
               {s.loading && (
-                <span className="text-[10px] text-text-muted flex-shrink-0">Loading...</span>
+                <span className="text-[10px] text-text-muted shrink-0">Loading...</span>
               )}
               {!s.loading && s.error && !s.data && (
-                <span className="text-[10px] flex-shrink-0" style={{ color: "var(--color-loss)" }}>Error</span>
+                <span className="text-[10px] shrink-0" style={{ color: "var(--color-loss)" }}>Error</span>
               )}
             </div>
           );
@@ -1262,7 +1262,7 @@ export function RiskEngineDashboard() {
                       }`}
                     >
                       {/* Checkmark */}
-                      <span className="w-4 flex-shrink-0 text-center">
+                      <span className="w-4 shrink-0 text-center">
                         {isSelected && (
                           <svg
                             className="inline h-3 w-3 text-accent"
@@ -1278,7 +1278,7 @@ export function RiskEngineDashboard() {
 
                       {/* Star indicator */}
                       {item.starred && (
-                        <svg className="h-3 w-3 flex-shrink-0 text-yellow-400" viewBox="0 0 16 16" fill="currentColor">
+                        <svg className="h-3 w-3 shrink-0 text-yellow-400" viewBox="0 0 16 16" fill="currentColor">
                           <path d="M8 1.23l2.18 4.41 4.87.71-3.52 3.43.83 4.85L8 12.26l-4.36 2.37.83-4.85L1 6.35l4.87-.71L8 1.23z" />
                         </svg>
                       )}

@@ -53,7 +53,7 @@ A **liquidity sweep** occurs when:
   - `track_latest_swing(...)` → forward-filled most recent pivot levels
   - `detect_liquidity_sweeps(high, low, latest_swing_high, latest_swing_low)` → `{high_swept, low_swept, swept_high_level, swept_low_level}`
 
-**Sweep detection uses `>=` / `<=`** (not strict `>` / `<`) so tick-perfect touches count as sweeps, matching the Numba simulator's stop-fill logic.
+**Sweep detection uses strict `>` / `<`** so tick-perfect touches do not count as sweeps.
 
 **Config parameter**: `StrategyConfig.swing_n_bars` (default 10). Controls the pivot width — higher values = fewer, more significant pivots.
 

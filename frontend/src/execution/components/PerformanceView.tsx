@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry } from "@/execution/lib/types";
 
@@ -208,13 +208,88 @@ function Pill({
   );
 }
 
+/* ---------- Filter pill button ---------- */
+function FilterPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+        active
+          ? "bg-accent/20 text-accent border-accent/40"
+          : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ---------- Unique sorted values from rows ---------- */
+function uniqueValues(rows: PerfRow[], key: keyof PerfRow): string[] {
+  const set = new Set<string>();
+  for (const row of rows) {
+    const v = row[key];
+    if (v != null && v !== "" && v !== "\u2014") set.add(String(v));
+  }
+  return [...set].sort();
+}
+
 export function PerformanceView({ entries, loading, config, activeConfig }: PerformanceViewProps) {
   const allRows = buildRows(entries, config);
 
-  const rows = useMemo(() => {
+  // Config-level filter (from the header pills)
+  const configRows = useMemo(() => {
     if (activeConfig === "ALL") return allRows;
     return allRows.filter((row) => row.config === activeConfig);
   }, [allRows, activeConfig]);
+
+  // Local filters
+  const [strategyFilter, setStrategyFilter] = useState<string>("ALL");
+  const [sessionFilter, setSessionFilter] = useState<string>("ALL");
+  const [tickerFilter, setTickerFilter] = useState<string>("ALL");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+
+  // Derive unique options from configRows (so they respect the config pill)
+  const strategies = useMemo(() => uniqueValues(configRows, "strategy"), [configRows]);
+  const sessions = useMemo(() => uniqueValues(configRows, "session"), [configRows]);
+  const tickers = useMemo(() => uniqueValues(configRows, "ticker"), [configRows]);
+
+  // Apply all filters
+  const rows = useMemo(() => {
+    let filtered = configRows;
+    if (strategyFilter !== "ALL") filtered = filtered.filter((r) => r.strategy === strategyFilter);
+    if (sessionFilter !== "ALL") filtered = filtered.filter((r) => r.session === sessionFilter);
+    if (tickerFilter !== "ALL") filtered = filtered.filter((r) => r.ticker === tickerFilter);
+    if (dateFrom) filtered = filtered.filter((r) => r.entryDate >= dateFrom);
+    if (dateTo) filtered = filtered.filter((r) => r.entryDate <= dateTo);
+    return filtered;
+  }, [configRows, strategyFilter, sessionFilter, tickerFilter, dateFrom, dateTo]);
+
+  // Summary stats (only closed trades with R values)
+  const { totalR, closedCount, winCount } = useMemo(() => {
+    let r = 0;
+    let closed = 0;
+    let wins = 0;
+    for (const row of rows) {
+      if (row.rValue != null) {
+        r += row.rValue;
+        closed++;
+        if (row.rValue > 0) wins++;
+      }
+    }
+    return { totalR: r, closedCount: closed, winCount: wins };
+  }, [rows]);
+
+  const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
 
   if (loading) {
     return (
@@ -224,8 +299,85 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
     );
   }
 
+  const hasActiveFilters =
+    strategyFilter !== "ALL" || sessionFilter !== "ALL" || tickerFilter !== "ALL" || dateFrom !== "" || dateTo !== "";
+
   return (
     <div className="space-y-3">
+      {/* Filters */}
+      <div className="rounded-md border border-border bg-bg-card p-3 space-y-2.5">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* Strategy */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Strategy</span>
+            <div className="flex gap-1">
+              <FilterPill label="All" active={strategyFilter === "ALL"} onClick={() => setStrategyFilter("ALL")} />
+              {strategies.map((s) => (
+                <FilterPill key={s} label={s} active={strategyFilter === s} onClick={() => setStrategyFilter(s)} />
+              ))}
+            </div>
+          </div>
+
+          {/* Session */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Session</span>
+            <div className="flex gap-1">
+              <FilterPill label="All" active={sessionFilter === "ALL"} onClick={() => setSessionFilter("ALL")} />
+              {sessions.map((s) => (
+                <FilterPill key={s} label={s} active={sessionFilter === s} onClick={() => setSessionFilter(s)} />
+              ))}
+            </div>
+          </div>
+
+          {/* Ticker */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Ticker</span>
+            <div className="flex gap-1">
+              <FilterPill label="All" active={tickerFilter === "ALL"} onClick={() => setTickerFilter("ALL")} />
+              {tickers.map((t) => (
+                <FilterPill key={t} label={t} active={tickerFilter === t} onClick={() => setTickerFilter(t)} />
+              ))}
+            </div>
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Date</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-secondary focus:outline-none focus:border-accent/60"
+              placeholder="From"
+            />
+            <span className="text-text-muted text-xs">\u2013</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-secondary focus:outline-none focus:border-accent/60"
+              placeholder="To"
+            />
+          </div>
+
+          {/* Clear filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setStrategyFilter("ALL");
+                setSessionFilter("ALL");
+                setTickerFilter("ALL");
+                setDateFrom("");
+                setDateTo("");
+              }}
+              className="text-[11px] text-text-muted hover:text-loss transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="text-sm text-text-muted">
         {rows.length} closed/open trades
       </div>
@@ -314,6 +466,34 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Summary stats */}
+      <div className="flex gap-3">
+        <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
+          <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Total R</div>
+          <div className={`text-lg font-mono font-semibold ${totalR > 0 ? "text-profit" : totalR < 0 ? "text-loss" : "text-text-secondary"}`}>
+            {totalR > 0 ? "+" : ""}{totalR.toFixed(1)}R
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
+          <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Trades Taken</div>
+          <div className="text-lg font-mono font-semibold text-text-primary">
+            {rows.length}
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
+          <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Win Rate</div>
+          <div className={`text-lg font-mono font-semibold ${winRate >= 50 ? "text-profit" : winRate > 0 ? "text-loss" : "text-text-secondary"}`}>
+            {closedCount > 0 ? `${winRate.toFixed(0)}%` : "\u2014"}
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
+          <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Avg R</div>
+          <div className={`text-lg font-mono font-semibold ${totalR > 0 ? "text-profit" : totalR < 0 ? "text-loss" : "text-text-secondary"}`}>
+            {closedCount > 0 ? `${(totalR / closedCount).toFixed(2)}R` : "\u2014"}
+          </div>
+        </div>
       </div>
     </div>
   );

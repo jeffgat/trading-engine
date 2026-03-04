@@ -70,7 +70,7 @@ export interface SessionConfig {
   gap_filter_basis: string;
   min_gap_orb_pct: number;
   // LSI strategy fields
-  min_stop_atr_pct: number;
+  min_stop_points: number;
   max_bars_after_sweep: number;
   fvg_window_left: number;
   qty_multiplier: number;

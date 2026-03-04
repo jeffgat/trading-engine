@@ -1,6 +1,6 @@
 """Tests for ORBEngine — full state machine.
 
-Covers: IDLE → ORB_BUILDING → SCANNING → ARMED_LONG → MANAGING → FLAT
+Covers: IDLE → ORB_BUILDING → WAITING_FOR_GAP → ARMED_LIMIT → MANAGING → FLAT
 and the 1s tick path. All tests are async (pytest-asyncio auto mode).
 """
 
@@ -116,7 +116,7 @@ class TestORBBuilding:
 
     async def test_transition_to_scanning_after_orb_ends(self, engine):
         await advance_to_scanning(engine)
-        assert engine._state == State.SCANNING
+        assert engine._state == State.WAITING_FOR_GAP
 
     async def test_g5_gate_blocks_scanning(self, broker):
         eng = _make_orb_engine(broker, g5_gate_check=lambda date: True)
@@ -126,17 +126,17 @@ class TestORBBuilding:
     async def test_g5_gate_inactive_allows_scanning(self, broker):
         eng = _make_orb_engine(broker, g5_gate_check=lambda date: False)
         await advance_to_scanning(eng)
-        assert eng._state == State.SCANNING
+        assert eng._state == State.WAITING_FOR_GAP
 
 
 # =============================================================================
-# SCANNING → ARMED_LONG
+# WAITING_FOR_GAP → ARMED_LIMIT
 # =============================================================================
 
 class TestScanningToArmed:
     async def test_bullish_fvg_above_orb_triggers_armed(self, engine, broker):
         await advance_to_armed(engine, orb_high=19530.0)
-        assert engine._state == State.ARMED_LONG
+        assert engine._state == State.ARMED_LIMIT
         broker.send_entry.assert_called_once()
 
     async def test_send_entry_action_is_buy(self, engine, broker):
@@ -179,7 +179,7 @@ class TestScanningToArmed:
         # Use deliberately invalid geometry:
         for bar in [bar2, bar1, bar0]:
             await engine.on_bar(bar, 300.0)
-        assert engine._state == State.SCANNING
+        assert engine._state == State.WAITING_FOR_GAP
         broker.send_entry.assert_not_called()
 
     async def test_long_only_ignores_bearish_fvg(self, engine, broker):
@@ -188,7 +188,7 @@ class TestScanningToArmed:
         # Build valid bearish FVG below ORB low
         for bar in build_bearish_fvg_bars("2025-01-15", orb_low=orb_low):
             await engine.on_bar(bar, 300.0)
-        assert engine._state == State.SCANNING
+        assert engine._state == State.WAITING_FOR_GAP
         broker.send_entry.assert_not_called()
 
     async def test_short_fvg_triggers_when_not_long_only(self, broker):
@@ -197,23 +197,23 @@ class TestScanningToArmed:
         orb_low = eng._orb_low
         for bar in build_bearish_fvg_bars("2025-01-15", orb_low=orb_low):
             await eng.on_bar(bar, 300.0)
-        assert eng._state == State.ARMED_LONG
+        assert eng._state == State.ARMED_LIMIT
         broker.send_entry.assert_called_once()
         action = broker.send_entry.call_args.kwargs.get("action") or broker.send_entry.call_args.args[0]
         assert action == "sell"
 
     async def test_gap_too_small_rejected(self, broker):
-        """Gap smaller than min_gap_atr_pct * ATR → stays SCANNING."""
+        """Gap smaller than min_gap_atr_pct * ATR → stays WAITING_FOR_GAP."""
         # min_gap_atr_pct=50 with atr=300 → min_gap=150; actual gap=10 → rejected
         eng = _make_orb_engine(broker, min_gap_atr_pct=50.0)
         await advance_to_scanning(eng, atr=300.0)
         for bar in build_bullish_fvg_bars("2025-01-15", orb_high=eng._orb_high, gap=10.0):
             await eng.on_bar(bar, 300.0)
-        assert eng._state == State.SCANNING
+        assert eng._state == State.WAITING_FOR_GAP
         broker.send_entry.assert_not_called()
 
     async def test_entry_window_expiry_goes_flat(self, engine):
-        """Bar past entry_end while SCANNING → FLAT."""
+        """Bar past entry_end while WAITING_FOR_GAP → FLAT."""
         await advance_to_scanning(engine)
         bar = make_bar("2025-01-15 12:05", 19500, 19510, 19490, 19500)  # past 12:00
         await engine.on_bar(bar, 300.0)
@@ -233,12 +233,12 @@ class TestScanningToArmed:
         for bar in [bar2, bar1, bar0]:
             await eng.on_bar(bar, 300.0)
         # With ICF, bar1.close > orb_high → valid
-        if eng._state == State.ARMED_LONG:
+        if eng._state == State.ARMED_LIMIT:
             broker.send_entry.assert_called_once()
 
 
 # =============================================================================
-# ARMED_LONG → MANAGING (fill detection on 5m bars)
+# ARMED_LIMIT → MANAGING (fill detection on 5m bars)
 # =============================================================================
 
 class TestArmedToManaging:
@@ -252,7 +252,7 @@ class TestArmedToManaging:
         # Bar that doesn't touch entry
         bar = make_bar("2025-01-15 10:00", entry_price + 10, entry_price + 20, entry_price + 5, entry_price + 15)
         await engine.on_bar(bar, 300.0)
-        assert engine._state == State.ARMED_LONG
+        assert engine._state == State.ARMED_LIMIT
 
     async def test_armed_entry_window_expiry_sends_cancel(self, engine, broker):
         await advance_to_armed(engine, orb_high=19530.0)
@@ -525,7 +525,7 @@ class TestTickPath:
 class TestDailyReset:
     async def test_new_calendar_day_resets_state(self, engine):
         await advance_to_scanning(engine)
-        assert engine._state == State.SCANNING
+        assert engine._state == State.WAITING_FOR_GAP
         # Feed bar on Jan 16 (new day)
         bar = make_bar("2025-01-16 09:30", 19500, 19530, 19480, 19510)
         await engine.on_bar(bar, 300.0)
@@ -552,7 +552,7 @@ class TestDailyReset:
         assert eng._state == State.ORB_BUILDING
         assert eng._current_date == "20250114"
 
-        # Bar at 20:15 Jan 14 — moves to SCANNING
+        # Bar at 20:15 Jan 14 — moves to WAITING_FOR_GAP
         bar2 = make_bar("2025-01-14 20:15", 19510, 19520, 19500, 19515)
         await eng.on_bar(bar2, 300.0)
         state_after_transition = eng._state

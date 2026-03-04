@@ -2,8 +2,8 @@
 
 A **liquidity sweep** occurs when price trades *through* a prior confirmed
 swing level:
-  - High sweep: current bar's high reaches or exceeds a previous confirmed swing high
-  - Low sweep:  current bar's low reaches or undercuts a previous confirmed swing low
+  - High sweep: current bar's high is strictly above a previous confirmed swing high
+  - Low sweep:  current bar's low is strictly below a previous confirmed swing low
 
 **Swing pivot definition** (matches Pine Script's ``ta.pivothigh(n, n)``):
   A bar is a swing high if its ``high`` is strictly greater than all ``n``
@@ -185,10 +185,9 @@ def detect_liquidity_sweeps(
     prev_swing_low[0] = np.nan
 
     # A sweep requires a valid (non-NaN) prior swing level.
-    # Use >= / <= (not strict) so tick-perfect touches are captured — consistent
-    # with how the Numba simulator fills stop orders (>= for longs, <= for shorts).
-    high_swept = ~np.isnan(prev_swing_high) & (high >= prev_swing_high)
-    low_swept = ~np.isnan(prev_swing_low) & (low <= prev_swing_low)
+    # strict penetration only: equality is not a sweep.
+    high_swept = ~np.isnan(prev_swing_high) & (high > prev_swing_high)
+    low_swept = ~np.isnan(prev_swing_low) & (low < prev_swing_low)
 
     swept_high_level = np.where(high_swept, prev_swing_high, np.nan)
     swept_low_level = np.where(low_swept, prev_swing_low, np.nan)

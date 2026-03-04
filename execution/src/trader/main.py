@@ -246,7 +246,7 @@ LSI_SESSION_CONFIGS = {
         "rr": 2.0,
         "tp1_ratio": 0.7,
         "min_gap_atr_pct": 1.75,  # 1.75% ATR-40
-        "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
+        "min_stop_points": 0.0,  # absolute floor (0 = disabled, matches backtester)
         "max_bars_after_sweep": 10,  # backtest default fvg_window_right
         "fvg_window_left": 10,  # backtest default fvg_window_left
         "instrument": "NQ",
@@ -254,7 +254,7 @@ LSI_SESSION_CONFIGS = {
         "long_only": True,
         "excluded_dow": None,  # no DOW exclusion
         "qty_multiplier": 1.0,
-        "be_offset_ticks": 4,
+        "be_offset_ticks": 0,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
         "lsi_n_left": 3,
@@ -269,7 +269,7 @@ LSI_SESSION_CONFIGS = {
         "rr": 3.0,
         "tp1_ratio": 0.3,
         "min_gap_atr_pct": 5.0,  # 5% ATR-10
-        "min_stop_atr_pct": 0.05,  # pad stop to 5% ATR min
+        "min_stop_points": 0.0,  # absolute floor (0 = disabled, matches backtester)
         "max_bars_after_sweep": 10,  # backtest default fvg_window_right
         "fvg_window_left": 10,  # backtest default fvg_window_left
         "instrument": "NQ",
@@ -277,7 +277,7 @@ LSI_SESSION_CONFIGS = {
         "long_only": True,
         "excluded_dow": [0, 1, 4],  # Mon, Tue, Fri
         "qty_multiplier": 2.0,
-        "be_offset_ticks": 4,
+        "be_offset_ticks": 0,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
         "lsi_n_left": 3,
@@ -609,7 +609,7 @@ def build_lsi_engines(
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
-            min_stop_atr_pct=merged.get("min_stop_atr_pct", 0.05),
+            min_stop_points=merged.get("min_stop_points", 0.0),
             max_bars_after_sweep=merged.get("max_bars_after_sweep", 10),
             fvg_window_left=merged.get("fvg_window_left", 10),
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
@@ -899,7 +899,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         for engine in all_engines:
             try:
                 state_val = engine._state.value if hasattr(engine._state, "value") else str(engine._state)
-                if state_val in ("armed_long", "armed_limit"):
+                if state_val == "armed_limit":
                     logger.info("[%s] Shutdown: cancelling pending order", engine.name)
                     await engine.broker.send_cancel(ticker=engine.exec_ticker)
                 elif state_val == "managing":

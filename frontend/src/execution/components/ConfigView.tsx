@@ -364,7 +364,7 @@ function SessionConfigCard({
         rr: cfg.rr,
         tp1_ratio: cfg.tp1_ratio,
         min_gap_atr_pct: cfg.min_gap_atr_pct,
-        min_stop_atr_pct: cfg.min_stop_atr_pct,
+        min_stop_points: cfg.min_stop_points,
         max_bars_after_sweep: cfg.max_bars_after_sweep,
         fvg_window_left: cfg.fvg_window_left,
         qty_multiplier: cfg.qty_multiplier,
@@ -412,7 +412,7 @@ function SessionConfigCard({
   // Build field lists based on engine type
   const numericFields = isLsi
     ? [
-        "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_atr_pct",
+        "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_points",
         "max_bars_after_sweep", "fvg_window_left", "qty_multiplier",
         "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
       ]
@@ -583,11 +583,11 @@ function SessionConfigCard({
                   overridden={isOverridden("min_gap_atr_pct")}
                 />
                 <EditableField
-                  label="Min Stop ATR %"
-                  value={String(draft.min_stop_atr_pct ?? "")}
-                  onChange={(v) => setField("min_stop_atr_pct", v)}
+                  label="Min Stop Pts"
+                  value={String(draft.min_stop_points ?? "")}
+                  onChange={(v) => setField("min_stop_points", v)}
                   type="number"
-                  overridden={isOverridden("min_stop_atr_pct")}
+                  overridden={isOverridden("min_stop_points")}
                 />
                 <EditableField
                   label="Max Sweep Bars"
@@ -818,9 +818,9 @@ function SessionConfigCard({
                 overridden={isOverridden("min_gap_atr_pct")}
               />
               <ConfigItem
-                label="Min Stop ATR %"
-                value={cfg.min_stop_atr_pct != null ? `${cfg.min_stop_atr_pct}%` : "—"}
-                overridden={isOverridden("min_stop_atr_pct")}
+                label="Min Stop Pts"
+                value={cfg.min_stop_points != null ? `${cfg.min_stop_points}` : "—"}
+                overridden={isOverridden("min_stop_points")}
               />
               <ConfigItem
                 label="Max Sweep Bars"

@@ -521,7 +521,7 @@ def create_app(state: DashboardState) -> FastAPI:
             raise HTTPException(400, "No valid fields to update")
 
         # Safety: reject if engine is mid-trade (covers both ORBEngine and LSIEngine states)
-        blocked_states = {"armed_long", "filled", "managing", "armed_limit"}
+        blocked_states = {"armed_limit", "filled", "managing"}
         if engine._state.value in blocked_states:
             raise HTTPException(
                 409,
@@ -681,7 +681,7 @@ def create_app(state: DashboardState) -> FastAPI:
         if engine is None:
             raise HTTPException(404, f"Session '{session_name}' not found")
 
-        if engine._state.value in {"armed_long", "filled", "managing", "armed_limit"}:
+        if engine._state.value in {"armed_limit", "filled", "managing"}:
             raise HTTPException(
                 409, "Cannot reset config while a trade is active",
             )
@@ -722,7 +722,7 @@ def create_app(state: DashboardState) -> FastAPI:
         state_val = engine._state.value
         action_taken = "none"
 
-        if state_val in ("armed_long", "armed_limit"):
+        if state_val == "armed_limit":
             await engine.broker.send_cancel(ticker=engine.exec_ticker)
             action_taken = "cancelled"
             logger.info("[%s] Pause: cancelled pending order", engine.name)
@@ -915,7 +915,7 @@ def _session_info(engine) -> dict:
             "rr": engine.rr,
             "tp1_ratio": engine.tp1_ratio,
             "min_gap_atr_pct": engine.min_gap_atr_pct,
-            "min_stop_atr_pct": engine.min_stop_atr_pct,
+            "min_stop_points": engine.min_stop_points,
             "max_bars_after_sweep": engine.max_bars_after_sweep,
             "fvg_window_left": engine.fvg_window_left,
             "risk_usd": engine.risk_usd,

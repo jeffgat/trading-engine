@@ -106,7 +106,7 @@ Exit types:
 - `EXIT_EOD` (5): End-of-day exit, no TP1
 - `EXIT_TP2_SINGLE` (6): Single contract, full target
 
-One-trade-per-day enforced: when multiple signals exist on same session-day, only the first to fill is taken.
+One-trade-per-day is enforced per strategy/session run: when multiple signals exist on the same session-day, only the first to fill is taken. Portfolio scripts that merge multiple legs/sessions intentionally allow overlapping trades across legs.
 
 ### Config System
 Frozen dataclasses (hashable for caching):

@@ -30,7 +30,8 @@ Key Design Decisions
 Self-contained for deployment — production configs are embedded in main.py (mirrors config_prod.py), no backtester dependency needed at runtime
 Async throughout — asyncio event loop, aiohttp for webhooks, DataBento iterator runs in the main loop
 Fill inference from price — matches Pine Script behavior (infer fill when price touches limit level)
-One trade per session per day — same as Pine Script hasTradedToday flag
+One trade per session per day per leg/session engine — same as Pine Script hasTradedToday flag
+Portfolio legs/sessions are independent by design — concurrent positions across different legs are allowed
 ReplayFeed for reconciliation — feed historical CSVs through the same engine to verify signals match backtest output
 
 To check on it anytime

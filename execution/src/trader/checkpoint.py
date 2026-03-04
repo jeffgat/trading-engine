@@ -187,8 +187,8 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
 
     Restores all checkpointed states, then validates against the current
     time to ensure the restored state is still appropriate:
-    - ARMED_LONG / MANAGING: restore as-is (financial exposure)
-    - SCANNING / ORB_BUILDING: check if entry/ORB window still open
+    - ARMED_LIMIT / MANAGING: restore as-is (financial exposure)
+    - WAITING_FOR_GAP / ORB_BUILDING: check if entry/ORB window still open
     - FLAT: restore as FLAT
     - IDLE: skip (normal on_bar flow will handle it)
 
@@ -251,19 +251,19 @@ def _validate_orb_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
     from .engine import State
 
     # Financial exposure states — always trust the checkpoint
-    if checkpoint_state in (State.ARMED_LONG, State.MANAGING):
+    if checkpoint_state in (State.ARMED_LIMIT, State.MANAGING):
         return checkpoint_state
 
     # FLAT — keep as flat
     if checkpoint_state == State.FLAT:
         return State.FLAT
 
-    # SCANNING — valid only if entry window is still open
-    if checkpoint_state == State.SCANNING:
+    # WAITING_FOR_GAP — valid only if entry window is still open
+    if checkpoint_state == State.WAITING_FOR_GAP:
         if engine._in_entry(now_t):
-            return State.SCANNING
+            return State.WAITING_FOR_GAP
         logger.info(
-            "[%s] Checkpoint was SCANNING but entry window closed — setting FLAT",
+            "[%s] Checkpoint was WAITING_FOR_GAP but entry window closed — setting FLAT",
             engine.name,
         )
         return State.FLAT
@@ -274,8 +274,8 @@ def _validate_orb_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
             return State.ORB_BUILDING
         # ORB window closed — advance based on time
         if engine._in_entry(now_t):
-            # ORB data was already restored, advance to SCANNING
-            return State.SCANNING
+            # ORB data was already restored, advance to WAITING_FOR_GAP
+            return State.WAITING_FOR_GAP
         logger.info(
             "[%s] Checkpoint was ORB_BUILDING but session window closed — setting FLAT",
             engine.name,

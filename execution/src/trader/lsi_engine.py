@@ -77,7 +77,7 @@ class LSIEngine:
         rr: float = 3.0,
         tp1_ratio: float = 0.3,
         min_gap_atr_pct: float = 5.0,
-        min_stop_atr_pct: float = 0.05,
+        min_stop_points: float = 0.0,
         max_bars_after_sweep: int = 10,
         fvg_window_left: int = 10,
         # Risk params
@@ -123,7 +123,7 @@ class LSIEngine:
         self.rr = rr
         self.tp1_ratio = tp1_ratio
         self.min_gap_atr_pct = min_gap_atr_pct
-        self.min_stop_atr_pct = min_stop_atr_pct
+        self.min_stop_points = min_stop_points
         self.max_bars_after_sweep = max_bars_after_sweep
         self.fvg_window_left = fvg_window_left
 
@@ -206,6 +206,26 @@ class LSIEngine:
         if s <= e:
             return s <= bar_time < e
         return bar_time >= s or bar_time < e
+
+    @property
+    def _crosses_midnight(self) -> bool:
+        """true if this session spans midnight."""
+        return self._entry_start_t > self._flat_end_t
+
+    def _is_same_session_night(self, date_str: str, bar_time: time) -> bool:
+        """check whether a post-midnight bar belongs to the current session."""
+        from datetime import datetime as _dt, timedelta as _td
+
+        if bar_time >= self._entry_start_t:
+            return False
+        if not self._current_date:
+            return False
+        try:
+            current = _dt.strptime(self._current_date, "%Y%m%d")
+            bar_date = _dt.strptime(date_str, "%Y%m%d")
+            return bar_date == current + _td(days=1)
+        except ValueError:
+            return False
 
     def _in_flat(self, bar) -> bool:
         bar_time = bar.timestamp.time() if hasattr(bar.timestamp, "time") else bar.timestamp
@@ -435,23 +455,33 @@ class LSIEngine:
         bar_date = bar.timestamp.strftime("%Y%m%d")
         bar_time = bar.timestamp.time()
 
-        # New day reset
+        # new day reset
         if bar_date != self._current_date:
-            if self._state == LSIState.MANAGING:
-                await self._exit_position(bar, "eod")
-            self._current_date = bar_date
-            self._state = LSIState.IDLE
-            self._active_sweep = None
-            self._active_gap = None
-            self._recent_fvgs.clear()
-            self._levels = None
-            self._tp1_hit = False
-            self._tp1_bar_count = -1
-            self._fill_bar_count = -1
-            self._fill_timestamp = None
-            self._exit_type = None
-            self._r_result = None
-            self._request_checkpoint()
+            if self._crosses_midnight and self._is_same_session_night(bar_date, bar_time):
+                logger.debug(
+                    "[%s] cross-midnight: skipping reset (same session night) date=%s current_date=%s bar_time=%s state=%s",
+                    self.name,
+                    bar_date,
+                    self._current_date,
+                    bar_time,
+                    self._state.value,
+                )
+            else:
+                if self._state == LSIState.MANAGING:
+                    await self._exit_position(bar, "eod")
+                self._current_date = bar_date
+                self._state = LSIState.IDLE
+                self._active_sweep = None
+                self._active_gap = None
+                self._recent_fvgs.clear()
+                self._levels = None
+                self._tp1_hit = False
+                self._tp1_bar_count = -1
+                self._fill_bar_count = -1
+                self._fill_timestamp = None
+                self._exit_type = None
+                self._r_result = None
+                self._request_checkpoint()
 
         # Feed swing tracker (pivot detection + sweep check)
         sweep = self._swings.on_bar(bar)
@@ -620,14 +650,14 @@ class LSIEngine:
         else:
             raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
 
-        # Apply minimum stop distance
-        min_stop_dist = daily_atr * self.min_stop_atr_pct
-        if is_long:
-            if entry - raw_stop < min_stop_dist:
-                raw_stop = entry - min_stop_dist
-        else:
-            if raw_stop - entry < min_stop_dist:
-                raw_stop = entry + min_stop_dist
+        # Apply minimum stop distance (absolute points, matching backtester)
+        if self.min_stop_points > 0:
+            stop_dist = abs(entry - raw_stop)
+            if stop_dist < self.min_stop_points:
+                if is_long:
+                    raw_stop = entry - self.min_stop_points
+                else:
+                    raw_stop = entry + self.min_stop_points
 
         gap_size = gap.top - gap.bottom
 
@@ -635,7 +665,6 @@ class LSIEngine:
         risk_pts = abs(entry - raw_stop)
         tp1_dist = self.rr * risk_pts * self.tp1_ratio
         tp2_dist = self.rr * risk_pts
-        be_offset = self.be_offset_ticks * self.min_tick
 
         from .sizing import TradeLevels as TL, _floor_to_step
         qty_raw = self.risk_usd / (risk_pts * self.point_value) if risk_pts > 0 else 0
@@ -668,7 +697,7 @@ class LSIEngine:
             stop=raw_stop,
             tp1=entry + tp1_dist * direction,
             tp2=entry + tp2_dist * direction,
-            be=entry + be_offset * direction,
+            be=entry,
             qty=qty,
             half_qty=half_qty,
             is_single_contract=is_single,
@@ -694,9 +723,13 @@ class LSIEngine:
         )
 
         if self._should_send:
+            entry_action = "buy" if is_long else "sell"
             await self.broker.send_entry(
-                direction=dir_str,
+                action=entry_action,
                 qty=self._levels.qty,
+                price=self._levels.entry,
+                tp2=self._levels.tp2,
+                stop=self._levels.stop,
                 ticker=self.exec_ticker,
             )
         self._notify_state_change()

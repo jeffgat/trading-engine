@@ -1,13 +1,13 @@
 """Session state machine for live trade management.
 
 Each ORBEngine tracks one trading session through its daily lifecycle:
-ORB building → FVG scanning → order placement → position management.
+ORB building → waiting for gap → order placement → position management.
 
 Supports the 5-leg combined longs portfolio:
   NQ NY R11, NQ Asia R9, GC NY R3, ES NY Final, ES Asia Final
 
 State machine:
-    IDLE → ORB_BUILDING → SCANNING → ARMED_LONG → FILLED → MANAGING → FLAT → IDLE
+    IDLE → ORB_BUILDING → WAITING_FOR_GAP → ARMED_LIMIT → FILLED → MANAGING → FLAT → IDLE
 """
 
 from __future__ import annotations
@@ -65,8 +65,8 @@ class TradeRecord:
 class State(enum.Enum):
     IDLE = "idle"
     ORB_BUILDING = "orb_building"
-    SCANNING = "scanning"
-    ARMED_LONG = "armed_long"
+    WAITING_FOR_GAP = "waiting_for_gap"
+    ARMED_LIMIT = "armed_limit"
     FILLED = "filled"
     MANAGING = "managing"
     FLAT = "flat"
@@ -524,7 +524,7 @@ class ORBEngine:
                 self.name, len(orb_bars), expected_orb_bars,
             )
         elif self._in_entry(now_t):
-            self._state = State.SCANNING
+            self._state = State.WAITING_FOR_GAP
         elif self._in_flat(now_bar):
             self._state = State.FLAT
         elif self._in_rth(now_t):
@@ -652,7 +652,7 @@ class ORBEngine:
         # Skip if not in RTH
         if not self._in_rth(bar_time):
             # If we were in a session and left RTH, cancel any pending
-            if self._state == State.ARMED_LONG:
+            if self._state == State.ARMED_LIMIT:
                 self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
                 if self._should_send:
                     await self.broker.send_cancel(ticker=self.exec_ticker)
@@ -681,7 +681,7 @@ class ORBEngine:
                     self.name, self._current_date, date_str,
                     bar_time, self._state.value,
                 )
-                if self._state == State.ARMED_LONG and self._should_send:
+                if self._state == State.ARMED_LIMIT and self._should_send:
                     await self.broker.send_cancel(ticker=self.exec_ticker)
                 self._reset_day(date_str)
 
@@ -700,9 +700,9 @@ class ORBEngine:
             await self._handle_idle(bar, bar_time)
         elif self._state == State.ORB_BUILDING:
             await self._handle_orb_building(bar, bar_time)
-        elif self._state == State.SCANNING:
+        elif self._state == State.WAITING_FOR_GAP:
             await self._handle_scanning(bar, bar_time)
-        elif self._state == State.ARMED_LONG:
+        elif self._state == State.ARMED_LIMIT:
             await self._handle_armed(bar, bar_time)
         elif self._state in (State.FILLED, State.MANAGING):
             await self._handle_managing(bar, bar_time)
@@ -756,7 +756,7 @@ class ORBEngine:
                 return
 
             # Ready to scan
-            self._state = State.SCANNING
+            self._state = State.WAITING_FOR_GAP
             self._request_checkpoint()
             self._log_trade(
                 "ORB_READY",
@@ -820,7 +820,7 @@ class ORBEngine:
                     )
                     if levels is not None:
                         self._levels = levels
-                        self._state = State.ARMED_LONG
+                        self._state = State.ARMED_LIMIT
                         self._request_checkpoint()
                         self._log_trade(
                             "LONG_SETUP",
@@ -894,9 +894,9 @@ class ORBEngine:
                 )
                 if levels is not None:
                     self._levels = levels
-                    # Re-use ARMED_LONG state for armed short in non-long-only mode
+                    # Re-use ARMED_LIMIT state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
-                    self._state = State.ARMED_LONG
+                    self._state = State.ARMED_LIMIT
                     self._request_checkpoint()
                     self._log_trade(
                         "SHORT_SETUP",
@@ -1147,12 +1147,12 @@ class ORBEngine:
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
         """Process a 1-second bar for fill detection and exit management.
 
-        Only acts in ARMED_LONG and MANAGING states. All other states
-        (IDLE, ORB_BUILDING, SCANNING, FLAT) ignore ticks entirely.
+        Only acts in ARMED_LIMIT and MANAGING states. All other states
+        (IDLE, ORB_BUILDING, WAITING_FOR_GAP, FLAT) ignore ticks entirely.
         """
         self._daily_atr = daily_atr
 
-        if self._state == State.ARMED_LONG:
+        if self._state == State.ARMED_LIMIT:
             await self._handle_armed_tick(tick)
         elif self._state in (State.FILLED, State.MANAGING):
             await self._handle_managing_tick(tick)

@@ -240,11 +240,11 @@ class TestORBEngineCheckpoint:
         broker = _mock_broker()
         engine = _make_orb_engine(broker)
         await advance_to_armed(engine)
-        assert engine._state == State.ARMED_LONG
+        assert engine._state == State.ARMED_LIMIT
 
         data = serialize_orb_engine(engine)
         assert data["engine_type"] == "orb"
-        assert data["state"] == "armed_long"
+        assert data["state"] == "armed_limit"
         assert data["levels"] is not None
         assert data["levels"]["direction"] == 1
 
@@ -262,7 +262,7 @@ class TestORBEngineCheckpoint:
 
         result = restore_orb_engine(new_engine, data)
         assert result is True
-        assert new_engine._state == State.ARMED_LONG
+        assert new_engine._state == State.ARMED_LIMIT
         assert new_engine._levels is not None
         assert new_engine._levels.entry == original_entry
         assert new_engine._orb_high == engine._orb_high
@@ -310,12 +310,12 @@ class TestORBEngineCheckpoint:
         assert new_engine._state == State.IDLE
 
     async def test_scanning_not_restored_outside_entry(self):
-        """SCANNING is downgraded to FLAT when entry window is closed."""
+        """WAITING_FOR_GAP is downgraded to FLAT when entry window is closed."""
         from unittest.mock import patch
         broker = _mock_broker()
         engine = _make_orb_engine(broker)
         await advance_to_scanning(engine)
-        assert engine._state == State.SCANNING
+        assert engine._state == State.WAITING_FOR_GAP
 
         data = serialize_orb_engine(engine)
         new_engine = _make_orb_engine(_mock_broker())
@@ -486,7 +486,7 @@ class TestCheckpointCycle:
         new_configs = {"DEFAULT": [new_engine]}
         restored = restore_engines(new_configs, path=ckpt_path)
         assert restored == 1
-        assert new_engine._state == State.ARMED_LONG
+        assert new_engine._state == State.ARMED_LIMIT
 
     async def test_yesterday_checkpoint_restored(self, tmp_path):
         """Yesterday's checkpoint is valid (cross-midnight sessions)."""
@@ -528,7 +528,7 @@ class TestCheckpointCycle:
         new_configs = {"DEFAULT": [new_orb, new_lsi]}
         restored = restore_engines(new_configs, path=ckpt_path)
         assert restored == 2
-        assert new_orb._state == State.ARMED_LONG
+        assert new_orb._state == State.ARMED_LIMIT
         assert new_lsi._state == LSIState.MANAGING
 
 
@@ -628,7 +628,7 @@ class TestCheckpointCallback:
 
         engine.on_checkpoint = _on_checkpoint
         await advance_to_armed(engine)
-        # Should fire at least for: ORB_BUILDING, SCANNING, ARMED_LONG
+        # Should fire at least for: ORB_BUILDING, WAITING_FOR_GAP, ARMED_LIMIT
         assert checkpoint_count >= 3
 
     async def test_callback_fired_on_managing(self):
@@ -642,7 +642,7 @@ class TestCheckpointCallback:
 
         engine.on_checkpoint = _on_checkpoint
         await advance_to_managing(engine)
-        # Should fire for: ORB_BUILDING, SCANNING, ARMED_LONG, MANAGING
+        # Should fire for: ORB_BUILDING, WAITING_FOR_GAP, ARMED_LIMIT, MANAGING
         assert checkpoint_count >= 4
 
     def test_lsi_callback_wired(self):

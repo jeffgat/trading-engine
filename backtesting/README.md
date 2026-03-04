@@ -75,6 +75,11 @@ Results are assigned a unique ID (e.g. `bt-nq-ny-rr3-a1b2c3`) and stored in the 
 
 The dashboard history panel shows the name label on each run for quick identification.
 
+### Trade concurrency semantics
+
+- `run_backtest()` enforces one-trade-per-session-day within each strategy/session run: if multiple same-day candidates exist, only the first fill is taken.
+- Combined portfolio scripts intentionally merge legs/sessions without cross-leg deconfliction, so overlapping trades at the same time across different legs are expected behavior.
+
 ### Comparing runs → use the dashboard or experiment DB
 
 - **Dashboard**: Run backtests and browse history in the sidebar. Named runs show their label.

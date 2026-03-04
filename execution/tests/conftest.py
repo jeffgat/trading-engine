@@ -86,7 +86,7 @@ async def advance_to_scanning(
     date: str = "2025-01-15",
     orb_high: float = 19530.0,
 ) -> ORBEngine:
-    """Drive engine from IDLE to SCANNING by feeding ORB bars + transition bar.
+    """Drive engine from IDLE to WAITING_FOR_GAP by feeding ORB bars + transition bar.
 
     The transition bar is at 09:45 with a high *above* orb_high + 5 so it
     cannot accidentally serve as the ``bar2`` (before-candle) of the FVG
@@ -108,7 +108,7 @@ async def advance_to_armed(
     date: str = "2025-01-15",
     orb_high: float = 19530.0,
 ) -> ORBEngine:
-    """Drive engine from IDLE to ARMED_LONG by feeding ORB + FVG bars."""
+    """Drive engine from IDLE to ARMED_LIMIT by feeding ORB + FVG bars."""
     from tests.builders import build_bullish_fvg_bars
     await advance_to_scanning(engine, atr, date, orb_high=orb_high)
     for bar in build_bullish_fvg_bars(date, orb_high=orb_high, gap=10.0):
@@ -129,7 +129,7 @@ async def advance_to_managing(
     """
     from tests.builders import make_bar
     await advance_to_armed(engine, atr, date, orb_high)
-    assert engine._levels is not None, "advance_to_armed did not reach ARMED_LONG"
+    assert engine._levels is not None, "advance_to_armed did not reach ARMED_LIMIT"
     entry_price = engine._levels.entry
     # Feed a fill bar at 10:05: low ≤ entry
     fill_bar = make_bar(

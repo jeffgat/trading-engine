@@ -484,8 +484,13 @@ class TestInversionToManaging:
         if eng is None:
             pytest.skip("Could not reach MANAGING")
         eng.broker.send_entry.assert_called_once()
-        call_kwargs = eng.broker.send_entry.call_args
-        assert call_kwargs[1]["direction"] == "long"
+        call_kwargs = eng.broker.send_entry.call_args.kwargs
+        assert call_kwargs["action"] == "buy"
+        assert call_kwargs["qty"] == pytest.approx(eng._levels.qty)
+        assert call_kwargs["price"] == pytest.approx(eng._levels.entry)
+        assert call_kwargs["tp2"] == pytest.approx(eng._levels.tp2)
+        assert call_kwargs["stop"] == pytest.approx(eng._levels.stop)
+        assert call_kwargs["ticker"] == "MNQ"
 
 
 # =============================================================================
@@ -679,6 +684,31 @@ class TestTickPath:
         await eng.on_tick(tick, 300.0)
         # Should still be WAITING_FOR_SWEEP — tick ignored
         assert eng._state == LSIState.WAITING_FOR_SWEEP
+
+
+# =============================================================================
+# daily reset and cross-midnight
+# =============================================================================
+
+class TestDailyReset:
+    async def test_cross_midnight_session_no_spurious_reset(self):
+        eng = make_lsi_engine(
+            name="NQ_ASIA_LSI",
+            entry_start="20:15",
+            entry_end="23:30",
+            flat_start="06:50",
+            flat_end="07:00",
+        )
+
+        bar1 = make_bar("2025-01-14 20:15", 19500, 19510, 19490, 19500)
+        await eng.on_bar(bar1, 300.0)
+        assert eng._state == LSIState.WAITING_FOR_SWEEP
+        assert eng._current_date == "20250114"
+
+        bar2 = make_bar("2025-01-15 00:05", 19500, 19515, 19495, 19510)
+        await eng.on_bar(bar2, 300.0)
+        assert eng._state == LSIState.FLAT
+        assert eng._current_date == "20250114"
 
 
 # =============================================================================

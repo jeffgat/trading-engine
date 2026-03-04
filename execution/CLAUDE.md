@@ -108,6 +108,7 @@ npm run build        # Production build → dist/
 - **Config file**: `config/live.toml` — portfolio sessions, risk params, dates
 - **Secrets**: `.env` file — API keys (never committed)
 - **5-leg portfolio**: Defined in `main.py` SESSION_CONFIGS — NQ NY, NQ Asia, GC NY, ES NY, ES Asia
+- **trade concurrency semantics**: one-trade-per-session-day is enforced within each session engine instance; portfolio legs/sessions run independently, so concurrent positions across legs are allowed by design
 
 ## Timezone Convention
 
