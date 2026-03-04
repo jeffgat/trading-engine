@@ -88,7 +88,7 @@ class StrategyConfig:
     # Excluded dates (YYYYMMDD strings)
     excluded_dates: tuple[str, ...] = field(default_factory=tuple)
 
-    # Strategy type: "continuation", "reversal", "inversion", "cisd", or "lsi"
+    # Strategy type: "continuation", "reversal", "inversion", "cisd", "lsi", or "ib"
     strategy: str = "continuation"
 
     # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
@@ -219,6 +219,34 @@ LDN_SESSION = SessionConfig(
     stop_atr_pct=10.0,
     min_gap_atr_pct=1.0,
 )
+
+
+IB_NY_SESSION = SessionConfig(
+    name="NY",
+    orb_start="09:30",
+    orb_end="10:30",
+    entry_start="10:30",
+    entry_end="15:00",
+    flat_start="15:50",
+    flat_end="16:00",
+)
+
+
+def ib_config(instrument: Instrument | None = None) -> StrategyConfig:
+    """Create default IB mean-reversion config. 1:1 R:R, $1000 risk."""
+    from .data.instruments import NQ
+
+    inst = instrument or NQ
+    return StrategyConfig(
+        strategy="ib",
+        rr=1.0,
+        tp1_ratio=1.0,
+        risk_usd=1000.0,
+        sessions=(IB_NY_SESSION,),
+        instrument=inst,
+        half_days=("20250703", "20251128", "20251224", "20250109", "20260119"),
+        excluded_dates=("20241218",),
+    )
 
 
 def default_config(instrument: Instrument | None = None) -> StrategyConfig:

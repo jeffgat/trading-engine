@@ -144,7 +144,9 @@
       "Bash(GIT_EDITOR=cat git rebase --continue)",
       "Bash(GIT_TRACE=1 git rebase --continue)",
       "Bash(GIT_TRACE=2 git rebase --continue)",
-      "Bash(EDITOR=true git commit --no-edit)"
+      "Bash(EDITOR=true git commit --no-edit)",
+      "Bash(ln -s /Users/jeffreygatbonton/Desktop/Code/backtests/python/data/raw/NQ_5m.parquet /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/data/raw/NQ_5m.parquet)",
+      "Bash(ln -s /Users/jeffreygatbonton/Desktop/Code/backtests/python/data/raw/NQ_1m.parquet /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/data/raw/NQ_1m.parquet)"
     ]
   }
 }

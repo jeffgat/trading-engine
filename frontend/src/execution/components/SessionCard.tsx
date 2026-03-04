@@ -81,6 +81,14 @@ function PriceRow({ label, value }: { label: string; value: number | null | unde
 export function SessionCard({ engine, strategyType, onPause, onResume }: SessionCardProps) {
   const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
+  const hasLevels = engine.levels != null && engine.levels.entry != null;
+  const dirLabel = hasLevels
+    ? engine.levels!.direction === 1
+      ? "LONG"
+      : engine.levels!.direction === -1
+        ? "SHORT"
+        : null
+    : null;
   const isPaused = engine.paused ?? false;
   const stateColor =
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
