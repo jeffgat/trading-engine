@@ -69,11 +69,10 @@ def make_lsi_engine(broker=None, **overrides) -> LSIEngine:
         point_value=2.0,
         min_qty=1.0,
         qty_step=1.0,
-        be_offset_ticks=4,
         min_tick=0.25,
         max_single_risk_usd=500.0,
         long_only=True,
-        max_bars_after_sweep=10,
+        fvg_window_right=10,
         fvg_window_left=10,
         lsi_n_left=3,
         lsi_n_right=3,
@@ -328,7 +327,7 @@ class TestWaitingForGapToInversion:
         eng.broker.send_entry.assert_not_called()
 
     async def test_sweep_expires_after_max_bars(self):
-        eng = make_lsi_engine(max_bars_after_sweep=3)
+        eng = make_lsi_engine(fvg_window_right=3)
         await feed_swing_low_and_sweep(eng, swing_low=19400.0)
         assert eng._state == LSIState.WAITING_FOR_GAP
 

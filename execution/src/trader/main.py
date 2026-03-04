@@ -247,41 +247,41 @@ LSI_SESSION_CONFIGS = {
         "tp1_ratio": 0.7,
         "min_gap_atr_pct": 1.75,  # 1.75% ATR-40
         "min_stop_points": 0.0,  # absolute floor (0 = disabled, matches backtester)
-        "max_bars_after_sweep": 10,  # backtest default fvg_window_right
-        "fvg_window_left": 10,  # backtest default fvg_window_left
+        "fvg_window_right": 2,
+        "fvg_window_left": 15,
+        "lsi_entry_mode": "close",
         "instrument": "NQ",
         "atr_length": 40,
         "long_only": True,
         "excluded_dow": None,  # no DOW exclusion
         "qty_multiplier": 1.0,
-        "be_offset_ticks": 0,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
-        "lsi_n_left": 3,
-        "lsi_n_right": 3,
+        "lsi_n_left": 8,
+        "lsi_n_right": 2,
     },
-    # --- NQ NY LSI (LSI reversal, 2x sizing, inversion-bar-close entry) ---
+    # --- NQ NY LSI (LSI reversal, 2x sizing, fvg_limit entry) ---
     "NQ_NY_LSI": {
-        "entry_start": "09:30",
+        "entry_start": "09:35",
         "entry_end": "15:30",
         "flat_start": "15:50",
         "flat_end": "16:00",
         "rr": 3.0,
         "tp1_ratio": 0.3,
         "min_gap_atr_pct": 5.0,  # 5% ATR-10
-        "min_stop_points": 0.0,  # absolute floor (0 = disabled, matches backtester)
-        "max_bars_after_sweep": 10,  # backtest default fvg_window_right
-        "fvg_window_left": 10,  # backtest default fvg_window_left
+        "min_stop_points": 0.0,
+        "fvg_window_right": 5,
+        "fvg_window_left": 20,
+        "lsi_entry_mode": "fvg_limit",
         "instrument": "NQ",
         "atr_length": 10,
         "long_only": True,
-        "excluded_dow": [0, 1, 4],  # Mon, Tue, Fri
+        "excluded_dow": [2, 3],  # Wed, Thu excluded
         "qty_multiplier": 2.0,
-        "be_offset_ticks": 0,
         "risk_usd": 250,
         "max_single_risk_usd": 300,
-        "lsi_n_left": 3,
-        "lsi_n_right": 3,
+        "lsi_n_left": 8,
+        "lsi_n_right": 60,
     },
 }
 
@@ -610,14 +610,14 @@ def build_lsi_engines(
             tp1_ratio=merged["tp1_ratio"],
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
             min_stop_points=merged.get("min_stop_points", 0.0),
-            max_bars_after_sweep=merged.get("max_bars_after_sweep", 10),
             fvg_window_left=merged.get("fvg_window_left", 10),
+            fvg_window_right=merged.get("fvg_window_right", 5),
+            lsi_entry_mode=merged.get("lsi_entry_mode", "close"),
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             qty_multiplier=merged.get("qty_multiplier", 1.0),
-            be_offset_ticks=merged.get("be_offset_ticks", risk.get("be_offset_ticks", 0)),
             min_tick=exec_inst["min_tick"],
             max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
             long_only=merged.get("long_only", True),

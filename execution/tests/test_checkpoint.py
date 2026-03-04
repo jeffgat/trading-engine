@@ -93,7 +93,6 @@ def _make_lsi_engine(broker, **overrides) -> LSIEngine:
         point_value=2.0,
         min_qty=1.0,
         qty_step=1.0,
-        be_offset_ticks=4,
         min_tick=0.25,
     )
     defaults.update(overrides)

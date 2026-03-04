@@ -134,7 +134,9 @@
       "Bash(execution/.venv/bin/python -m pytest execution/tests/test_checkpoint.py -v)",
       "Bash(execution/.venv/bin/python -m pytest execution/tests/ -v)",
       "Bash(.venv/bin/pytest tests/test_lsi_engine.py -x -q)",
-      "Bash(.venv/bin/pytest tests/ -x -q)"
+      "Bash(.venv/bin/pytest tests/ -x -q)",
+      "Bash(cat requirements*.txt)",
+      "Bash(/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/.venv/bin/pytest /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/tests/ -x -q)"
     ]
   }
 }

@@ -2,13 +2,15 @@
 
 State machine:
     IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP →
-    WAITING_FOR_INVERSION → MANAGING → FLAT
+    WAITING_FOR_INVERSION → [ARMED_LIMIT →] MANAGING → FLAT
 
 Unlike ORBEngine (continuation FVG after ORB), this engine detects:
     1. Liquidity sweep of confirmed swing pivots
     2. Opposite-direction FVG formation near sweep (before or after)
     3. Price-close inversion through the gap
-    4. Entry at inversion bar close (matches backtester entry_mode="close")
+    4. Entry via two modes (matches backtester):
+       - "close": enter at inversion bar close
+       - "fvg_limit": limit order at FVG boundary, fill on next bar touch
     5. Absolute-range stop (matches backtester stop_mode="absolute")
     6. Position management (SL/TP1/TP2/BE/EOD)
 
@@ -78,21 +80,21 @@ class LSIEngine:
         tp1_ratio: float = 0.3,
         min_gap_atr_pct: float = 5.0,
         min_stop_points: float = 0.0,
-        max_bars_after_sweep: int = 10,
         fvg_window_left: int = 10,
+        fvg_window_right: int = 5,
+        lsi_entry_mode: str = "close",  # "close" or "fvg_limit"
         # Risk params
         risk_usd: float = 250.0,
         point_value: float = 2.0,
         min_qty: float = 1.0,
         qty_step: float = 1.0,
         qty_multiplier: float = 1.0,
-        be_offset_ticks: int = 4,
         min_tick: float = 0.25,
         max_single_risk_usd: float = 500.0,
         # Direction
         long_only: bool = True,
         # DOW exclusion
-        excluded_dow: int | None = None,
+        excluded_dow: int | list[int] | None = None,
         excluded_dates: tuple[str, ...] = (),
         half_days: tuple[str, ...] = (),
         half_day_flat_start: str = "12:50",
@@ -124,8 +126,9 @@ class LSIEngine:
         self.tp1_ratio = tp1_ratio
         self.min_gap_atr_pct = min_gap_atr_pct
         self.min_stop_points = min_stop_points
-        self.max_bars_after_sweep = max_bars_after_sweep
         self.fvg_window_left = fvg_window_left
+        self.fvg_window_right = fvg_window_right
+        self.lsi_entry_mode = lsi_entry_mode
 
         # Risk
         self.risk_usd = risk_usd
@@ -133,7 +136,6 @@ class LSIEngine:
         self.min_qty = min_qty
         self.qty_step = qty_step
         self.qty_multiplier = qty_multiplier
-        self.be_offset_ticks = be_offset_ticks
         self.min_tick = min_tick
         self.max_single_risk_usd = max_single_risk_usd
 
@@ -167,10 +169,16 @@ class LSIEngine:
         # Each entry: (bar_index, GapInfo)
         self._recent_fvgs: list[tuple[int, GapInfo]] = []
 
-        # Entry state — inversion-bar-close entry (no limit order)
+        # Entry state
         self._entry_price: float = 0.0
         self._entry_direction: int = 0
         self._entry_stop: float = 0.0
+
+        # ARMED_LIMIT state (fvg_limit mode only)
+        self._limit_price: float = 0.0
+        self._limit_direction: int = 0
+        self._limit_gap: GapInfo | None = None
+        self._limit_daily_atr: float = 0.0
 
         # Trade resolution (persists until next session reset)
         self._exit_type: str | None = None
@@ -440,7 +448,7 @@ class LSIEngine:
         Mirrors the backtester's _extract_lsi_candidates logic:
         - Tracks recent FVGs and sweeps in parallel
         - FVGs formed before a sweep (within fvg_window_left) are promoted
-        - FVGs formed after a sweep (within max_bars_after_sweep) are promoted
+        - FVGs formed after a sweep (within fvg_window_right) are promoted
         - Entry at inversion-bar close with absolute-range stop
         - No max_inversion_bars limit (waits until entry window closes)
         """
@@ -474,6 +482,10 @@ class LSIEngine:
                 self._active_sweep = None
                 self._active_gap = None
                 self._recent_fvgs.clear()
+                self._limit_price = 0.0
+                self._limit_direction = 0
+                self._limit_gap = None
+                self._limit_daily_atr = 0.0
                 self._levels = None
                 self._tp1_hit = False
                 self._tp1_bar_count = -1
@@ -539,7 +551,7 @@ class LSIEngine:
             # Prune stale FVGs from buffer
             self._recent_fvgs = [
                 (idx, g) for idx, g in self._recent_fvgs
-                if self._bar_count - idx <= self.fvg_window_left + self.max_bars_after_sweep
+                if self._bar_count - idx <= self.fvg_window_left + self.fvg_window_right
             ]
 
         if self._state == LSIState.WAITING_FOR_GAP:
@@ -551,7 +563,7 @@ class LSIEngine:
 
             # Check bar count since sweep
             bars_since = self._bar_count - self._sweep_bar_index
-            if bars_since > self.max_bars_after_sweep:
+            if bars_since > self.fvg_window_right:
                 self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since)
                 self._state = LSIState.WAITING_FOR_SWEEP
                 self._active_sweep = None
@@ -589,12 +601,34 @@ class LSIEngine:
             if self._bar_count <= gap.bar_index:
                 return
 
-            # Price-close inversion → immediate entry at bar close
+            # Price-close inversion detected
             if gap.is_bullish and bar.close < gap.bottom:
                 if not self.long_only:
-                    await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
+                    if self.lsi_entry_mode == "fvg_limit":
+                        await self._arm_limit(bar, gap, direction=-1, daily_atr=daily_atr)
+                    else:
+                        await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
             elif not gap.is_bullish and bar.close > gap.top:
-                await self._enter_at_close(bar, gap, direction=1, daily_atr=daily_atr)
+                if self.lsi_entry_mode == "fvg_limit":
+                    await self._arm_limit(bar, gap, direction=1, daily_atr=daily_atr)
+                else:
+                    await self._enter_at_close(bar, gap, direction=1, daily_atr=daily_atr)
+
+        if self._state == LSIState.ARMED_LIMIT:
+            if not self._in_entry(bar_time):
+                self._log_trade("LIMIT_CANCELLED", "entry window closed")
+                self._state = LSIState.FLAT
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+
+            # Check if limit price was hit on this bar
+            is_long = self._limit_direction == 1
+            filled = (is_long and bar.low <= self._limit_price) or (
+                not is_long and bar.high >= self._limit_price
+            )
+            if filled:
+                await self._fill_limit(bar, daily_atr)
 
         if self._state == LSIState.MANAGING:
             await self._handle_managing(bar, daily_atr)
@@ -623,22 +657,48 @@ class LSIEngine:
         return None
 
     # ------------------------------------------------------------------
-    # Inversion-bar-close entry (replaces limit order placement)
+    # fvg_limit entry mode: arm limit → fill on next bar touch
     # ------------------------------------------------------------------
 
-    async def _enter_at_close(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
-        """Enter at inversion bar close with absolute-range stop.
+    async def _arm_limit(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
+        """Arm a limit order at the FVG boundary after inversion is confirmed.
 
-        Matches the backtester's default entry_mode="close" and stop_mode="absolute":
-        - Entry price = bar.close (the inversion candle's close)
-        - Stop = absolute min(low) or max(high) from FVG bar through inversion bar
+        Matches backtester's entry_mode="fvg_limit":
+        - LONG:  limit at gap.top  (top of bearish FVG = low[fvg_bar - 2])
+        - SHORT: limit at gap.bottom (bottom of bullish FVG = high[fvg_bar - 2])
+        Fill scan starts on the NEXT bar (signal_bar = inversion bar).
         """
-        entry = bar.close
+        is_long = direction == 1
+        limit_price = gap.top if is_long else gap.bottom
+
+        self._limit_price = limit_price
+        self._limit_direction = direction
+        self._limit_gap = gap
+        self._limit_daily_atr = daily_atr
+        self._state = LSIState.ARMED_LIMIT
+        self._request_checkpoint()
+
+        dir_str = "long" if is_long else "short"
+        self._log_trade(
+            "LIMIT_ARMED",
+            "dir=%s limit=%.2f gap_top=%.2f gap_bottom=%.2f"
+            % (dir_str, limit_price, gap.top, gap.bottom),
+        )
+        self._notify_state_change()
+
+    async def _fill_limit(self, bar: Bar, daily_atr: float) -> None:
+        """Fill the armed limit order — compute levels and enter position.
+
+        Entry price = limit price (FVG boundary).
+        Stop = absolute range from FVG bar through current bar (fill bar).
+        """
+        gap = self._limit_gap
+        direction = self._limit_direction
+        entry = self._limit_price
         is_long = direction == 1
         dir_str = "long" if is_long else "short"
 
-        # Compute absolute-range stop (matching backtester's stop_mode="absolute")
-        # Find bars from FVG bar through current bar (inversion bar)
+        # Compute absolute-range stop from FVG bar through fill bar
         fvg_bar_offset = self._bar_count - gap.bar_index
         if fvg_bar_offset >= len(self._bars):
             fvg_bar_offset = len(self._bars) - 1
@@ -650,18 +710,55 @@ class LSIEngine:
         else:
             raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
 
-        # Apply minimum stop distance (absolute points, matching backtester)
         if self.min_stop_points > 0:
             stop_dist = abs(entry - raw_stop)
             if stop_dist < self.min_stop_points:
-                if is_long:
-                    raw_stop = entry - self.min_stop_points
-                else:
-                    raw_stop = entry + self.min_stop_points
+                raw_stop = entry - self.min_stop_points if is_long else entry + self.min_stop_points
 
+        await self._build_and_enter(bar, gap, entry, raw_stop, direction, daily_atr)
+
+    # ------------------------------------------------------------------
+    # Inversion-bar-close entry
+    # ------------------------------------------------------------------
+
+    async def _enter_at_close(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
+        """Enter at inversion bar close with absolute-range stop.
+
+        Matches the backtester's entry_mode="close" and stop_mode="absolute":
+        - Entry price = bar.close (the inversion candle's close)
+        - Stop = absolute min(low) or max(high) from FVG bar through inversion bar
+        """
+        entry = bar.close
+        is_long = direction == 1
+
+        # Compute absolute-range stop
+        fvg_bar_offset = self._bar_count - gap.bar_index
+        if fvg_bar_offset >= len(self._bars):
+            fvg_bar_offset = len(self._bars) - 1
+        start_idx = max(0, len(self._bars) - 1 - fvg_bar_offset)
+        range_bars = self._bars[start_idx:]
+
+        if is_long:
+            raw_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
+        else:
+            raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
+
+        if self.min_stop_points > 0:
+            stop_dist = abs(entry - raw_stop)
+            if stop_dist < self.min_stop_points:
+                raw_stop = entry - self.min_stop_points if is_long else entry + self.min_stop_points
+
+        await self._build_and_enter(bar, gap, entry, raw_stop, direction, daily_atr)
+
+    async def _build_and_enter(
+        self, bar: Bar, gap: GapInfo, entry: float, raw_stop: float,
+        direction: int, daily_atr: float,
+    ) -> None:
+        """Shared sizing + state transition for both entry modes."""
+        is_long = direction == 1
+        dir_str = "long" if is_long else "short"
         gap_size = gap.top - gap.bottom
 
-        # Size the position
         risk_pts = abs(entry - raw_stop)
         tp1_dist = self.rr * risk_pts * self.tp1_ratio
         tp2_dist = self.rr * risk_pts
@@ -706,8 +803,6 @@ class LSIEngine:
             gap_size=gap_size,
         )
 
-        # Entry is at bar close — no same-bar stop check needed (backtest
-        # uses signal_bar = i - 1, meaning fill is checked on the NEXT bar)
         self._tp1_hit = False
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
@@ -715,11 +810,12 @@ class LSIEngine:
         self._state = LSIState.MANAGING
         self._request_checkpoint()
 
+        mode_str = self.lsi_entry_mode
         self._log_trade(
             "FILLED",
-            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (inversion-bar-close)"
+            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (%s)"
             % (dir_str, entry, raw_stop,
-               self._levels.tp1, self._levels.tp2, qty),
+               self._levels.tp1, self._levels.tp2, qty, mode_str),
         )
 
         if self._should_send:
@@ -834,8 +930,19 @@ class LSIEngine:
     # ------------------------------------------------------------------
 
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
-        """Process a 1s bar for fine-grained exit management."""
+        """Process a 1s bar for fine-grained exit management and limit fill detection."""
         self._daily_atr = daily_atr
+
+        # ARMED_LIMIT: check for limit fill on tick data
+        if self._state == LSIState.ARMED_LIMIT:
+            is_long = self._limit_direction == 1
+            filled = (is_long and tick.low <= self._limit_price) or (
+                not is_long and tick.high >= self._limit_price
+            )
+            if filled:
+                # Use the tick as the bar context for fill
+                await self._fill_limit(tick, daily_atr)
+            return
 
         if self._state != LSIState.MANAGING:
             return
@@ -957,7 +1064,7 @@ class LSIEngine:
     def status_dict(self) -> dict:
         levels = self._levels
         sw = self._swings
-        return {
+        result = {
             "config_name": self.config_name,
             "session": self.name,
             "state": self._state.value,
@@ -976,4 +1083,10 @@ class LSIEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "paused": self.paused,
+            "excluded_dow": self.excluded_dow,
+            "entry_mode": self.lsi_entry_mode,
         }
+        if self._state == LSIState.ARMED_LIMIT:
+            result["limit_price"] = round(self._limit_price, 2)
+            result["limit_direction"] = self._limit_direction
+        return result

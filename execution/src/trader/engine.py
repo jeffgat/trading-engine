@@ -200,7 +200,7 @@ class ORBEngine:
     icf_enabled: bool = False
 
     # Day-of-week exclusion (0=Mon..6=Sun, None=no exclusion)
-    excluded_dow: int | None = None
+    excluded_dow: int | list[int] | None = None
 
     # FOMC exclusion (GC only)
     fomc_exclusion: bool = False
@@ -417,8 +417,13 @@ class ORBEngine:
         if date_str in self.excluded_dates:
             return True
         # Day-of-week exclusion (Monday=0 .. Sunday=6)
-        if self.excluded_dow is not None and bar.timestamp.weekday() == self.excluded_dow:
-            return True
+        if self.excluded_dow is not None:
+            dow = bar.timestamp.weekday()
+            if isinstance(self.excluded_dow, (list, tuple)):
+                if dow in self.excluded_dow:
+                    return True
+            elif dow == self.excluded_dow:
+                return True
         # FOMC exclusion (GC only)
         if self.fomc_exclusion and date_str in FOMC_DATES:
             return True
@@ -1403,4 +1408,6 @@ class ORBEngine:
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,
             "paused": self.paused,
+            "excluded_dow": self.excluded_dow,
+            "fomc_exclusion": self.fomc_exclusion,
         }

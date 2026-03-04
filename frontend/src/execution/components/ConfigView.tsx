@@ -124,31 +124,94 @@ function EditableField({
   );
 }
 
-function SelectField({
-  label,
+/** Parse excluded_dow draft value into a number array. */
+function parseDowDraft(raw: string | number | boolean | number[] | null): number[] {
+  if (raw == null || raw === "") return [];
+  if (Array.isArray(raw)) return raw;
+  const n = Number(raw);
+  return Number.isFinite(n) ? [n] : [];
+}
+
+/** Multi-day skip selector with + Add / - Remove buttons. */
+function SkipDaysField({
   value,
-  options,
   onChange,
 }: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange: (v: string) => void;
+  value: string | number | boolean | number[] | null;
+  onChange: (days: number[] | null) => void;
 }) {
+  const selected = parseDowDraft(value);
+  const available = DOW_OPTIONS.filter(
+    (o) => o.value !== "" && !selected.includes(Number(o.value)),
+  );
+
+  const addDay = (dow: string) => {
+    if (dow === "") return;
+    const next = [...selected, Number(dow)].sort();
+    onChange(next);
+  };
+
+  const removeDay = (dow: number) => {
+    const next = selected.filter((d) => d !== dow);
+    onChange(next.length > 0 ? next : null);
+  };
+
   return (
-    <div className="flex items-center justify-between gap-2 py-0.5">
-      <span className="text-text-muted text-xs shrink-0">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-6 w-24 rounded border border-border bg-bg-secondary px-1 text-right font-mono text-xs text-text-secondary outline-none focus:border-accent"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+    <div className="py-0.5 space-y-1">
+      <span className="text-text-muted text-xs">Skip Days</span>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((d) => (
+            <span
+              key={d}
+              className="inline-flex items-center gap-1 rounded bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
+            >
+              {DOW_NAMES[d] ?? `DOW ${d}`}
+              <button
+                type="button"
+                onClick={() => removeDay(d)}
+                className="text-amber-400/60 hover:text-loss transition-colors leading-none"
+              >
+                &minus;
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {available.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          <select
+            id="skip-day-add"
+            defaultValue=""
+            className="h-5 rounded border border-border bg-bg-secondary px-1 font-mono text-[10px] text-text-secondary outline-none focus:border-accent"
+          >
+            <option value="" disabled>
+              Day...
+            </option>
+            {available.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              const sel = document.getElementById("skip-day-add") as HTMLSelectElement | null;
+              if (sel && sel.value) {
+                addDay(sel.value);
+                sel.value = "";
+              }
+            }}
+            className="text-[10px] font-medium text-profit hover:text-profit/80 transition-colors"
+          >
+            + Add
+          </button>
+        </div>
+      )}
+      {selected.length === 0 && available.length > 0 && (
+        <span className="text-[10px] text-text-muted">None</span>
+      )}
     </div>
   );
 }
@@ -439,8 +502,13 @@ function SessionConfigCard({
         allFields[f] = Number(draft[f]);
       }
       const dowDraft = draft.excluded_dow;
-      allFields.excluded_dow =
-        dowDraft === null || dowDraft === "" ? null : Number(dowDraft);
+      if (dowDraft == null || dowDraft === "" || (Array.isArray(dowDraft) && dowDraft.length === 0)) {
+        allFields.excluded_dow = null;
+      } else if (Array.isArray(dowDraft)) {
+        allFields.excluded_dow = dowDraft.map(Number);
+      } else {
+        allFields.excluded_dow = Number(dowDraft);
+      }
 
       await onSave(name, allFields as Partial<SessionConfig>);
       setEditing(false);
@@ -544,16 +612,12 @@ function SessionConfigCard({
               onChange={(v) => setField("flat_end", v)}
               overridden={isOverridden("flat_end")}
             />
-            {!isLsi && (
-              <SelectField
-                label="Skip Day"
-                value={draft.excluded_dow == null ? "" : String(draft.excluded_dow)}
-                options={DOW_OPTIONS}
-                onChange={(v) =>
-                  setDraft((d) => ({ ...d, excluded_dow: v === "" ? null : v }))
-                }
-              />
-            )}
+            <SkipDaysField
+              value={draft.excluded_dow as number[] | number | null}
+              onChange={(days) =>
+                setDraft((d) => ({ ...d, excluded_dow: days }))
+              }
+            />
           </div>
 
           {/* Strategy */}

@@ -20,6 +20,8 @@ export interface SessionStatus {
   r_result: number | null;
   config_name?: string;
   paused?: boolean;
+  excluded_dow?: number | number[] | null;
+  fomc_exclusion?: boolean;
 }
 
 export interface StatusResponse {

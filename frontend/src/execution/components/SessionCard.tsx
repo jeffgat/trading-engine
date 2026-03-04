@@ -15,6 +15,32 @@ import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { useState } from "react";
 
+const DOW_NAMES: Record<number, string> = {
+  0: "Mon",
+  1: "Tue",
+  2: "Wed",
+  3: "Thu",
+  4: "Fri",
+  5: "Sat",
+  6: "Sun",
+};
+
+function getSkipDays(engine: SessionStatus): string[] {
+  const days: string[] = [];
+  if (engine.excluded_dow != null) {
+    const dows = Array.isArray(engine.excluded_dow)
+      ? engine.excluded_dow
+      : [engine.excluded_dow];
+    for (const d of dows) {
+      if (DOW_NAMES[d]) days.push(DOW_NAMES[d]);
+    }
+  }
+  if (engine.fomc_exclusion) {
+    days.push("FOMC");
+  }
+  return days;
+}
+
 const EXIT_LABELS: Record<string, string> = {
   sl: "SL Hit",
   tp1_be: "BE Hit",
@@ -135,6 +161,25 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
             </span>
           </span>
         </div>
+
+        {/* Skip days */}
+        {(() => {
+          const skipDays = getSkipDays(engine);
+          if (skipDays.length === 0) return null;
+          return (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-text-muted">Skip:</span>
+              {skipDays.map((day) => (
+                <span
+                  key={day}
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-400"
+                >
+                  {day}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* ORB levels */}
         {(engine.orb_high != null || engine.orb_low != null) && (
