@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useStarredHistory } from "@/backtesting/hooks/useStarredHistory";
 import type { BacktestResult } from "@/backtesting/lib/types";
+import { filterTradesByDate } from "@/backtesting/lib/filterTrades";
 import { BacktestHistoryPanel } from './BacktestHistoryPanel';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
@@ -14,7 +15,7 @@ import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 
 export function SavedStrategiesDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests } =
+    const { history, activeId, refreshHistory, loadBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests } =
         useStarredHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
@@ -26,63 +27,49 @@ export function SavedStrategiesDashboard() {
     const [filterEnd, setFilterEnd] = useState('');
     const [originalDateStart, setOriginalDateStart] = useState('');
     const [originalDateEnd, setOriginalDateEnd] = useState('');
-    const [filterLoading, setFilterLoading] = useState(false);
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleLoad = async (id: string) => {
         setLoading(true);
         const result = await loadBacktest(id);
         if (result) {
             const r = result as any;
-            const dates = r.equity_curve?.length
-                ? [r.equity_curve[0].date, r.equity_curve[r.equity_curve.length - 1].date]
-                : r.trades?.length
-                    ? [r.trades[0].date, r.trades[r.trades.length - 1].date]
+            const dates = r.trades?.length
+                ? [r.trades[0].date, r.trades[r.trades.length - 1].date]
+                : r.equity_curve?.length
+                    ? [r.equity_curve[0].date, r.equity_curve[r.equity_curve.length - 1].date]
                     : ['', ''];
             const dateStart = r.date_start || dates[0] || '';
             const dateEnd = r.date_end || dates[1] || '';
 
-            // Always update the original (full) range for this backtest
             setOriginalDateStart(dateStart);
             setOriginalDateEnd(dateEnd);
-
-            if (!filterStart) {
-                // First load — no filter yet, use full range
-                setFilterStart(dateStart);
-                setFilterEnd(dateEnd);
-                setData(result);
-            } else {
-                // Subsequent loads — keep existing date filter, re-apply it
-                const filtered = await refilterBacktest(id, filterStart, filterEnd);
-                setData(filtered || result);
-            }
+            setFilterStart(dateStart);
+            setFilterEnd(dateEnd);
+            setData(result);
         }
         setLoading(false);
     };
 
+    // Client-side filtered view
+    const isFiltered = filterStart !== originalDateStart || filterEnd !== originalDateEnd;
+    const filtered = useMemo(() => {
+        if (!data?.trades?.length || !isFiltered) return null;
+        return filterTradesByDate(data.trades, filterStart, filterEnd);
+    }, [data, isFiltered, filterStart, filterEnd]);
+
+    const displayTrades = filtered?.trades ?? data?.trades ?? [];
+    const displayEquity = filtered?.equityCurve ?? data?.equity_curve ?? [];
+    const displaySummary = filtered?.summary ?? data?.summary;
+
     const handleDateChange = useCallback((start: string, end: string) => {
         setFilterStart(start);
         setFilterEnd(end);
-
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-
-        debounceRef.current = setTimeout(async () => {
-            if (!activeId) return;
-            const isFullRange = start === originalDateStart && end === originalDateEnd;
-            setFilterLoading(true);
-            const result = await refilterBacktest(
-                activeId,
-                isFullRange ? undefined : start,
-                isFullRange ? undefined : end,
-            );
-            if (result) setData(result);
-            setFilterLoading(false);
-        }, 300);
-    }, [activeId, originalDateStart, originalDateEnd, refilterBacktest]);
+    }, []);
 
     const handleDateReset = useCallback(() => {
-        handleDateChange(originalDateStart, originalDateEnd);
-    }, [originalDateStart, originalDateEnd, handleDateChange]);
+        setFilterStart(originalDateStart);
+        setFilterEnd(originalDateEnd);
+    }, [originalDateStart, originalDateEnd]);
 
     const handleUnstar = async (id: string) => {
         await unstarBacktest(id);
@@ -177,14 +164,14 @@ export function SavedStrategiesDashboard() {
                         originalEnd={originalDateEnd}
                         onChange={handleDateChange}
                         onReset={handleDateReset}
-                        loading={filterLoading}
+                        loading={false}
                         disabled={!data.trades?.length}
                     />
                     <VariablesTested config={data.config} />
                     <ConfigBar config={data.config} />
-                    <StatBar summary={data.summary} trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
-                    <EquityChart data={data.equity_curve} riskUsd={data.config.risk_usd ?? 50000} />
-                    <TradesTable trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} instrument={data.config.instrument ?? "NQ"} />
+                    {displaySummary && <StatBar summary={displaySummary} trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} />}
+                    <EquityChart data={displayEquity} riskUsd={data.config.risk_usd ?? 50000} />
+                    <TradesTable trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} instrument={data.config.instrument ?? "NQ"} />
                 </div>
             )}
 

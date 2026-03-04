@@ -1,0 +1,305 @@
+//@version=6
+indicator(
+     title              = "IB Mean Reversion [atlasfutures]",
+     overlay            = true,
+     max_lines_count    = 500,
+     max_boxes_count    = 500,
+     max_labels_count   = 500
+)
+
+// ============================================================================
+// AUTO-DETECT ASSET from chart symbol
+// ============================================================================
+asset = if syminfo.root == "NQ" or syminfo.root == "MNQ"
+    "NQ"
+else
+    "NQ"  // IB currently NQ-only
+
+// ============================================================================
+// INPUTS - Display
+// ============================================================================
+drawbackDays = input.int(3, "Days Back", minval=1, maxval=50, tooltip="Number of trading days to show drawings for", group="Display")
+
+// ============================================================================
+// INPUTS - IB Settings
+// ============================================================================
+i_ibSession    = input.session("0930-1030", "IB Window (ny time)", group="IB Settings")
+i_entryWindow  = input.session("1030-1500", "Entry Window (ny time)", group="IB Settings")
+i_direction    = input.string("Both", "Direction", options=["Long Only", "Short Only", "Both"], group="IB Settings")
+
+// ============================================================================
+// INPUTS - IB Colors
+// ============================================================================
+ibHighColor   = input.color(#2196F3, "IB High Color", group="IB Colors")
+ibLowColor    = input.color(#FF5252, "IB Low Color", group="IB Colors")
+ibMidColor    = input.color(#787b86, "IB Midpoint Color", group="IB Colors")
+
+// ============================================================================
+// INPUTS - Trade Level Colors
+// ============================================================================
+entryColor = input.color(#787b86, "Entry Color", inline="entry", group="Trade Level Colors")
+entryStyle = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="entry", group="Trade Level Colors")
+slColor    = input.color(#FF5252, "SL Color", inline="sl", group="Trade Level Colors")
+slStyle    = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="sl", group="Trade Level Colors")
+tpColor    = input.color(#26a69a, "TP Color", inline="tp", group="Trade Level Colors")
+tpStyle    = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted"], inline="tp", group="Trade Level Colors")
+
+// ============================================================================
+// INPUTS - Skip Days
+// ============================================================================
+i_skipMon = input.bool(false, "Skip Monday",    group="Skip Days")
+i_skipTue = input.bool(false, "Skip Tuesday",   group="Skip Days")
+i_skipWed = input.bool(false, "Skip Wednesday", group="Skip Days")
+i_skipThu = input.bool(false, "Skip Thursday",  group="Skip Days")
+i_skipFri = input.bool(false, "Skip Friday",    group="Skip Days")
+
+// ============================================================================
+// INPUTS - Alerts
+// ============================================================================
+enableAlerts = input.bool(true, "Enable Setup Alerts", tooltip="Enable alert conditions for when an IB setup is armed", group="Alerts")
+
+// ============================================================================
+// LINE STYLE LOOKUP
+// ============================================================================
+styleToLine(s) =>
+    s == "Solid" ? line.style_solid : s == "Dotted" ? line.style_dotted : line.style_dashed
+entryLineStyle = styleToLine(entryStyle)
+slLineStyle    = styleToLine(slStyle)
+tpLineStyle    = styleToLine(tpStyle)
+
+// ============================================================================
+// SESSION FILTERS - use "5" resolution for correct detection on all chart TFs
+// ============================================================================
+nySessionRTH = "0930-1600"
+inRTH        = not na(time("5", nySessionRTH, "America/New_York"))
+inIBWindow   = not na(time("5", i_ibSession, "America/New_York"))
+inEntryWin   = not na(time("5", i_entryWindow, "America/New_York"))
+
+// ============================================================================
+// DOW SKIP FLAGS
+// ============================================================================
+dow = dayofweek(time, "America/New_York")
+skipToday = (dow == dayofweek.monday    and i_skipMon)
+          or (dow == dayofweek.tuesday   and i_skipTue)
+          or (dow == dayofweek.wednesday and i_skipWed)
+          or (dow == dayofweek.thursday  and i_skipThu)
+          or (dow == dayofweek.friday    and i_skipFri)
+
+// ============================================================================
+// 5m OHLC - for IB range building and trade detection
+// Uses request.security with regular session ticker for stable alignment
+// ============================================================================
+regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
+
+// IB range building: current-bar data (no [1] shift) so range uses bars within the window
+[ibH5, ibL5, ibT5] = request.security(regTicker, "5", [high, low, time], lookahead=barmerge.lookahead_on)
+ibBarClosed5 = ta.change(ibT5) != 0
+
+// Trade detection: confirmed bar data (shifted [1]) for look-ahead safety
+[h5, l5, c5, t5] = request.security(regTicker, "5", [high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+barClosed5 = ta.change(t5) != 0
+
+// Session start detection (rising edge of RTH filter)
+rthStart = inRTH and not inRTH[1]
+
+// ============================================================================
+// DRAWBACK FILTER - only draw recent N days
+// ============================================================================
+barsPerDay = timeframe.in_seconds("D") / timeframe.in_seconds(timeframe.period)
+canDraw    = bar_index >= last_bar_index - drawbackDays * barsPerDay
+
+// ============================================================================
+// DIRECTION FLAGS
+// ============================================================================
+detectLongs  = i_direction != "Short Only"
+detectShorts = i_direction != "Long Only"
+
+// ============================================================================
+// IB STATE
+// ============================================================================
+var float ibHigh    = na
+var float ibLow     = na
+var float ibMid     = na
+var int   ibHighBar = na     // bar_index where high was last set
+var int   ibLowBar  = na     // bar_index where low was last set
+var bool  ibReady   = false
+var int   ibDir     = 0      // 1=LONG, -1=SHORT, 0=skip
+var bool  ibBroken  = false
+var bool  ibArmed   = false  // trade setup is armed
+
+// ============================================================================
+// DRAWING STATE
+// ============================================================================
+var line  ibHighLine  = na
+var line  ibLowLine   = na
+var line  ibMidLine   = na
+var line  entryLine   = na
+var line  slLine      = na
+var line  tpLine      = na
+var label dirLabel    = na
+var label slLbl       = na
+var label tpLbl       = na
+var bool  ibLinesDrawn = false
+
+// ============================================================================
+// ALERT FLAG (per-bar, non-persistent)
+// ============================================================================
+setupAlert = false
+
+// ============================================================================
+// HELPER: compute bar time at session end
+// ============================================================================
+calcEndBarTime(sessionStr, tz) =>
+    endPart  = str.substring(sessionStr, 5, 9)
+    endHour  = int(str.tonumber(str.substring(endPart, 0, 2)))
+    endMin   = int(str.tonumber(str.substring(endPart, 2, 4)))
+    barTime   = time
+    barMoment = timestamp(tz, year(barTime, tz), month(barTime, tz), dayofmonth(barTime, tz), endHour, endMin, 0)
+    barMoment := barMoment < barTime ? barMoment + 24 * 60 * 60 * 1000 : barMoment
+    barMoment
+
+// ============================================================================
+// RESET ON SESSION START
+// ============================================================================
+if rthStart
+    ibHigh     := na
+    ibLow      := na
+    ibMid      := na
+    ibHighBar  := na
+    ibLowBar   := na
+    ibReady    := false
+    ibDir      := 0
+    ibBroken   := false
+    ibArmed    := false
+    ibHighLine := na
+    ibLowLine  := na
+    ibMidLine  := na
+    entryLine  := na
+    slLine     := na
+    tpLine     := na
+    dirLabel   := na
+    slLbl      := na
+    tpLbl      := na
+    ibLinesDrawn := false
+
+// ============================================================================
+// BUILD IB RANGE (use current-bar 5m ohlc so IB uses data from within the window)
+// ============================================================================
+if ibBarClosed5 and inIBWindow and inRTH
+    if na(ibHigh)
+        ibHigh   := ibH5
+        ibLow    := ibL5
+        ibHighBar := bar_index
+        ibLowBar  := bar_index
+    else
+        if ibH5 > ibHigh
+            ibHigh    := ibH5
+            ibHighBar := bar_index
+        if ibL5 < ibLow
+            ibLow     := ibL5
+            ibLowBar  := bar_index
+
+// ============================================================================
+// IB READY + DIRECTION
+// First bar after IB window closes: freeze levels, determine direction
+// ============================================================================
+if ibBarClosed5 and not inIBWindow and inRTH and not ibReady and not na(ibHigh) and not na(ibLow)
+    ibReady := true
+    ibMid   := (ibHigh + ibLow) / 2.0
+
+    // Direction: which extreme formed first?
+    if not na(ibLowBar) and not na(ibHighBar)
+        if ibLowBar < ibHighBar
+            ibDir := 1   // Low formed first -> LONG
+        else if ibHighBar < ibLowBar
+            ibDir := -1  // High formed first -> SHORT
+        else
+            ibDir := 0   // Tie -> skip
+
+    // Apply direction filter
+    if i_direction == "Long Only" and ibDir != 1
+        ibDir := 0
+    if i_direction == "Short Only" and ibDir != -1
+        ibDir := 0
+
+// ============================================================================
+// IB BREAK DETECTION
+// ============================================================================
+if ibReady and not ibBroken
+    if high > ibHigh or low < ibLow
+        ibBroken := true
+
+// ============================================================================
+// DRAW IB RANGE LINES (once when ready, extend each bar)
+// ============================================================================
+if ibReady and not ibLinesDrawn and canDraw and ibDir != 0 and not skipToday
+    ibLinesDrawn := true
+    endBar = calcEndBarTime(i_entryWindow, "America/New_York")
+    ibHighLine := line.new(time, ibHigh, endBar, ibHigh, xloc=xloc.bar_time, color=ibHighColor, width=2)
+    ibLowLine  := line.new(time, ibLow, endBar, ibLow, xloc=xloc.bar_time, color=ibLowColor, width=2)
+    ibMidLine  := line.new(time, ibMid, endBar, ibMid, xloc=xloc.bar_time, color=ibMidColor, style=line.style_dashed, width=1)
+
+    // Direction label at midpoint
+    dirText = ibDir == 1 ? "LONG" : "SHORT"
+    dirClr  = ibDir == 1 ? #26a69a : #FF5252
+    dirLabel := label.new(time, ibMid, dirText, xloc=xloc.bar_time, style=label.style_label_right, color=color.new(dirClr, 60), textcolor=dirClr, size=size.normal)
+
+// Extend IB lines
+if ibReady and inRTH and inEntryWin and not na(ibHighLine)
+    line.set_x2(ibHighLine, math.max(time, line.get_x2(ibHighLine)))
+    line.set_x2(ibLowLine, math.max(time, line.get_x2(ibLowLine)))
+    line.set_x2(ibMidLine, math.max(time, line.get_x2(ibMidLine)))
+
+// ============================================================================
+// ARM TRADE SETUP + DRAW TRADE LEVELS
+// ============================================================================
+if ibReady and ibDir != 0 and not ibBroken and not ibArmed and inEntryWin and canDraw and not skipToday
+    ibArmed := true
+    setupAlert := enableAlerts
+
+    entryVal = ibMid
+    slVal    = ibDir == 1 ? ibLow : ibHigh
+    tpVal    = ibDir == 1 ? ibHigh : ibLow
+    riskPts  = math.abs(entryVal - slVal)
+
+    endBar = calcEndBarTime(i_entryWindow, "America/New_York")
+    entryLine := line.new(time, entryVal, endBar, entryVal, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+    slLine    := line.new(time, slVal, endBar, slVal, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+    tpLine    := line.new(time, tpVal, endBar, tpVal, xloc=xloc.bar_time, color=tpColor, style=tpLineStyle, width=1)
+
+    slTxt  = "SL: " + str.tostring(riskPts, format.mintick) + " pts"
+    tpTxt  = "TP: " + str.tostring(riskPts, format.mintick) + " pts (1:1)"
+    slLbl  := label.new(endBar, slVal, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+    tpLbl  := label.new(endBar, tpVal, tpTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tpColor, size=size.small)
+
+// ============================================================================
+// CANCEL ON IB BREAK (fade visuals)
+// ============================================================================
+if ibArmed and ibBroken and not na(entryLine)
+    line.set_color(entryLine, color.new(entryColor, 80))
+    line.set_color(slLine, color.new(slColor, 80))
+    line.set_color(tpLine, color.new(tpColor, 80))
+    if not na(slLbl)
+        label.set_textcolor(slLbl, color.new(slColor, 80))
+    if not na(tpLbl)
+        label.set_textcolor(tpLbl, color.new(tpColor, 80))
+
+// ============================================================================
+// EXTEND TRADE LEVEL LINES + LABELS
+// ============================================================================
+if ibArmed and not ibBroken and inRTH and inEntryWin and not na(entryLine)
+    line.set_x2(entryLine, math.max(time, line.get_x2(entryLine)))
+    line.set_x2(slLine, math.max(time, line.get_x2(slLine)))
+    line.set_x2(tpLine, math.max(time, line.get_x2(tpLine)))
+    label.set_x(slLbl, math.max(time, label.get_x(slLbl)))
+    label.set_x(tpLbl, math.max(time, label.get_x(tpLbl)))
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+dirStr = ibDir == 1 ? "Long" : "Short"
+
+if setupAlert
+    alert(asset + " IB " + dirStr + " armed @ " + str.tostring(ibMid, format.mintick) + " | SL " + str.tostring(ibDir == 1 ? ibLow : ibHigh, format.mintick) + " | TP " + str.tostring(ibDir == 1 ? ibHigh : ibLow, format.mintick), alert.freq_once_per_bar_close)
+
+alertcondition(setupAlert, "IB Setup Armed", "IB mean-reversion setup armed")

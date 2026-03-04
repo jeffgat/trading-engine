@@ -17,7 +17,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from orb_backtest.config import default_config, with_overrides, NY_SESSION, ASIA_SESSION, LDN_SESSION
+from orb_backtest.config import default_config, ib_config, with_overrides, NY_SESSION, ASIA_SESSION, LDN_SESSION, IB_NY_SESSION
 from orb_backtest.data.loader import load_5m_data, load_1m_for_5m
 from orb_backtest.data.instruments import get_instrument, NQ
 from orb_backtest.engine.simulator import run_backtest, EXIT_NAMES, EXIT_NO_FILL
@@ -53,8 +53,8 @@ def main():
     parser.add_argument("--sessions", default="NY", help="Comma-separated: NY,Asia,LDN")
 
     # Strategy type
-    parser.add_argument("--strategy", default=None, choices=["continuation", "reversal", "inversion", "cisd"],
-                        help="Strategy type: continuation (default), reversal (flip direction), inversion (wait for FVG invalidation), or cisd (ORB sweep + displacement reversal)")
+    parser.add_argument("--strategy", default=None, choices=["continuation", "reversal", "inversion", "cisd", "ib"],
+                        help="Strategy type: continuation (default), reversal (flip direction), inversion (wait for FVG invalidation), cisd (ORB sweep + displacement reversal), or ib (initial balance mean-reversion)")
     parser.add_argument("--direction", default=None, choices=["both", "long", "short"],
                         help="Direction filter: both (default), long, or short")
 
@@ -80,11 +80,13 @@ def main():
     # Build config
     instrument = get_instrument(args.instrument)
 
-    session_map = {"NY": NY_SESSION, "Asia": ASIA_SESSION, "LDN": LDN_SESSION}
-    sessions = tuple(session_map[s.strip()] for s in args.sessions.split(","))
-
-    config = default_config(instrument)
-    config = with_overrides(config, sessions=sessions)
+    if args.strategy == "ib":
+        config = ib_config(instrument)
+    else:
+        session_map = {"NY": NY_SESSION, "Asia": ASIA_SESSION, "LDN": LDN_SESSION}
+        sessions = tuple(session_map[s.strip()] for s in args.sessions.split(","))
+        config = default_config(instrument)
+        config = with_overrides(config, sessions=sessions)
 
     # Apply overrides
     overrides = {}

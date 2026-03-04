@@ -319,6 +319,71 @@ def _scan_fill_bar(
     return -1
 
 
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
+def _scan_fill_bar_ib(
+    high: np.ndarray,
+    low: np.ndarray,
+    entry_bar_start: int,
+    entry_bar_end: int,
+    last_bar: int,
+    direction: int,
+    entry_price: float,
+    ib_high: float,
+    ib_low: float,
+) -> int:
+    """Scan for limit fill, cancelling if IB range is broken before fill.
+
+    IB is considered broken if high > ib_high or low < ib_low on any bar
+    before the limit fills. Returns -1 if IB breaks or no fill.
+    """
+    for i in range(entry_bar_start, min(entry_bar_end + 1, last_bar + 1)):
+        # Check IB break first (strict inequality)
+        if high[i] > ib_high or low[i] < ib_low:
+            return -1
+        # Check fill
+        if direction == 1:
+            if low[i] <= entry_price:
+                return i
+        else:
+            if high[i] >= entry_price:
+                return i
+    return -1
+
+
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
+def _scan_fill_bar_ib_magnifier(
+    high_1m: np.ndarray,
+    low_1m: np.ndarray,
+    entry_start_1m: int,
+    entry_end_1m: int,
+    last_bar_1m: int,
+    direction: int,
+    entry_price: float,
+    ib_high: float,
+    ib_low: float,
+) -> int:
+    """Scan for limit fill on 1m bars, cancelling if IB breaks before fill.
+
+    Same logic as _scan_fill_bar_ib but at 1-minute resolution so that
+    intra-5m-bar ordering of fill vs break is resolved correctly (matching
+    Pine Script's bar magnifier behaviour).
+
+    Returns 1m bar index of fill, or -1 if IB breaks first / no fill.
+    """
+    for i in range(entry_start_1m, min(entry_end_1m + 1, last_bar_1m + 1)):
+        # Check IB break first (strict inequality)
+        if high_1m[i] > ib_high or low_1m[i] < ib_low:
+            return -1
+        # Check fill
+        if direction == 1:
+            if low_1m[i] <= entry_price:
+                return i
+        else:
+            if high_1m[i] >= entry_price:
+                return i
+    return -1
+
+
 # ---------------------------------------------------------------------------
 # Bar magnifier: 1-minute sub-bar simulation (Numba-compiled)
 # ---------------------------------------------------------------------------
@@ -1589,6 +1654,18 @@ def _extract_setup_candidates(
             excluded=excluded,
             date_strs=date_strs,
         )
+    elif config.strategy == "ib":
+        # IB mode: Initial Balance mean-reversion.
+        # orb_start/orb_end define the IB window (e.g. 09:30-10:30).
+        # Direction based on which extreme formed first; entry at midpoint.
+        candidates = _extract_ib_candidates(
+            df, session_day_id,
+            masks["in_orb"], masks["in_entry"], masks["in_rth"],
+            new_session_day, dates, daily_atr, session,
+            direction_filter=config.direction_filter,
+            excluded=excluded,
+            date_strs=date_strs,
+        )
     elif config.strategy == "inversion":
         # Inversion mode: wait for a candle to close through the FVG zone,
         # then enter in the opposite direction on a retest.
@@ -1768,6 +1845,102 @@ def _extract_cisd_candidates(
                     orb_range=orb_h - orb_l,
                 ))
                 continue
+
+    return candidates
+
+
+def _extract_ib_candidates(
+    df: pd.DataFrame,
+    session_day_id: np.ndarray,
+    in_orb: np.ndarray,
+    in_entry: np.ndarray,
+    in_rth: np.ndarray,
+    new_session_day: np.ndarray,
+    dates,
+    daily_atr: np.ndarray,
+    session,
+    direction_filter: str = "both",
+    excluded: set | None = None,
+    date_strs: np.ndarray | None = None,
+) -> list[_SetupCandidate]:
+    """Extract IB (Initial Balance) mean-reversion candidates.
+
+    One candidate per session-day:
+    1. Compute IB high/low/midpoint during orb_start-orb_end window
+    2. Determine direction: low formed first → LONG, high formed first → SHORT
+    3. Entry = midpoint, SL = IB boundary, TP = opposite IB boundary
+    4. Gate: IB must NOT be broken at entry start (broken-before-fill checked in Phase 2)
+    """
+    from ..signals.ib import compute_ib_levels
+
+    ib_high, ib_low, ib_mid, ib_direction, ib_ready, ib_broken = compute_ib_levels(
+        df, in_orb, in_rth, new_session_day
+    )
+
+    candidates: list[_SetupCandidate] = []
+    seen_days: set = set()
+    excluded = excluded or set()
+    n = len(df)
+
+    for i in range(n):
+        if not ib_ready[i] or not in_entry[i]:
+            continue
+
+        sd = session_day_id[i]
+        if sd in seen_days:
+            continue
+
+        if date_strs is not None and date_strs[i] in excluded:
+            seen_days.add(sd)
+            continue
+
+        direction = int(ib_direction[i])
+        if direction == 0:
+            seen_days.add(sd)
+            continue
+
+        if direction_filter == "long" and direction != 1:
+            seen_days.add(sd)
+            continue
+        if direction_filter == "short" and direction != -1:
+            seen_days.add(sd)
+            continue
+
+        # IB already broken at entry start → skip
+        if ib_broken[i]:
+            seen_days.add(sd)
+            continue
+
+        entry_price = ib_mid[i]
+        ib_range = ib_high[i] - ib_low[i]
+        if ib_range <= 0 or np.isnan(ib_range):
+            seen_days.add(sd)
+            continue
+
+        # Structural stop = IB boundary
+        if direction == 1:
+            structural_stop = ib_low[i]
+        else:
+            structural_stop = ib_high[i]
+
+        # Use daily ATR if available, otherwise fall back to IB range
+        atr = daily_atr[i] if not np.isnan(daily_atr[i]) else ib_range
+
+        seen_days.add(sd)
+        candidates.append(_SetupCandidate(
+            date_str=str(dates[i]),
+            session=session.name,
+            direction=direction,
+            signal_bar=i,
+            entry_price=entry_price,
+            gap_size=ib_range,
+            daily_atr=atr,
+            orb_range=ib_range,
+            structural_stop_price=structural_stop,
+            # Store IB levels for fill-scan IB-break check
+            lsi_fvg_top=ib_high[i],
+            lsi_fvg_bottom=ib_low[i],
+        ))
 
     return candidates
 
@@ -2965,13 +3138,21 @@ def run_backtest(
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                 )
+            if reverse_dir:
+                pnl_pts = -pnl_pts
+                # Swap exit labels so dashboard shows correct win/loss
+                if exit_type == EXIT_SL:
+                    exit_type = EXIT_TP2_SINGLE
+                elif exit_type in (EXIT_TP1_TP2, EXIT_TP2_SINGLE):
+                    exit_type = EXIT_SL
             pnl_usd = pnl_pts * pc.qty * config.point_value
             if exit_type != EXIT_NO_FILL:
                 pnl_usd -= 2 * pc.qty * config.commission_per_contract
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
-                direction=pc.direction, signal_bar=pc.cand.signal_bar,
+                direction=-pc.direction if reverse_dir else pc.direction,
+                signal_bar=pc.cand.signal_bar,
                 fill_bar=fill_bar, entry_price=pc.entry_price,
                 stop_price=pc.stop_price, tp1_price=pc.tp1_price,
                 tp2_price=pc.tp2_price, exit_type=exit_type,
@@ -3005,10 +3186,103 @@ def run_backtest(
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
             ))
 
+        is_ib = config.strategy == "ib"
+        reverse_dir = config.reverse_direction
+
+        def _reverse_pc(pc: _PreparedCandidate) -> _PreparedCandidate:
+            """Flip direction and swap stop/TP for post-fill reversal.
+
+            For a 1:1 at midpoint: old SL price becomes new TP, old TP becomes new SL.
+            tp1 mirrors the tp1_ratio offset from the new TP side.
+            """
+            new_dir = -pc.direction
+            new_stop = pc.tp2_price     # old full TP becomes new stop
+            new_tp2 = pc.stop_price     # old stop becomes new full TP
+            # Mirror tp1: same proportional distance from entry on the new TP side
+            tp1_frac = abs(pc.tp1_price - pc.entry_price) / abs(pc.tp2_price - pc.entry_price) if abs(pc.tp2_price - pc.entry_price) > 0 else 1.0
+            new_risk = abs(new_tp2 - pc.entry_price)
+            if new_dir == 1:
+                new_tp1 = pc.entry_price + tp1_frac * new_risk
+            else:
+                new_tp1 = pc.entry_price - tp1_frac * new_risk
+            return _PreparedCandidate(
+                cand=pc.cand, sd=pc.sd,
+                direction=new_dir,
+                entry_price=pc.entry_price,
+                stop_price=new_stop,
+                tp1_price=new_tp1,
+                tp2_price=new_tp2,
+                be_price=pc.be_price,
+                risk_pts=pc.risk_pts,
+                qty=pc.qty, half_qty=pc.half_qty,
+                is_single=pc.is_single,
+                gap_size=pc.gap_size,
+                entry_bar_start=pc.entry_bar_start,
+                entry_bar_end=pc.entry_bar_end,
+                flat_bar_start=pc.flat_bar_start,
+                last_bar=pc.last_bar,
+                entry_start_1m=pc.entry_start_1m,
+                entry_end_1m=pc.entry_end_1m,
+                flat_start_1m=pc.flat_start_1m,
+                last_bar_1m=pc.last_bar_1m,
+                internal_swing_level=pc.internal_swing_level,
+                cancel_on_swing=pc.cancel_on_swing,
+            )
+
         for sd in sorted(sd_groups):
             group = sd_groups[sd]
             if len(group) == 1:
-                _simulate_and_append(group[0])
+                pc = group[0]
+                if is_ib and pc.cand.lsi_fvg_top > 0:
+                    # IB strategy: check IB-break before fill using dedicated scanner.
+                    # Use 1m magnifier when available for correct intra-bar ordering.
+                    if use_magnifier and pc.entry_start_1m >= 0:
+                        fb_1m = _scan_fill_bar_ib_magnifier(
+                            high_1m, low_1m,
+                            pc.entry_start_1m, pc.entry_end_1m, pc.last_bar_1m,
+                            pc.direction, pc.entry_price,
+                            pc.cand.lsi_fvg_top,    # IB high
+                            pc.cand.lsi_fvg_bottom,  # IB low
+                        )
+                        fb = map_1m_to_5m(fb_1m, bar_map) if fb_1m >= 0 else -1
+                    else:
+                        fb = _scan_fill_bar_ib(
+                            high, low,
+                            pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
+                            pc.direction, pc.entry_price,
+                            pc.cand.lsi_fvg_top,    # IB high
+                            pc.cand.lsi_fvg_bottom,  # IB low
+                        )
+                    if fb < 0:
+                        _append_no_fill(pc)
+                    else:
+                        # Narrow entry window to fill bar so standard sim finds it immediately
+                        pc = _PreparedCandidate(
+                            cand=pc.cand, sd=pc.sd,
+                            direction=pc.direction,
+                            entry_price=pc.entry_price,
+                            stop_price=pc.stop_price,
+                            tp1_price=pc.tp1_price,
+                            tp2_price=pc.tp2_price,
+                            be_price=pc.be_price,
+                            risk_pts=pc.risk_pts,
+                            qty=pc.qty, half_qty=pc.half_qty,
+                            is_single=pc.is_single,
+                            gap_size=pc.gap_size,
+                            entry_bar_start=fb,
+                            entry_bar_end=pc.entry_bar_end,
+                            flat_bar_start=pc.flat_bar_start,
+                            last_bar=pc.last_bar,
+                            entry_start_1m=pc.entry_start_1m,
+                            entry_end_1m=pc.entry_end_1m,
+                            flat_start_1m=pc.flat_start_1m,
+                            last_bar_1m=pc.last_bar_1m,
+                            internal_swing_level=pc.internal_swing_level,
+                            cancel_on_swing=pc.cancel_on_swing,
+                        )
+                        _simulate_and_append(pc)
+                else:
+                    _simulate_and_append(pc)
             else:
                 # Multiple candidates (long + short) on same session-day.
                 # Determine which limit order fills first.

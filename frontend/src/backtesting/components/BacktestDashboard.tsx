@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useBacktestHistory } from "@/backtesting/hooks/useBacktestHistory";
 import type { BacktestResult, MonteCarloResult } from "@/backtesting/lib/types";
+import { filterTradesByDate } from "@/backtesting/lib/filterTrades";
 import { BacktestHistoryPanel } from './BacktestHistoryPanel';
 import { ConfigBar } from './ConfigBar';
 import { DateRangePicker } from './DateRangePicker';
@@ -14,7 +15,7 @@ import { VariablesTested } from './VariablesTested';
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
 
 export function BacktestDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, refilterBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
+    const { history, activeId, refreshHistory, loadBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
         useBacktestHistory();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
@@ -24,8 +25,6 @@ export function BacktestDashboard() {
     const [filterEnd, setFilterEnd] = useState('');
     const [originalDateStart, setOriginalDateStart] = useState('');
     const [originalDateEnd, setOriginalDateEnd] = useState('');
-    const [filterLoading, setFilterLoading] = useState(false);
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
@@ -45,12 +44,12 @@ export function BacktestDashboard() {
         const result = await loadBacktest(id);
         if (result) {
             setData(result);
-            // Derive date range from backend response, falling back to equity curve / trades
+            // Derive date range from trades (most complete source)
             const r = result as any;
-            const dates = r.equity_curve?.length
-                ? [r.equity_curve[0].date, r.equity_curve[r.equity_curve.length - 1].date]
-                : r.trades?.length
-                    ? [r.trades[0].date, r.trades[r.trades.length - 1].date]
+            const dates = r.trades?.length
+                ? [r.trades[0].date, r.trades[r.trades.length - 1].date]
+                : r.equity_curve?.length
+                    ? [r.equity_curve[0].date, r.equity_curve[r.equity_curve.length - 1].date]
                     : ['', ''];
             const dateStart = r.date_start || dates[0] || '';
             const dateEnd = r.date_end || dates[1] || '';
@@ -62,29 +61,26 @@ export function BacktestDashboard() {
         setLoading(false);
     };
 
+    // Client-side filtered view of trades, equity curve, and summary
+    const isFiltered = filterStart !== originalDateStart || filterEnd !== originalDateEnd;
+    const filtered = useMemo(() => {
+        if (!data?.trades?.length || !isFiltered) return null;
+        return filterTradesByDate(data.trades, filterStart, filterEnd);
+    }, [data, isFiltered, filterStart, filterEnd]);
+
+    const displayTrades = filtered?.trades ?? data?.trades ?? [];
+    const displayEquity = filtered?.equityCurve ?? data?.equity_curve ?? [];
+    const displaySummary = filtered?.summary ?? data?.summary;
+
     const handleDateChange = useCallback((start: string, end: string) => {
         setFilterStart(start);
         setFilterEnd(end);
-
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-
-        debounceRef.current = setTimeout(async () => {
-            if (!activeId) return;
-            const isFullRange = start === originalDateStart && end === originalDateEnd;
-            setFilterLoading(true);
-            const result = await refilterBacktest(
-                activeId,
-                isFullRange ? undefined : start,
-                isFullRange ? undefined : end,
-            );
-            if (result) setData(result);
-            setFilterLoading(false);
-        }, 300);
-    }, [activeId, originalDateStart, originalDateEnd, refilterBacktest]);
+    }, []);
 
     const handleDateReset = useCallback(() => {
-        handleDateChange(originalDateStart, originalDateEnd);
-    }, [originalDateStart, originalDateEnd, handleDateChange]);
+        setFilterStart(originalDateStart);
+        setFilterEnd(originalDateEnd);
+    }, [originalDateStart, originalDateEnd]);
 
     const runMonteCarlo = useCallback(async () => {
         if (!activeId) return;
@@ -180,13 +176,13 @@ export function BacktestDashboard() {
                         originalEnd={originalDateEnd}
                         onChange={handleDateChange}
                         onReset={handleDateReset}
-                        loading={filterLoading}
+                        loading={false}
                         disabled={!data.trades?.length}
                     />
                     <VariablesTested config={data.config} />
                     <ConfigBar config={data.config} />
-                    <StatBar summary={data.summary} trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} />
-                    <EquityChart data={data.equity_curve} riskUsd={data.config.risk_usd ?? 50000} />
+                    {displaySummary && <StatBar summary={displaySummary} trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} />}
+                    <EquityChart data={displayEquity} riskUsd={data.config.risk_usd ?? 50000} />
 
                     {/* Monte Carlo section */}
                     <MonteCarloSection
@@ -202,7 +198,7 @@ export function BacktestDashboard() {
                         onRun={runMonteCarlo}
                     />
 
-                    <TradesTable trades={data.trades} riskUsd={data.config.risk_usd ?? 50000} instrument={data.config.instrument ?? "NQ"} />
+                    <TradesTable trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} instrument={data.config.instrument ?? "NQ"} />
                 </div>
             )}
 

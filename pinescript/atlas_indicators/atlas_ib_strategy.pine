@@ -1,0 +1,223 @@
+//@version=6
+strategy(
+     title              = "IB Mean Reversion Strategy [atlasfutures]",
+     overlay            = true,
+     initial_capital    = 100000,
+     pyramiding         = 0,
+     margin_long        = 0,
+     margin_short       = 0,
+     commission_type    = strategy.commission.cash_per_contract,
+     commission_value   = 0.05,
+     calc_on_every_tick = true,
+     process_orders_on_close = true,
+     use_bar_magnifier  = true,
+     fill_orders_on_standard_ohlc = false
+)
+
+// ============================================================================
+// AUTO-DETECT ASSET from chart symbol
+// ============================================================================
+asset = if syminfo.root == "NQ" or syminfo.root == "MNQ"
+    "NQ"
+else
+    "NQ"  // IB currently NQ-only
+
+// ============================================================================
+// INPUTS - Risk Settings
+// ============================================================================
+i_riskUsd    = input.float(1000.0, "Risk per Trade ($)", step=100, minval=1, group="Risk Settings")
+i_pointValue = input.float(20.0, "Point Value ($)", step=1, tooltip="Dollar value per point. NQ=20, MNQ=2, ES=50, MES=5", group="Risk Settings")
+i_minQty     = input.float(1.0, "Min Qty", step=1, group="Risk Settings")
+i_qtyStep    = input.float(1.0, "Qty Step", step=1, group="Risk Settings")
+
+// ============================================================================
+// INPUTS - IB Settings
+// ============================================================================
+i_ibSession    = input.session("0930-1030", "IB Window (ny time)", group="IB Settings")
+i_entryWindow  = input.session("1030-1500", "Entry Window (ny time)", group="IB Settings")
+i_flatWindow   = input.session("1550-1600", "Flat Window (ny time)", group="IB Settings")
+i_direction    = input.string("Both", "Direction", options=["Long Only", "Short Only", "Both"], group="IB Settings")
+
+// ============================================================================
+// INPUTS - Skip Days
+// ============================================================================
+i_skipMon = input.bool(false, "Skip Monday",    group="Skip Days")
+i_skipTue = input.bool(false, "Skip Tuesday",   group="Skip Days")
+i_skipWed = input.bool(false, "Skip Wednesday", group="Skip Days")
+i_skipThu = input.bool(false, "Skip Thursday",  group="Skip Days")
+i_skipFri = input.bool(false, "Skip Friday",    group="Skip Days")
+
+// ============================================================================
+// SESSION FILTERS
+// ============================================================================
+nySessionRTH = "0930-1600"
+inRTH        = not na(time("5", nySessionRTH, "America/New_York"))
+inIBWindow   = not na(time("5", i_ibSession, "America/New_York"))
+inEntryWin   = not na(time("5", i_entryWindow, "America/New_York"))
+inFlatWin    = not na(time("5", i_flatWindow, "America/New_York"))
+
+// ============================================================================
+// DOW SKIP FLAGS
+// ============================================================================
+dow = dayofweek(time, "America/New_York")
+skipToday = (dow == dayofweek.monday    and i_skipMon)
+          or (dow == dayofweek.tuesday   and i_skipTue)
+          or (dow == dayofweek.wednesday and i_skipWed)
+          or (dow == dayofweek.thursday  and i_skipThu)
+          or (dow == dayofweek.friday    and i_skipFri)
+
+// ============================================================================
+// 5m OHLC via request.security
+// ============================================================================
+regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
+
+// IB range building: current-bar data (no [1] shift)
+[ibH5, ibL5, ibT5] = request.security(regTicker, "5", [high, low, time], lookahead=barmerge.lookahead_on)
+ibBarClosed5 = ta.change(ibT5) != 0
+
+// Trade detection: confirmed bar data (shifted [1]) for look-ahead safety
+[h5, l5, c5, t5] = request.security(regTicker, "5", [high[1], low[1], close[1], time[1]], lookahead=barmerge.lookahead_on)
+barClosed5 = ta.change(t5) != 0
+
+// Session start detection (rising edge of RTH filter)
+rthStart = inRTH and not inRTH[1]
+
+// ============================================================================
+// POSITION SIZING HELPER
+// ============================================================================
+floorToStep(value, step) =>
+    math.max(math.floor(value / step) * step, step)
+
+// ============================================================================
+// IB STATE
+// ============================================================================
+var float ibHigh    = na
+var float ibLow     = na
+var float ibMid     = na
+var int   ibHighBar = na
+var int   ibLowBar  = na
+var bool  ibReady   = false
+var int   ibDir     = 0      // 1=LONG, -1=SHORT, 0=skip
+var bool  ibBroken  = false
+var bool  ibArmed   = false
+var bool  hasTradedToday = false
+
+// Trade level state
+var float entryVal = na
+var float slVal    = na
+var float tpVal    = na
+var float tradeQty = na
+
+// ============================================================================
+// RESET ON SESSION START
+// ============================================================================
+if rthStart
+    ibHigh     := na
+    ibLow      := na
+    ibMid      := na
+    ibHighBar  := na
+    ibLowBar   := na
+    ibReady    := false
+    ibDir      := 0
+    ibBroken   := false
+    ibArmed    := false
+    hasTradedToday := false
+    entryVal   := na
+    slVal      := na
+    tpVal      := na
+    tradeQty   := na
+
+// ============================================================================
+// BUILD IB RANGE
+// ============================================================================
+if ibBarClosed5 and inIBWindow and inRTH
+    if na(ibHigh)
+        ibHigh    := ibH5
+        ibLow     := ibL5
+        ibHighBar := bar_index
+        ibLowBar  := bar_index
+    else
+        if ibH5 > ibHigh
+            ibHigh    := ibH5
+            ibHighBar := bar_index
+        if ibL5 < ibLow
+            ibLow     := ibL5
+            ibLowBar  := bar_index
+
+// ============================================================================
+// IB READY + DIRECTION
+// ============================================================================
+if ibBarClosed5 and not inIBWindow and inRTH and not ibReady and not na(ibHigh) and not na(ibLow)
+    ibReady := true
+    ibMid   := (ibHigh + ibLow) / 2.0
+
+    if not na(ibLowBar) and not na(ibHighBar)
+        if ibLowBar < ibHighBar
+            ibDir := 1   // Low formed first -> LONG
+        else if ibHighBar < ibLowBar
+            ibDir := -1  // High formed first -> SHORT
+        else
+            ibDir := 0   // Tie -> skip
+
+    // Apply direction filter
+    if i_direction == "Long Only" and ibDir != 1
+        ibDir := 0
+    if i_direction == "Short Only" and ibDir != -1
+        ibDir := 0
+
+// ============================================================================
+// IB BREAK DETECTION
+// ============================================================================
+if ibReady and not ibBroken
+    if high > ibHigh or low < ibLow
+        ibBroken := true
+
+// ============================================================================
+// ARM TRADE SETUP — place limit order at IB midpoint
+// ============================================================================
+if ibReady and ibDir != 0 and not ibBroken and not ibArmed and not hasTradedToday and inEntryWin and not skipToday
+    ibArmed  := true
+    entryVal := ibMid
+    slVal    := ibDir == 1 ? ibLow : ibHigh
+    tpVal    := ibDir == 1 ? ibHigh : ibLow
+
+    riskPts  = math.abs(entryVal - slVal)
+    riskPerContract = riskPts * i_pointValue
+    rawQty   = riskPerContract > 0 ? i_riskUsd / riskPerContract : i_minQty
+    tradeQty := floorToStep(rawQty, i_qtyStep)
+    if tradeQty < i_minQty
+        tradeQty := i_minQty
+
+    if ibDir == 1
+        strategy.entry("Long", strategy.long, qty=tradeQty, limit=entryVal)
+        strategy.exit("Long TP/SL", "Long", limit=tpVal, stop=slVal)
+    else
+        strategy.entry("Short", strategy.short, qty=tradeQty, limit=entryVal)
+        strategy.exit("Short TP/SL", "Short", limit=tpVal, stop=slVal)
+
+    hasTradedToday := true
+
+// ============================================================================
+// CANCEL ON IB BREAK — if armed but not yet filled
+// ============================================================================
+if ibArmed and ibBroken and strategy.position_size == 0
+    strategy.cancel_all()
+
+// ============================================================================
+// CANCEL UNFILLED LIMIT at entry window close
+// ============================================================================
+if not inEntryWin and ibArmed and strategy.position_size == 0
+    strategy.cancel_all()
+
+// ============================================================================
+// EOD FLATTEN — close any open position at flat window
+// ============================================================================
+if inFlatWin and strategy.position_size != 0
+    strategy.close_all("EOD Flat")
+
+// ============================================================================
+// PLOTS — IB range visualization
+// ============================================================================
+plot(ibReady and not skipToday and ibDir != 0 ? ibHigh : na, "IB High", color=color.new(#2196F3, 30), style=plot.style_linebr, linewidth=2)
+plot(ibReady and not skipToday and ibDir != 0 ? ibLow  : na, "IB Low",  color=color.new(#FF5252, 30), style=plot.style_linebr, linewidth=2)
+plot(ibReady and not skipToday and ibDir != 0 ? ibMid  : na, "IB Mid",  color=color.new(#787b86, 30), style=plot.style_linebr, linewidth=1)
