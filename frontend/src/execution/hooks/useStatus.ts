@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SessionStatus, StatusResponse } from "@/execution/lib/types";
+import type {
+  SessionStatus,
+  StatusResponse,
+} from "@/execution/lib/types";
 
 export function useStatus(
   subscribe: (type: string, cb: (data: unknown) => void) => () => void,

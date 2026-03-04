@@ -192,6 +192,19 @@ def results_to_dict(
         config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
         config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
 
+    # LSI params (only when strategy is LSI)
+    if config.strategy == "lsi":
+        config_dict["lsi_n_left"] = config.lsi_n_left
+        config_dict["lsi_n_right"] = config.lsi_n_right
+        config_dict["lsi_fvg_window_left"] = config.lsi_fvg_window_left
+        config_dict["lsi_fvg_window_right"] = config.lsi_fvg_window_right
+        config_dict["lsi_stop_mode"] = config.lsi_stop_mode
+        config_dict["lsi_entry_mode"] = config.lsi_entry_mode
+        config_dict["lsi_first_fvg_only"] = config.lsi_first_fvg_only
+        config_dict["lsi_clean_path"] = config.lsi_clean_path
+        config_dict["lsi_be_swing_n_left"] = config.lsi_be_swing_n_left
+        config_dict["lsi_cancel_on_swing"] = config.lsi_cancel_on_swing
+
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
         config_dict["point_value"] = config.instrument.point_value

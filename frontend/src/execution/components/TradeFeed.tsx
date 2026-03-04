@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TradeEventRow } from "./TradeEventRow";
-import type { ConfigResponse, TradeLogEntry } from "@/execution/lib/types";
+import { ExecTradeChartModal } from "./ExecTradeChartModal";
+import type { ConfigResponse, TradeLogEntry, ExecTradeContext } from "@/execution/lib/types";
+import { CHARTABLE_EVENTS, resolveTradeContext } from "@/execution/lib/utils";
 
 interface TradeFeedProps {
   entries: TradeLogEntry[];
@@ -37,6 +39,17 @@ export function TradeFeed({
     return entries.filter((e) => e.config === activeConfig);
   }, [entries, activeConfig]);
 
+  const [chartContext, setChartContext] = useState<ExecTradeContext | null>(null);
+  const [chartOpen, setChartOpen] = useState(false);
+
+  const handleRowClick = (entry: TradeLogEntry, index: number) => {
+    const ctx = resolveTradeContext(entry, entries, index);
+    if (ctx) {
+      setChartContext(ctx);
+      setChartOpen(true);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
@@ -61,7 +74,13 @@ export function TradeFeed({
       <ScrollArea className="h-[calc(100vh-220px)] rounded-md border border-border bg-bg-card">
         <div>
           {filtered.map((entry, i) => (
-            <TradeEventRow key={`${entry.timestamp}-${i}`} entry={entry} strategyType={stratLookup[entry.session]} />
+            <TradeEventRow
+              key={`${entry.timestamp}-${i}`}
+              entry={entry}
+              strategyType={stratLookup[entry.session]}
+              clickable={CHARTABLE_EVENTS.has(entry.event)}
+              onClick={() => handleRowClick(entry, i)}
+            />
           ))}
           {entries.length < total && (
             <button
@@ -73,6 +92,11 @@ export function TradeFeed({
           )}
         </div>
       </ScrollArea>
+      <ExecTradeChartModal
+        tradeContext={chartContext}
+        open={chartOpen}
+        onOpenChange={setChartOpen}
+      />
     </div>
   );
 }

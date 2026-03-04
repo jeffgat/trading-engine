@@ -136,7 +136,9 @@
       "Bash(.venv/bin/pytest tests/test_lsi_engine.py -x -q)",
       "Bash(.venv/bin/pytest tests/ -x -q)",
       "Bash(cat requirements*.txt)",
-      "Bash(/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/.venv/bin/pytest /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/tests/ -x -q)"
+      "Bash(/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/.venv/bin/pytest /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/tests/ -x -q)",
+      "Bash(uvicorn orb_backtest.api:app:*)",
+      "Bash(PYTHONPATH=src uvicorn orb_backtest.api:app:*\\\\)"
     ]
   }
 }

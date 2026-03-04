@@ -6,9 +6,11 @@ import type { TradeLogEntry } from "@/execution/lib/types";
 interface TradeEventRowProps {
   entry: TradeLogEntry;
   strategyType?: "continuation" | "lsi";
+  onClick?: () => void;
+  clickable?: boolean;
 }
 
-export function TradeEventRow({ entry, strategyType }: TradeEventRowProps) {
+export function TradeEventRow({ entry, strategyType, onClick, clickable }: TradeEventRowProps) {
   const isLsi = strategyType === "lsi";
   const eventColor =
     EVENT_COLORS[entry.event] ?? "bg-text-muted/20 text-text-muted";
@@ -19,7 +21,12 @@ export function TradeEventRow({ entry, strategyType }: TradeEventRowProps) {
   );
 
   return (
-    <div className="flex items-start gap-3 border-b border-border/30 px-3 py-2 hover:bg-bg-card-hover transition-colors">
+    <div
+      className={`flex items-start gap-3 border-b border-border/30 px-3 py-2 hover:bg-bg-card-hover transition-colors group ${
+        clickable ? "cursor-pointer" : ""
+      }`}
+      onClick={clickable ? onClick : undefined}
+    >
       {/* Timestamp */}
       <span className="font-mono text-xs text-text-muted whitespace-nowrap pt-0.5">
         {timePart && datePart ? `${datePart} ${timePart}` : entry.timestamp}
@@ -70,6 +77,26 @@ export function TradeEventRow({ entry, strategyType }: TradeEventRowProps) {
             </span>
           ))}
         </div>
+      )}
+
+      {/* Chart icon on hover for clickable rows */}
+      {clickable && (
+        <span className="ml-auto opacity-0 group-hover:opacity-60 transition-opacity pt-0.5">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-text-muted"
+          >
+            <path d="M3 3v18h18" />
+            <path d="M7 16l4-8 4 4 4-6" />
+          </svg>
+        </span>
       )}
     </div>
   );

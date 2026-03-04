@@ -9,6 +9,11 @@ export const STATE_COLORS: Record<string, string> = {
   filled: "bg-accent/20 text-gold-200",
   managing: "bg-cyan-500/20 text-cyan-300",
   flat: "bg-orange-500/20 text-orange-200",
+  // IFVG engine states
+  waiting_for_gap: "bg-amber-500/20 text-amber-300",
+  collecting_gaps: "bg-amber-500/20 text-amber-300",
+  waiting_for_inversion: "bg-violet-500/20 text-violet-300",
+  armed_limit: "bg-profit/20 text-profit",
 };
 
 export const STATE_LABELS: Record<string, string> = {
@@ -22,6 +27,11 @@ export const STATE_LABELS: Record<string, string> = {
   filled: "Filled",
   managing: "Managing",
   flat: "Flat",
+  // IFVG engine states
+  waiting_for_gap: "Waiting for Gap",
+  collecting_gaps: "Collecting Gaps",
+  waiting_for_inversion: "Waiting for Inversion",
+  armed_limit: "Armed Limit",
 };
 
 export const EVENT_COLORS: Record<string, string> = {

@@ -1,8 +1,8 @@
 """LSI (Inverse Fair Value Gap) engine for live LSI reversal strategy.
 
 State machine:
-    IDLE → WAITING_FOR_SWEEP → WAITING_FOR_GAP →
-    WAITING_FOR_INVERSION → [ARMED_LIMIT →] MANAGING → FLAT
+    IDLE → SCANNING → WAITING_FOR_GAP → COLLECTING_GAPS →
+    WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING → FLAT
 
 Unlike ORBEngine (continuation FVG after ORB), this engine detects:
     1. Liquidity sweep of confirmed swing pivots
@@ -37,7 +37,7 @@ trade_logger = logging.getLogger("trader.trades")
 
 class LSIState(enum.Enum):
     IDLE = "idle"
-    WAITING_FOR_SWEEP = "waiting_for_sweep"  # in entry window, watching for sweeps
+    SCANNING = "scanning"  # in entry window, watching for sweeps
     WAITING_FOR_GAP = "waiting_for_gap"  # sweep detected, scanning for FVG
     COLLECTING_GAPS = "collecting_gaps"  # singular gap validation
     WAITING_FOR_INVERSION = "waiting_for_inversion"  # gap found, waiting for close inversion
@@ -263,11 +263,6 @@ class LSIEngine:
     # Startup recovery
     # ------------------------------------------------------------------
 
-    @property
-    def _crosses_midnight(self) -> bool:
-        """True if the session's entry window spans midnight."""
-        return self._entry_start_t > self._flat_end_t
-
     def recover_session_state(self, bars: list[Bar], now: datetime) -> bool:
         """Recover session state after restart (parallel to ORBEngine.recover_opening_range).
 
@@ -312,7 +307,7 @@ class LSIEngine:
 
         # Determine state based on current time
         if self._in_entry(now_t):
-            self._state = LSIState.WAITING_FOR_SWEEP
+            self._state = LSIState.SCANNING
         elif self._in_flat(dummy_bar):
             self._state = LSIState.FLAT
         else:
@@ -501,11 +496,11 @@ class LSIEngine:
         # State machine
         if self._state == LSIState.IDLE:
             if self._in_entry(bar_time) and not self._is_excluded_day(bar):
-                self._state = LSIState.WAITING_FOR_SWEEP
+                self._state = LSIState.SCANNING
                 self._request_checkpoint()
                 self._notify_state_change()
 
-        if self._state == LSIState.WAITING_FOR_SWEEP:
+        if self._state == LSIState.SCANNING:
             if not self._in_entry(bar_time):
                 self._log_trade("NO_SETUP", "entry window closed")
                 self._state = LSIState.FLAT
@@ -565,7 +560,7 @@ class LSIEngine:
             bars_since = self._bar_count - self._sweep_bar_index
             if bars_since > self.fvg_window_right:
                 self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since)
-                self._state = LSIState.WAITING_FOR_SWEEP
+                self._state = LSIState.SCANNING
                 self._active_sweep = None
                 self._notify_state_change()
                 return
@@ -772,7 +767,7 @@ class LSIEngine:
                 qty = self.min_qty
             else:
                 self._log_trade("ENTRY_REJECTED", "risk too high for 1 contract: risk=%.2f" % single_risk)
-                self._state = LSIState.WAITING_FOR_SWEEP
+                self._state = LSIState.SCANNING
                 self._active_sweep = None
                 self._active_gap = None
                 self._notify_state_change()

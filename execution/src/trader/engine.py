@@ -965,8 +965,8 @@ class ORBEngine:
             self._fill_timestamp = bar.timestamp
             self._log_trade(
                 "FILLED",
-                "dir=%s entry=%.2f bar_time=%s resolution=5m"
-                % ("long" if is_long else "short", levels.entry, bar.timestamp),
+                "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f bar_time=%s resolution=5m"
+                % ("long" if is_long else "short", levels.entry, levels.stop, levels.tp1, levels.tp2, levels.qty, bar.timestamp),
             )
             # Immediately transition to managing — but don't check exits on fill bar
             self._state = State.MANAGING
@@ -1200,8 +1200,8 @@ class ORBEngine:
             self._request_checkpoint()
             self._log_trade(
                 "FILLED",
-                "dir=%s entry=%.2f tick_time=%s resolution=1s"
-                % ("long" if is_long else "short", levels.entry, tick.timestamp),
+                "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f tick_time=%s resolution=1s"
+                % ("long" if is_long else "short", levels.entry, levels.stop, levels.tp1, levels.tp2, levels.qty, tick.timestamp),
             )
             self._notify_state_change()
 

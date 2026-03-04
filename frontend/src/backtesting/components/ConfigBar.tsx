@@ -78,8 +78,22 @@ interface ConfigBarProps {
   config: BacktestConfig;
 }
 
+function SimpleParam({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
+        {label}
+      </span>
+      <span className="font-mono text-sm text-text-primary">
+        {value != null ? String(value) : "—"}
+      </span>
+    </div>
+  );
+}
+
 export function ConfigBar({ config }: ConfigBarProps) {
   const sessions = detectSessions(config);
+  const isLsi = config.strategy === "lsi";
 
   const fmtPct = (v: number) => `${v}%`;
   const fmtNum = (v: number) => v.toString();
@@ -88,20 +102,35 @@ export function ConfigBar({ config }: ConfigBarProps) {
 
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-2 rounded-lg border border-border bg-bg-card px-4 py-3">
-      <ParamDisplay
-        label="Stop ATR %"
-        sessions={sessions}
-        config={config}
-        paramKey="stop_atr_pct"
-        format={fmtPct}
-      />
-      <ParamDisplay
-        label="Min Gap ATR %"
-        sessions={sessions}
-        config={config}
-        paramKey="min_gap_atr_pct"
-        format={fmtPct}
-      />
+      {isLsi ? (
+        <>
+          <SimpleParam label="Swing L/R" value={`${config.lsi_n_left ?? "—"}/${config.lsi_n_right ?? "—"}`} />
+          <SimpleParam label="FVG Window L/R" value={`${config.lsi_fvg_window_left ?? "—"}/${config.lsi_fvg_window_right ?? "—"}`} />
+          <SimpleParam label="Stop Mode" value={config.lsi_stop_mode} />
+          <SimpleParam label="Entry Mode" value={config.lsi_entry_mode} />
+          {config.lsi_first_fvg_only ? <SimpleParam label="1st FVG" value="ON" /> : null}
+          {config.lsi_clean_path ? <SimpleParam label="Clean Path" value="ON" /> : null}
+          {(config.lsi_be_swing_n_left as number) > 0 && <SimpleParam label="BE Swing nL" value={config.lsi_be_swing_n_left} />}
+          {config.lsi_cancel_on_swing ? <SimpleParam label="Cancel on Swing" value="ON" /> : null}
+        </>
+      ) : (
+        <>
+          <ParamDisplay
+            label="Stop ATR %"
+            sessions={sessions}
+            config={config}
+            paramKey="stop_atr_pct"
+            format={fmtPct}
+          />
+          <ParamDisplay
+            label="Min Gap ATR %"
+            sessions={sessions}
+            config={config}
+            paramKey="min_gap_atr_pct"
+            format={fmtPct}
+          />
+        </>
+      )}
       <div className="flex flex-col gap-1">
         <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
           Risk

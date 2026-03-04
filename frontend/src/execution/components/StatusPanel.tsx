@@ -70,7 +70,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
   const configNames = Object.keys(configEngines).sort();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="text-sm text-text-muted">
           Uptime: <span className="font-mono text-text-secondary">{uptimeStr}</span>

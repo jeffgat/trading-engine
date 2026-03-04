@@ -107,38 +107,56 @@ gcOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="GC: NY")
 // ============================================================================
 // INPUTS - NQ: NY LSI
 // ============================================================================
-i_nqLsiNyOrbSession   = input.session("0930-0935", "ORB Window (ny time)", group="NQ: NY LSI")
 i_nqLsiNyEntryWindow  = input.session("0935-1530", "Entry Window (ny time)", group="NQ: NY LSI")
+i_nqLsiNyDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: NY LSI")
 i_nqLsiNyRR           = input.float(3.0, "Reward/Risk", step=0.25, group="NQ: NY LSI")
 i_nqLsiNyTp1Ratio     = input.float(0.3, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY LSI")
 i_nqLsiNyAtrLength    = input.int(10, "ATR Length", minval=1, group="NQ: NY LSI")
+i_nqLsiNyStopPct      = input.float(5.0, "Stop (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="NQ: NY LSI")
 i_nqLsiNyMinGapPct    = input.float(5.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NQ: NY LSI")
-nqLsiNyOrbHighColor   = input.color(#FF9800, "ORB High Color", group="NQ: NY LSI")
-nqLsiNyOrbLowColor    = input.color(#FFCC80, "ORB Low Color", group="NQ: NY LSI")
+nqLsiNyFvgPendColor   = input.color(#FF9800, "FVG Pending Color", group="NQ: NY LSI")
+nqLsiNyFvgSweptColor  = input.color(#26a69a, "FVG Swept Color", group="NQ: NY LSI")
 
 // ============================================================================
 // INPUTS - NQ: Asia LSI
 // ============================================================================
-i_nqLsiAsiaOrbSession   = input.session("2000-2005", "ORB Window (ny time)", group="NQ: Asia LSI")
 i_nqLsiAsiaEntryWindow  = input.session("2040-2330", "Entry Window (ny time)", group="NQ: Asia LSI")
+i_nqLsiAsiaDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: Asia LSI")
 i_nqLsiAsiaRR           = input.float(2.0, "Reward/Risk", step=0.25, group="NQ: Asia LSI")
 i_nqLsiAsiaTp1Ratio     = input.float(0.7, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: Asia LSI")
 i_nqLsiAsiaAtrLength    = input.int(40, "ATR Length", minval=1, group="NQ: Asia LSI")
+i_nqLsiAsiaStopPct      = input.float(5.0, "Stop (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="NQ: Asia LSI")
 i_nqLsiAsiaMinGapPct    = input.float(1.75, "Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NQ: Asia LSI")
-nqLsiAsiaOrbHighColor   = input.color(#9C27B0, "ORB High Color", group="NQ: Asia LSI")
-nqLsiAsiaOrbLowColor    = input.color(#CE93D8, "ORB Low Color", group="NQ: Asia LSI")
+nqLsiAsiaFvgPendColor   = input.color(#9C27B0, "FVG Pending Color", group="NQ: Asia LSI")
+nqLsiAsiaFvgSweptColor  = input.color(#2196F3, "FVG Swept Color", group="NQ: Asia LSI")
 
 // ============================================================================
 // INPUTS - NQ: LDN LSI
 // ============================================================================
-i_nqLdnOrbSession   = input.session("0300-0305", "ORB Window (ny time)", group="NQ: LDN LSI")
 i_nqLdnEntryWindow  = input.session("0330-0700", "Entry Window (ny time)", group="NQ: LDN LSI")
+i_nqLdnDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: LDN LSI")
 i_nqLdnRR           = input.float(1.65, "Reward/Risk", step=0.05, group="NQ: LDN LSI")
 i_nqLdnTp1Ratio     = input.float(0.7, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: LDN LSI")
 i_nqLdnAtrLength    = input.int(10, "ATR Length", minval=1, group="NQ: LDN LSI")
+i_nqLdnStopPct      = input.float(5.0, "Stop (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="NQ: LDN LSI")
 i_nqLdnMinGapPct    = input.float(5.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NQ: LDN LSI")
-nqLdnOrbHighColor   = input.color(#4CAF50, "ORB High Color", group="NQ: LDN LSI")
-nqLdnOrbLowColor    = input.color(#A5D6A7, "ORB Low Color", group="NQ: LDN LSI")
+nqLdnFvgPendColor   = input.color(#4CAF50, "FVG Pending Color", group="NQ: LDN LSI")
+nqLdnFvgSweptColor  = input.color(#26a69a, "FVG Swept Color", group="NQ: LDN LSI")
+
+// ============================================================================
+// INPUTS - NQ: LDN ORB
+// ============================================================================
+i_nqLdnOrbSession    = input.session("0300-0330", "ORB Window (ny time)", group="NQ: LDN ORB")
+i_nqLdnOrbEntryWindow = input.session("0330-0825", "Entry Window (ny time)", group="NQ: LDN ORB")
+i_nqLdnOrbDirection  = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: LDN ORB")
+i_nqLdnOrbImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="NQ: LDN ORB")
+i_nqLdnOrbRR         = input.float(6.0, "Reward/Risk", step=0.25, group="NQ: LDN ORB")
+i_nqLdnOrbTp1Ratio   = input.float(0.7, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: LDN ORB")
+i_nqLdnOrbAtrLength  = input.int(10, "ATR Length", minval=1, group="NQ: LDN ORB")
+i_nqLdnOrbStopPct    = input.float(1.5, "Stop (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="NQ: LDN ORB")
+i_nqLdnOrbMinGapPct  = input.float(1.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="NQ: LDN ORB")
+nqLdnOrbHighColor    = input.color(#FF9800, "ORB High Color", group="NQ: LDN ORB")
+nqLdnOrbLowColor     = input.color(#FFB74D, "ORB Low Color", group="NQ: LDN ORB")
 
 // ============================================================================
 // INPUTS - Trade Level Colors
@@ -165,6 +183,7 @@ enableAsia = asset == "NQ" or asset == "ES"
 enableLsiNy   = asset == "NQ"
 enableLsiAsia = asset == "NQ"
 enableLdn     = asset == "NQ"
+enableLdnOrb  = asset == "NQ"
 
 // Session RTH (fixed, same for all assets)
 nySessionRTH   = "0930-1600"
@@ -391,14 +410,13 @@ inAsiaRTH      = not na(time("5", asiaSessionRTH, "America/New_York"))
 inAsiaORB      = not na(time("5", asiaOrbSession, "America/New_York"))
 inAsiaEntryWin = not na(time("5", asiaEntryWindow, "America/New_York"))
 inLsiNyRTH       = not na(time("5", nySessionRTH,            "America/New_York"))
-inLsiNyORB       = not na(time("5", i_nqLsiNyOrbSession,     "America/New_York"))
 inLsiNyEntryWin  = not na(time("5", i_nqLsiNyEntryWindow,    "America/New_York"))
 inLsiAsiaRTH     = not na(time("5", asiaSessionRTH,          "America/New_York"))
-inLsiAsiaORB     = not na(time("5", i_nqLsiAsiaOrbSession,   "America/New_York"))
 inLsiAsiaEntryWin= not na(time("5", i_nqLsiAsiaEntryWindow,  "America/New_York"))
 inLdnRTH         = not na(time("5", ldnSessionRTH,           "America/New_York"))
-inLdnORB         = not na(time("5", i_nqLdnOrbSession,       "America/New_York"))
 inLdnEntryWin    = not na(time("5", i_nqLdnEntryWindow,      "America/New_York"))
+inLdnOrbORB      = not na(time("5", i_nqLdnOrbSession,      "America/New_York"))
+inLdnOrbEntryWin = not na(time("5", i_nqLdnOrbEntryWindow,  "America/New_York"))
 
 // ============================================================================
 // 5m OHLC - stable confirmed data via lookahead_on + [1] offset
@@ -406,7 +424,7 @@ inLdnEntryWin    = not na(time("5", i_nqLdnEntryWindow,      "America/New_York")
 // c5_1 / o5_1 = impulse candle close/open (for impulse close filter)
 // ============================================================================
 regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
-[h5, l5, h5_1, l5_1, h5_2, l5_2, c5_1, o5_1, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], close[2], open[2], time[1], time[3]], lookahead=barmerge.lookahead_on)
+[h5, l5, h5_1, l5_1, h5_2, l5_2, c5_1, o5_1, c5, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], close[2], open[2], close[1], time[1], time[3]], lookahead=barmerge.lookahead_on)
 barClosed5 = ta.change(t5) != 0
 
 // Session start detection (rising edge of session filter)
@@ -429,6 +447,24 @@ nyDetectLongs    = nyDirection != "Short Only"
 nyDetectShorts   = nyDirection != "Long Only"
 asiaDetectLongs  = asiaDirection != "Short Only"
 asiaDetectShorts = asiaDirection != "Long Only"
+lsiNyDetectLongs    = i_nqLsiNyDirection != "Short Only"
+lsiNyDetectShorts   = i_nqLsiNyDirection != "Long Only"
+lsiAsiaDetectLongs  = i_nqLsiAsiaDirection != "Short Only"
+lsiAsiaDetectShorts = i_nqLsiAsiaDirection != "Long Only"
+ldnDetectLongs      = i_nqLdnDirection != "Short Only"
+ldnDetectShorts     = i_nqLdnDirection != "Long Only"
+ldnOrbDetectLongs   = i_nqLdnOrbDirection != "Short Only"
+ldnOrbDetectShorts  = i_nqLdnOrbDirection != "Long Only"
+
+// ============================================================================
+// FVG ZONE TYPE (shared by all LSI sessions)
+// ============================================================================
+type FvgZone
+    float top
+    float bot
+    int   startTime
+    box   bx
+    label lbl
 
 // ============================================================================
 // NY ORB STATE
@@ -471,52 +507,73 @@ var int   asia_shortFvgStartTime = na
 var string asia_shortFvgText     = na
 
 // ============================================================================
-// LSI NY ORB STATE
+// LSI NY STATE
 // ============================================================================
-var float lsiNy_orbHigh = na
-var float lsiNy_orbLow  = na
-var bool  lsiNy_orbReady = false
-var bool  lsiNy_longFirstFvgFound = false
-var float lsiNy_longFvgTopStored  = na
-var float lsiNy_longFvgBotStored  = na
-var int   lsiNy_longFvgStartTime  = na
-var string lsiNy_longFvgText      = na
-var float lsiNy_longEntry = na
-var float lsiNy_longStop  = na
-var float lsiNy_longTp1   = na
-var float lsiNy_longTp2   = na
+var lsiNy_bearFvgs = array.new<FvgZone>(0)
+var lsiNy_bullFvgs = array.new<FvgZone>(0)
+var bool  lsiNy_armed = false
+var int   lsiNy_dir   = 0
+var float lsiNy_entry = na
+var float lsiNy_stop  = na
+var float lsiNy_tp1   = na
+var float lsiNy_tp2   = na
 
 // ============================================================================
-// LSI ASIA ORB STATE
+// LSI ASIA STATE
 // ============================================================================
-var float lsiAsia_orbHigh = na
-var float lsiAsia_orbLow  = na
-var bool  lsiAsia_orbReady = false
-var bool  lsiAsia_longFirstFvgFound = false
-var float lsiAsia_longFvgTopStored  = na
-var float lsiAsia_longFvgBotStored  = na
-var int   lsiAsia_longFvgStartTime  = na
-var string lsiAsia_longFvgText      = na
-var float lsiAsia_longEntry = na
-var float lsiAsia_longStop  = na
-var float lsiAsia_longTp1   = na
-var float lsiAsia_longTp2   = na
+var lsiAsia_bearFvgs = array.new<FvgZone>(0)
+var lsiAsia_bullFvgs = array.new<FvgZone>(0)
+var bool  lsiAsia_armed = false
+var int   lsiAsia_dir   = 0
+var float lsiAsia_entry = na
+var float lsiAsia_stop  = na
+var float lsiAsia_tp1   = na
+var float lsiAsia_tp2   = na
+
+// ============================================================================
+// LDN STATE
+// ============================================================================
+var ldn_bearFvgs = array.new<FvgZone>(0)
+var ldn_bullFvgs = array.new<FvgZone>(0)
+var bool  ldn_armed = false
+var int   ldn_dir   = 0
+var float ldn_entry = na
+var float ldn_stop  = na
+var float ldn_tp1   = na
+var float ldn_tp2   = na
 
 // ============================================================================
 // LDN ORB STATE
 // ============================================================================
-var float ldn_orbHigh = na
-var float ldn_orbLow  = na
-var bool  ldn_orbReady = false
-var bool  ldn_longFirstFvgFound = false
-var float ldn_longFvgTopStored  = na
-var float ldn_longFvgBotStored  = na
-var int   ldn_longFvgStartTime  = na
-var string ldn_longFvgText      = na
-var float ldn_longEntry = na
-var float ldn_longStop  = na
-var float ldn_longTp1   = na
-var float ldn_longTp2   = na
+var float ldnOrb_orbHigh = na
+var float ldnOrb_orbLow  = na
+var bool  ldnOrb_orbReady = false
+
+var bool  ldnOrb_longFirstFvgFound  = false
+var bool  ldnOrb_shortFirstFvgFound = false
+
+var float ldnOrb_longFvgTopStored  = na
+var float ldnOrb_longFvgBotStored  = na
+var int   ldnOrb_longFvgStartTime  = na
+var string ldnOrb_longFvgText      = na
+
+var float ldnOrb_shortFvgTopStored = na
+var float ldnOrb_shortFvgBotStored = na
+var int   ldnOrb_shortFvgStartTime = na
+var string ldnOrb_shortFvgText     = na
+
+// ============================================================================
+// TRADE LEVEL STATE - LDN ORB
+// ============================================================================
+var float ldnOrb_longEntry = na
+var float ldnOrb_longStop  = na
+var float ldnOrb_longTp1   = na
+var float ldnOrb_longTp2   = na
+
+var float ldnOrb_shortEntry = na
+var float ldnOrb_shortStop  = na
+var float ldnOrb_shortTp1   = na
+var float ldnOrb_shortTp2   = na
 
 // ============================================================================
 // DRAWING REFERENCES (draw once, update to extend)
@@ -607,49 +664,58 @@ var label asia_shortTp1Lbl   = na
 var label asia_shortTp2Lbl   = na
 
 // LSI NY drawing refs
-var box   lsiNy_longFvgBox   = na
-var label lsiNy_longFvgLabel = na
-var bool  lsiNy_orbLinesDrawn = false
-var line  lsiNy_orbHighLine  = na
-var line  lsiNy_orbLowLine   = na
-var int   lsiNy_orbLineStart = na
-var line  lsiNy_longEntryLine = na
-var line  lsiNy_longStopLine  = na
-var line  lsiNy_longTp1Line   = na
-var line  lsiNy_longTp2Line   = na
-var label lsiNy_longStopLbl   = na
-var label lsiNy_longTp1Lbl    = na
-var label lsiNy_longTp2Lbl    = na
+var line  lsiNy_entryLine = na
+var line  lsiNy_stopLine  = na
+var line  lsiNy_tp1Line   = na
+var line  lsiNy_tp2Line   = na
+var label lsiNy_stopLbl   = na
+var label lsiNy_tp1Lbl    = na
+var label lsiNy_tp2Lbl    = na
 
 // LSI Asia drawing refs
-var box   lsiAsia_longFvgBox   = na
-var label lsiAsia_longFvgLabel = na
-var bool  lsiAsia_orbLinesDrawn = false
-var line  lsiAsia_orbHighLine  = na
-var line  lsiAsia_orbLowLine   = na
-var int   lsiAsia_orbLineStart = na
-var line  lsiAsia_longEntryLine = na
-var line  lsiAsia_longStopLine  = na
-var line  lsiAsia_longTp1Line   = na
-var line  lsiAsia_longTp2Line   = na
-var label lsiAsia_longStopLbl   = na
-var label lsiAsia_longTp1Lbl    = na
-var label lsiAsia_longTp2Lbl    = na
+var line  lsiAsia_entryLine = na
+var line  lsiAsia_stopLine  = na
+var line  lsiAsia_tp1Line   = na
+var line  lsiAsia_tp2Line   = na
+var label lsiAsia_stopLbl   = na
+var label lsiAsia_tp1Lbl    = na
+var label lsiAsia_tp2Lbl    = na
 
 // LDN drawing refs
-var box   ldn_longFvgBox   = na
-var label ldn_longFvgLabel = na
-var bool  ldn_orbLinesDrawn = false
-var line  ldn_orbHighLine  = na
-var line  ldn_orbLowLine   = na
-var int   ldn_orbLineStart = na
-var line  ldn_longEntryLine = na
-var line  ldn_longStopLine  = na
-var line  ldn_longTp1Line   = na
-var line  ldn_longTp2Line   = na
-var label ldn_longStopLbl   = na
-var label ldn_longTp1Lbl    = na
-var label ldn_longTp2Lbl    = na
+var line  ldn_entryLine = na
+var line  ldn_stopLine  = na
+var line  ldn_tp1Line   = na
+var line  ldn_tp2Line   = na
+var label ldn_stopLbl   = na
+var label ldn_tp1Lbl    = na
+var label ldn_tp2Lbl    = na
+
+// LDN ORB drawing refs
+var line ldnOrb_orbHighLine = na
+var line ldnOrb_orbLowLine  = na
+var int  ldnOrb_orbLineStart = na
+var bool ldnOrb_orbLinesDrawn = false
+
+var box   ldnOrb_longFvgBox      = na
+var box   ldnOrb_shortFvgBox     = na
+var label ldnOrb_longFvgLabel    = na
+var label ldnOrb_shortFvgLabel   = na
+
+var line ldnOrb_longEntryLine = na
+var line ldnOrb_longStopLine  = na
+var line ldnOrb_longTp1Line   = na
+var line ldnOrb_longTp2Line   = na
+var label ldnOrb_longStopLbl  = na
+var label ldnOrb_longTp1Lbl   = na
+var label ldnOrb_longTp2Lbl   = na
+
+var line ldnOrb_shortEntryLine = na
+var line ldnOrb_shortStopLine  = na
+var line ldnOrb_shortTp1Line   = na
+var line ldnOrb_shortTp2Line   = na
+var label ldnOrb_shortStopLbl  = na
+var label ldnOrb_shortTp1Lbl   = na
+var label ldnOrb_shortTp2Lbl   = na
 
 // ============================================================================
 // RESET ON SESSION START (not calendar day - survives half days & holidays)
@@ -745,85 +811,99 @@ if asiaRTHStart
     asia_shortFvgLabel := na
 
 if lsiNyRTHStart
-    lsiNy_orbHigh := na
-    lsiNy_orbLow  := na
-    lsiNy_orbReady := false
-    lsiNy_longFirstFvgFound := false
-    lsiNy_longFvgTopStored := na
-    lsiNy_longFvgBotStored := na
-    lsiNy_longFvgStartTime := na
-    lsiNy_longFvgText      := na
-    lsiNy_orbLinesDrawn := false
-    lsiNy_orbHighLine := na
-    lsiNy_orbLowLine  := na
-    lsiNy_orbLineStart := na
-    lsiNy_longEntry := na
-    lsiNy_longStop  := na
-    lsiNy_longTp1   := na
-    lsiNy_longTp2   := na
-    lsiNy_longEntryLine := na
-    lsiNy_longStopLine  := na
-    lsiNy_longTp1Line   := na
-    lsiNy_longTp2Line   := na
-    lsiNy_longStopLbl   := na
-    lsiNy_longTp1Lbl    := na
-    lsiNy_longTp2Lbl    := na
-    lsiNy_longFvgBox    := na
-    lsiNy_longFvgLabel  := na
+    array.clear(lsiNy_bearFvgs)
+    array.clear(lsiNy_bullFvgs)
+    lsiNy_armed := false
+    lsiNy_dir   := 0
+    lsiNy_entry := na
+    lsiNy_stop  := na
+    lsiNy_tp1   := na
+    lsiNy_tp2   := na
+    lsiNy_entryLine := na
+    lsiNy_stopLine  := na
+    lsiNy_tp1Line   := na
+    lsiNy_tp2Line   := na
+    lsiNy_stopLbl   := na
+    lsiNy_tp1Lbl    := na
+    lsiNy_tp2Lbl    := na
 
 if lsiAsiaRTHStart
-    lsiAsia_orbHigh := na
-    lsiAsia_orbLow  := na
-    lsiAsia_orbReady := false
-    lsiAsia_longFirstFvgFound := false
-    lsiAsia_longFvgTopStored := na
-    lsiAsia_longFvgBotStored := na
-    lsiAsia_longFvgStartTime := na
-    lsiAsia_longFvgText      := na
-    lsiAsia_orbLinesDrawn := false
-    lsiAsia_orbHighLine := na
-    lsiAsia_orbLowLine  := na
-    lsiAsia_orbLineStart := na
-    lsiAsia_longEntry := na
-    lsiAsia_longStop  := na
-    lsiAsia_longTp1   := na
-    lsiAsia_longTp2   := na
-    lsiAsia_longEntryLine := na
-    lsiAsia_longStopLine  := na
-    lsiAsia_longTp1Line   := na
-    lsiAsia_longTp2Line   := na
-    lsiAsia_longStopLbl   := na
-    lsiAsia_longTp1Lbl    := na
-    lsiAsia_longTp2Lbl    := na
-    lsiAsia_longFvgBox    := na
-    lsiAsia_longFvgLabel  := na
+    array.clear(lsiAsia_bearFvgs)
+    array.clear(lsiAsia_bullFvgs)
+    lsiAsia_armed := false
+    lsiAsia_dir   := 0
+    lsiAsia_entry := na
+    lsiAsia_stop  := na
+    lsiAsia_tp1   := na
+    lsiAsia_tp2   := na
+    lsiAsia_entryLine := na
+    lsiAsia_stopLine  := na
+    lsiAsia_tp1Line   := na
+    lsiAsia_tp2Line   := na
+    lsiAsia_stopLbl   := na
+    lsiAsia_tp1Lbl    := na
+    lsiAsia_tp2Lbl    := na
 
 if ldnRTHStart
-    ldn_orbHigh := na
-    ldn_orbLow  := na
-    ldn_orbReady := false
-    ldn_longFirstFvgFound := false
-    ldn_longFvgTopStored := na
-    ldn_longFvgBotStored := na
-    ldn_longFvgStartTime := na
-    ldn_longFvgText      := na
-    ldn_orbLinesDrawn := false
-    ldn_orbHighLine := na
-    ldn_orbLowLine  := na
-    ldn_orbLineStart := na
-    ldn_longEntry := na
-    ldn_longStop  := na
-    ldn_longTp1   := na
-    ldn_longTp2   := na
-    ldn_longEntryLine := na
-    ldn_longStopLine  := na
-    ldn_longTp1Line   := na
-    ldn_longTp2Line   := na
-    ldn_longStopLbl   := na
-    ldn_longTp1Lbl    := na
-    ldn_longTp2Lbl    := na
-    ldn_longFvgBox    := na
-    ldn_longFvgLabel  := na
+    array.clear(ldn_bearFvgs)
+    array.clear(ldn_bullFvgs)
+    ldn_armed := false
+    ldn_dir   := 0
+    ldn_entry := na
+    ldn_stop  := na
+    ldn_tp1   := na
+    ldn_tp2   := na
+    ldn_entryLine := na
+    ldn_stopLine  := na
+    ldn_tp1Line   := na
+    ldn_tp2Line   := na
+    ldn_stopLbl   := na
+    ldn_tp1Lbl    := na
+    ldn_tp2Lbl    := na
+    // LDN ORB reset (shares ldnRTHStart)
+    ldnOrb_orbHigh := na
+    ldnOrb_orbLow  := na
+    ldnOrb_orbReady := false
+    ldnOrb_longFirstFvgFound := false
+    ldnOrb_shortFirstFvgFound := false
+    ldnOrb_longFvgTopStored := na
+    ldnOrb_longFvgBotStored := na
+    ldnOrb_longFvgStartTime := na
+    ldnOrb_longFvgText      := na
+    ldnOrb_shortFvgTopStored := na
+    ldnOrb_shortFvgBotStored := na
+    ldnOrb_shortFvgStartTime := na
+    ldnOrb_shortFvgText      := na
+    ldnOrb_orbLinesDrawn := false
+    ldnOrb_orbHighLine := na
+    ldnOrb_orbLowLine  := na
+    ldnOrb_orbLineStart := na
+    ldnOrb_longEntry := na
+    ldnOrb_longStop  := na
+    ldnOrb_longTp1   := na
+    ldnOrb_longTp2   := na
+    ldnOrb_shortEntry := na
+    ldnOrb_shortStop  := na
+    ldnOrb_shortTp1   := na
+    ldnOrb_shortTp2   := na
+    ldnOrb_longEntryLine := na
+    ldnOrb_longStopLine  := na
+    ldnOrb_longTp1Line   := na
+    ldnOrb_longTp2Line   := na
+    ldnOrb_longStopLbl   := na
+    ldnOrb_longTp1Lbl    := na
+    ldnOrb_longTp2Lbl    := na
+    ldnOrb_shortEntryLine := na
+    ldnOrb_shortStopLine  := na
+    ldnOrb_shortTp1Line   := na
+    ldnOrb_shortTp2Line   := na
+    ldnOrb_shortStopLbl   := na
+    ldnOrb_shortTp1Lbl    := na
+    ldnOrb_shortTp2Lbl    := na
+    ldnOrb_longFvgBox      := na
+    ldnOrb_shortFvgBox     := na
+    ldnOrb_longFvgLabel    := na
+    ldnOrb_shortFvgLabel   := na
 
 // ============================================================================
 // BUILD ORB - NY (use 5m ohlc so boundaries align on all tfs)
@@ -846,34 +926,14 @@ if enableAsia and barClosed5 and not inAsiaORB and inAsiaRTH and not asia_orbRea
     asia_orbReady := true
 
 // ============================================================================
-// BUILD ORB - LSI NY
+// BUILD ORB - LDN ORB (use 5m ohlc so boundaries align on all tfs)
 // ============================================================================
-if enableLsiNy and barClosed5 and inLsiNyORB and inLsiNyRTH
-    lsiNy_orbHigh := na(lsiNy_orbHigh) ? h5 : math.max(lsiNy_orbHigh, h5)
-    lsiNy_orbLow  := na(lsiNy_orbLow)  ? l5 : math.min(lsiNy_orbLow, l5)
+if enableLdnOrb and barClosed5 and inLdnOrbORB and inLdnRTH
+    ldnOrb_orbHigh := na(ldnOrb_orbHigh) ? h5 : math.max(ldnOrb_orbHigh, h5)
+    ldnOrb_orbLow  := na(ldnOrb_orbLow)  ? l5 : math.min(ldnOrb_orbLow, l5)
 
-if enableLsiNy and barClosed5 and not inLsiNyORB and inLsiNyRTH and not lsiNy_orbReady and not na(lsiNy_orbHigh) and not na(lsiNy_orbLow)
-    lsiNy_orbReady := true
-
-// ============================================================================
-// BUILD ORB - LSI ASIA
-// ============================================================================
-if enableLsiAsia and barClosed5 and inLsiAsiaORB and inLsiAsiaRTH
-    lsiAsia_orbHigh := na(lsiAsia_orbHigh) ? h5 : math.max(lsiAsia_orbHigh, h5)
-    lsiAsia_orbLow  := na(lsiAsia_orbLow)  ? l5 : math.min(lsiAsia_orbLow, l5)
-
-if enableLsiAsia and barClosed5 and not inLsiAsiaORB and inLsiAsiaRTH and not lsiAsia_orbReady and not na(lsiAsia_orbHigh) and not na(lsiAsia_orbLow)
-    lsiAsia_orbReady := true
-
-// ============================================================================
-// BUILD ORB - LDN
-// ============================================================================
-if enableLdn and barClosed5 and inLdnORB and inLdnRTH
-    ldn_orbHigh := na(ldn_orbHigh) ? h5 : math.max(ldn_orbHigh, h5)
-    ldn_orbLow  := na(ldn_orbLow)  ? l5 : math.min(ldn_orbLow, l5)
-
-if enableLdn and barClosed5 and not inLdnORB and inLdnRTH and not ldn_orbReady and not na(ldn_orbHigh) and not na(ldn_orbLow)
-    ldn_orbReady := true
+if enableLdnOrb and barClosed5 and not inLdnOrbORB and inLdnRTH and not ldnOrb_orbReady and not na(ldnOrb_orbHigh) and not na(ldnOrb_orbLow)
+    ldnOrb_orbReady := true
 
 // ============================================================================
 // DAILY ATR + GLOBEX OPEN
@@ -883,6 +943,7 @@ asiaDailyATR = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1],
 lsiNyDailyATR   = request.security(syminfo.tickerid, "D", ta.atr(i_nqLsiNyAtrLength)[1],   lookahead=barmerge.lookahead_on)
 lsiAsiaDailyATR = request.security(syminfo.tickerid, "D", ta.atr(i_nqLsiAsiaAtrLength)[1], lookahead=barmerge.lookahead_on)
 ldnDailyATR     = request.security(syminfo.tickerid, "D", ta.atr(i_nqLdnAtrLength)[1],     lookahead=barmerge.lookahead_on)
+ldnOrbDailyATR  = request.security(syminfo.tickerid, "D", ta.atr(i_nqLdnOrbAtrLength)[1], lookahead=barmerge.lookahead_on)
 extTicker  = ticker.new(syminfo.prefix, syminfo.ticker, session.extended)
 globexOpen = request.security(extTicker, "D", open, lookahead=barmerge.lookahead_on)
 
@@ -893,9 +954,11 @@ ny_longSetupAlert   = false
 ny_shortSetupAlert  = false
 asia_longSetupAlert  = false
 asia_shortSetupAlert = false
-lsiNy_longSetupAlert  = false
-lsiAsia_longSetupAlert = false
-ldn_longSetupAlert    = false
+lsiNy_setupAlert   = false
+lsiAsia_setupAlert = false
+ldn_setupAlert     = false
+ldnOrb_longSetupAlert  = false
+ldnOrb_shortSetupAlert = false
 
 // ============================================================================
 // HELPER: compute bar time at session end time
@@ -948,23 +1011,29 @@ asiaShortBreakout = shortFvgBottom < asia_orbLow or (asiaImpulseClose and c5_1 <
 asiaLongFVG  = asiaDetectLongs and h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and asiaLongBreakout and asiaLongGapValid
 asiaShortFVG = asiaDetectShorts and l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and asiaShortBreakout and asiaShortGapValid
 
-// LSI NY min gap (ATR-based only)
+// LSI FVG detection (no ORB filter — any qualifying FVG is stored in arrays)
 lsiNyMinGap   = (i_nqLsiNyMinGapPct  / 100) * nz(lsiNyDailyATR)
 lsiAsiaMinGap = (i_nqLsiAsiaMinGapPct / 100) * nz(lsiAsiaDailyATR)
 ldnMinGap     = (i_nqLdnMinGapPct    / 100) * nz(ldnDailyATR)
 
-// Long FVG valid for each LSI session (long only)
-lsiNyLongGapValid  = longGapSize >= lsiNyMinGap
-lsiNyLongBreakout  = longFvgTop > lsiNy_orbHigh
-lsiNyLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and lsiNyLongBreakout and lsiNyLongGapValid
+// LDN ORB FVG validation
+ldnOrbMinGap       = (i_nqLdnOrbMinGapPct / 100) * nz(ldnOrbDailyATR)
+ldnOrbLongGapValid  = longGapSize >= ldnOrbMinGap
+ldnOrbShortGapValid = shortGapSize >= ldnOrbMinGap
+ldnOrbLongBreakout  = longFvgTop > ldnOrb_orbHigh or (i_nqLdnOrbImpulseClose and c5_1 > ldnOrb_orbHigh)
+ldnOrbShortBreakout = shortFvgBottom < ldnOrb_orbLow or (i_nqLdnOrbImpulseClose and c5_1 < ldnOrb_orbLow)
+ldnOrbLongFVG  = ldnOrbDetectLongs and h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and ldnOrbLongBreakout and ldnOrbLongGapValid
+ldnOrbShortFVG = ldnOrbDetectShorts and l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and ldnOrbShortBreakout and ldnOrbShortGapValid
 
-lsiAsiaLongGapValid  = longGapSize >= lsiAsiaMinGap
-lsiAsiaLongBreakout  = longFvgTop > lsiAsia_orbHigh
-lsiAsiaLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and lsiAsiaLongBreakout and lsiAsiaLongGapValid
-
-ldnLongGapValid  = longGapSize >= ldnMinGap
-ldnLongBreakout  = longFvgTop > ldn_orbHigh
-ldnLongFVG  = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and ldnLongBreakout and ldnLongGapValid
+// Base FVG patterns for LSI (bearish FVGs → long inversions, bullish → short)
+isBearFvg   = l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5
+bearFvgTop  = l5_2
+bearFvgBot  = h5
+bearGapSize = bearFvgTop - bearFvgBot
+isBullFvg   = h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5
+bullFvgTop  = l5
+bullFvgBot  = h5_2
+bullGapSize = bullFvgTop - bullFvgBot
 
 // ============================================================================
 // DETECT FIRST FVG - NY
@@ -1121,124 +1190,391 @@ if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
         asia_shortTp2Lbl  := label.new(asiaEndBar, asia_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
-// DETECT FIRST FVG - LSI NY (absolute stop: before-candle low l5_2)
+// DETECT FIRST FVG - LDN ORB
 // ============================================================================
-lsiNyCanDetect = enableLsiNy and barClosed5 and inLsiNyRTH and inLsiNyEntryWin and lsiNy_orbReady
+ldnOrbCanDetect = enableLdnOrb and barClosed5 and inLdnRTH and inLdnOrbEntryWin and ldnOrb_orbReady
 
-if lsiNyCanDetect and not lsiNy_longFirstFvgFound and lsiNyLongFVG
-    lsiNy_longFirstFvgFound := true
-    lsiNy_longSetupAlert := enableAlerts
-    lsiNy_longFvgTopStored := longFvgTop
-    lsiNy_longFvgBotStored := longFvgBottom
-    lsiNy_longFvgStartTime := t5_2
+if ldnOrbCanDetect and not ldnOrb_longFirstFvgFound and ldnOrbLongFVG
+    ldnOrb_longFirstFvgFound := true
+    ldnOrb_longSetupAlert := enableAlerts
+    ldnOrb_longFvgTopStored  := longFvgTop
+    ldnOrb_longFvgBotStored  := longFvgBottom
+    ldnOrb_longFvgStartTime  := t5_2
     fvgPts    = longGapSize
-    fvgAtrPct = lsiNyDailyATR > 0 ? (fvgPts / lsiNyDailyATR) * 100 : 0.0
-    lsiNy_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    lsiNy_longEntry := longFvgTop
-    lsiNy_longStop  := l5_2
-    riskPts         = lsiNy_longEntry - lsiNy_longStop
-    lsiNy_longTp1   := lsiNy_longEntry + (i_nqLsiNyRR * riskPts * i_nqLsiNyTp1Ratio)
-    lsiNy_longTp2   := lsiNy_longEntry + (i_nqLsiNyRR * riskPts)
+    fvgAtrPct = ldnOrbDailyATR > 0 ? (fvgPts / ldnOrbDailyATR) * 100 : 0.0
+    ldnOrb_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+    ldnOrb_longEntry := longFvgTop
+    stopDist     = (i_nqLdnOrbStopPct / 100) * nz(ldnOrbDailyATR)
+    ldnOrb_longStop  := ldnOrb_longEntry - stopDist
+    riskPts      = ldnOrb_longEntry - ldnOrb_longStop
+    ldnOrb_longTp1   := ldnOrb_longEntry + (i_nqLdnOrbRR * riskPts * i_nqLdnOrbTp1Ratio)
+    ldnOrb_longTp2   := ldnOrb_longEntry + (i_nqLdnOrbRR * riskPts)
     if canDraw
-        lsiNy_longFvgBox   := box.new(lsiNy_longFvgStartTime, lsiNy_longFvgTopStored, time, lsiNy_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#FF9800, 80), border_width=0)
-        lsiNy_longFvgLabel := label.new(time, (lsiNy_longFvgTopStored + lsiNy_longFvgBotStored) / 2, lsiNy_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#FF9800, 0), size=size.small)
+        ldnOrb_longFvgBox := box.new(ldnOrb_longFvgStartTime, ldnOrb_longFvgTopStored, time, ldnOrb_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
+        ldnOrb_longFvgLabel := label.new(time, (ldnOrb_longFvgTopStored + ldnOrb_longFvgBotStored) / 2, ldnOrb_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = lsiNyDailyATR > 0 ? (slPts / lsiNyDailyATR) * 100 : 0.0
-        tp1Pts = lsiNy_longTp1 - lsiNy_longEntry
-        tp1Atr = lsiNyDailyATR > 0 ? (tp1Pts / lsiNyDailyATR) * 100 : 0.0
-        tp2Pts = lsiNy_longTp2 - lsiNy_longEntry
-        tp2Atr = lsiNyDailyATR > 0 ? (tp2Pts / lsiNyDailyATR) * 100 : 0.0
-        lsiNyEndBar = calcEndBarTime(i_nqLsiNyEntryWindow, "America/New_York")
-        lsiNy_longEntryLine := line.new(time, lsiNy_longEntry, lsiNyEndBar, lsiNy_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        lsiNy_longStopLine  := line.new(time, lsiNy_longStop,  lsiNyEndBar, lsiNy_longStop,  xloc=xloc.bar_time, color=slColor,    style=slLineStyle,    width=1)
-        lsiNy_longTp1Line   := line.new(time, lsiNy_longTp1,   lsiNyEndBar, lsiNy_longTp1,   xloc=xloc.bar_time, color=tp1Color,   style=tp1LineStyle,   width=1)
-        lsiNy_longTp2Line   := line.new(time, lsiNy_longTp2,   lsiNyEndBar, lsiNy_longTp2,   xloc=xloc.bar_time, color=tp2Color,   style=tp2LineStyle,   width=1)
-        slTxt  = "SL: "  + str.tostring(slPts,  format.mintick) + " (" + str.tostring(slAtr,  "#.0") + "% ATR)"
+        slAtr  = ldnOrbDailyATR > 0 ? (slPts / ldnOrbDailyATR) * 100 : 0.0
+        tp1Pts = ldnOrb_longTp1 - ldnOrb_longEntry
+        tp1Atr = ldnOrbDailyATR > 0 ? (tp1Pts / ldnOrbDailyATR) * 100 : 0.0
+        tp2Pts = ldnOrb_longTp2 - ldnOrb_longEntry
+        tp2Atr = ldnOrbDailyATR > 0 ? (tp2Pts / ldnOrbDailyATR) * 100 : 0.0
+        ldnOrbEndBar = calcEndBarTime(i_nqLdnOrbEntryWindow, "America/New_York")
+        ldnOrb_longEntryLine := line.new(time, ldnOrb_longEntry, ldnOrbEndBar, ldnOrb_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        ldnOrb_longStopLine  := line.new(time, ldnOrb_longStop, ldnOrbEndBar, ldnOrb_longStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        ldnOrb_longTp1Line   := line.new(time, ldnOrb_longTp1, ldnOrbEndBar, ldnOrb_longTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        ldnOrb_longTp2Line   := line.new(time, ldnOrb_longTp2, ldnOrbEndBar, ldnOrb_longTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        lsiNy_longStopLbl := label.new(lsiNyEndBar, lsiNy_longStop, slTxt,  xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor,  size=size.small)
-        lsiNy_longTp1Lbl  := label.new(lsiNyEndBar, lsiNy_longTp1,  tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        lsiNy_longTp2Lbl  := label.new(lsiNyEndBar, lsiNy_longTp2,  tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        ldnOrb_longStopLbl := label.new(ldnOrbEndBar, ldnOrb_longStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        ldnOrb_longTp1Lbl  := label.new(ldnOrbEndBar, ldnOrb_longTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        ldnOrb_longTp2Lbl  := label.new(ldnOrbEndBar, ldnOrb_longTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
-// ============================================================================
-// DETECT FIRST FVG - LSI ASIA (absolute stop: before-candle low l5_2)
-// ============================================================================
-lsiAsiaCanDetect = enableLsiAsia and barClosed5 and inLsiAsiaRTH and inLsiAsiaEntryWin and lsiAsia_orbReady
-
-if lsiAsiaCanDetect and not lsiAsia_longFirstFvgFound and lsiAsiaLongFVG
-    lsiAsia_longFirstFvgFound := true
-    lsiAsia_longSetupAlert := enableAlerts
-    lsiAsia_longFvgTopStored := longFvgTop
-    lsiAsia_longFvgBotStored := longFvgBottom
-    lsiAsia_longFvgStartTime := t5_2
-    fvgPts    = longGapSize
-    fvgAtrPct = lsiAsiaDailyATR > 0 ? (fvgPts / lsiAsiaDailyATR) * 100 : 0.0
-    lsiAsia_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    lsiAsia_longEntry := longFvgTop
-    lsiAsia_longStop  := l5_2
-    riskPts           = lsiAsia_longEntry - lsiAsia_longStop
-    lsiAsia_longTp1   := lsiAsia_longEntry + (i_nqLsiAsiaRR * riskPts * i_nqLsiAsiaTp1Ratio)
-    lsiAsia_longTp2   := lsiAsia_longEntry + (i_nqLsiAsiaRR * riskPts)
+if ldnOrbCanDetect and not ldnOrb_shortFirstFvgFound and ldnOrbShortFVG
+    ldnOrb_shortFirstFvgFound := true
+    ldnOrb_shortSetupAlert := enableAlerts
+    ldnOrb_shortFvgTopStored  := shortFvgTop
+    ldnOrb_shortFvgBotStored  := shortFvgBottom
+    ldnOrb_shortFvgStartTime  := t5_2
+    fvgPts    = shortGapSize
+    fvgAtrPct = ldnOrbDailyATR > 0 ? (fvgPts / ldnOrbDailyATR) * 100 : 0.0
+    ldnOrb_shortFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+    ldnOrb_shortEntry := shortFvgBottom
+    stopDist      = (i_nqLdnOrbStopPct / 100) * nz(ldnOrbDailyATR)
+    ldnOrb_shortStop  := ldnOrb_shortEntry + stopDist
+    riskPts       = ldnOrb_shortStop - ldnOrb_shortEntry
+    ldnOrb_shortTp1   := ldnOrb_shortEntry - (i_nqLdnOrbRR * riskPts * i_nqLdnOrbTp1Ratio)
+    ldnOrb_shortTp2   := ldnOrb_shortEntry - (i_nqLdnOrbRR * riskPts)
     if canDraw
-        lsiAsia_longFvgBox   := box.new(lsiAsia_longFvgStartTime, lsiAsia_longFvgTopStored, time, lsiAsia_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#9C27B0, 80), border_width=0)
-        lsiAsia_longFvgLabel := label.new(time, (lsiAsia_longFvgTopStored + lsiAsia_longFvgBotStored) / 2, lsiAsia_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#9C27B0, 0), size=size.small)
+        ldnOrb_shortFvgBox := box.new(ldnOrb_shortFvgStartTime, ldnOrb_shortFvgTopStored, time, ldnOrb_shortFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#787b86, 80), border_width=0)
+        ldnOrb_shortFvgLabel := label.new(time, (ldnOrb_shortFvgTopStored + ldnOrb_shortFvgBotStored) / 2, ldnOrb_shortFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#787b86, 0), size=size.small)
         slPts  = riskPts
-        slAtr  = lsiAsiaDailyATR > 0 ? (slPts / lsiAsiaDailyATR) * 100 : 0.0
-        tp1Pts = lsiAsia_longTp1 - lsiAsia_longEntry
-        tp1Atr = lsiAsiaDailyATR > 0 ? (tp1Pts / lsiAsiaDailyATR) * 100 : 0.0
-        tp2Pts = lsiAsia_longTp2 - lsiAsia_longEntry
-        tp2Atr = lsiAsiaDailyATR > 0 ? (tp2Pts / lsiAsiaDailyATR) * 100 : 0.0
-        lsiAsiaEndBar = calcEndBarTime(i_nqLsiAsiaEntryWindow, "America/New_York")
-        lsiAsia_longEntryLine := line.new(time, lsiAsia_longEntry, lsiAsiaEndBar, lsiAsia_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        lsiAsia_longStopLine  := line.new(time, lsiAsia_longStop,  lsiAsiaEndBar, lsiAsia_longStop,  xloc=xloc.bar_time, color=slColor,    style=slLineStyle,    width=1)
-        lsiAsia_longTp1Line   := line.new(time, lsiAsia_longTp1,   lsiAsiaEndBar, lsiAsia_longTp1,   xloc=xloc.bar_time, color=tp1Color,   style=tp1LineStyle,   width=1)
-        lsiAsia_longTp2Line   := line.new(time, lsiAsia_longTp2,   lsiAsiaEndBar, lsiAsia_longTp2,   xloc=xloc.bar_time, color=tp2Color,   style=tp2LineStyle,   width=1)
-        slTxt  = "SL: "  + str.tostring(slPts,  format.mintick) + " (" + str.tostring(slAtr,  "#.0") + "% ATR)"
+        slAtr  = ldnOrbDailyATR > 0 ? (slPts / ldnOrbDailyATR) * 100 : 0.0
+        tp1Pts = ldnOrb_shortEntry - ldnOrb_shortTp1
+        tp1Atr = ldnOrbDailyATR > 0 ? (tp1Pts / ldnOrbDailyATR) * 100 : 0.0
+        tp2Pts = ldnOrb_shortEntry - ldnOrb_shortTp2
+        tp2Atr = ldnOrbDailyATR > 0 ? (tp2Pts / ldnOrbDailyATR) * 100 : 0.0
+        ldnOrbEndBar = calcEndBarTime(i_nqLdnOrbEntryWindow, "America/New_York")
+        ldnOrb_shortEntryLine := line.new(time, ldnOrb_shortEntry, ldnOrbEndBar, ldnOrb_shortEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+        ldnOrb_shortStopLine  := line.new(time, ldnOrb_shortStop, ldnOrbEndBar, ldnOrb_shortStop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+        ldnOrb_shortTp1Line   := line.new(time, ldnOrb_shortTp1, ldnOrbEndBar, ldnOrb_shortTp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+        ldnOrb_shortTp2Line   := line.new(time, ldnOrb_shortTp2, ldnOrbEndBar, ldnOrb_shortTp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+        slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
         tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
         tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        lsiAsia_longStopLbl := label.new(lsiAsiaEndBar, lsiAsia_longStop, slTxt,  xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor,  size=size.small)
-        lsiAsia_longTp1Lbl  := label.new(lsiAsiaEndBar, lsiAsia_longTp1,  tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        lsiAsia_longTp2Lbl  := label.new(lsiAsiaEndBar, lsiAsia_longTp2,  tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+        ldnOrb_shortStopLbl := label.new(ldnOrbEndBar, ldnOrb_shortStop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+        ldnOrb_shortTp1Lbl  := label.new(ldnOrbEndBar, ldnOrb_shortTp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+        ldnOrb_shortTp2Lbl  := label.new(ldnOrbEndBar, ldnOrb_shortTp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
-// DETECT FIRST FVG - LDN (absolute stop: before-candle low l5_2)
+// DETECT & STORE FVGs - LSI NY
+// Bearish FVGs tracked for LONG inversions, bullish for SHORT inversions
 // ============================================================================
-ldnCanDetect = enableLdn and barClosed5 and inLdnRTH and inLdnEntryWin and ldn_orbReady
+lsiNyCanDetect = enableLsiNy and barClosed5 and inLsiNyRTH and inLsiNyEntryWin and nz(lsiNyDailyATR) > 0
 
-if ldnCanDetect and not ldn_longFirstFvgFound and ldnLongFVG
-    ldn_longFirstFvgFound := true
-    ldn_longSetupAlert := enableAlerts
-    ldn_longFvgTopStored := longFvgTop
-    ldn_longFvgBotStored := longFvgBottom
-    ldn_longFvgStartTime := t5_2
-    fvgPts    = longGapSize
-    fvgAtrPct = ldnDailyATR > 0 ? (fvgPts / ldnDailyATR) * 100 : 0.0
-    ldn_longFvgText := str.tostring(fvgPts, format.mintick) + " pts (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
-    ldn_longEntry := longFvgTop
-    ldn_longStop  := l5_2
-    riskPts       = ldn_longEntry - ldn_longStop
-    ldn_longTp1   := ldn_longEntry + (i_nqLdnRR * riskPts * i_nqLdnTp1Ratio)
-    ldn_longTp2   := ldn_longEntry + (i_nqLdnRR * riskPts)
-    if canDraw
-        ldn_longFvgBox   := box.new(ldn_longFvgStartTime, ldn_longFvgTopStored, time, ldn_longFvgBotStored, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(#4CAF50, 80), border_width=0)
-        ldn_longFvgLabel := label.new(time, (ldn_longFvgTopStored + ldn_longFvgBotStored) / 2, ldn_longFvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(#4CAF50, 0), size=size.small)
-        slPts  = riskPts
-        slAtr  = ldnDailyATR > 0 ? (slPts / ldnDailyATR) * 100 : 0.0
-        tp1Pts = ldn_longTp1 - ldn_longEntry
-        tp1Atr = ldnDailyATR > 0 ? (tp1Pts / ldnDailyATR) * 100 : 0.0
-        tp2Pts = ldn_longTp2 - ldn_longEntry
-        tp2Atr = ldnDailyATR > 0 ? (tp2Pts / ldnDailyATR) * 100 : 0.0
-        ldnEndBar = calcEndBarTime(i_nqLdnEntryWindow, "America/New_York")
-        ldn_longEntryLine := line.new(time, ldn_longEntry, ldnEndBar, ldn_longEntry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
-        ldn_longStopLine  := line.new(time, ldn_longStop,  ldnEndBar, ldn_longStop,  xloc=xloc.bar_time, color=slColor,    style=slLineStyle,    width=1)
-        ldn_longTp1Line   := line.new(time, ldn_longTp1,   ldnEndBar, ldn_longTp1,   xloc=xloc.bar_time, color=tp1Color,   style=tp1LineStyle,   width=1)
-        ldn_longTp2Line   := line.new(time, ldn_longTp2,   ldnEndBar, ldn_longTp2,   xloc=xloc.bar_time, color=tp2Color,   style=tp2LineStyle,   width=1)
-        slTxt  = "SL: "  + str.tostring(slPts,  format.mintick) + " (" + str.tostring(slAtr,  "#.0") + "% ATR)"
-        tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
-        tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
-        ldn_longStopLbl := label.new(ldnEndBar, ldn_longStop, slTxt,  xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor,  size=size.small)
-        ldn_longTp1Lbl  := label.new(ldnEndBar, ldn_longTp1,  tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
-        ldn_longTp2Lbl  := label.new(ldnEndBar, ldn_longTp2,  tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+if lsiNyCanDetect
+    if lsiNyDetectLongs and isBearFvg and bearGapSize >= lsiNyMinGap
+        fvgPts    = bearGapSize
+        fvgAtrPct = lsiNyDailyATR > 0 ? (fvgPts / lsiNyDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bearFvgTop, bearFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bearFvgTop, time, bearFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLsiNyFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bearFvgTop + bearFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLsiNyFvgPendColor, 0), size=size.small)
+        array.push(lsiNy_bearFvgs, zone)
+
+    if lsiNyDetectShorts and isBullFvg and bullGapSize >= lsiNyMinGap
+        fvgPts    = bullGapSize
+        fvgAtrPct = lsiNyDailyATR > 0 ? (fvgPts / lsiNyDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bullFvgTop, bullFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bullFvgTop, time, bullFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLsiNyFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bullFvgTop + bullFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLsiNyFvgPendColor, 0), size=size.small)
+        array.push(lsiNy_bullFvgs, zone)
+
+// ============================================================================
+// DETECT & STORE FVGs - LSI Asia
+// ============================================================================
+lsiAsiaCanDetect = enableLsiAsia and barClosed5 and inLsiAsiaRTH and inLsiAsiaEntryWin and nz(lsiAsiaDailyATR) > 0
+
+if lsiAsiaCanDetect
+    if lsiAsiaDetectLongs and isBearFvg and bearGapSize >= lsiAsiaMinGap
+        fvgPts    = bearGapSize
+        fvgAtrPct = lsiAsiaDailyATR > 0 ? (fvgPts / lsiAsiaDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bearFvgTop, bearFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bearFvgTop, time, bearFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLsiAsiaFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bearFvgTop + bearFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLsiAsiaFvgPendColor, 0), size=size.small)
+        array.push(lsiAsia_bearFvgs, zone)
+
+    if lsiAsiaDetectShorts and isBullFvg and bullGapSize >= lsiAsiaMinGap
+        fvgPts    = bullGapSize
+        fvgAtrPct = lsiAsiaDailyATR > 0 ? (fvgPts / lsiAsiaDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bullFvgTop, bullFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bullFvgTop, time, bullFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLsiAsiaFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bullFvgTop + bullFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLsiAsiaFvgPendColor, 0), size=size.small)
+        array.push(lsiAsia_bullFvgs, zone)
+
+// ============================================================================
+// DETECT & STORE FVGs - LDN
+// ============================================================================
+ldnCanDetect = enableLdn and barClosed5 and inLdnRTH and inLdnEntryWin and nz(ldnDailyATR) > 0
+
+if ldnCanDetect
+    if ldnDetectLongs and isBearFvg and bearGapSize >= ldnMinGap
+        fvgPts    = bearGapSize
+        fvgAtrPct = ldnDailyATR > 0 ? (fvgPts / ldnDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bearFvgTop, bearFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bearFvgTop, time, bearFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLdnFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bearFvgTop + bearFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLdnFvgPendColor, 0), size=size.small)
+        array.push(ldn_bearFvgs, zone)
+
+    if ldnDetectShorts and isBullFvg and bullGapSize >= ldnMinGap
+        fvgPts    = bullGapSize
+        fvgAtrPct = ldnDailyATR > 0 ? (fvgPts / ldnDailyATR) * 100 : 0.0
+        fvgText   = str.tostring(fvgPts, format.mintick) + " (" + str.tostring(fvgAtrPct, "#.0") + "% ATR)"
+        zone      = FvgZone.new(bullFvgTop, bullFvgBot, t5_2, na, na)
+        if canDraw
+            zone.bx  := box.new(t5_2, bullFvgTop, time, bullFvgBot, xloc=xloc.bar_time, border_color=color.new(color.white, 100), bgcolor=color.new(nqLdnFvgPendColor, 80), border_width=0)
+            zone.lbl := label.new(time, (bullFvgTop + bullFvgBot) / 2, fvgText, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=color.new(nqLdnFvgPendColor, 0), size=size.small)
+        array.push(ldn_bullFvgs, zone)
+
+// ============================================================================
+// INVERSION DETECTION - LSI NY
+// Bearish FVG: close > FVG top → LONG inversion
+// Bullish FVG: close < FVG bot → SHORT inversion
+// First armed setup per session-day wins
+// ============================================================================
+if enableLsiNy and barClosed5 and inLsiNyRTH and inLsiNyEntryWin and not lsiNy_armed and nz(lsiNyDailyATR) > 0
+    if lsiNyDetectLongs and array.size(lsiNy_bearFvgs) > 0
+        for i = 0 to array.size(lsiNy_bearFvgs) - 1
+            if lsiNy_armed
+                break
+            zone = array.get(lsiNy_bearFvgs, i)
+            if c5 > zone.top
+                lsiNy_armed := true
+                lsiNy_dir   := 1
+                lsiNy_entry := zone.top
+                stopDist = (i_nqLsiNyStopPct / 100) * nz(lsiNyDailyATR)
+                lsiNy_stop  := lsiNy_entry - stopDist
+                riskPts  = lsiNy_entry - lsiNy_stop
+                lsiNy_tp1   := lsiNy_entry + (i_nqLsiNyRR * riskPts * i_nqLsiNyTp1Ratio)
+                lsiNy_tp2   := lsiNy_entry + (i_nqLsiNyRR * riskPts)
+                lsiNy_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLsiNyFvgSweptColor, 60))
+                if canDraw
+                    lsiNyEndBar = calcEndBarTime(i_nqLsiNyEntryWindow, "America/New_York")
+                    lsiNy_entryLine := line.new(time, lsiNy_entry, lsiNyEndBar, lsiNy_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    lsiNy_stopLine  := line.new(time, lsiNy_stop, lsiNyEndBar, lsiNy_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    lsiNy_tp1Line   := line.new(time, lsiNy_tp1, lsiNyEndBar, lsiNy_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    lsiNy_tp2Line   := line.new(time, lsiNy_tp2, lsiNyEndBar, lsiNy_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = lsiNyDailyATR > 0 ? (slPts / lsiNyDailyATR) * 100 : 0.0
+                    tp1Pts = lsiNy_tp1 - lsiNy_entry
+                    tp1Atr = lsiNyDailyATR > 0 ? (tp1Pts / lsiNyDailyATR) * 100 : 0.0
+                    tp2Pts = lsiNy_tp2 - lsiNy_entry
+                    tp2Atr = lsiNyDailyATR > 0 ? (tp2Pts / lsiNyDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    lsiNy_stopLbl := label.new(lsiNyEndBar, lsiNy_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    lsiNy_tp1Lbl  := label.new(lsiNyEndBar, lsiNy_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    lsiNy_tp2Lbl  := label.new(lsiNyEndBar, lsiNy_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+    if not lsiNy_armed and lsiNyDetectShorts and array.size(lsiNy_bullFvgs) > 0
+        for i = 0 to array.size(lsiNy_bullFvgs) - 1
+            if lsiNy_armed
+                break
+            zone = array.get(lsiNy_bullFvgs, i)
+            if c5 < zone.bot
+                lsiNy_armed := true
+                lsiNy_dir   := -1
+                lsiNy_entry := zone.bot
+                stopDist = (i_nqLsiNyStopPct / 100) * nz(lsiNyDailyATR)
+                lsiNy_stop  := lsiNy_entry + stopDist
+                riskPts  = lsiNy_stop - lsiNy_entry
+                lsiNy_tp1   := lsiNy_entry - (i_nqLsiNyRR * riskPts * i_nqLsiNyTp1Ratio)
+                lsiNy_tp2   := lsiNy_entry - (i_nqLsiNyRR * riskPts)
+                lsiNy_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLsiNyFvgSweptColor, 60))
+                if canDraw
+                    lsiNyEndBar = calcEndBarTime(i_nqLsiNyEntryWindow, "America/New_York")
+                    lsiNy_entryLine := line.new(time, lsiNy_entry, lsiNyEndBar, lsiNy_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    lsiNy_stopLine  := line.new(time, lsiNy_stop, lsiNyEndBar, lsiNy_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    lsiNy_tp1Line   := line.new(time, lsiNy_tp1, lsiNyEndBar, lsiNy_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    lsiNy_tp2Line   := line.new(time, lsiNy_tp2, lsiNyEndBar, lsiNy_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = lsiNyDailyATR > 0 ? (slPts / lsiNyDailyATR) * 100 : 0.0
+                    tp1Pts = lsiNy_entry - lsiNy_tp1
+                    tp1Atr = lsiNyDailyATR > 0 ? (tp1Pts / lsiNyDailyATR) * 100 : 0.0
+                    tp2Pts = lsiNy_entry - lsiNy_tp2
+                    tp2Atr = lsiNyDailyATR > 0 ? (tp2Pts / lsiNyDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    lsiNy_stopLbl := label.new(lsiNyEndBar, lsiNy_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    lsiNy_tp1Lbl  := label.new(lsiNyEndBar, lsiNy_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    lsiNy_tp2Lbl  := label.new(lsiNyEndBar, lsiNy_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// ============================================================================
+// INVERSION DETECTION - LSI Asia
+// ============================================================================
+if enableLsiAsia and barClosed5 and inLsiAsiaRTH and inLsiAsiaEntryWin and not lsiAsia_armed and nz(lsiAsiaDailyATR) > 0
+    if lsiAsiaDetectLongs and array.size(lsiAsia_bearFvgs) > 0
+        for i = 0 to array.size(lsiAsia_bearFvgs) - 1
+            if lsiAsia_armed
+                break
+            zone = array.get(lsiAsia_bearFvgs, i)
+            if c5 > zone.top
+                lsiAsia_armed := true
+                lsiAsia_dir   := 1
+                lsiAsia_entry := zone.top
+                stopDist   = (i_nqLsiAsiaStopPct / 100) * nz(lsiAsiaDailyATR)
+                lsiAsia_stop  := lsiAsia_entry - stopDist
+                riskPts    = lsiAsia_entry - lsiAsia_stop
+                lsiAsia_tp1   := lsiAsia_entry + (i_nqLsiAsiaRR * riskPts * i_nqLsiAsiaTp1Ratio)
+                lsiAsia_tp2   := lsiAsia_entry + (i_nqLsiAsiaRR * riskPts)
+                lsiAsia_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLsiAsiaFvgSweptColor, 60))
+                if canDraw
+                    lsiAsiaEndBar = calcEndBarTime(i_nqLsiAsiaEntryWindow, "America/New_York")
+                    lsiAsia_entryLine := line.new(time, lsiAsia_entry, lsiAsiaEndBar, lsiAsia_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    lsiAsia_stopLine  := line.new(time, lsiAsia_stop, lsiAsiaEndBar, lsiAsia_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    lsiAsia_tp1Line   := line.new(time, lsiAsia_tp1, lsiAsiaEndBar, lsiAsia_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    lsiAsia_tp2Line   := line.new(time, lsiAsia_tp2, lsiAsiaEndBar, lsiAsia_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = lsiAsiaDailyATR > 0 ? (slPts / lsiAsiaDailyATR) * 100 : 0.0
+                    tp1Pts = lsiAsia_tp1 - lsiAsia_entry
+                    tp1Atr = lsiAsiaDailyATR > 0 ? (tp1Pts / lsiAsiaDailyATR) * 100 : 0.0
+                    tp2Pts = lsiAsia_tp2 - lsiAsia_entry
+                    tp2Atr = lsiAsiaDailyATR > 0 ? (tp2Pts / lsiAsiaDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    lsiAsia_stopLbl := label.new(lsiAsiaEndBar, lsiAsia_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    lsiAsia_tp1Lbl  := label.new(lsiAsiaEndBar, lsiAsia_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    lsiAsia_tp2Lbl  := label.new(lsiAsiaEndBar, lsiAsia_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+    if not lsiAsia_armed and lsiAsiaDetectShorts and array.size(lsiAsia_bullFvgs) > 0
+        for i = 0 to array.size(lsiAsia_bullFvgs) - 1
+            if lsiAsia_armed
+                break
+            zone = array.get(lsiAsia_bullFvgs, i)
+            if c5 < zone.bot
+                lsiAsia_armed := true
+                lsiAsia_dir   := -1
+                lsiAsia_entry := zone.bot
+                stopDist   = (i_nqLsiAsiaStopPct / 100) * nz(lsiAsiaDailyATR)
+                lsiAsia_stop  := lsiAsia_entry + stopDist
+                riskPts    = lsiAsia_stop - lsiAsia_entry
+                lsiAsia_tp1   := lsiAsia_entry - (i_nqLsiAsiaRR * riskPts * i_nqLsiAsiaTp1Ratio)
+                lsiAsia_tp2   := lsiAsia_entry - (i_nqLsiAsiaRR * riskPts)
+                lsiAsia_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLsiAsiaFvgSweptColor, 60))
+                if canDraw
+                    lsiAsiaEndBar = calcEndBarTime(i_nqLsiAsiaEntryWindow, "America/New_York")
+                    lsiAsia_entryLine := line.new(time, lsiAsia_entry, lsiAsiaEndBar, lsiAsia_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    lsiAsia_stopLine  := line.new(time, lsiAsia_stop, lsiAsiaEndBar, lsiAsia_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    lsiAsia_tp1Line   := line.new(time, lsiAsia_tp1, lsiAsiaEndBar, lsiAsia_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    lsiAsia_tp2Line   := line.new(time, lsiAsia_tp2, lsiAsiaEndBar, lsiAsia_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = lsiAsiaDailyATR > 0 ? (slPts / lsiAsiaDailyATR) * 100 : 0.0
+                    tp1Pts = lsiAsia_entry - lsiAsia_tp1
+                    tp1Atr = lsiAsiaDailyATR > 0 ? (tp1Pts / lsiAsiaDailyATR) * 100 : 0.0
+                    tp2Pts = lsiAsia_entry - lsiAsia_tp2
+                    tp2Atr = lsiAsiaDailyATR > 0 ? (tp2Pts / lsiAsiaDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    lsiAsia_stopLbl := label.new(lsiAsiaEndBar, lsiAsia_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    lsiAsia_tp1Lbl  := label.new(lsiAsiaEndBar, lsiAsia_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    lsiAsia_tp2Lbl  := label.new(lsiAsiaEndBar, lsiAsia_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+// ============================================================================
+// INVERSION DETECTION - LDN
+// ============================================================================
+if enableLdn and barClosed5 and inLdnRTH and inLdnEntryWin and not ldn_armed and nz(ldnDailyATR) > 0
+    if ldnDetectLongs and array.size(ldn_bearFvgs) > 0
+        for i = 0 to array.size(ldn_bearFvgs) - 1
+            if ldn_armed
+                break
+            zone = array.get(ldn_bearFvgs, i)
+            if c5 > zone.top
+                ldn_armed := true
+                ldn_dir   := 1
+                ldn_entry := zone.top
+                stopDist = (i_nqLdnStopPct / 100) * nz(ldnDailyATR)
+                ldn_stop  := ldn_entry - stopDist
+                riskPts  = ldn_entry - ldn_stop
+                ldn_tp1   := ldn_entry + (i_nqLdnRR * riskPts * i_nqLdnTp1Ratio)
+                ldn_tp2   := ldn_entry + (i_nqLdnRR * riskPts)
+                ldn_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLdnFvgSweptColor, 60))
+                if canDraw
+                    ldnEndBar = calcEndBarTime(i_nqLdnEntryWindow, "America/New_York")
+                    ldn_entryLine := line.new(time, ldn_entry, ldnEndBar, ldn_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    ldn_stopLine  := line.new(time, ldn_stop, ldnEndBar, ldn_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    ldn_tp1Line   := line.new(time, ldn_tp1, ldnEndBar, ldn_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    ldn_tp2Line   := line.new(time, ldn_tp2, ldnEndBar, ldn_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = ldnDailyATR > 0 ? (slPts / ldnDailyATR) * 100 : 0.0
+                    tp1Pts = ldn_tp1 - ldn_entry
+                    tp1Atr = ldnDailyATR > 0 ? (tp1Pts / ldnDailyATR) * 100 : 0.0
+                    tp2Pts = ldn_tp2 - ldn_entry
+                    tp2Atr = ldnDailyATR > 0 ? (tp2Pts / ldnDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    ldn_stopLbl := label.new(ldnEndBar, ldn_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    ldn_tp1Lbl  := label.new(ldnEndBar, ldn_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    ldn_tp2Lbl  := label.new(ldnEndBar, ldn_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
+
+    if not ldn_armed and ldnDetectShorts and array.size(ldn_bullFvgs) > 0
+        for i = 0 to array.size(ldn_bullFvgs) - 1
+            if ldn_armed
+                break
+            zone = array.get(ldn_bullFvgs, i)
+            if c5 < zone.bot
+                ldn_armed := true
+                ldn_dir   := -1
+                ldn_entry := zone.bot
+                stopDist = (i_nqLdnStopPct / 100) * nz(ldnDailyATR)
+                ldn_stop  := ldn_entry + stopDist
+                riskPts  = ldn_stop - ldn_entry
+                ldn_tp1   := ldn_entry - (i_nqLdnRR * riskPts * i_nqLdnTp1Ratio)
+                ldn_tp2   := ldn_entry - (i_nqLdnRR * riskPts)
+                ldn_setupAlert := enableAlerts
+                if not na(zone.bx)
+                    box.set_bgcolor(zone.bx, color.new(nqLdnFvgSweptColor, 60))
+                if canDraw
+                    ldnEndBar = calcEndBarTime(i_nqLdnEntryWindow, "America/New_York")
+                    ldn_entryLine := line.new(time, ldn_entry, ldnEndBar, ldn_entry, xloc=xloc.bar_time, color=entryColor, style=entryLineStyle, width=1)
+                    ldn_stopLine  := line.new(time, ldn_stop, ldnEndBar, ldn_stop, xloc=xloc.bar_time, color=slColor, style=slLineStyle, width=1)
+                    ldn_tp1Line   := line.new(time, ldn_tp1, ldnEndBar, ldn_tp1, xloc=xloc.bar_time, color=tp1Color, style=tp1LineStyle, width=1)
+                    ldn_tp2Line   := line.new(time, ldn_tp2, ldnEndBar, ldn_tp2, xloc=xloc.bar_time, color=tp2Color, style=tp2LineStyle, width=1)
+                    slPts  = riskPts
+                    slAtr  = ldnDailyATR > 0 ? (slPts / ldnDailyATR) * 100 : 0.0
+                    tp1Pts = ldn_entry - ldn_tp1
+                    tp1Atr = ldnDailyATR > 0 ? (tp1Pts / ldnDailyATR) * 100 : 0.0
+                    tp2Pts = ldn_entry - ldn_tp2
+                    tp2Atr = ldnDailyATR > 0 ? (tp2Pts / ldnDailyATR) * 100 : 0.0
+                    slTxt  = "SL: " + str.tostring(slPts, format.mintick) + " (" + str.tostring(slAtr, "#.0") + "% ATR)"
+                    tp1Txt = "TP1: " + str.tostring(tp1Pts, format.mintick) + " (" + str.tostring(tp1Atr, "#.0") + "% ATR)"
+                    tp2Txt = "TP2: " + str.tostring(tp2Pts, format.mintick) + " (" + str.tostring(tp2Atr, "#.0") + "% ATR)"
+                    ldn_stopLbl := label.new(ldnEndBar, ldn_stop, slTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=slColor, size=size.small)
+                    ldn_tp1Lbl  := label.new(ldnEndBar, ldn_tp1, tp1Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp1Color, size=size.small)
+                    ldn_tp2Lbl  := label.new(ldnEndBar, ldn_tp2, tp2Txt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=tp2Color, size=size.small)
 
 // ============================================================================
 // EXTEND FVG BOXES + LABELS (update right edge, not delete+redraw)
@@ -1259,17 +1595,61 @@ if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortFvgBox)
     box.set_right(asia_shortFvgBox, time)
     label.set_x(asia_shortFvgLabel, time)
 
-if enableLsiNy and inLsiNyRTH and inLsiNyEntryWin and not na(lsiNy_longFvgBox)
-    box.set_right(lsiNy_longFvgBox, time)
-    label.set_x(lsiNy_longFvgLabel, time)
+if enableLdnOrb and inLdnRTH and inLdnOrbEntryWin and not na(ldnOrb_longFvgBox)
+    box.set_right(ldnOrb_longFvgBox, time)
+    label.set_x(ldnOrb_longFvgLabel, time)
 
-if enableLsiAsia and inLsiAsiaRTH and inLsiAsiaEntryWin and not na(lsiAsia_longFvgBox)
-    box.set_right(lsiAsia_longFvgBox, time)
-    label.set_x(lsiAsia_longFvgLabel, time)
+if enableLdnOrb and inLdnRTH and inLdnOrbEntryWin and not na(ldnOrb_shortFvgBox)
+    box.set_right(ldnOrb_shortFvgBox, time)
+    label.set_x(ldnOrb_shortFvgLabel, time)
 
-if enableLdn and inLdnRTH and inLdnEntryWin and not na(ldn_longFvgBox)
-    box.set_right(ldn_longFvgBox, time)
-    label.set_x(ldn_longFvgLabel, time)
+if enableLsiNy and inLsiNyRTH and inLsiNyEntryWin
+    if array.size(lsiNy_bearFvgs) > 0
+        for i = 0 to array.size(lsiNy_bearFvgs) - 1
+            zone = array.get(lsiNy_bearFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
+    if array.size(lsiNy_bullFvgs) > 0
+        for i = 0 to array.size(lsiNy_bullFvgs) - 1
+            zone = array.get(lsiNy_bullFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
+
+if enableLsiAsia and inLsiAsiaRTH and inLsiAsiaEntryWin
+    if array.size(lsiAsia_bearFvgs) > 0
+        for i = 0 to array.size(lsiAsia_bearFvgs) - 1
+            zone = array.get(lsiAsia_bearFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
+    if array.size(lsiAsia_bullFvgs) > 0
+        for i = 0 to array.size(lsiAsia_bullFvgs) - 1
+            zone = array.get(lsiAsia_bullFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
+
+if enableLdn and inLdnRTH and inLdnEntryWin
+    if array.size(ldn_bearFvgs) > 0
+        for i = 0 to array.size(ldn_bearFvgs) - 1
+            zone = array.get(ldn_bearFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
+    if array.size(ldn_bullFvgs) > 0
+        for i = 0 to array.size(ldn_bullFvgs) - 1
+            zone = array.get(ldn_bullFvgs, i)
+            if not na(zone.bx)
+                box.set_right(zone.bx, time)
+            if not na(zone.lbl)
+                label.set_x(zone.lbl, time)
 
 // ============================================================================
 // EXTEND TRADE LEVEL LINES + LABELS
@@ -1310,32 +1690,50 @@ if enableAsia and inAsiaRTH and inAsiaEntryWin and not na(asia_shortEntryLine)
     label.set_x(asia_shortTp1Lbl, math.max(time, label.get_x(asia_shortTp1Lbl)))
     label.set_x(asia_shortTp2Lbl, math.max(time, label.get_x(asia_shortTp2Lbl)))
 
-if enableLsiNy and inLsiNyRTH and inLsiNyEntryWin and not na(lsiNy_longEntryLine)
-    line.set_x2(lsiNy_longEntryLine, math.max(time, line.get_x2(lsiNy_longEntryLine)))
-    line.set_x2(lsiNy_longStopLine,  math.max(time, line.get_x2(lsiNy_longStopLine)))
-    line.set_x2(lsiNy_longTp1Line,   math.max(time, line.get_x2(lsiNy_longTp1Line)))
-    line.set_x2(lsiNy_longTp2Line,   math.max(time, line.get_x2(lsiNy_longTp2Line)))
-    label.set_x(lsiNy_longStopLbl,   math.max(time, label.get_x(lsiNy_longStopLbl)))
-    label.set_x(lsiNy_longTp1Lbl,    math.max(time, label.get_x(lsiNy_longTp1Lbl)))
-    label.set_x(lsiNy_longTp2Lbl,    math.max(time, label.get_x(lsiNy_longTp2Lbl)))
+if enableLdnOrb and inLdnRTH and inLdnOrbEntryWin and not na(ldnOrb_longEntryLine)
+    line.set_x2(ldnOrb_longEntryLine, math.max(time, line.get_x2(ldnOrb_longEntryLine)))
+    line.set_x2(ldnOrb_longStopLine, math.max(time, line.get_x2(ldnOrb_longStopLine)))
+    line.set_x2(ldnOrb_longTp1Line, math.max(time, line.get_x2(ldnOrb_longTp1Line)))
+    line.set_x2(ldnOrb_longTp2Line, math.max(time, line.get_x2(ldnOrb_longTp2Line)))
+    label.set_x(ldnOrb_longStopLbl, math.max(time, label.get_x(ldnOrb_longStopLbl)))
+    label.set_x(ldnOrb_longTp1Lbl, math.max(time, label.get_x(ldnOrb_longTp1Lbl)))
+    label.set_x(ldnOrb_longTp2Lbl, math.max(time, label.get_x(ldnOrb_longTp2Lbl)))
 
-if enableLsiAsia and inLsiAsiaRTH and inLsiAsiaEntryWin and not na(lsiAsia_longEntryLine)
-    line.set_x2(lsiAsia_longEntryLine, math.max(time, line.get_x2(lsiAsia_longEntryLine)))
-    line.set_x2(lsiAsia_longStopLine,  math.max(time, line.get_x2(lsiAsia_longStopLine)))
-    line.set_x2(lsiAsia_longTp1Line,   math.max(time, line.get_x2(lsiAsia_longTp1Line)))
-    line.set_x2(lsiAsia_longTp2Line,   math.max(time, line.get_x2(lsiAsia_longTp2Line)))
-    label.set_x(lsiAsia_longStopLbl,   math.max(time, label.get_x(lsiAsia_longStopLbl)))
-    label.set_x(lsiAsia_longTp1Lbl,    math.max(time, label.get_x(lsiAsia_longTp1Lbl)))
-    label.set_x(lsiAsia_longTp2Lbl,    math.max(time, label.get_x(lsiAsia_longTp2Lbl)))
+if enableLdnOrb and inLdnRTH and inLdnOrbEntryWin and not na(ldnOrb_shortEntryLine)
+    line.set_x2(ldnOrb_shortEntryLine, math.max(time, line.get_x2(ldnOrb_shortEntryLine)))
+    line.set_x2(ldnOrb_shortStopLine, math.max(time, line.get_x2(ldnOrb_shortStopLine)))
+    line.set_x2(ldnOrb_shortTp1Line, math.max(time, line.get_x2(ldnOrb_shortTp1Line)))
+    line.set_x2(ldnOrb_shortTp2Line, math.max(time, line.get_x2(ldnOrb_shortTp2Line)))
+    label.set_x(ldnOrb_shortStopLbl, math.max(time, label.get_x(ldnOrb_shortStopLbl)))
+    label.set_x(ldnOrb_shortTp1Lbl, math.max(time, label.get_x(ldnOrb_shortTp1Lbl)))
+    label.set_x(ldnOrb_shortTp2Lbl, math.max(time, label.get_x(ldnOrb_shortTp2Lbl)))
 
-if enableLdn and inLdnRTH and inLdnEntryWin and not na(ldn_longEntryLine)
-    line.set_x2(ldn_longEntryLine, math.max(time, line.get_x2(ldn_longEntryLine)))
-    line.set_x2(ldn_longStopLine,  math.max(time, line.get_x2(ldn_longStopLine)))
-    line.set_x2(ldn_longTp1Line,   math.max(time, line.get_x2(ldn_longTp1Line)))
-    line.set_x2(ldn_longTp2Line,   math.max(time, line.get_x2(ldn_longTp2Line)))
-    label.set_x(ldn_longStopLbl,   math.max(time, label.get_x(ldn_longStopLbl)))
-    label.set_x(ldn_longTp1Lbl,    math.max(time, label.get_x(ldn_longTp1Lbl)))
-    label.set_x(ldn_longTp2Lbl,    math.max(time, label.get_x(ldn_longTp2Lbl)))
+if enableLsiNy and inLsiNyRTH and inLsiNyEntryWin and not na(lsiNy_entryLine)
+    line.set_x2(lsiNy_entryLine, math.max(time, line.get_x2(lsiNy_entryLine)))
+    line.set_x2(lsiNy_stopLine,  math.max(time, line.get_x2(lsiNy_stopLine)))
+    line.set_x2(lsiNy_tp1Line,   math.max(time, line.get_x2(lsiNy_tp1Line)))
+    line.set_x2(lsiNy_tp2Line,   math.max(time, line.get_x2(lsiNy_tp2Line)))
+    label.set_x(lsiNy_stopLbl,   math.max(time, label.get_x(lsiNy_stopLbl)))
+    label.set_x(lsiNy_tp1Lbl,    math.max(time, label.get_x(lsiNy_tp1Lbl)))
+    label.set_x(lsiNy_tp2Lbl,    math.max(time, label.get_x(lsiNy_tp2Lbl)))
+
+if enableLsiAsia and inLsiAsiaRTH and inLsiAsiaEntryWin and not na(lsiAsia_entryLine)
+    line.set_x2(lsiAsia_entryLine, math.max(time, line.get_x2(lsiAsia_entryLine)))
+    line.set_x2(lsiAsia_stopLine,  math.max(time, line.get_x2(lsiAsia_stopLine)))
+    line.set_x2(lsiAsia_tp1Line,   math.max(time, line.get_x2(lsiAsia_tp1Line)))
+    line.set_x2(lsiAsia_tp2Line,   math.max(time, line.get_x2(lsiAsia_tp2Line)))
+    label.set_x(lsiAsia_stopLbl,   math.max(time, label.get_x(lsiAsia_stopLbl)))
+    label.set_x(lsiAsia_tp1Lbl,    math.max(time, label.get_x(lsiAsia_tp1Lbl)))
+    label.set_x(lsiAsia_tp2Lbl,    math.max(time, label.get_x(lsiAsia_tp2Lbl)))
+
+if enableLdn and inLdnRTH and inLdnEntryWin and not na(ldn_entryLine)
+    line.set_x2(ldn_entryLine, math.max(time, line.get_x2(ldn_entryLine)))
+    line.set_x2(ldn_stopLine,  math.max(time, line.get_x2(ldn_stopLine)))
+    line.set_x2(ldn_tp1Line,   math.max(time, line.get_x2(ldn_tp1Line)))
+    line.set_x2(ldn_tp2Line,   math.max(time, line.get_x2(ldn_tp2Line)))
+    label.set_x(ldn_stopLbl,   math.max(time, label.get_x(ldn_stopLbl)))
+    label.set_x(ldn_tp1Lbl,    math.max(time, label.get_x(ldn_tp1Lbl)))
+    label.set_x(ldn_tp2Lbl,    math.max(time, label.get_x(ldn_tp2Lbl)))
 
 // ============================================================================
 // VISUALS - ORB LINES (draw once per session, project to entry window end)
@@ -1366,44 +1764,18 @@ if asiaShowOrb and asia_orbLinesDrawn and not na(asia_orbHighLine)
     line.set_x2(asia_orbHighLine, math.max(time, line.get_x2(asia_orbHighLine)))
     line.set_x2(asia_orbLowLine, math.max(time, line.get_x2(asia_orbLowLine)))
 
-// LSI NY: create lines once when orb is ready, project to end of entry window
-lsiNyShowOrb = enableLsiNy and inLsiNyRTH and inLsiNyEntryWin and lsiNy_orbReady
-if lsiNyShowOrb and not lsiNy_orbLinesDrawn and canDraw
-    lsiNy_orbLineStart := time
-    lsiNyEndBar = calcEndBarTime(i_nqLsiNyEntryWindow, "America/New_York")
-    lsiNy_orbHighLine := line.new(lsiNy_orbLineStart, lsiNy_orbHigh, lsiNyEndBar, lsiNy_orbHigh, xloc=xloc.bar_time, color=nqLsiNyOrbHighColor, width=2)
-    lsiNy_orbLowLine  := line.new(lsiNy_orbLineStart, lsiNy_orbLow,  lsiNyEndBar, lsiNy_orbLow,  xloc=xloc.bar_time, color=nqLsiNyOrbLowColor,  width=2)
-    lsiNy_orbLinesDrawn := true
+// LDN ORB: create lines once when orb is ready, project to end of entry window
+ldnOrbShowOrb = enableLdnOrb and inLdnRTH and inLdnOrbEntryWin and ldnOrb_orbReady
+if ldnOrbShowOrb and not ldnOrb_orbLinesDrawn and canDraw
+    ldnOrb_orbLineStart := time
+    ldnOrbEndBar = calcEndBarTime(i_nqLdnOrbEntryWindow, "America/New_York")
+    ldnOrb_orbHighLine := line.new(ldnOrb_orbLineStart, ldnOrb_orbHigh, ldnOrbEndBar, ldnOrb_orbHigh, xloc=xloc.bar_time, color=nqLdnOrbHighColor, width=2)
+    ldnOrb_orbLowLine  := line.new(ldnOrb_orbLineStart, ldnOrb_orbLow, ldnOrbEndBar, ldnOrb_orbLow, xloc=xloc.bar_time, color=nqLdnOrbLowColor, width=2)
+    ldnOrb_orbLinesDrawn := true
 
-if lsiNyShowOrb and lsiNy_orbLinesDrawn and not na(lsiNy_orbHighLine)
-    line.set_x2(lsiNy_orbHighLine, math.max(time, line.get_x2(lsiNy_orbHighLine)))
-    line.set_x2(lsiNy_orbLowLine,  math.max(time, line.get_x2(lsiNy_orbLowLine)))
-
-// LSI Asia: create lines once when orb is ready, project to end of entry window
-lsiAsiaShowOrb = enableLsiAsia and inLsiAsiaRTH and inLsiAsiaEntryWin and lsiAsia_orbReady
-if lsiAsiaShowOrb and not lsiAsia_orbLinesDrawn and canDraw
-    lsiAsia_orbLineStart := time
-    lsiAsiaEndBar = calcEndBarTime(i_nqLsiAsiaEntryWindow, "America/New_York")
-    lsiAsia_orbHighLine := line.new(lsiAsia_orbLineStart, lsiAsia_orbHigh, lsiAsiaEndBar, lsiAsia_orbHigh, xloc=xloc.bar_time, color=nqLsiAsiaOrbHighColor, width=2)
-    lsiAsia_orbLowLine  := line.new(lsiAsia_orbLineStart, lsiAsia_orbLow,  lsiAsiaEndBar, lsiAsia_orbLow,  xloc=xloc.bar_time, color=nqLsiAsiaOrbLowColor,  width=2)
-    lsiAsia_orbLinesDrawn := true
-
-if lsiAsiaShowOrb and lsiAsia_orbLinesDrawn and not na(lsiAsia_orbHighLine)
-    line.set_x2(lsiAsia_orbHighLine, math.max(time, line.get_x2(lsiAsia_orbHighLine)))
-    line.set_x2(lsiAsia_orbLowLine,  math.max(time, line.get_x2(lsiAsia_orbLowLine)))
-
-// LDN: create lines once when orb is ready, project to end of entry window
-ldnShowOrb = enableLdn and inLdnRTH and inLdnEntryWin and ldn_orbReady
-if ldnShowOrb and not ldn_orbLinesDrawn and canDraw
-    ldn_orbLineStart := time
-    ldnEndBar = calcEndBarTime(i_nqLdnEntryWindow, "America/New_York")
-    ldn_orbHighLine := line.new(ldn_orbLineStart, ldn_orbHigh, ldnEndBar, ldn_orbHigh, xloc=xloc.bar_time, color=nqLdnOrbHighColor, width=2)
-    ldn_orbLowLine  := line.new(ldn_orbLineStart, ldn_orbLow,  ldnEndBar, ldn_orbLow,  xloc=xloc.bar_time, color=nqLdnOrbLowColor,  width=2)
-    ldn_orbLinesDrawn := true
-
-if ldnShowOrb and ldn_orbLinesDrawn and not na(ldn_orbHighLine)
-    line.set_x2(ldn_orbHighLine, math.max(time, line.get_x2(ldn_orbHighLine)))
-    line.set_x2(ldn_orbLowLine,  math.max(time, line.get_x2(ldn_orbLowLine)))
+if ldnOrbShowOrb and ldnOrb_orbLinesDrawn and not na(ldnOrb_orbHighLine)
+    line.set_x2(ldnOrb_orbHighLine, math.max(time, line.get_x2(ldnOrb_orbHighLine)))
+    line.set_x2(ldnOrb_orbLowLine, math.max(time, line.get_x2(ldnOrb_orbLowLine)))
 
 // ============================================================================
 // ATR DISTANCE DISPLAY + DEBUG
@@ -1425,13 +1797,37 @@ if barstate.islast
     table.cell(atrTable, 0, 2, debugText, text_color=color.yellow, text_size=size.small)
 
 // ============================================================================
-// ALERTS - fire when a new FVG setup is detected (must enable in settings)
+// ALERTS - fire when a new setup is detected (must enable in settings)
 // ============================================================================
+// LSI direction strings
+lsiNyDirStr   = lsiNy_dir == 1 ? "Long" : "Short"
+lsiAsiaDirStr = lsiAsia_dir == 1 ? "Long" : "Short"
+ldnDirStr     = ldn_dir == 1 ? "Long" : "Short"
+
+// LSI alert() calls with direction info
+if lsiNy_setupAlert
+    alert(asset + " NY LSI " + lsiNyDirStr + " armed @ " + str.tostring(lsiNy_entry, format.mintick) + " | SL " + str.tostring(lsiNy_stop, format.mintick) + " | TP1 " + str.tostring(lsiNy_tp1, format.mintick) + " | TP2 " + str.tostring(lsiNy_tp2, format.mintick), alert.freq_once_per_bar_close)
+
+if lsiAsia_setupAlert
+    alert(asset + " Asia LSI " + lsiAsiaDirStr + " armed @ " + str.tostring(lsiAsia_entry, format.mintick) + " | SL " + str.tostring(lsiAsia_stop, format.mintick) + " | TP1 " + str.tostring(lsiAsia_tp1, format.mintick) + " | TP2 " + str.tostring(lsiAsia_tp2, format.mintick), alert.freq_once_per_bar_close)
+
+if ldn_setupAlert
+    alert(asset + " LDN LSI " + ldnDirStr + " armed @ " + str.tostring(ldn_entry, format.mintick) + " | SL " + str.tostring(ldn_stop, format.mintick) + " | TP1 " + str.tostring(ldn_tp1, format.mintick) + " | TP2 " + str.tostring(ldn_tp2, format.mintick), alert.freq_once_per_bar_close)
+
+if ldnOrb_longSetupAlert
+    alert(asset + " LDN ORB Long @ " + str.tostring(ldnOrb_longEntry, format.mintick) + " | SL " + str.tostring(ldnOrb_longStop, format.mintick) + " | TP1 " + str.tostring(ldnOrb_longTp1, format.mintick) + " | TP2 " + str.tostring(ldnOrb_longTp2, format.mintick), alert.freq_once_per_bar_close)
+
+if ldnOrb_shortSetupAlert
+    alert(asset + " LDN ORB Short @ " + str.tostring(ldnOrb_shortEntry, format.mintick) + " | SL " + str.tostring(ldnOrb_shortStop, format.mintick) + " | TP1 " + str.tostring(ldnOrb_shortTp1, format.mintick) + " | TP2 " + str.tostring(ldnOrb_shortTp2, format.mintick), alert.freq_once_per_bar_close)
+
 alertcondition(ny_longSetupAlert,   "NY Long Setup",   "NY long FVG setup detected")
 alertcondition(ny_shortSetupAlert,  "NY Short Setup",  "NY short FVG setup detected")
 alertcondition(asia_longSetupAlert,  "Asia Long Setup",  "Asia long FVG setup detected")
 alertcondition(asia_shortSetupAlert, "Asia Short Setup", "Asia short FVG setup detected")
-alertcondition(lsiNy_longSetupAlert,   "NQ NY LSI Long Setup",   "NQ NY LSI long FVG setup detected")
-alertcondition(lsiAsia_longSetupAlert, "NQ Asia LSI Long Setup", "NQ Asia LSI long FVG setup detected")
-alertcondition(ldn_longSetupAlert,     "NQ LDN LSI Long Setup",  "NQ LDN LSI long FVG setup detected")
-alertcondition(ny_longSetupAlert or ny_shortSetupAlert or asia_longSetupAlert or asia_shortSetupAlert, "Any Setup", "FVG setup detected")
+alertcondition(lsiNy_setupAlert,    "NQ NY LSI Setup",   "NQ NY LSI setup armed")
+alertcondition(lsiAsia_setupAlert,  "NQ Asia LSI Setup", "NQ Asia LSI setup armed")
+alertcondition(ldn_setupAlert,      "NQ LDN LSI Setup",  "NQ LDN LSI setup armed")
+alertcondition(ldnOrb_longSetupAlert,  "NQ LDN ORB Long Setup",  "NQ LDN ORB long FVG setup detected")
+alertcondition(ldnOrb_shortSetupAlert, "NQ LDN ORB Short Setup", "NQ LDN ORB short FVG setup detected")
+alertcondition(ny_longSetupAlert or ny_shortSetupAlert or asia_longSetupAlert or asia_shortSetupAlert or ldnOrb_longSetupAlert or ldnOrb_shortSetupAlert, "Any ORB Setup", "ORB FVG setup detected")
+alertcondition(lsiNy_setupAlert or lsiAsia_setupAlert or ldn_setupAlert, "Any LSI Setup", "LSI setup armed")

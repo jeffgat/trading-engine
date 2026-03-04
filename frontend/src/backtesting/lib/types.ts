@@ -139,6 +139,17 @@ export interface BacktestHistoryItem {
   ldn_orb_window?: string;
   ldn_entry_window?: string;
   ldn_flat_window?: string;
+  // LSI params (present when strategy === "lsi")
+  lsi_n_left?: number;
+  lsi_n_right?: number;
+  lsi_fvg_window_left?: number;
+  lsi_fvg_window_right?: number;
+  lsi_stop_mode?: string;
+  lsi_entry_mode?: string;
+  lsi_first_fvg_only?: number;
+  lsi_clean_path?: number;
+  lsi_be_swing_n_left?: number;
+  lsi_cancel_on_swing?: number;
   // Metrics (dedicated columns)
   total_pnl_usd: number;
   win_rate: number;

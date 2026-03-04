@@ -89,6 +89,19 @@ PARAM_COLUMNS: dict[str, str] = {
     "tp2_mode": "TEXT",
     "vwap_anchor": "TEXT",
     "stop_atr_buffer_pct": "REAL",
+    # Strategy type
+    "strategy": "TEXT",
+    # LSI params
+    "lsi_n_left": "INTEGER",
+    "lsi_n_right": "INTEGER",
+    "lsi_fvg_window_left": "INTEGER",
+    "lsi_fvg_window_right": "INTEGER",
+    "lsi_stop_mode": "TEXT",
+    "lsi_entry_mode": "TEXT",
+    "lsi_first_fvg_only": "INTEGER",
+    "lsi_clean_path": "INTEGER",
+    "lsi_be_swing_n_left": "INTEGER",
+    "lsi_cancel_on_swing": "INTEGER",
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)

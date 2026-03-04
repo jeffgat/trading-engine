@@ -11,10 +11,7 @@ export interface SessionStatus {
   session: string;
   state: string;
   date: string;
-  orb_high: number | null;
-  orb_low: number | null;
   daily_atr: number;
-  levels: TradeLevels | null;
   tp1_hit: boolean;
   exit_type: string | null;
   r_result: number | null;
@@ -22,10 +19,36 @@ export interface SessionStatus {
   paused?: boolean;
   excluded_dow?: number | number[] | null;
   fomc_exclusion?: boolean;
+  // Engine type — absent for continuation, "ifvg" for LSI
+  type?: "ifvg";
+  // ORB fields (continuation only)
+  orb_high?: number | null;
+  orb_low?: number | null;
+  orb_range?: number | null;
+  levels?: TradeLevels | null;
+  fill_timestamp?: string | null;
+  stop_basis?: string;
+  long_only?: boolean;
+  // IFVG fields (LSI only)
+  kz_high?: number | null;
+  kz_low?: number | null;
+  kz_source?: string | null;
+  pdh?: number | null;
+  pdl?: number | null;
+  entry?: number | null;
+  stop?: number | null;
+  tp1?: number | null;
+  tp2?: number | null;
+  direction?: number | null;
+  qty?: number | null;
+}
+
+export interface ConfigGroup {
+  engines: SessionStatus[];
 }
 
 export interface StatusResponse {
-  configs: Record<string, { engines: SessionStatus[] }>;
+  configs: Record<string, ConfigGroup>;
   uptime_seconds: number;
   mode: string;
 }
@@ -71,6 +94,10 @@ export interface SessionConfig {
   max_gap_atr_pct: number;
   gap_filter_basis: string;
   min_gap_orb_pct: number;
+  icf_enabled: boolean;
+  fomc_exclusion: boolean;
+  min_stop_pts: number;
+  min_tp1_pts: number;
   // LSI strategy fields
   min_stop_points: number;
   max_bars_after_sweep: number;
@@ -120,8 +147,26 @@ export interface AccountsUpdatePayload {
   webhooks: WebhookEntry[];
 }
 
+/** Raw status shape from the API/WebSocket (flat engines array). */
+export interface RawStatusPayload {
+  engines: SessionStatus[];
+  uptime_seconds: number;
+  mode: string;
+}
+
 export type WsMessage =
-  | { type: "status"; data: StatusResponse }
+  | { type: "status"; data: RawStatusPayload }
   | { type: "trade_log"; data: TradeLogEntry }
   | { type: "log"; data: MainLogEntry }
   | { type: "accounts_update"; data: AccountsUpdatePayload };
+
+export interface ExecTradeContext {
+  instrument: string;   // "NQ", "ES", "GC"
+  session: string;      // "NY", "Asia", "LDN"
+  date: string;         // "YYYY-MM-DD" (from FILLED timestamp)
+  direction: "long" | "short";
+  entry: number;
+  stop: number;
+  tp1: number;
+  tp2: number;
+}

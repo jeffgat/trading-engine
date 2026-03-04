@@ -425,8 +425,8 @@ export function BacktestHistoryPanel({
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Sessions</th>
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Date Range</th>
                             <SortHeader label="RR" sortBy="rr" />
-                            <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Stop%</th>
-                            <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Gap%</th>
+                            <th className="whitespace-nowrap px-3 py-2 text-right font-medium">P1</th>
+                            <th className="whitespace-nowrap px-3 py-2 text-right font-medium">P2</th>
                             <SortHeader label="Net R" sortBy="total_pnl_usd" />
                             <SortHeader label="R/Yr" sortBy="r_per_year" />
                             <SortHeader label="Trades" sortBy="total_trades" />
@@ -536,11 +536,15 @@ export function BacktestHistoryPanel({
                                     <td className="px-3 py-2 text-right text-text-secondary">
                                         {item.rr != null ? item.rr : '\u2014'}
                                     </td>
-                                    <td className="px-3 py-2 text-right text-text-secondary">
-                                        {getSessionParam(item, 'stop_atr_pct')?.toFixed(0) ?? '\u2014'}
+                                    <td className="px-3 py-2 text-right text-text-secondary" title={item.strategy === 'lsi' ? 'Swing L/R' : 'Stop ATR %'}>
+                                        {item.strategy === 'lsi'
+                                            ? `${item.lsi_n_left ?? '—'}/${item.lsi_n_right ?? '—'}`
+                                            : getSessionParam(item, 'stop_atr_pct')?.toFixed(0) ?? '\u2014'}
                                     </td>
-                                    <td className="px-3 py-2 text-right text-text-secondary">
-                                        {getSessionParam(item, 'min_gap_atr_pct')?.toFixed(0) ?? '\u2014'}
+                                    <td className="px-3 py-2 text-right text-text-secondary" title={item.strategy === 'lsi' ? 'FVG Window L/R' : 'Min Gap ATR %'}>
+                                        {item.strategy === 'lsi'
+                                            ? `${item.lsi_fvg_window_left ?? '—'}/${item.lsi_fvg_window_right ?? '—'}`
+                                            : getSessionParam(item, 'min_gap_atr_pct')?.toFixed(0) ?? '\u2014'}
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-semibold"
                                         style={{ color: pnlPositive ? 'var(--color-profit)' : 'var(--color-loss)' }}>
