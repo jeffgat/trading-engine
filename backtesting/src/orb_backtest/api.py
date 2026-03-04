@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from .config import (
     default_config,
+    ib_config,
     with_overrides,
     NY_SESSION,
     ASIA_SESSION,
@@ -134,6 +135,10 @@ class BacktestRequest(BaseModel):
     tp1_ratio: Optional[float] = None
     risk_usd: Optional[float] = None
     atr_length: Optional[int] = None
+    strategy: Optional[str] = None
+    direction_filter: Optional[str] = None
+    use_bar_magnifier: Optional[bool] = None
+    reverse_direction: Optional[bool] = None
 
     ny_stop_atr_pct: Optional[float] = None
     ny_min_gap_atr_pct: Optional[float] = None
@@ -339,13 +344,19 @@ def run_backtest_endpoint(req: BacktestRequest):
             raise unknown_session(s)
         sessions.append(SESSION_MAP[s])
 
-    config = default_config(instrument)
-    config = with_overrides(config, sessions=tuple(sessions))
+    if req.strategy == "ib":
+        config = ib_config(instrument)
+        # IB config has its own session (IB_NY_SESSION with 09:30-10:30 window);
+        # don't overwrite with standard SESSION_MAP sessions.
+    else:
+        config = default_config(instrument)
+        config = with_overrides(config, sessions=tuple(sessions))
 
     # Apply param overrides
     overrides = {}
     for field in (
         "rr", "tp1_ratio", "risk_usd", "atr_length",
+        "strategy", "direction_filter", "use_bar_magnifier", "reverse_direction",
         "name", "notes",
         "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_stop_orb_pct", "ny_min_gap_orb_pct",
         "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_stop_orb_pct", "asia_min_gap_orb_pct",

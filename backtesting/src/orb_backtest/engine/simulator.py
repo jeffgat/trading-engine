@@ -350,6 +350,40 @@ def _scan_fill_bar_ib(
     return -1
 
 
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
+def _scan_fill_bar_ib_magnifier(
+    high_1m: np.ndarray,
+    low_1m: np.ndarray,
+    entry_start_1m: int,
+    entry_end_1m: int,
+    last_bar_1m: int,
+    direction: int,
+    entry_price: float,
+    ib_high: float,
+    ib_low: float,
+) -> int:
+    """Scan for limit fill on 1m bars, cancelling if IB breaks before fill.
+
+    Same logic as _scan_fill_bar_ib but at 1-minute resolution so that
+    intra-5m-bar ordering of fill vs break is resolved correctly (matching
+    Pine Script's bar magnifier behaviour).
+
+    Returns 1m bar index of fill, or -1 if IB breaks first / no fill.
+    """
+    for i in range(entry_start_1m, min(entry_end_1m + 1, last_bar_1m + 1)):
+        # Check IB break first (strict inequality)
+        if high_1m[i] > ib_high or low_1m[i] < ib_low:
+            return -1
+        # Check fill
+        if direction == 1:
+            if low_1m[i] <= entry_price:
+                return i
+        else:
+            if high_1m[i] >= entry_price:
+                return i
+    return -1
+
+
 # ---------------------------------------------------------------------------
 # Bar magnifier: 1-minute sub-bar simulation (Numba-compiled)
 # ---------------------------------------------------------------------------
@@ -3104,13 +3138,21 @@ def run_backtest(
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                 )
+            if reverse_dir:
+                pnl_pts = -pnl_pts
+                # Swap exit labels so dashboard shows correct win/loss
+                if exit_type == EXIT_SL:
+                    exit_type = EXIT_TP2_SINGLE
+                elif exit_type in (EXIT_TP1_TP2, EXIT_TP2_SINGLE):
+                    exit_type = EXIT_SL
             pnl_usd = pnl_pts * pc.qty * config.point_value
             if exit_type != EXIT_NO_FILL:
                 pnl_usd -= 2 * pc.qty * config.commission_per_contract
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
-                direction=pc.direction, signal_bar=pc.cand.signal_bar,
+                direction=-pc.direction if reverse_dir else pc.direction,
+                signal_bar=pc.cand.signal_bar,
                 fill_bar=fill_bar, entry_price=pc.entry_price,
                 stop_price=pc.stop_price, tp1_price=pc.tp1_price,
                 tp2_price=pc.tp2_price, exit_type=exit_type,
@@ -3145,20 +3187,72 @@ def run_backtest(
             ))
 
         is_ib = config.strategy == "ib"
+        reverse_dir = config.reverse_direction
+
+        def _reverse_pc(pc: _PreparedCandidate) -> _PreparedCandidate:
+            """Flip direction and swap stop/TP for post-fill reversal.
+
+            For a 1:1 at midpoint: old SL price becomes new TP, old TP becomes new SL.
+            tp1 mirrors the tp1_ratio offset from the new TP side.
+            """
+            new_dir = -pc.direction
+            new_stop = pc.tp2_price     # old full TP becomes new stop
+            new_tp2 = pc.stop_price     # old stop becomes new full TP
+            # Mirror tp1: same proportional distance from entry on the new TP side
+            tp1_frac = abs(pc.tp1_price - pc.entry_price) / abs(pc.tp2_price - pc.entry_price) if abs(pc.tp2_price - pc.entry_price) > 0 else 1.0
+            new_risk = abs(new_tp2 - pc.entry_price)
+            if new_dir == 1:
+                new_tp1 = pc.entry_price + tp1_frac * new_risk
+            else:
+                new_tp1 = pc.entry_price - tp1_frac * new_risk
+            return _PreparedCandidate(
+                cand=pc.cand, sd=pc.sd,
+                direction=new_dir,
+                entry_price=pc.entry_price,
+                stop_price=new_stop,
+                tp1_price=new_tp1,
+                tp2_price=new_tp2,
+                be_price=pc.be_price,
+                risk_pts=pc.risk_pts,
+                qty=pc.qty, half_qty=pc.half_qty,
+                is_single=pc.is_single,
+                gap_size=pc.gap_size,
+                entry_bar_start=pc.entry_bar_start,
+                entry_bar_end=pc.entry_bar_end,
+                flat_bar_start=pc.flat_bar_start,
+                last_bar=pc.last_bar,
+                entry_start_1m=pc.entry_start_1m,
+                entry_end_1m=pc.entry_end_1m,
+                flat_start_1m=pc.flat_start_1m,
+                last_bar_1m=pc.last_bar_1m,
+                internal_swing_level=pc.internal_swing_level,
+                cancel_on_swing=pc.cancel_on_swing,
+            )
 
         for sd in sorted(sd_groups):
             group = sd_groups[sd]
             if len(group) == 1:
                 pc = group[0]
                 if is_ib and pc.cand.lsi_fvg_top > 0:
-                    # IB strategy: check IB-break before fill using dedicated scanner
-                    fb = _scan_fill_bar_ib(
-                        high, low,
-                        pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
-                        pc.direction, pc.entry_price,
-                        pc.cand.lsi_fvg_top,    # IB high
-                        pc.cand.lsi_fvg_bottom,  # IB low
-                    )
+                    # IB strategy: check IB-break before fill using dedicated scanner.
+                    # Use 1m magnifier when available for correct intra-bar ordering.
+                    if use_magnifier and pc.entry_start_1m >= 0:
+                        fb_1m = _scan_fill_bar_ib_magnifier(
+                            high_1m, low_1m,
+                            pc.entry_start_1m, pc.entry_end_1m, pc.last_bar_1m,
+                            pc.direction, pc.entry_price,
+                            pc.cand.lsi_fvg_top,    # IB high
+                            pc.cand.lsi_fvg_bottom,  # IB low
+                        )
+                        fb = map_1m_to_5m(fb_1m, bar_map) if fb_1m >= 0 else -1
+                    else:
+                        fb = _scan_fill_bar_ib(
+                            high, low,
+                            pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
+                            pc.direction, pc.entry_price,
+                            pc.cand.lsi_fvg_top,    # IB high
+                            pc.cand.lsi_fvg_bottom,  # IB low
+                        )
                     if fb < 0:
                         _append_no_fill(pc)
                     else:

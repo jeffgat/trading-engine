@@ -94,6 +94,9 @@ class StrategyConfig:
     # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
     direction_filter: str = "both"
 
+    # Reverse direction: flip all signal directions (long→short, short→long)
+    reverse_direction: bool = False
+
     # Allow FVGs inside ORB range when the impulse candle (bar[1]) closes outside
     impulse_close_filter: bool = False
 
