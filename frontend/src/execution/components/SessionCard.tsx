@@ -94,14 +94,6 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
     STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
   const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
 
-  const hasLevels = engine.levels != null;
-  const dirLabel =
-    engine.levels?.direction === 1
-      ? "Long"
-      : engine.levels?.direction === -1
-        ? "Short"
-        : null;
-
   const handleToggle = async () => {
     setSaving(true);
     try {
