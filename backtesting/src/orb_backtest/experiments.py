@@ -11,6 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import logging as _logging
 import os as _os
 
 DB_PATH = Path(
@@ -1307,8 +1308,41 @@ def import_optimizations(rows: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Remote mode override — MUST be at the bottom so wildcard import overwrites
-# all local function definitions above.
+# Dual-write: always save locally, also send to remote when configured.
+# Read/query functions route to remote when EXPERIMENTS_DB_URL is set.
 # ---------------------------------------------------------------------------
 if _os.environ.get("EXPERIMENTS_DB_URL"):
+    from . import experiments_remote as _remote
+
+    # Preserve local write functions before remote import overwrites them
+    _local_log_run = log_run
+    _local_log_optimization = log_optimization
+    _local_log_sweep_runs = log_sweep_runs
+
+    # Import all remote functions (overwrites reads/queries to use remote)
     from .experiments_remote import *  # noqa: F401, F403
+
+    # Dual-write wrappers: always local + remote
+    def log_run(result_dict, result_id, run_type="backtest", *, git_hash=None):
+        local_id = _local_log_run(result_dict, result_id, run_type, git_hash=git_hash)
+        try:
+            _remote.log_run(result_dict, result_id, run_type, git_hash=git_hash)
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("Remote log_run failed: %s", exc)
+        return local_id
+
+    def log_optimization(result_dict, result_id):
+        local_id = _local_log_optimization(result_dict, result_id)
+        try:
+            _remote.log_optimization(result_dict, result_id)
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("Remote log_optimization failed: %s", exc)
+        return local_id
+
+    def log_sweep_runs(all_results, optimization_id):
+        count = _local_log_sweep_runs(all_results, optimization_id)
+        try:
+            _remote.log_sweep_runs(all_results, optimization_id)
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("Remote log_sweep_runs failed: %s", exc)
+        return count

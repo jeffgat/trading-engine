@@ -128,7 +128,18 @@ Maintain a living document for each asset in `backtesting/learnings/`. These fil
 - `config.py` — `StrategyConfig` and `SessionConfig` dataclasses
 - `data/loader.py` — OHLCV data loading, `instruments.py` — instrument definitions
 - `api.py` — FastAPI endpoints for running backtests
-- `experiments.py` — Experiment tracking and comparison
+- `experiments.py` — Experiment tracking and comparison (dual-write: local + remote)
+- `experiments_remote.py` — Remote API client for experiment DB
+
+### Experiment Storage (Dual-Write)
+
+Results are **always saved to local SQLite** (`data/results/experiments.db`). When `EXPERIMENTS_DB_URL` is set, results are **also sent to the remote API** — remote failures are logged as warnings but never block the caller.
+
+- `run_server.py` sets `EXPERIMENTS_DB_URL=http://143.110.148.234:8100` by default, so the API server always dual-writes
+- Without `EXPERIMENTS_DB_URL`: local-only mode (CLI scripts, tests)
+- Read/query operations route to the remote API when the env var is set
+
+The three dual-write functions: `log_run()`, `log_optimization()`, `log_sweep_runs()`. All other functions (list, query, delete, rename, etc.) use whichever backend is active.
 
 ### Backtesting Best Practices
 

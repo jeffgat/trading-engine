@@ -147,7 +147,12 @@
       "Bash(EDITOR=true git commit --no-edit)",
       "Bash(ln -s /Users/jeffreygatbonton/Desktop/Code/backtests/python/data/raw/NQ_5m.parquet /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/data/raw/NQ_5m.parquet)",
       "Bash(ln -s /Users/jeffreygatbonton/Desktop/Code/backtests/python/data/raw/NQ_1m.parquet /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/data/raw/NQ_1m.parquet)",
-      "Bash(__NEW_LINE_84d0a3e112a66dc1__ echo \"\")"
+      "Bash(__NEW_LINE_84d0a3e112a66dc1__ echo \"\")",
+      "Bash(git merge IB)",
+      "Bash(git stash push -m \"stash settings before merge\" -- .claude/settings.local.json)",
+      "Bash(PYTHONPATH=backtesting/src python -c \"from orb_backtest import experiments; print\\(''Local-only mode OK''\\)\")",
+      "Bash(PYTHONPATH=backtesting/src python3 -c \"from orb_backtest import experiments; print\\(''Local-only mode OK''\\)\")",
+      "Bash(PYTHONPATH=backtesting/src EXPERIMENTS_DB_URL=http://143.110.148.234:8100 python3 -c \"from orb_backtest import experiments; print\\(''Dual-write mode OK''\\); print\\(''log_run:'', experiments.log_run\\)\")"
     ]
   }
 }
