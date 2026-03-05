@@ -46,6 +46,10 @@ from orb_backtest.experiments import (
     reorder_testing_plan,
     import_runs,
     import_optimizations,
+    log_news_straddle_run,
+    list_news_straddle_history,
+    get_news_straddle_run,
+    delete_news_straddle_run,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -302,6 +306,36 @@ def delete_plan_item(item_id: int):
 def reorder_plan(req: PlanReorder):
     success = reorder_testing_plan(req.instrument, req.item_ids)
     return ok({"reordered": success})
+
+
+# --- News Straddle CRUD ---
+
+class LogNewsStraddleRequest(BaseModel):
+    result_dict: dict
+    result_id: str
+
+@app.post("/api/news-straddle/runs")
+def create_news_straddle_run(req: LogNewsStraddleRequest):
+    rowid = log_news_straddle_run(req.result_dict, req.result_id)
+    return ok({"rowid": rowid})
+
+@app.get("/api/news-straddle/runs")
+def list_news_straddle_runs(limit: int = 100):
+    return ok(list_news_straddle_history(limit=limit))
+
+@app.get("/api/news-straddle/runs/{result_id}")
+def get_news_straddle(result_id: str):
+    row = get_news_straddle_run(result_id)
+    if row is None:
+        return fail("not found", 404)
+    return ok(row)
+
+@app.delete("/api/news-straddle/runs/{result_id}")
+def delete_news_straddle(result_id: str):
+    success = delete_news_straddle_run(result_id)
+    if not success:
+        return fail("not found", 404)
+    return ok({"deleted": True})
 
 
 # --- DB Upload (one-time migration) ---

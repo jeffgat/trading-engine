@@ -24,7 +24,7 @@ export default defineConfig({
       },
       // Backtesting API
       "/bt-api": {
-        target: "http://143.110.148.234:8100",
+        target: "http://localhost:8000",
         rewrite: (path) => path.replace(/^\/bt-api/, "/api"),
       },
     },

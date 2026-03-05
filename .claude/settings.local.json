@@ -152,7 +152,10 @@
       "Bash(git stash push -m \"stash settings before merge\" -- .claude/settings.local.json)",
       "Bash(PYTHONPATH=backtesting/src python -c \"from orb_backtest import experiments; print\\(''Local-only mode OK''\\)\")",
       "Bash(PYTHONPATH=backtesting/src python3 -c \"from orb_backtest import experiments; print\\(''Local-only mode OK''\\)\")",
-      "Bash(PYTHONPATH=backtesting/src EXPERIMENTS_DB_URL=http://143.110.148.234:8100 python3 -c \"from orb_backtest import experiments; print\\(''Dual-write mode OK''\\); print\\(''log_run:'', experiments.log_run\\)\")"
+      "Bash(PYTHONPATH=backtesting/src EXPERIMENTS_DB_URL=http://143.110.148.234:8100 python3 -c \"from orb_backtest import experiments; print\\(''Dual-write mode OK''\\); print\\(''log_run:'', experiments.log_run\\)\")",
+      "Bash(node -e \"import\\(''lightweight-charts''\\).then\\(m => { console.log\\(''version:'', m.version || ''no version export''\\); console.log\\(''CandlestickSeries type:'', typeof m.CandlestickSeries\\); console.log\\(''createChart type:'', typeof m.createChart\\); console.log\\(''createSeriesMarkers type:'', typeof m.createSeriesMarkers\\) }\\)\")",
+      "Bash(npm ls lightweight-charts)",
+      "Bash(node -e \":*)"
     ]
   }
 }

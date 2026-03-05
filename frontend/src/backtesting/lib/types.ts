@@ -253,3 +253,116 @@ export interface OptimizationHistoryItem {
   strategy?: string;
   name?: string;
 }
+
+// ── News Straddle types ──────────────────────────────────────────────
+
+export interface NewsStraddleEvent {
+  date: string;
+  event_type: string;
+  reference_price: number;
+  buffer_points: number;
+  target_points: number;
+  direction_filled: "long" | "short" | null;
+  fill_price: number;
+  seconds_to_fill: number;
+  mfe_points: number;
+  mae_points: number;
+  time_to_mfe_seconds: number;
+  target_hit: boolean;
+  time_to_target_seconds: number | null;
+  whipsaw: boolean;
+  final_points: number;
+  exit_type: string;
+}
+
+export interface NewsStraddleByEventType {
+  fills: number;
+  target_hit_count: number;
+  target_hit_rate: number;
+  avg_mfe: number;
+  avg_mae: number;
+  avg_final_points: number;
+  whipsaw_count: number;
+}
+
+export interface NewsStraddleSummary {
+  total_events: number;
+  events_with_data: number;
+  skipped_no_data: number;
+  fills: number;
+  no_fills: number;
+  long_fills: number;
+  short_fills: number;
+  target_hit_count: number;
+  target_hit_rate: number;
+  whipsaw_count: number;
+  whipsaw_rate: number;
+  avg_mfe: number;
+  avg_mae: number;
+  median_mfe: number;
+  median_mae: number;
+  avg_final_points: number;
+  pct_profitable: number;
+  avg_seconds_to_fill: number;
+  avg_time_to_mfe_seconds: number;
+  stop_loss_count: number;
+  stop_loss_rate: number;
+  by_event_type: Record<string, NewsStraddleByEventType>;
+}
+
+export interface NewsStraddleResult {
+  config: {
+    buffer_points: number;
+    target_points: number;
+    event_types: string[];
+    observation_window_seconds: number;
+    instrument: string;
+    stop_loss_points: number | null;
+  };
+  summary: NewsStraddleSummary;
+  events: NewsStraddleEvent[];
+}
+
+export interface NewsStraddleSweepRow {
+  buffer_points: number;
+  target_points: number;
+  fills: number;
+  target_hit_count: number;
+  target_hit_rate: number;
+  whipsaw_count: number;
+  whipsaw_rate: number;
+  avg_mfe: number;
+  avg_mae: number;
+  avg_final_points: number;
+  pct_profitable: number;
+}
+
+export interface NewsStraddleSweepResult {
+  swept_params: Record<string, number[]>;
+  results: NewsStraddleSweepRow[];
+  total_combinations: number;
+  event_types: string[];
+  observation_window_seconds: number;
+  instrument: string;
+}
+
+export interface NewsStraddleHistoryItem {
+  id: number;
+  result_id: string;
+  timestamp: string;
+  instrument: string;
+  buffer_points: number;
+  target_points: number;
+  observation_window_seconds: number;
+  event_types: string;
+  date_start: string | null;
+  date_end: string | null;
+  fills: number | null;
+  target_hit_rate: number | null;
+  whipsaw_rate: number | null;
+  pct_profitable: number | null;
+  avg_mfe: number | null;
+  avg_mae: number | null;
+  avg_final_points: number | null;
+  stop_loss_points: number | null;
+}

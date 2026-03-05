@@ -181,6 +181,30 @@ CREATE TABLE IF NOT EXISTS testing_plan (
 CREATE INDEX IF NOT EXISTS idx_testing_plan_instrument ON testing_plan(instrument);
 """
 
+_NEWS_STRADDLE_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS news_straddle_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id TEXT NOT NULL UNIQUE,
+    timestamp TEXT NOT NULL,
+    instrument TEXT NOT NULL,
+    buffer_points REAL NOT NULL,
+    target_points REAL NOT NULL,
+    observation_window_seconds INTEGER NOT NULL,
+    event_types TEXT NOT NULL,
+    date_start TEXT,
+    date_end TEXT,
+    fills INTEGER,
+    target_hit_rate REAL,
+    whipsaw_rate REAL,
+    pct_profitable REAL,
+    avg_mfe REAL,
+    avg_mae REAL,
+    avg_final_points REAL,
+    stop_loss_points REAL,
+    result_json TEXT NOT NULL
+);
+"""
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -195,6 +219,15 @@ def init_db() -> Path:
         conn.executescript(_SCHEMA)
         conn.executescript(_OPTIMIZATIONS_SCHEMA)
         conn.executescript(_TESTING_PLAN_SCHEMA)
+        conn.executescript(_NEWS_STRADDLE_SCHEMA)
+
+        # Migrate: add stop_loss_points to news_straddle_runs if missing
+        ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
+        if "stop_loss_points" not in ns_existing:
+            conn.execute("ALTER TABLE news_straddle_runs ADD COLUMN stop_loss_points REAL")
+            conn.execute(
+                "UPDATE news_straddle_runs SET stop_loss_points = json_extract(result_json, '$.config.stop_loss_points')"
+            )
 
         # Migrate: add columns to optimizations if missing
         opt_existing = {row[1] for row in conn.execute("PRAGMA table_info(optimizations)").fetchall()}
@@ -1308,19 +1341,110 @@ def import_optimizations(rows: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# News Straddle CRUD
+# ---------------------------------------------------------------------------
+
+def log_news_straddle_run(result_dict: dict, result_id: str) -> int:
+    """Save a news straddle backtest run to the DB."""
+    init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    config = result_dict.get("config", {})
+    summary = result_dict.get("summary", {})
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO news_straddle_runs
+               (result_id, timestamp, instrument, buffer_points, target_points,
+                observation_window_seconds, event_types, date_start, date_end,
+                fills, target_hit_rate, whipsaw_rate, pct_profitable,
+                avg_mfe, avg_mae, avg_final_points, stop_loss_points, result_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                result_id,
+                now,
+                config.get("instrument", "NQ"),
+                config.get("buffer_points"),
+                config.get("target_points"),
+                config.get("observation_window_seconds"),
+                json.dumps(config.get("event_types", [])),
+                config.get("date_start"),
+                config.get("date_end"),
+                summary.get("fills"),
+                summary.get("target_hit_rate"),
+                summary.get("whipsaw_rate"),
+                summary.get("pct_profitable"),
+                summary.get("avg_mfe"),
+                summary.get("avg_mae"),
+                summary.get("avg_final_points"),
+                config.get("stop_loss_points"),
+                json.dumps(result_dict),
+            ),
+        )
+        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def list_news_straddle_history(limit: int = 100) -> list[dict]:
+    """List recent news straddle runs (most recent first)."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT id, result_id, timestamp, instrument,
+                      buffer_points, target_points, observation_window_seconds,
+                      event_types, date_start, date_end,
+                      fills, target_hit_rate, whipsaw_rate, pct_profitable,
+                      avg_mfe, avg_mae, avg_final_points, stop_loss_points
+               FROM news_straddle_runs
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_news_straddle_run(result_id: str) -> dict | None:
+    """Load a full news straddle result by result_id."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT result_json FROM news_straddle_runs WHERE result_id = ?",
+            (result_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row[0])
+
+
+def delete_news_straddle_run(result_id: str) -> bool:
+    """Delete a news straddle run by result_id."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            "DELETE FROM news_straddle_runs WHERE result_id = ?",
+            (result_id,),
+        )
+        return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
 # Dual-write: always save locally, also send to remote when configured.
 # Read/query functions route to remote when EXPERIMENTS_DB_URL is set.
 # ---------------------------------------------------------------------------
 if _os.environ.get("EXPERIMENTS_DB_URL"):
     from . import experiments_remote as _remote
 
-    # Preserve local write functions before remote import overwrites them
+    # Preserve local functions before remote import overwrites them
+    _local_init_db = init_db
     _local_log_run = log_run
     _local_log_optimization = log_optimization
     _local_log_sweep_runs = log_sweep_runs
+    _local_log_news_straddle_run = log_news_straddle_run
 
     # Import all remote functions (overwrites reads/queries to use remote)
     from .experiments_remote import *  # noqa: F401, F403
+
+    # Ensure local DB tables exist (remote init_db is a no-op health check)
+    _local_init_db()
 
     # Dual-write wrappers: always local + remote
     def log_run(result_dict, result_id, run_type="backtest", *, git_hash=None):
@@ -1346,3 +1470,11 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
         except Exception as exc:
             _logging.getLogger(__name__).warning("Remote log_sweep_runs failed: %s", exc)
         return count
+
+    def log_news_straddle_run(result_dict, result_id):
+        local_id = _local_log_news_straddle_run(result_dict, result_id)
+        try:
+            _remote.log_news_straddle_run(result_dict, result_id)
+        except Exception as exc:
+            _logging.getLogger(__name__).warning("Remote log_news_straddle_run failed: %s", exc)
+        return local_id

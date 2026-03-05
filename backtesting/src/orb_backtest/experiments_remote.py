@@ -233,6 +233,37 @@ def reorder_testing_plan(instrument, item_ids):
 
 # --- Sync / Import ---
 
+# --- News Straddle CRUD ---
+
+def log_news_straddle_run(result_dict, result_id):
+    resp = _post("/api/news-straddle/runs", {
+        "result_dict": result_dict,
+        "result_id": result_id,
+    })
+    return resp.get("rowid")
+
+
+def list_news_straddle_history(limit=100):
+    return _get(f"/api/news-straddle/runs?limit={limit}")
+
+
+def get_news_straddle_run(result_id):
+    try:
+        return _get(f"/api/news-straddle/runs/{result_id}")
+    except RuntimeError:
+        return None
+
+
+def delete_news_straddle_run(result_id):
+    try:
+        _delete(f"/api/news-straddle/runs/{result_id}")
+        return True
+    except RuntimeError:
+        return False
+
+
+# --- Sync / Import ---
+
 def import_runs(rows):
     resp = _post("/api/sync/import", {"runs": rows, "optimizations": []})
     return resp.get("runs_imported", 0)

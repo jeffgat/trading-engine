@@ -70,6 +70,11 @@ from .gapfill_config import (
 from .engine.gapfill_simulator import run_gapfill_backtest
 from .optimize.parallel_gapfill import run_gapfill_sweep
 from .optimize.walkforward_gapfill import _generate_gapfill_param_grid
+from .engine.news_straddle import (
+    NewsStraddleConfig,
+    run_news_straddle,
+    run_news_straddle_sweep,
+)
 from .results.metrics import compute_metrics, recompute_summary
 from .optimize.grid import generate_param_grid, linspace_range
 from .optimize.parallel import run_sweep
@@ -89,6 +94,10 @@ from .experiments import (
     update_testing_plan_item,
     delete_testing_plan_item,
     reorder_testing_plan,
+    log_news_straddle_run,
+    list_news_straddle_history,
+    get_news_straddle_run,
+    delete_news_straddle_run,
 )
 
 app = FastAPI(title="ORB+FVG Backtester API")
@@ -903,3 +912,185 @@ def run_gapfill_optimize_endpoint(req: GapFillOptimizeRequest):
     result["id"] = result_id
 
     return ok(result)
+
+
+# ── News Straddle endpoints ─────────────────────────────────────────
+
+
+class NewsStraddleRequest(BaseModel):
+    buffer_points: float = 5.0
+    target_points: float = 25.0
+    event_types: list[str] = ["NFP", "CPI"]
+    observation_window_seconds: int = 120
+    instrument: str = "NQ"
+    start: Optional[str] = None
+    end: Optional[str] = None
+    stop_loss_points: Optional[float] = None
+
+
+class NewsStraddleSweepRequest(BaseModel):
+    buffer_range: str = "1:20:1"
+    target_range: str = "10:50:5"
+    event_types: list[str] = ["NFP", "CPI"]
+    observation_window_seconds: int = 120
+    instrument: str = "NQ"
+    start: Optional[str] = None
+    end: Optional[str] = None
+    stop_loss_points: Optional[float] = None
+
+
+def _parse_range_spec(spec: str) -> list[float]:
+    """Parse 'start:stop:step' into a list of floats."""
+    parts = spec.split(":")
+    if len(parts) != 3:
+        raise ValueError(f"Invalid range spec: {spec}")
+    start, stop, step = float(parts[0]), float(parts[1]), float(parts[2])
+    values = []
+    v = start
+    while v <= stop + 1e-9:
+        values.append(round(v, 4))
+        v += step
+    return values
+
+
+@app.get("/api/news-candles")
+def get_news_candles(
+    instrument: str = Query("NQ"),
+    date: str = Query(..., description="Event date YYYY-MM-DD"),
+    seconds_before: int = Query(1, description="Seconds before 08:30 release to include"),
+    seconds_after: int = Query(300, description="Seconds after 08:30 release to include"),
+):
+    """Return 1s OHLCV bars around a news event.
+
+    The window is [08:30 - seconds_before, 08:30 + seconds_after] ET.
+    Used by the NewsTradeChartModal to render a candlestick chart for a
+    specific news straddle event.
+    """
+    from .engine.news_straddle import _load_1s_data
+
+    try:
+        trade_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise data_not_found(f"Invalid date format: {date}. Use YYYY-MM-DD.")
+
+    # Load 1s data for this date
+    load_start = (trade_date - timedelta(days=1)).strftime("%Y-%m-%d")
+    load_end = (trade_date + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    try:
+        df = _load_1s_data(instrument, load_start, load_end)
+    except FileNotFoundError as e:
+        raise data_not_found(str(e))
+
+    # Window: centered on 08:30:00 release time
+    release = pd.Timestamp(datetime.combine(
+        trade_date, datetime.min.time().replace(hour=8, minute=30)
+    ))
+    ws = release - pd.Timedelta(seconds=seconds_before)
+    we = release + pd.Timedelta(seconds=seconds_after)
+
+    tz = df.index.tz
+    if tz is not None:
+        ws = ws.tz_localize(tz)
+        we = we.tz_localize(tz)
+
+    windowed = df.loc[(df.index >= ws) & (df.index <= we)]
+
+    if windowed.empty:
+        return []
+
+    result = []
+    for ts, row in windowed.iterrows():
+        result.append({
+            "time": ts.isoformat(),
+            "open": float(row["open"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "close": float(row["close"]),
+        })
+
+    return result
+
+
+@app.post("/api/news-straddle")
+def run_news_straddle_endpoint(req: NewsStraddleRequest):
+    """Run a single news straddle backtest with fixed params."""
+    import hashlib as _hl
+
+    config = NewsStraddleConfig(
+        buffer_points=req.buffer_points,
+        target_points=req.target_points,
+        event_types=tuple(req.event_types),
+        observation_window_seconds=req.observation_window_seconds,
+        instrument=req.instrument,
+        stop_loss_points=req.stop_loss_points,
+    )
+    result = run_news_straddle(config, start=req.start, end=req.end)
+
+    # Auto-save to history
+    result["config"]["date_start"] = req.start
+    result["config"]["date_end"] = req.end
+    fingerprint = f"{req.buffer_points}_{req.target_points}_{req.observation_window_seconds}_{req.event_types}_{req.start}_{req.end}_{req.stop_loss_points}"
+    result_id = _hl.md5(fingerprint.encode()).hexdigest()[:12]
+    try:
+        log_news_straddle_run(result, result_id)
+    except Exception:
+        pass  # don't block the response
+
+    return ok(result)
+
+
+@app.post("/api/news-straddle/sweep")
+def run_news_straddle_sweep_endpoint(req: NewsStraddleSweepRequest):
+    """Run a buffer x target sweep for the news straddle strategy."""
+    buffer_values = _parse_range_spec(req.buffer_range)
+    target_values = _parse_range_spec(req.target_range)
+
+    result = run_news_straddle_sweep(
+        buffer_range=buffer_values,
+        target_range=target_values,
+        event_types=tuple(req.event_types),
+        observation_window_seconds=req.observation_window_seconds,
+        instrument=req.instrument,
+        start=req.start,
+        end=req.end,
+        stop_loss_points=req.stop_loss_points,
+    )
+    return ok(result)
+
+
+# ── News Straddle History ────────────────────────────────────────────
+
+@app.get("/api/news-straddle/runs")
+def list_news_straddle_runs_endpoint(limit: int = Query(100)):
+    """List saved news straddle backtest runs."""
+    return ok(list_news_straddle_history(limit))
+
+
+@app.get("/api/news-straddle/runs/{result_id}")
+def get_news_straddle_run_endpoint(result_id: str):
+    """Load a full news straddle result."""
+    result = get_news_straddle_run(result_id)
+    if result is None:
+        raise experiment_not_found(result_id)
+    return ok(result)
+
+
+@app.delete("/api/news-straddle/runs/{result_id}")
+def delete_news_straddle_run_endpoint(result_id: str):
+    """Delete a news straddle run."""
+    if not delete_news_straddle_run(result_id):
+        raise experiment_not_found(result_id)
+    return ok({"deleted": True})
+
+
+class NewsStraddleRunSaveRequest(BaseModel):
+    result_dict: dict
+    result_id: str
+
+
+@app.post("/api/news-straddle/runs")
+def save_news_straddle_run_endpoint(req: NewsStraddleRunSaveRequest):
+    """Save a news straddle run (used by remote sync)."""
+    rowid = log_news_straddle_run(req.result_dict, req.result_id)
+    return ok({"rowid": rowid})
