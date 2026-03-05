@@ -555,7 +555,9 @@ export function NewsDashboard() {
                       border: "1px solid #2c2c33",
                       borderRadius: 6,
                       fontSize: 12,
+                      color: "#e0e0e6",
                     }}
+                    labelStyle={{ color: "#a0a0ab" }}
                     formatter={(value: number) => formatNumber(value)}
                   />
                   <Scatter data={scatterData}>
