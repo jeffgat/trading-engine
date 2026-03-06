@@ -158,6 +158,19 @@ export interface RawStatusPayload {
   mode: string;
 }
 
+export interface BacktestMapping {
+  backtestId: string;
+  deployDate: string; // YYYY-MM-DD
+}
+
+export interface ComparisonCurvePoint {
+  date: string;
+  backtest_r?: number;
+  live_r?: number;
+  live_r_per_trade?: number;
+  _rawLiveR?: number;
+}
+
 export type WsMessage =
   | { type: "status"; data: RawStatusPayload }
   | { type: "trade_log"; data: TradeLogEntry }

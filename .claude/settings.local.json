@@ -155,7 +155,11 @@
       "Bash(PYTHONPATH=backtesting/src EXPERIMENTS_DB_URL=http://143.110.148.234:8100 python3 -c \"from orb_backtest import experiments; print\\(''Dual-write mode OK''\\); print\\(''log_run:'', experiments.log_run\\)\")",
       "Bash(node -e \"import\\(''lightweight-charts''\\).then\\(m => { console.log\\(''version:'', m.version || ''no version export''\\); console.log\\(''CandlestickSeries type:'', typeof m.CandlestickSeries\\); console.log\\(''createChart type:'', typeof m.createChart\\); console.log\\(''createSeriesMarkers type:'', typeof m.createSeriesMarkers\\) }\\)\")",
       "Bash(npm ls lightweight-charts)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_exec_portfolio.py --start 2016-01-01 --end 2026-01-01)",
+      "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_exec_portfolio.py --risk 5000)",
+      "Bash(.venv/bin/pip install databento)",
+      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab .venv/bin/python scripts/fetch_latest_1s.py NQ ES GC)"
     ]
   }
 }

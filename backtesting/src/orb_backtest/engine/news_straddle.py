@@ -155,6 +155,12 @@ def simulate_single_event(
         )
 
     # Phase 2: Track post-fill excursions with stop loss + target exit
+    #
+    # Fill-bar assumption: the 1s news candle that fills our stop order
+    # continues in that direction to its extreme (high for long, low for short).
+    # If that extreme hits our target → immediate win.
+    # If the candle wicks through our entry but closes on the wrong side → loss.
+    # Otherwise, subsequent bars use normal target / stop-loss tracking.
     post_fill = window.iloc[fill_idx:]
     mfe = 0.0
     mae = 0.0
@@ -171,6 +177,7 @@ def simulate_single_event(
     for j, (ts, bar) in enumerate(post_fill.iterrows()):
         high = float(bar["high"])
         low = float(bar["low"])
+        bar_close = float(bar["close"])
 
         if is_long:
             favorable = high - fill_price
@@ -190,6 +197,33 @@ def simulate_single_event(
                 whipsaw = True
             elif not is_long and high >= opposite_level:
                 whipsaw = True
+
+        # --- Fill bar (j == 0): special handling ---
+        if j == 0:
+            # Assume price reaches the candle extreme; check target first
+            if favorable >= config.target_points:
+                target_hit = True
+                time_to_target = 0
+                final_points = config.target_points
+                exit_type = "target"
+                break
+
+            # Wick-and-reverse: filled but close is on wrong side of entry
+            close_against = (is_long and bar_close < fill_price) or (
+                not is_long and bar_close > fill_price
+            )
+            if close_against:
+                if is_long:
+                    final_points = bar_close - fill_price  # negative
+                else:
+                    final_points = fill_price - bar_close  # negative
+                exit_type = "stop_loss"
+                break
+
+            # Fill bar didn't hit target or reverse — continue to next bars
+            continue
+
+        # --- Subsequent bars (j > 0) ---
 
         # Check if both SL and TP hit on the same bar
         sl_hit = sl is not None and adverse >= sl

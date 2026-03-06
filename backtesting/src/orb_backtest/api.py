@@ -98,6 +98,9 @@ from .experiments import (
     list_news_straddle_history,
     get_news_straddle_run,
     delete_news_straddle_run,
+    list_risk_engine_layouts,
+    save_risk_engine_layout,
+    delete_risk_engine_layout,
 )
 
 app = FastAPI(title="ORB+FVG Backtester API")
@@ -1094,3 +1097,33 @@ def save_news_straddle_run_endpoint(req: NewsStraddleRunSaveRequest):
     """Save a news straddle run (used by remote sync)."""
     rowid = log_news_straddle_run(req.result_dict, req.result_id)
     return ok({"rowid": rowid})
+
+
+# ── Risk Engine Layouts ────────────────────────────────────────────
+
+
+class RiskEngineLayoutRequest(BaseModel):
+    name: str
+    accountRisk: float
+    strategies: list[dict]
+
+
+@app.get("/api/risk-engine/layouts")
+def get_risk_engine_layouts():
+    """List all saved risk engine layouts."""
+    return ok(list_risk_engine_layouts())
+
+
+@app.post("/api/risk-engine/layouts")
+def save_risk_engine_layout_endpoint(req: RiskEngineLayoutRequest):
+    """Create or update a risk engine layout."""
+    layout = save_risk_engine_layout(req.name, req.accountRisk, req.strategies)
+    return ok(layout)
+
+
+@app.delete("/api/risk-engine/layouts/{name}")
+def delete_risk_engine_layout_endpoint(name: str):
+    """Delete a risk engine layout by name."""
+    if not delete_risk_engine_layout(name):
+        raise BacktestError("LAYOUT_NOT_FOUND", f"Layout '{name}' not found", "Check the layout name", status_code=404)
+    return ok({"deleted": name})

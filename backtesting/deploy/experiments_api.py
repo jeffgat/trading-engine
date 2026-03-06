@@ -50,6 +50,9 @@ from orb_backtest.experiments import (
     list_news_straddle_history,
     get_news_straddle_run,
     delete_news_straddle_run,
+    list_risk_engine_layouts,
+    save_risk_engine_layout,
+    delete_risk_engine_layout,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -336,6 +339,29 @@ def delete_news_straddle(result_id: str):
     if not success:
         return fail("not found", 404)
     return ok({"deleted": True})
+
+
+# --- Risk Engine Layouts ---
+
+class RiskEngineLayoutRequest(BaseModel):
+    name: str
+    accountRisk: float
+    strategies: list[dict]
+
+@app.get("/api/risk-engine/layouts")
+def get_risk_engine_layouts():
+    return ok(list_risk_engine_layouts())
+
+@app.post("/api/risk-engine/layouts")
+def save_layout(req: RiskEngineLayoutRequest):
+    layout = save_risk_engine_layout(req.name, req.accountRisk, req.strategies)
+    return ok(layout)
+
+@app.delete("/api/risk-engine/layouts/{name}")
+def delete_layout(name: str):
+    if not delete_risk_engine_layout(name):
+        return fail("not found", 404)
+    return ok({"deleted": name})
 
 
 # --- DB Upload (one-time migration) ---

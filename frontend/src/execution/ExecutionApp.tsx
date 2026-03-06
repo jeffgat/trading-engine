@@ -10,7 +10,6 @@ import { useMainLogs } from '@/execution/hooks/useMainLogs';
 import { useStatus } from '@/execution/hooks/useStatus';
 import { useTradeLogs } from '@/execution/hooks/useTradeLogs';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
-import { CONFIG_COLORS } from '@/execution/lib/constants';
 import { useMemo, useState } from 'react';
 
 type Tab = 'status' | 'trades' | 'performance' | 'logs' | 'config' | 'accounts';
@@ -81,42 +80,6 @@ export function ExecutionApp() {
                     <ConnectionStatus connected={connected} />
                 </div>
 
-                {/* Config selector pills — hidden on config/accounts tabs */}
-                {configNames.length > 0 &&
-                    activeTab !== 'config' &&
-                    activeTab !== 'accounts' && (
-                        <div className="mx-auto max-w-7xl px-4 sm:px-6 pb-2 pt-4">
-                            <div className="flex gap-1.5">
-                                <button
-                                    onClick={() => setActiveConfig('ALL')}
-                                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                                        activeConfig === 'ALL'
-                                            ? 'bg-text-muted/20 text-text-primary border-text-muted/40'
-                                            : 'border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40'
-                                    }`}>
-                                    ALL
-                                </button>
-                                {configNames.map((name) => {
-                                    const isActive = activeConfig === name;
-                                    const colorClasses =
-                                        CONFIG_COLORS[name] ??
-                                        'bg-text-muted/20 text-text-muted border-text-muted/30';
-                                    return (
-                                        <button
-                                            key={name}
-                                            onClick={() => setActiveConfig(name)}
-                                            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                                                isActive
-                                                    ? colorClasses
-                                                    : 'border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40'
-                                            }`}>
-                                            {name}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
             </header>
 
             {/* Content */}
@@ -162,6 +125,8 @@ export function ExecutionApp() {
                         loading={tradeLogs.loading}
                         config={config}
                         activeConfig={activeConfig}
+                        configNames={configNames}
+                        setActiveConfig={setActiveConfig}
                     />
                 )}
                 {activeTab === 'config' && (

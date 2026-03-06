@@ -4,7 +4,7 @@ import { formatPct } from "@/backtesting/lib/utils";
 import { CopyIdButton } from './CopyIdButton';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { SessionTag } from './SessionTag';
-import { ScrollArea } from "@/shared/ui/scroll-area";
+import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
 
 type SortKey =
     | 'instrument'
@@ -113,7 +113,7 @@ export function BacktestHistoryPanel({
     isModal = false,
 }: HistoryPanelProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [sortKey, setSortKey] = useState<SortKey>('total_pnl_usd');
+    const [sortKey, setSortKey] = useState<SortKey>('timestamp');
     const [sortAsc, setSortAsc] = useState(false);
     const [instrumentFilter, setInstrumentFilter] = useState<string>('all');
     const [sessionFilter, setSessionFilter] = useState<string>('all');
@@ -401,8 +401,8 @@ export function BacktestHistoryPanel({
                 </div>
             )}
 
-            <ScrollArea className={isModal ? 'h-[70vh]' : 'h-[288px]'}>
-                <table className="w-full text-xs">
+            <ScrollArea className={isModal ? 'h-[70vh]' : 'h-[288px]'} type="auto">
+                <table className="min-w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-bg-card">
                         <tr className="border-b border-border text-text-muted">
                             {selectMode && (
@@ -623,12 +623,15 @@ export function BacktestHistoryPanel({
                                                     e.stopPropagation();
                                                     setDeleteId(item.id);
                                                 }}
-                                                className="hidden rounded p-0.5 text-text-muted hover:bg-bg-secondary hover:text-text-primary group-hover:inline-block">
+                                                className="hidden rounded p-0.5 text-text-muted hover:bg-red-500/15 hover:text-red-400 group-hover:inline-block"
+                                                title="Delete">
                                                 <svg
                                                     className="h-3.5 w-3.5"
                                                     viewBox="0 0 16 16"
-                                                    fill="currentColor">
-                                                    <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    strokeWidth="1.5">
+                                                    <path d="M2 4h12M5.5 4V2.5h5V4M6 7v4.5M10 7v4.5M3.5 4l.5 9.5h8l.5-9.5" />
                                                 </svg>
                                             </span>
                                         </span>}
@@ -638,6 +641,7 @@ export function BacktestHistoryPanel({
                         })}
                     </tbody>
                 </table>
+                <ScrollBar orientation="horizontal" />
             </ScrollArea>
 
             <ConfirmDeleteDialog

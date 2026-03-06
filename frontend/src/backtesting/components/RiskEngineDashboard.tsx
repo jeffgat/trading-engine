@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BacktestHistoryItem, BacktestResult, Trade } from "@/backtesting/lib/types";
 import { formatR, pnlColor } from "@/backtesting/lib/utils";
 import { SessionTag } from "./SessionTag";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { ChevronDown, Trash2, Save, Plus, Check } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -740,6 +742,144 @@ function CombinedCard({
 }
 
 // ---------------------------------------------------------------------------
+// Layout dropdown
+// ---------------------------------------------------------------------------
+
+function LayoutDropdown({
+  layouts,
+  activeLayoutName,
+  disabled,
+  onLoad,
+  onSave,
+  onSaveNew,
+  onDelete,
+  saveFlash,
+}: {
+  layouts: SavedLayout[];
+  activeLayoutName: string | null;
+  disabled: boolean;
+  onLoad: (name: string) => void;
+  onSave: () => void;
+  onSaveNew: () => void;
+  onDelete: (name: string) => void;
+  saveFlash: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+
+  const handleLoad = (name: string) => {
+    onLoad(name);
+    setOpen(false);
+    setConfirmingDelete(null);
+  };
+
+  const handleDelete = (e: React.MouseEvent, name: string) => {
+    e.stopPropagation();
+    if (confirmingDelete === name) {
+      onDelete(name);
+      setConfirmingDelete(null);
+    } else {
+      setConfirmingDelete(name);
+    }
+  };
+
+  // Reset confirm state when popover closes
+  useEffect(() => {
+    if (!open) setConfirmingDelete(null);
+  }, [open]);
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            disabled={disabled}
+            className="inline-flex items-center gap-1.5 rounded border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-primary transition-colors hover:border-accent/50 disabled:opacity-50"
+          >
+            {activeLayoutName ? (
+              <span className="max-w-[140px] truncate">{activeLayoutName}</span>
+            ) : (
+              <span className="text-text-muted">Layouts</span>
+            )}
+            <ChevronDown className="h-3 w-3 text-text-muted" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-64 rounded-lg border border-border bg-bg-secondary p-0 shadow-xl"
+        >
+          {layouts.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-text-muted">
+              No saved layouts
+            </div>
+          ) : (
+            <div className="max-h-60 overflow-y-auto py-1">
+              {layouts.map((l) => {
+                const isActive = l.name === activeLayoutName;
+                const isConfirming = confirmingDelete === l.name;
+                return (
+                  <div
+                    key={l.name}
+                    onClick={() => handleLoad(l.name)}
+                    className={`group flex cursor-pointer items-center justify-between px-3 py-2 text-xs transition-colors ${
+                      isActive
+                        ? "bg-accent/10 text-accent"
+                        : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isActive && <Check className="h-3 w-3 shrink-0 text-accent" />}
+                      <span className="truncate">{l.name}</span>
+                      <span className="shrink-0 text-[10px] text-text-muted">
+                        {l.strategies.length}s
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => handleDelete(e, l.name)}
+                      className={`shrink-0 rounded p-1 transition-colors ${
+                        isConfirming
+                          ? "bg-red-500/20 text-red-400"
+                          : "text-text-muted opacity-0 hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                      }`}
+                      title={isConfirming ? "Click again to confirm" : `Delete "${l.name}"`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="border-t border-border px-2 py-1.5 flex items-center gap-1">
+            {activeLayoutName && (
+              <button
+                onClick={() => { onSave(); setOpen(false); }}
+                className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary"
+              >
+                <Save className="h-3 w-3" />
+                Save
+              </button>
+            )}
+            <button
+              onClick={() => { onSaveNew(); setOpen(false); }}
+              className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-text-secondary transition-colors hover:bg-white/5 hover:text-text-primary"
+            >
+              <Plus className="h-3 w-3" />
+              Save New
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+      {saveFlash && (
+        <span className="text-[11px] font-medium text-green-400 animate-pulse">
+          Saved
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
@@ -764,12 +904,7 @@ export function RiskEngineDashboard() {
   const [filterAsset, setFilterAsset] = useState<string | null>(null);
   const [filterSession, setFilterSession] = useState<string | null>(null);
 
-  const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>(() => {
-    try {
-      const stored = localStorage.getItem("risk-engine-layouts");
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
+  const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
   const [activeLayoutName, setActiveLayoutName] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -803,13 +938,20 @@ export function RiskEngineDashboard() {
     };
   }, []);
 
+  // Fetch saved layouts from backend on mount
   useEffect(() => {
-    try {
-      localStorage.setItem("risk-engine-layouts", JSON.stringify(savedLayouts));
-    } catch {
-      // localStorage quota exceeded — silently ignore
-    }
-  }, [savedLayouts]);
+    fetch("/bt-api/risk-engine/layouts")
+      .then((res) => res.json())
+      .then((json) => {
+        const layouts: SavedLayout[] = (json.result ?? []).map((l: any) => ({
+          name: l.name,
+          accountRisk: l.accountRisk,
+          strategies: l.strategies,
+        }));
+        setSavedLayouts(layouts);
+      })
+      .catch(() => {});
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -900,13 +1042,22 @@ export function RiskEngineDashboard() {
       accountRisk,
       strategies: selectedStrategies.map((s) => ({ id: s.id, riskSize: s.riskSize })),
     };
-    setSavedLayouts((prev) => {
-      const filtered = prev.filter((l) => l.name !== layout.name);
-      return [...filtered, layout];
-    });
-    setActiveLayoutName(layout.name);
-    setSaveFlash(true);
-    setTimeout(() => setSaveFlash(false), 1500);
+    fetch("/bt-api/risk-engine/layouts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(layout),
+    })
+      .then((res) => res.json())
+      .then(() => {
+        setSavedLayouts((prev) => {
+          const filtered = prev.filter((l) => l.name !== layout.name);
+          return [...filtered, layout];
+        });
+        setActiveLayoutName(layout.name);
+        setSaveFlash(true);
+        setTimeout(() => setSaveFlash(false), 1500);
+      })
+      .catch(() => {});
   }, [accountRisk, selectedStrategies]);
 
   const saveLayout = useCallback(() => {
@@ -983,9 +1134,12 @@ export function RiskEngineDashboard() {
   }, [activeLayoutName, listLoading, savedLayouts, strategyList, fetchStrategyData]);
 
   const deleteLayout = useCallback((name: string) => {
-    if (!window.confirm(`Delete layout "${name}"?`)) return;
-    setSavedLayouts((prev) => prev.filter((l) => l.name !== name));
-    if (activeLayoutName === name) setActiveLayoutName(null);
+    fetch(`/bt-api/risk-engine/layouts/${encodeURIComponent(name)}`, { method: "DELETE" })
+      .then(() => {
+        setSavedLayouts((prev) => prev.filter((l) => l.name !== name));
+        if (activeLayoutName === name) setActiveLayoutName(null);
+      })
+      .catch(() => {});
   }, [activeLayoutName]);
 
   // Unique filter options derived from strategy list
@@ -1030,47 +1184,16 @@ export function RiskEngineDashboard() {
         </h1>
         <div className="flex items-center gap-3">
           {/* Layout controls */}
-          <select
-            value={activeLayoutName ?? ""}
-            onChange={(e) => loadLayout(e.target.value)}
+          <LayoutDropdown
+            layouts={savedLayouts}
+            activeLayoutName={activeLayoutName}
             disabled={listLoading}
-            className="rounded border border-border bg-bg-secondary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent disabled:opacity-50"
-          >
-            <option value="" disabled>Load layout…</option>
-            {savedLayouts.map((l) => (
-              <option key={l.name} value={l.name}>{l.name}</option>
-            ))}
-          </select>
-          {activeLayoutName && (
-            <button
-              onClick={saveLayout}
-              className="rounded border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary"
-            >
-              Save
-            </button>
-          )}
-          <button
-            onClick={saveNewLayout}
-            className="rounded border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-secondary transition-colors hover:border-accent/50 hover:text-text-primary"
-          >
-            Save New
-          </button>
-          {saveFlash && (
-            <span className="text-[11px] font-medium text-green-400 animate-pulse">
-              Saved
-            </span>
-          )}
-          {activeLayoutName && (
-            <button
-              onClick={() => deleteLayout(activeLayoutName)}
-              className="rounded border border-border bg-bg-secondary px-1.5 py-1.5 text-xs text-text-muted transition-colors hover:border-red-500/50 hover:text-red-400"
-              title={`Delete "${activeLayoutName}"`}
-            >
-              <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
-              </svg>
-            </button>
-          )}
+            onLoad={loadLayout}
+            onSave={saveLayout}
+            onSaveNew={saveNewLayout}
+            onDelete={deleteLayout}
+            saveFlash={saveFlash}
+          />
           <div className="h-5 w-px bg-border" />
           {/* View mode toggle */}
           <div className="inline-flex rounded border border-border bg-bg-secondary">

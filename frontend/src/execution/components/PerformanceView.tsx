@@ -1,12 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
-import type { ConfigResponse, TradeLogEntry } from "@/execution/lib/types";
+import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint } from "@/execution/lib/types";
+import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
+import { EquityCurveComparison } from "@/execution/components/EquityCurveComparison";
+import { BacktestWindowSlider } from "@/execution/components/BacktestWindowSlider";
+import { DatePicker } from "@/shared/ui/date-picker";
 
 interface PerformanceViewProps {
   entries: TradeLogEntry[];
   loading: boolean;
   config: ConfigResponse | null;
   activeConfig: string;
+  configNames: string[];
+  setActiveConfig: (config: string) => void;
 }
 
 interface SessionCfg {
@@ -242,7 +248,44 @@ function uniqueValues(rows: PerfRow[], key: keyof PerfRow): string[] {
   return [...set].sort();
 }
 
-export function PerformanceView({ entries, loading, config, activeConfig }: PerformanceViewProps) {
+/* ---------- Build live equity curve from closed trade rows ---------- */
+function buildLiveEquityCurve(rows: PerfRow[]): { date: string; r_cumulative: number; r_per_trade: number }[] {
+  const closed = rows
+    .filter((r) => r.rValue != null)
+    .sort((a, b) => a.sortTs.localeCompare(b.sortTs));
+  let cum = 0;
+  return closed.map((r) => {
+    cum += r.rValue!;
+    return { date: r.entryDate, r_cumulative: cum, r_per_trade: r.rValue! };
+  });
+}
+
+/* ---------- Merge backtest + live curves into comparison data ---------- */
+function mergeEquityCurves(
+  backtestCurve: { date: string; r: number }[],
+  liveCurve: { date: string; r_cumulative: number; r_per_trade: number }[],
+  liveOffset: number,
+): ComparisonCurvePoint[] {
+  const map = new Map<string, ComparisonCurvePoint>();
+
+  // Add backtest points
+  for (const p of backtestCurve) {
+    map.set(p.date, { date: p.date, backtest_r: p.r });
+  }
+
+  // Add live points (offset so live starts at the given liveOffset)
+  for (const p of liveCurve) {
+    const existing = map.get(p.date) ?? { date: p.date };
+    existing.live_r = liveOffset + p.r_cumulative;
+    existing.live_r_per_trade = p.r_per_trade;
+    existing._rawLiveR = p.r_cumulative;
+    map.set(p.date, existing);
+  }
+
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function PerformanceView({ entries, loading, config, activeConfig, configNames, setActiveConfig }: PerformanceViewProps) {
   const allRows = buildRows(entries, config);
 
   // Config-level filter (from the header pills)
@@ -291,6 +334,105 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
 
   const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
 
+  // Backtest comparison
+  const { mappings, setMapping, backtestCurves, loading: btLoading, errors: btErrors } = useBacktestComparison();
+
+  // Determine which configs to show charts for
+  const visibleConfigs = useMemo(() => {
+    if (activeConfig !== "ALL") return [activeConfig];
+    return Object.keys(CONFIG_COLORS);
+  }, [activeConfig]);
+
+  // Chart tab: show one chart at a time
+  const [chartTab, setChartTab] = useState<string>(visibleConfigs[0] ?? "FAST");
+
+  // Keep chartTab in sync when visibleConfigs changes
+  useEffect(() => {
+    if (!visibleConfigs.includes(chartTab)) {
+      setChartTab(visibleConfigs[0] ?? "FAST");
+    }
+  }, [visibleConfigs, chartTab]);
+
+  // Backtest window slider state
+  const today = new Date().toISOString().slice(0, 10);
+  const [btWindowStart, setBtWindowStart] = useState<string>("");
+  const [btWindowEnd, setBtWindowEnd] = useState<string>("");
+
+  // Derive the full date range of all loaded backtest curves
+  const btOriginalBounds = useMemo(() => {
+    let earliest = today;
+    for (const cfg of visibleConfigs) {
+      const curve = backtestCurves[cfg]?.curve;
+      if (curve?.length && curve[0].date < earliest) earliest = curve[0].date;
+    }
+    return { start: earliest, end: today };
+  }, [backtestCurves, visibleConfigs, today]);
+
+  const effectiveBtStart = btWindowStart || btOriginalBounds.start;
+  const effectiveBtEnd = btWindowEnd || btOriginalBounds.end;
+
+  const handleBtWindowChange = useCallback((start: string, end: string) => {
+    setBtWindowStart(start);
+    setBtWindowEnd(end);
+  }, []);
+
+  const handleBtWindowReset = useCallback(() => {
+    setBtWindowStart("");
+    setBtWindowEnd("");
+  }, []);
+
+  // Build comparison data per config (filtered by backtest window)
+  const { comparisonByConfig, rawLiveRByConfig, backtestRByConfig } = useMemo(() => {
+    const comparison: Record<string, ComparisonCurvePoint[]> = {};
+    const rawLiveR: Record<string, number> = {};
+    const backtestR: Record<string, number> = {};
+    for (const cfg of visibleConfigs) {
+      const mapping = mappings[cfg];
+      const btData = backtestCurves[cfg];
+      if (!mapping?.deployDate) continue;
+
+      // Filter backtest curve by window
+      const fullCurve = btData?.curve ?? [];
+      const windowedCurve = fullCurve.filter(
+        (p) => p.date >= effectiveBtStart && p.date <= effectiveBtEnd,
+      );
+
+      // Re-baseline: subtract the R at the window start so the curve starts at 0
+      const baseR = windowedCurve.length > 0 ? windowedCurve[0].r : 0;
+      const rebasedCurve = windowedCurve.map((p) => ({ date: p.date, r: p.r - baseR }));
+
+      // Backtest total R for the visible window
+      if (rebasedCurve.length > 0) {
+        backtestR[cfg] = rebasedCurve[rebasedCurve.length - 1].r;
+      }
+
+      // Build live curve from rows filtered to this config
+      const cfgRows = allRows.filter((r) => r.config === cfg);
+      const liveCurve = buildLiveEquityCurve(cfgRows);
+
+      // Raw live cumulative R (independent of backtest window)
+      if (liveCurve.length > 0) {
+        rawLiveR[cfg] = liveCurve[liveCurve.length - 1].r_cumulative;
+      }
+
+      // Find rebased backtest R at deploy date so live visually connects
+      let rebasedRAtDeploy = 0;
+      for (const p of rebasedCurve) {
+        if (p.date <= mapping.deployDate) rebasedRAtDeploy = p.r;
+        else break;
+      }
+
+      if (rebasedCurve.length || liveCurve.length) {
+        comparison[cfg] = mergeEquityCurves(
+          rebasedCurve,
+          liveCurve,
+          rebasedRAtDeploy,
+        );
+      }
+    }
+    return { comparisonByConfig: comparison, rawLiveRByConfig: rawLiveR, backtestRByConfig: backtestR };
+  }, [visibleConfigs, mappings, backtestCurves, allRows, effectiveBtStart, effectiveBtEnd]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
@@ -307,6 +449,19 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
       {/* Filters */}
       <div className="rounded-md border border-border bg-bg-card p-3 space-y-2.5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* Config (FAST/SLOW) */}
+          {configNames.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Config</span>
+              <div className="flex gap-1">
+                <FilterPill label="All" active={activeConfig === "ALL"} onClick={() => setActiveConfig("ALL")} />
+                {configNames.map((name) => (
+                  <FilterPill key={name} label={name} active={activeConfig === name} onClick={() => setActiveConfig(name)} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Strategy */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Strategy</span>
@@ -343,21 +498,9 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
           {/* Date range */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Date</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-secondary focus:outline-none focus:border-accent/60"
-              placeholder="From"
-            />
-            <span className="text-text-muted text-xs">\u2013</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-secondary focus:outline-none focus:border-accent/60"
-              placeholder="To"
-            />
+            <DatePicker value={dateFrom} onChange={setDateFrom} placeholder="From" />
+            <span className="text-text-muted text-xs">{"\u2013"}</span>
+            <DatePicker value={dateTo} onChange={setDateTo} placeholder="To" />
           </div>
 
           {/* Clear filters */}
@@ -376,6 +519,99 @@ export function PerformanceView({ entries, loading, config, activeConfig }: Perf
             </button>
           )}
         </div>
+      </div>
+
+      {/* Backtest Comparison Settings + Charts */}
+      <div className="space-y-3">
+        <div className="rounded-md border border-border bg-bg-card p-3">
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+            {visibleConfigs.map((cfg) => {
+              const mapping = mappings[cfg] ?? { backtestId: "", deployDate: "" };
+              const isLoading = btLoading[cfg];
+              const error = btErrors[cfg];
+              const colorClass = CONFIG_COLORS[cfg] ?? "";
+              return (
+                <div key={cfg} className="flex items-end gap-2">
+                  <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${colorClass}`}>
+                    {cfg}
+                  </span>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-text-muted uppercase tracking-wide">Backtest ID</label>
+                    <input
+                      type="text"
+                      value={mapping.backtestId}
+                      onChange={(e) => setMapping(cfg, { ...mapping, backtestId: e.target.value })}
+                      placeholder="bt-..."
+                      className="w-48 rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-text-muted uppercase tracking-wide">Deploy Date</label>
+                    <DatePicker
+                      value={mapping.deployDate}
+                      onChange={(v) => setMapping(cfg, { ...mapping, deployDate: v })}
+                      placeholder="Deploy date"
+                    />
+                  </div>
+                  {isLoading && <span className="text-[11px] text-text-muted animate-pulse">Loading...</span>}
+                  {error && <span className="text-[11px] text-loss">{error}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Backtest window slider */}
+        {Object.values(backtestCurves).some((c) => c?.curve.length) && (
+          <BacktestWindowSlider
+            startDate={effectiveBtStart}
+            originalStart={btOriginalBounds.start}
+            originalEnd={btOriginalBounds.end}
+            onChange={handleBtWindowChange}
+            onReset={handleBtWindowReset}
+          />
+        )}
+
+        {/* Chart tabs */}
+        {visibleConfigs.length > 1 && (
+          <div className="flex gap-1">
+            {visibleConfigs.map((cfg) => {
+              const colorClass = CONFIG_COLORS[cfg] ?? "";
+              const isActive = chartTab === cfg;
+              return (
+                <button
+                  key={cfg}
+                  onClick={() => setChartTab(cfg)}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    isActive
+                      ? colorClass
+                      : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
+                  }`}
+                >
+                  {cfg}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Single chart for active tab */}
+        {(() => {
+          const cfg = visibleConfigs.length === 1 ? visibleConfigs[0] : chartTab;
+          const data = comparisonByConfig[cfg];
+          const mapping = mappings[cfg];
+          if (!data?.length) return null;
+          return (
+            <EquityCurveComparison
+              key={cfg}
+              data={data}
+              deployDate={mapping?.deployDate ?? ""}
+              configName={cfg}
+              liveR={rawLiveRByConfig[cfg] ?? null}
+              backtestR={backtestRByConfig[cfg] ?? null}
+            />
+          );
+        })()}
       </div>
 
       <div className="text-sm text-text-muted">

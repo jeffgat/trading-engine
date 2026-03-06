@@ -181,6 +181,17 @@ CREATE TABLE IF NOT EXISTS testing_plan (
 CREATE INDEX IF NOT EXISTS idx_testing_plan_instrument ON testing_plan(instrument);
 """
 
+_RISK_ENGINE_LAYOUTS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS risk_engine_layouts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    account_risk REAL NOT NULL,
+    strategies_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
 _NEWS_STRADDLE_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS news_straddle_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,6 +231,7 @@ def init_db() -> Path:
         conn.executescript(_OPTIMIZATIONS_SCHEMA)
         conn.executescript(_TESTING_PLAN_SCHEMA)
         conn.executescript(_NEWS_STRADDLE_SCHEMA)
+        conn.executescript(_RISK_ENGINE_LAYOUTS_SCHEMA)
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
         ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
@@ -1424,6 +1436,74 @@ def delete_news_straddle_run(result_id: str) -> bool:
             (result_id,),
         )
         return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Risk Engine Layouts
+# ---------------------------------------------------------------------------
+
+
+def list_risk_engine_layouts() -> list[dict]:
+    """Return all saved risk engine layouts."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, name, account_risk, strategies_json, created_at, updated_at "
+            "FROM risk_engine_layouts ORDER BY name"
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "accountRisk": row["account_risk"],
+                "strategies": json.loads(row["strategies_json"]),
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+
+def save_risk_engine_layout(
+    name: str, account_risk: float, strategies: list[dict]
+) -> dict:
+    """Create or update a risk engine layout. Returns the saved layout."""
+    init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    strategies_json = json.dumps(strategies)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """INSERT INTO risk_engine_layouts (name, account_risk, strategies_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(name) DO UPDATE SET
+                 account_risk = excluded.account_risk,
+                 strategies_json = excluded.strategies_json,
+                 updated_at = excluded.updated_at""",
+            (name, account_risk, strategies_json, now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM risk_engine_layouts WHERE name = ?", (name,)
+        ).fetchone()
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "accountRisk": row["account_risk"],
+            "strategies": json.loads(row["strategies_json"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+
+def delete_risk_engine_layout(name: str) -> bool:
+    """Delete a risk engine layout by name. Returns True if deleted."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            "DELETE FROM risk_engine_layouts WHERE name = ?", (name,)
+        )
+        return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
