@@ -443,12 +443,12 @@ export function BacktestHistoryPanel({
                         {sorted.map((item) => {
                             const isActive = item.id === activeId;
                             const isSelected = selectedIds.has(item.id);
-                            const netR = (item.total_pnl_usd ?? 0) / (item.risk_usd || 50000);
+                            const netR = (Number(item.total_pnl_usd) || 0) / (Number(item.risk_usd) || 50000);
                             const rPerYear = calcRPerYear(item);
-                            const ddR = (item.max_drawdown_usd ?? 0) / (item.risk_usd || 50000);
-                            const sharpe = item.sharpe_ratio ?? 0;
-                            const calmar = item.calmar_ratio ?? 0;
-                            const pf = item.profit_factor ?? 0;
+                            const ddR = (Number(item.max_drawdown_usd) || 0) / (Number(item.risk_usd) || 50000);
+                            const sharpe = Number(item.sharpe_ratio) || 0;
+                            const calmar = Number(item.calmar_ratio) || 0;
+                            const pf = Number(item.profit_factor) || 0;
                             const pnlPositive = netR >= 0;
 
                             return (
