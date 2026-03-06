@@ -656,11 +656,14 @@ class ORBEngine:
 
         # Skip if not in RTH
         if not self._in_rth(bar_time):
-            # If we were in a session and left RTH, cancel any pending
-            if self._state == State.ARMED_LIMIT:
-                self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
-                if self._should_send:
-                    await self.broker.send_cancel(ticker=self.exec_ticker)
+            # If we were in an active state and left RTH, go flat
+            if self._state not in (State.IDLE, State.FLAT):
+                if self._state == State.ARMED_LIMIT:
+                    self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
+                    if self._should_send:
+                        await self.broker.send_cancel(ticker=self.exec_ticker)
+                else:
+                    self._log_trade("NO_SETUP", f"outside RTH state={self._state.value}")
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()

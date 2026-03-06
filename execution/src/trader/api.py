@@ -489,8 +489,10 @@ def create_app(state: DashboardState) -> FastAPI:
     async def get_config():
         overrides = load_overrides()
         all_engines = state.all_engines
+        risk_cfg = state.config.get("risk", {})
         return {
             "config": state.config,
+            "baseline_r": risk_cfg.get("baseline_r", 250),
             "sessions": {
                 f"{e.config_name}:{e.name}" if e.config_name else e.name: _session_info(e)
                 for e in all_engines

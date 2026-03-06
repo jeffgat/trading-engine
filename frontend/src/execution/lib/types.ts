@@ -140,6 +140,7 @@ export interface ExecConfigMeta {
 
 export interface ConfigResponse {
   config: Record<string, unknown>;
+  baseline_r: number;
   sessions: Record<string, SessionConfig>;
   overrides: Record<string, Partial<SessionConfig>>;
   defaults: Record<string, Partial<SessionConfig>>;

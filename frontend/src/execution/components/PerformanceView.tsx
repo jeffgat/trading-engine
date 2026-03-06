@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint } from "@/execution/lib/types";
 import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
@@ -18,6 +18,7 @@ interface PerformanceViewProps {
 interface SessionCfg {
   rr?: number;
   tp1_ratio?: number;
+  risk_usd?: number;
 }
 
 interface OpenTrade {
@@ -68,45 +69,56 @@ function sessionLabel(session: string): string {
 function getRValue(
   event: string,
   cfg: SessionCfg | undefined,
+  baselineR: number,
 ): number | null {
   const rr = cfg?.rr;
   const tp1 = cfg?.tp1_ratio;
+  const riskUsd = cfg?.risk_usd ?? baselineR;
+  const scale = baselineR > 0 ? riskUsd / baselineR : 1;
 
-  if (event === "SL_HIT") return -1;
+  if (event === "SL_HIT") return -1 * scale;
   if (event === "BE_HIT") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * tp1;
+    return 0.5 * rr * tp1 * scale;
   }
   if (event === "TP2_DIRECT") {
     if (rr == null) return null;
-    return rr;
+    return rr * scale;
   }
   if (event === "TP2_HIT") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * (1 + tp1);
+    return 0.5 * rr * (1 + tp1) * scale;
   }
   return null;
 }
 
-/** Build lookups by short session name (strips "FAST:" prefix from config keys).
+/** Build lookups by both "CONFIG:session" compound key and short session name.
+ *  Compound key ensures FAST and SLOW configs with the same session resolve
+ *  to their own risk_usd. Short key is a fallback (first match wins).
  *  Normalizes "ifvg" → "lsi" for display. */
 function buildSessionLookups(config: ConfigResponse | null) {
+  const cfgByKey: Record<string, SessionCfg> = {};
   const cfgByShort: Record<string, SessionCfg> = {};
   const typeByShort: Record<string, "continuation" | "lsi"> = {};
   if (config?.sessions) {
     for (const [key, cfg] of Object.entries(config.sessions)) {
+      const configName = key.includes(":") ? key.split(":")[0] : "";
       const short = key.includes(":") ? key.split(":")[1] : key;
+      if (configName) {
+        cfgByKey[`${configName}:${short}`] = cfg as SessionCfg;
+      }
       if (!cfgByShort[short]) {
         cfgByShort[short] = cfg as SessionCfg;
         typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
       }
     }
   }
-  return { cfgByShort, typeByShort };
+  return { cfgByKey, cfgByShort, typeByShort };
 }
 
 function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): PerfRow[] {
-  const { cfgByShort, typeByShort } = buildSessionLookups(config);
+  const { cfgByKey, cfgByShort, typeByShort } = buildSessionLookups(config);
+  const baselineR = config?.baseline_r ?? 250;
   const ordered = [...entries].reverse();
   // Key open trades by config:session to handle multiple configs
   const openByKey = new Map<string, OpenTrade>();
@@ -137,8 +149,8 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
 
     const entryParts = splitTs(open.entryTs);
     const exitParts = splitTs(entry.timestamp);
-    const sessionCfg = cfgByShort[open.session] ?? {};
-    const rValue = getRValue(entry.event, sessionCfg);
+    const sessionCfg = cfgByKey[`${open.config}:${open.session}`] ?? cfgByShort[open.session] ?? {};
+    const rValue = getRValue(entry.event, sessionCfg, baselineR);
 
     const stratType = typeByShort[open.session];
     rows.push({
@@ -342,16 +354,6 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
     if (activeConfig !== "ALL") return [activeConfig];
     return Object.keys(CONFIG_COLORS);
   }, [activeConfig]);
-
-  // Chart tab: show one chart at a time
-  const [chartTab, setChartTab] = useState<string>(visibleConfigs[0] ?? "FAST");
-
-  // Keep chartTab in sync when visibleConfigs changes
-  useEffect(() => {
-    if (!visibleConfigs.includes(chartTab)) {
-      setChartTab(visibleConfigs[0] ?? "FAST");
-    }
-  }, [visibleConfigs, chartTab]);
 
   // Backtest window slider state
   const today = new Date().toISOString().slice(0, 10);
@@ -572,32 +574,8 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
           />
         )}
 
-        {/* Chart tabs */}
-        {visibleConfigs.length > 1 && (
-          <div className="flex gap-1">
-            {visibleConfigs.map((cfg) => {
-              const colorClass = CONFIG_COLORS[cfg] ?? "";
-              const isActive = chartTab === cfg;
-              return (
-                <button
-                  key={cfg}
-                  onClick={() => setChartTab(cfg)}
-                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    isActive
-                      ? colorClass
-                      : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
-                  }`}
-                >
-                  {cfg}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Single chart for active tab */}
-        {(() => {
-          const cfg = visibleConfigs.length === 1 ? visibleConfigs[0] : chartTab;
+        {/* Charts for each visible config */}
+        {visibleConfigs.map((cfg) => {
           const data = comparisonByConfig[cfg];
           const mapping = mappings[cfg];
           if (!data?.length) return null;
@@ -611,7 +589,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
               backtestR={backtestRByConfig[cfg] ?? null}
             />
           );
-        })()}
+        })}
       </div>
 
       <div className="text-sm text-text-muted">

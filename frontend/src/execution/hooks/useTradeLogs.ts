@@ -13,7 +13,7 @@ export function useTradeLogs(
 
   // Initial fetch (newest first)
   useEffect(() => {
-    fetch("/exec-api/logs/trades?limit=100&offset=0")
+    fetch("/exec-api/logs/trades?limit=500&offset=0")
       .then((r) => r.json())
       .then((data: LogResponse<TradeLogEntry>) => {
         setEntries(data.entries);

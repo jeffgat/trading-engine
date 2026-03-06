@@ -22,6 +22,7 @@ dataset = "GLBX.MDP3"
 webhook_url_env = "TRADERSPOST_WEBHOOK_URL"
 
 [risk]
+baseline_r = 250             # Baseline R denomination; all R values scaled as risk_usd/baseline_r
 risk_usd = 250              # Risk per trade in USD (fallback; per-session values in main.py)
 min_qty = 1.0               # Minimum contract quantity
 qty_step = 1.0              # Contract quantity increment
