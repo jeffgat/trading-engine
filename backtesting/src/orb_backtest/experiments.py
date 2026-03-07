@@ -14,6 +14,11 @@ from pathlib import Path
 import logging as _logging
 import os as _os
 
+# Default remote DB URL for dual-write — always send results to the shared DB
+# so every collaborator's backtests appear in the dashboard.
+# Override with EXPERIMENTS_DB_URL="" to disable.
+_os.environ.setdefault("EXPERIMENTS_DB_URL", "http://143.110.148.234:8100")
+
 DB_PATH = Path(
     _os.environ.get("EXPERIMENTS_DB_PATH")
     or str(Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db")
@@ -1526,35 +1531,67 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
     # Ensure local DB tables exist (remote init_db is a no-op health check)
     _local_init_db()
 
-    # Dual-write wrappers: always local + remote
+    # Dual-write wrappers: always local + async remote (background thread).
+    # Remote writes run in a non-daemon thread so they complete before process exit.
+    # An atexit handler joins all pending threads (up to 30s) to ensure writes land.
+    import threading as _threading
+    import time as _time
+    import atexit as _atexit
+
+    _pending_threads: list[_threading.Thread] = []
+    _pending_lock = _threading.Lock()
+
+    def _flush_remote_writes():
+        """Wait for all pending remote writes to finish (called at process exit)."""
+        with _pending_lock:
+            threads = list(_pending_threads)
+        if threads:
+            _logging.getLogger(__name__).info(
+                "Waiting for %d remote write(s) to complete...", len(threads)
+            )
+        for t in threads:
+            t.join(timeout=30)
+
+    _atexit.register(_flush_remote_writes)
+
+    def _remote_fire(fn, *args, **kwargs):
+        """Run a remote write in a background thread with one retry."""
+        def _worker():
+            try:
+                for attempt in (1, 2):
+                    try:
+                        fn(*args, **kwargs)
+                        return
+                    except Exception as exc:
+                        _logging.getLogger(__name__).warning(
+                            "Remote %s attempt %d failed: %s", fn.__name__, attempt, exc
+                        )
+                        if attempt < 2:
+                            _time.sleep(2)
+            finally:
+                with _pending_lock:
+                    _pending_threads.remove(t)
+        t = _threading.Thread(target=_worker)
+        t.start()
+        with _pending_lock:
+            _pending_threads.append(t)
+
     def log_run(result_dict, result_id, run_type="backtest", *, git_hash=None):
         local_id = _local_log_run(result_dict, result_id, run_type, git_hash=git_hash)
-        try:
-            _remote.log_run(result_dict, result_id, run_type, git_hash=git_hash)
-        except Exception as exc:
-            _logging.getLogger(__name__).warning("Remote log_run failed: %s", exc)
+        _remote_fire(_remote.log_run, result_dict, result_id, run_type, git_hash=git_hash)
         return local_id
 
     def log_optimization(result_dict, result_id):
         local_id = _local_log_optimization(result_dict, result_id)
-        try:
-            _remote.log_optimization(result_dict, result_id)
-        except Exception as exc:
-            _logging.getLogger(__name__).warning("Remote log_optimization failed: %s", exc)
+        _remote_fire(_remote.log_optimization, result_dict, result_id)
         return local_id
 
     def log_sweep_runs(all_results, optimization_id):
         count = _local_log_sweep_runs(all_results, optimization_id)
-        try:
-            _remote.log_sweep_runs(all_results, optimization_id)
-        except Exception as exc:
-            _logging.getLogger(__name__).warning("Remote log_sweep_runs failed: %s", exc)
+        _remote_fire(_remote.log_sweep_runs, all_results, optimization_id)
         return count
 
     def log_news_straddle_run(result_dict, result_id):
         local_id = _local_log_news_straddle_run(result_dict, result_id)
-        try:
-            _remote.log_news_straddle_run(result_dict, result_id)
-        except Exception as exc:
-            _logging.getLogger(__name__).warning("Remote log_news_straddle_run failed: %s", exc)
+        _remote_fire(_remote.log_news_straddle_run, result_dict, result_id)
         return local_id

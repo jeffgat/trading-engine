@@ -6,15 +6,21 @@ All functions match the signatures in experiments.py so they can be swapped in.
 
 from __future__ import annotations
 
+import logging
 import os
 import json
+import threading
 import urllib.request
 import urllib.error
 from urllib.parse import urlencode
 from typing import Any, Optional
 
+_log = logging.getLogger(__name__)
 
 API_URL = os.environ.get("EXPERIMENTS_DB_URL", "").rstrip("/")
+
+# Timeout in seconds — large payloads (trades + equity curves) need more time.
+_TIMEOUT = 120
 
 
 def _request(method: str, path: str, body: dict | None = None) -> Any:
@@ -26,7 +32,7 @@ def _request(method: str, path: str, body: dict | None = None) -> Any:
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
             result = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode() if e.fp else str(e)
