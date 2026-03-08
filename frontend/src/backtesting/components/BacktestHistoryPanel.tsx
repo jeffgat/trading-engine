@@ -6,6 +6,7 @@ import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { SessionTag } from './SessionTag';
 import { StrategyTag } from './StrategyTag';
 import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 type SortKey =
     | 'instrument'
@@ -315,26 +316,30 @@ export function BacktestHistoryPanel({
                     <div className="flex items-center gap-3">
                         <h2 className="text-sm font-medium text-text-secondary">History</h2>
                         {instruments.length > 1 && (
-                            <select
-                                value={instrumentFilter}
-                                onChange={(e) => setInstrumentFilter(e.target.value)}
-                                className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent">
-                                <option value="all">All instruments</option>
-                                {instruments.map((inst) => (
-                                    <option key={inst} value={inst}>{inst}</option>
-                                ))}
-                            </select>
+                            <Select value={instrumentFilter} onValueChange={setInstrumentFilter}>
+                                <SelectTrigger className="h-6 min-w-[120px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All instruments</SelectItem>
+                                    {instruments.map((inst) => (
+                                        <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
                         {sessions.length > 1 && (
-                            <select
-                                value={sessionFilter}
-                                onChange={(e) => setSessionFilter(e.target.value)}
-                                className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent">
-                                <option value="all">All sessions</option>
-                                {sessions.map((s) => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
-                            </select>
+                            <Select value={sessionFilter} onValueChange={setSessionFilter}>
+                                <SelectTrigger className="h-6 min-w-[100px]">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All sessions</SelectItem>
+                                    {sessions.map((s) => (
+                                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
                     </div>
                     <div className="flex items-center gap-2">

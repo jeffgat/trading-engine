@@ -93,6 +93,8 @@ export interface BacktestResult {
   id?: string;
   name?: string;
   notes?: string;
+  date_start?: string;
+  date_end?: string;
   config: BacktestConfig;
   summary: BacktestSummary;
   trades: Trade[];

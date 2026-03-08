@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
+from orb_backtest.config import SessionConfig, StrategyConfig
+from orb_backtest.data.instruments import NQ
+from orb_backtest.engine.simulator import EXIT_SL, TradeResult
+from orb_backtest.results.export import results_to_dict
+
 
 def test_instruments_endpoint(client):
     res = client.get("/api/instruments")
@@ -146,3 +151,180 @@ def test_run_backtest_endpoint_stubbed(client, monkeypatch):
     payload = res.json()["result"]
     assert payload["id"] == "bt-test"
     assert payload["config"]["instrument"] == "NQ"
+
+
+def test_run_backtest_endpoint_parses_saved_config_shape(client, monkeypatch):
+    import orb_backtest.api as api
+
+    captured = {}
+
+    def fake_load_5m_data(*_args, **_kwargs):
+        return pd.DataFrame()
+
+    def fake_load_1m_for_5m(*_args, **_kwargs):
+        return pd.DataFrame()
+
+    def fake_run_backtest(df, config, start_date=None, end_date=None, df_1m=None):
+        captured["config"] = config
+        captured["start_date"] = start_date
+        captured["end_date"] = end_date
+        captured["has_1m"] = df_1m is not None
+        return []
+
+    def fake_results_to_dict(*_args, **_kwargs):
+        return {
+            "config": {"instrument": "NQ", "rr": 3.0, "risk_usd": 5000},
+            "summary": {
+                "total_trades": 0,
+                "total_pnl_usd": 0.0,
+                "win_rate": 0.0,
+                "sharpe_ratio": 0.0,
+                "max_drawdown_usd": 0.0,
+                "profit_factor": 0.0,
+                "sortino_ratio": 0.0,
+                "calmar_ratio": 0.0,
+                "total_r": 0.0,
+                "max_drawdown_r": 0.0,
+                "avg_r": 0.0,
+                "avg_win_r": 0.0,
+                "avg_loss_r": 0.0,
+                "total_signals": 0,
+                "no_fills": 0,
+                "win_count": 0,
+                "loss_count": 0,
+                "be_count": 0,
+                "avg_pnl_usd": 0.0,
+                "avg_win_usd": 0.0,
+                "avg_loss_usd": 0.0,
+                "largest_win_usd": 0.0,
+                "largest_loss_usd": 0.0,
+                "exit_breakdown": {},
+                "pnl_by_year": {},
+                "pnl_by_month": {},
+                "pnl_by_dow": {},
+                "long_trades": 0,
+                "short_trades": 0,
+                "long_win_rate": 0.0,
+                "short_win_rate": 0.0,
+                "long_pnl_usd": 0.0,
+                "short_pnl_usd": 0.0,
+            },
+            "trades": [],
+            "equity_curve": [],
+        }
+
+    monkeypatch.setattr(api, "load_5m_data", fake_load_5m_data)
+    monkeypatch.setattr(api, "load_1m_for_5m", fake_load_1m_for_5m)
+    monkeypatch.setattr(api, "run_backtest", fake_run_backtest)
+    monkeypatch.setattr(api, "results_to_dict", fake_results_to_dict)
+    monkeypatch.setattr(api, "save_backtest_result", lambda _result: "bt-test")
+
+    res = client.post(
+        "/api/backtest",
+        json={
+            "instrument": "NQ",
+            "sessions": ["NY"],
+            "start": "2024-03-05",
+            "strategy": "lsi",
+            "direction_filter": "long",
+            "bar_magnifier": "ON",
+            "impulse_close_filter": "OFF",
+            "swing_n_bars": 12,
+            "excluded_days": ["Wed", "Thu"],
+            "half_days": ["20250703"],
+            "excluded_dates": ["20241218"],
+            "ny_rth_start": "09:30",
+            "ny_entry_window": "09:35-15:30",
+            "ny_flat_window": "15:50-16:00",
+            "lsi_n_left": 8,
+            "lsi_n_right": 60,
+            "lsi_fvg_window_left": 20,
+            "lsi_fvg_window_right": 5,
+            "lsi_stop_mode": "absolute",
+            "lsi_entry_mode": "fvg_limit",
+        },
+    )
+    assert res.status_code == 200
+    cfg = captured["config"]
+    assert captured["start_date"] == "2024-03-05"
+    assert captured["end_date"] is None
+    assert captured["has_1m"] is True
+    assert cfg.use_bar_magnifier is True
+    assert cfg.impulse_close_filter is False
+    assert cfg.swing_n_bars == 12
+    assert cfg.excluded_days == (2, 3)
+    assert cfg.half_days == ("20250703",)
+    assert cfg.excluded_dates == ("20241218",)
+    assert cfg.lsi_n_left == 8
+    assert cfg.lsi_n_right == 60
+    assert cfg.lsi_fvg_window_left == 20
+    assert cfg.lsi_fvg_window_right == 5
+    assert cfg.lsi_stop_mode == "absolute"
+    assert cfg.lsi_entry_mode == "fvg_limit"
+    assert cfg.sessions[0].rth_start == "09:30"
+    assert cfg.sessions[0].entry_start == "09:35"
+    assert cfg.sessions[0].entry_end == "15:30"
+    assert cfg.sessions[0].flat_start == "15:50"
+    assert cfg.sessions[0].flat_end == "16:00"
+
+
+def test_results_to_dict_applies_excluded_days_filter():
+    config = StrategyConfig(
+        instrument=NQ,
+        sessions=(SessionConfig(name="NY"),),
+        excluded_days=(3,),
+    )
+    trades = [
+        TradeResult(
+            date="2026-03-05",
+            session="NY",
+            direction=1,
+            signal_bar=0,
+            fill_bar=0,
+            entry_price=100.0,
+            stop_price=99.0,
+            tp1_price=100.5,
+            tp2_price=101.0,
+            exit_type=EXIT_SL,
+            exit_bar=0,
+            pnl_points=-1.0,
+            pnl_usd=-100.0,
+            r_multiple=-1.0,
+            qty=1.0,
+            half_qty=0.0,
+            gap_size=1.0,
+            risk_points=1.0,
+            fill_time="2026-03-05T10:00:00",
+            exit_time="2026-03-05T10:05:00",
+        ),
+        TradeResult(
+            date="2026-03-06",
+            session="NY",
+            direction=1,
+            signal_bar=1,
+            fill_bar=1,
+            entry_price=100.0,
+            stop_price=99.0,
+            tp1_price=100.5,
+            tp2_price=101.0,
+            exit_type=EXIT_SL,
+            exit_bar=1,
+            pnl_points=-1.0,
+            pnl_usd=-100.0,
+            r_multiple=-1.0,
+            qty=1.0,
+            half_qty=0.0,
+            gap_size=1.0,
+            risk_points=1.0,
+            fill_time="2026-03-06T10:00:00",
+            exit_time="2026-03-06T10:05:00",
+        ),
+    ]
+
+    result = results_to_dict(trades, config, include_trades=True)
+
+    assert result["config"]["excluded_days"] == ["Thu"]
+    assert len(result["trades"]) == 1
+    assert result["trades"][0]["date"] == "2026-03-06"
+    assert result["summary"]["total_signals"] == 1
+    assert result["summary"]["total_trades"] == 1

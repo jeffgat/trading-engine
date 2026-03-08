@@ -88,6 +88,9 @@ class StrategyConfig:
     # Excluded dates (YYYYMMDD strings)
     excluded_dates: tuple[str, ...] = field(default_factory=tuple)
 
+    # Excluded weekdays (0=mon ... 4=fri) applied as a post-trade gate.
+    excluded_days: tuple[int, ...] = field(default_factory=tuple)
+
     # Strategy type: "continuation", "reversal", "inversion", "cisd", "lsi", or "ib"
     strategy: str = "continuation"
 

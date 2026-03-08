@@ -11,6 +11,7 @@ import numpy as np
 from ..config import StrategyConfig
 from ..engine.simulator import TradeResult, EXIT_NAMES, EXIT_NO_FILL
 from .metrics import compute_metrics
+from ..analysis.gates import DOW_NAMES, apply_dow_filter
 from ..experiments import (
     log_run,
     log_optimization,
@@ -134,6 +135,17 @@ def _build_equity_curve(trades: list[TradeResult]) -> list[dict]:
     return curve
 
 
+def _apply_replay_filters(
+    trades: list[TradeResult],
+    config: StrategyConfig,
+) -> list[TradeResult]:
+    """Apply config-driven replay filters before computing metrics or saving."""
+    filtered = trades
+    if config.excluded_days:
+        filtered = apply_dow_filter(filtered, set(config.excluded_days))
+    return filtered
+
+
 def results_to_dict(
     trades: list[TradeResult],
     config: StrategyConfig,
@@ -150,6 +162,7 @@ def results_to_dict(
     Returns:
         Dict ready for json.dumps() or LLM consumption.
     """
+    trades = _apply_replay_filters(trades, config)
     metrics = compute_metrics(trades)
 
     # Config summary (flat, easy for LLMs to parse)
@@ -167,9 +180,19 @@ def results_to_dict(
         config_dict["strategy"] = config.strategy
     if config.direction_filter:
         config_dict["direction_filter"] = config.direction_filter
+    config_dict["reverse_direction"] = config.reverse_direction
+    config_dict["swing_n_bars"] = config.swing_n_bars
     if config.use_bar_magnifier:
         config_dict["bar_magnifier"] = "ON"
+    else:
+        config_dict["bar_magnifier"] = "OFF"
     config_dict["impulse_close_filter"] = "ON" if config.impulse_close_filter else "OFF"
+    if config.half_days:
+        config_dict["half_days"] = list(config.half_days)
+    if config.excluded_dates:
+        config_dict["excluded_dates"] = list(config.excluded_dates)
+    if config.excluded_days:
+        config_dict["excluded_days"] = [DOW_NAMES[d] for d in config.excluded_days]
 
     # Add per-session params
     for sess in config.sessions:
@@ -185,6 +208,10 @@ def results_to_dict(
             config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
         if sess.qualifying_move_atr_pct > 0:
             config_dict[f"{prefix}_qualifying_move_atr_pct"] = sess.qualifying_move_atr_pct
+        if sess.min_stop_points > 0:
+            config_dict[f"{prefix}_min_stop_points"] = sess.min_stop_points
+        if sess.min_tp1_points > 0:
+            config_dict[f"{prefix}_min_tp1_points"] = sess.min_tp1_points
         if sess.orb_start and sess.orb_end:
             config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"
         if sess.rth_start:

@@ -22,7 +22,12 @@ export default defineConfig({
         target: "http://143.110.148.234:8000",
         rewrite: (path) => path.replace(/^\/exec-api/, "/api"),
       },
-      // Backtesting API
+      // Backtesting API — candles served locally (needs data files on disk)
+      "/bt-api/candles": {
+        target: "http://localhost:8000",
+        rewrite: (path) => path.replace(/^\/bt-api/, "/api"),
+      },
+      // Backtesting API — everything else goes to remote DB server
       "/bt-api": {
         target: "http://143.110.148.234:8100",
         rewrite: (path) => path.replace(/^\/bt-api/, "/api"),

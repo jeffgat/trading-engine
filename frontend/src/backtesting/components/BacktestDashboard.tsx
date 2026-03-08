@@ -68,7 +68,13 @@ export function BacktestDashboard() {
         setSaveConfigLoading(true);
         setSaveConfigMsg(null);
         try {
-            const config = data.config;
+            const config: BacktestConfig = {
+                ...data.config,
+                ...(activeItem?.date_start ? { date_start: activeItem.date_start } : {}),
+                ...(activeItem?.date_end ? { date_end: activeItem.date_end } : {}),
+                ...(data.id ? { source_backtest_id: data.id } : {}),
+                ...(data.name ? { source_backtest_name: data.name } : {}),
+            };
             const instrument = (config.instrument as string) ?? "NQ";
             const sessions = detectSessionsFromConfig(config);
             const strategy = (config.strategy as string) ?? "continuation";
@@ -76,7 +82,7 @@ export function BacktestDashboard() {
             const res = await fetch("/bt-api/configs", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, instrument, sessions, strategy, config }),
+                body: JSON.stringify({ name, notes: data.notes ?? null, instrument, sessions, strategy, config }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             setSaveConfigMsg("Saved to Configs");
@@ -86,7 +92,7 @@ export function BacktestDashboard() {
         } finally {
             setSaveConfigLoading(false);
         }
-    }, [data]);
+    }, [activeItem?.date_end, activeItem?.date_start, data]);
 
     const handleLoad = async (id: string) => {
         setLoading(true);

@@ -4,7 +4,16 @@ import type { BacktestConfig } from "@/backtesting/lib/types";
 const SESSION_PREFIXES = ['ny', 'asia', 'ldn'] as const;
 
 /** Keys to skip — not strategy variables. */
-const SKIP_KEYS = new Set(['instrument', 'point_value', 'min_qty', 'qty_step']);
+const SKIP_KEYS = new Set([
+    'instrument',
+    'point_value',
+    'min_qty',
+    'qty_step',
+    'half_days',
+    'excluded_dates',
+    'source_backtest_id',
+    'source_backtest_name',
+]);
 
 /** Human-readable labels for known param suffixes. */
 const LABELS: Record<string, string> = {
@@ -26,6 +35,11 @@ const LABELS: Record<string, string> = {
     direction_filter: 'Direction',
     bar_magnifier: 'Bar Magnifier',
     impulse_close_filter: 'ICF',
+    reverse_direction: 'Reverse Direction',
+    swing_n_bars: 'Swing n Bars',
+    excluded_days: 'Excluded Days',
+    date_start: 'Start',
+    date_end: 'End',
     regime_sizing: 'Regime Sizing',
     regime_rule: 'Regime Rule',
     regime_multiplier: 'Regime Mult',
@@ -33,6 +47,8 @@ const LABELS: Record<string, string> = {
 
 function formatValue(key: string, val: unknown): string {
     if (typeof val === 'string') return val;
+    if (typeof val === 'boolean') return val ? 'ON' : 'OFF';
+    if (Array.isArray(val)) return val.join(', ');
     const n = val as number;
     if (key === 'risk_usd') return `$${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
     if (key.endsWith('_pct')) return `${n}%`;

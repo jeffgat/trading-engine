@@ -169,7 +169,9 @@
       "Bash(ssh-keyscan 143.110.148.234)",
       "Bash(gh workflow run deploy-db.yml --ref main)",
       "Bash(gh run rerun 22824467259)",
-      "Bash(gh run watch 22824467259 --exit-status)"
+      "Bash(gh run watch 22824467259 --exit-status)",
+      "WebFetch(domain:143.110.148.234)",
+      "Bash(python3 -c \" import json, sys data = json.load\\(sys.stdin\\) for r in data: if ''to optimize for -4R'' in r.get\\(''name'', ''''\\): print\\(json.dumps\\(r, indent=2\\)\\) break \")"
     ]
   }
 }

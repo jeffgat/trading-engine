@@ -214,6 +214,37 @@ Optimization priority order:
 
 Do NOT use a fixed DD threshold (e.g., "must be < 10R") as a hard filter during optimization. Report DD alongside Calmar so the user can set position size accordingly.
 
+### Prop Firm Phase 1 — Staggered Account Model
+
+The primary deployment model: start a fresh funded account every 2 weeks, each running indefinitely until it reaches **+5R** (payout) or **-4R** (breach).
+
+**How it works:**
+- New account starts every 14 calendar days (staggered)
+- Each account trades independently with unlimited time horizon
+- Multiple accounts are alive simultaneously
+- An account resolves as PAYOUT (+5R), BREACH (-4R), or remains OPEN
+
+**Key metrics:**
+- **Success Rate** = payouts / (payouts + breaches) — only resolved accounts
+- **EV per Account** = mean R outcome (capped at +5/-4 for resolved, current R for open)
+- **Avg Days to Payout/Breach** — how long until resolution
+- **Open accounts avg R** — forward trajectory indicator
+
+**Optimization workflow** (see `prop-firm-phase1` skill):
+1. Take an existing backtest config as anchor
+2. Grid sweep key params (rr, tp1_ratio, gap filter, etc.)
+3. Simulate staggered accounts on every config
+4. Rank by success rate and Calmar
+5. Report detailed account-by-account breakdowns
+
+**Reference script:** `scripts/run_nq_lsi_propfirm_sweep.py` — complete working example with `simulate_staggered_accounts()` function.
+
+**What makes a good config for this model:**
+- Success rate >80%, EV per account >+2R
+- No breach clusters >3 consecutive (regime sensitivity)
+- Open accounts trending positive (avg open R > 0)
+- Time to payout <200 days (capital efficiency)
+
 ### Results & Metrics
 All CLI output and reporting uses **R (risk units)** — never raw USD PnL. Metrics include: win rate, profit factor, Sharpe, Sortino, Calmar, Net R, Max DD (R), avg R, streaks, exit type breakdown, R by year/month/weekday. Results persisted to SQLite (`experiments.db`) with config, summary, equity curve, and trade list.
 

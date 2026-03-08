@@ -6,12 +6,24 @@ import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SessionTag } from "./SessionTag";
 import { StrategyTag } from "./StrategyTag";
 import { ScrollArea } from "@/shared/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 type SortKey =
   | "instrument"
   | "total_combinations"
   | "best_sharpe"
-  | "best_pnl_usd";
+  | "best_pnl_usd"
+  | "timestamp";
+
+function formatCreated(ts: string): string {
+  if (!ts) return "\u2014";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return "\u2014";
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  const day = d.getDate();
+  const year = String(d.getFullYear()).slice(-2);
+  return `${month} ${day}, \u2018${year}`;
+}
 
 interface OptimizationHistoryPanelProps {
   history: OptimizationHistoryItem[];
@@ -44,7 +56,7 @@ export function OptimizationHistoryPanel({
   onRefresh,
 }: OptimizationHistoryPanelProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("best_sharpe");
+  const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [sortAsc, setSortAsc] = useState(false);
   const [instrumentFilter, setInstrumentFilter] = useState<string>("all");
 
@@ -74,6 +86,11 @@ export function OptimizationHistoryPanel({
         return sortAsc
           ? a.instrument.localeCompare(b.instrument)
           : b.instrument.localeCompare(a.instrument);
+      }
+      if (sortKey === "timestamp") {
+        const va = a.timestamp || "";
+        const vb = b.timestamp || "";
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
       }
       const va = (a[sortKey] ?? 0) as number;
       const vb = (b[sortKey] ?? 0) as number;
@@ -121,16 +138,17 @@ export function OptimizationHistoryPanel({
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-medium text-text-secondary">History</h2>
           {instruments.length > 1 && (
-            <select
-              value={instrumentFilter}
-              onChange={(e) => setInstrumentFilter(e.target.value)}
-              className="rounded border border-border bg-bg-secondary px-2 py-0.5 text-xs text-text-primary outline-none focus:border-accent"
-            >
-              <option value="all">All instruments</option>
-              {instruments.map((inst) => (
-                <option key={inst} value={inst}>{inst}</option>
-              ))}
-            </select>
+            <Select value={instrumentFilter} onValueChange={setInstrumentFilter}>
+              <SelectTrigger className="h-6 min-w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All instruments</SelectItem>
+                {instruments.map((inst) => (
+                  <SelectItem key={inst} value={inst}>{inst}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -150,6 +168,7 @@ export function OptimizationHistoryPanel({
               <SortHeader label="Combos" sortBy="total_combinations" />
               <SortHeader label="Best Sharpe" sortBy="best_sharpe" />
               <SortHeader label="Best PnL (R)" sortBy="best_pnl_usd" />
+              <SortHeader label="Created" sortBy="timestamp" />
               <th className="w-8 px-2 py-2" />
             </tr>
           </thead>
@@ -205,6 +224,9 @@ export function OptimizationHistoryPanel({
                     style={{ color: pnlColor(item.best_pnl_usd ?? 0) }}
                   >
                     {bestR >= 0 ? "+" : ""}{bestR.toFixed(2)}R
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-text-muted">
+                    {formatCreated(item.timestamp)}
                   </td>
                   <td className="px-2 py-2 text-center">
                     <span

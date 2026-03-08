@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { SavedConfig } from "@/backtesting/lib/types";
 import { useSavedConfigs } from "@/backtesting/hooks/useSavedConfigs";
 import type { SavedConfigInput } from "@/backtesting/hooks/useSavedConfigs";
@@ -7,9 +7,58 @@ import { ConfigBar } from "./ConfigBar";
 import { SessionTag } from "./SessionTag";
 import { StrategyTag } from "./StrategyTag";
 import { VariablesTested } from "./VariablesTested";
+import { DateRangePicker } from "./DateRangePicker";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent";
+
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getDefaultBacktestRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 10);
+  return {
+    start: formatDateInput(start),
+    end: formatDateInput(end),
+  };
+}
+
+/** Build a flat params object from a SavedConfig for the backtest API. */
+function configToBacktestParams(
+  config: SavedConfig,
+  start: string,
+  end: string,
+): Record<string, unknown> {
+  const c = config.config;
+  const params: Record<string, unknown> = {
+    instrument: config.instrument,
+    sessions: config.sessions,
+    start,
+    end,
+    name: config.name,
+    // Global params
+    rr: c.rr,
+    tp1_ratio: c.tp1_ratio,
+    risk_usd: c.risk_usd,
+    atr_length: c.atr_length,
+    strategy: c.strategy ?? config.strategy,
+  };
+
+  // Forward all remaining config keys (session-prefixed params, LSI params, etc.)
+  for (const [key, value] of Object.entries(c)) {
+    if (value != null && !(key in params) && key !== "min_qty" && key !== "qty_step" && key !== "point_value" && key !== "instrument") {
+      params[key] = value;
+    }
+  }
+
+  return params;
+}
 
 function formatUpdated(ts: string) {
   if (!ts) return "";
@@ -19,6 +68,7 @@ function formatUpdated(ts: string) {
 }
 
 export function ConfigsDashboard() {
+  const defaultRange = useMemo(() => getDefaultBacktestRange(), []);
   const { configs, loading, error, updateConfig, deleteConfig } = useSavedConfigs();
   const [activeId, setActiveId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -27,6 +77,15 @@ export function ConfigsDashboard() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
+  // Date range for running backtests
+  const [dateStart, setDateStart] = useState(defaultRange.start);
+  const [dateEnd, setDateEnd] = useState(defaultRange.end);
+
+  // Backtest run state
+  const [btLoading, setBtLoading] = useState(false);
+  const [btResult, setBtResult] = useState<{ id: string; trades: number; netR: number; sharpe: number; maxDD: number; winRate: number } | null>(null);
+  const [btError, setBtError] = useState<string | null>(null);
+
   const active = configs.find((c) => c.id === activeId) ?? null;
 
   const handleSelect = useCallback((config: SavedConfig) => {
@@ -34,7 +93,54 @@ export function ConfigsDashboard() {
     setEditName(config.name);
     setEditNotes(config.notes ?? "");
     setSaveMsg(null);
+    setBtResult(null);
+    setBtError(null);
   }, []);
+
+  const handleDateChange = useCallback((start: string, end: string) => {
+    setDateStart(start);
+    setDateEnd(end);
+  }, []);
+
+  const handleDateReset = useCallback(() => {
+    setDateStart(defaultRange.start);
+    setDateEnd(defaultRange.end);
+  }, [defaultRange.end, defaultRange.start]);
+
+  const handleRunBacktest = async () => {
+    if (!active) return;
+    setBtLoading(true);
+    setBtResult(null);
+    setBtError(null);
+    try {
+      const params = configToBacktestParams(active, dateStart, dateEnd);
+      const res = await fetch("/bt-api/backtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error?.message || body.detail || `HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      const result = json.result ?? json;
+      setBtResult({
+        id: result.id,
+        trades: result.summary?.total_trades ?? 0,
+        netR: result.summary?.avg_r != null && result.summary?.total_trades != null
+          ? +(result.summary.avg_r * result.summary.total_trades).toFixed(1)
+          : 0,
+        sharpe: result.summary?.sharpe_ratio ?? 0,
+        maxDD: result.summary?.max_drawdown_pct ?? 0,
+        winRate: result.summary?.win_rate ?? 0,
+      });
+    } catch (err) {
+      setBtError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setBtLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!active) return;
@@ -183,6 +289,55 @@ export function ConfigsDashboard() {
               {/* Config display — reusing existing components */}
               <VariablesTested config={active.config} />
               <ConfigBar config={active.config} />
+
+              {/* Date range picker + Run backtest */}
+              <div className="rounded-lg border border-border bg-bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[11px] font-medium uppercase tracking-wider text-text-muted">Run Backtest</h3>
+                  <button
+                    onClick={handleRunBacktest}
+                    disabled={btLoading}
+                    className="rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent/80 disabled:opacity-50"
+                  >
+                    {btLoading ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                        Running...
+                      </span>
+                    ) : (
+                      "Run Backtest"
+                    )}
+                  </button>
+                </div>
+                <DateRangePicker
+                  startDate={dateStart}
+                  endDate={dateEnd}
+                  originalStart={defaultRange.start}
+                  originalEnd={defaultRange.end}
+                  onChange={handleDateChange}
+                  onReset={handleDateReset}
+                  loading={btLoading}
+                  disabled={false}
+                />
+                {btError && (
+                  <div className="rounded-md border border-loss/30 bg-loss/5 px-3 py-2 text-xs text-loss">
+                    {btError}
+                  </div>
+                )}
+                {btResult && (
+                  <div className="rounded-md border border-profit/30 bg-profit/5 px-3 py-2">
+                    <div className="flex items-center gap-4 text-xs">
+                      <span className="text-profit font-medium">Backtest complete</span>
+                      <span className="text-text-secondary">{btResult.trades} trades</span>
+                      <span className="text-text-secondary">Net R: <span className={btResult.netR >= 0 ? "text-profit" : "text-loss"}>{btResult.netR > 0 ? "+" : ""}{btResult.netR.toFixed(1)}</span></span>
+                      <span className="text-text-secondary">WR: {(btResult.winRate * 100).toFixed(1)}%</span>
+                      <span className="text-text-secondary">Sharpe: {btResult.sharpe.toFixed(2)}</span>
+                      <span className="text-text-secondary">Max DD: <span className="text-loss">{(btResult.maxDD * 100).toFixed(1)}%</span></span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-text-muted">Saved as: {btResult.id}</p>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

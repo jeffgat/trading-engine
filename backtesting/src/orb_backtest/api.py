@@ -160,20 +160,139 @@ class BacktestRequest(BaseModel):
     strategy: Optional[str] = None
     direction_filter: Optional[str] = None
     use_bar_magnifier: Optional[bool] = None
+    bar_magnifier: Optional[bool | str] = None
     reverse_direction: Optional[bool] = None
+    impulse_close_filter: Optional[bool | str] = None
+    swing_n_bars: Optional[int] = None
+    excluded_days: Optional[list[str | int]] = None
+    half_days: Optional[list[str]] = None
+    excluded_dates: Optional[list[str]] = None
 
     ny_stop_atr_pct: Optional[float] = None
     ny_min_gap_atr_pct: Optional[float] = None
     ny_stop_orb_pct: Optional[float] = None
     ny_min_gap_orb_pct: Optional[float] = None
+    ny_qualifying_move_atr_pct: Optional[float] = None
+    ny_min_stop_points: Optional[float] = None
+    ny_min_tp1_points: Optional[float] = None
+    ny_rth_start: Optional[str] = None
+    ny_orb_window: Optional[str] = None
+    ny_entry_window: Optional[str] = None
+    ny_flat_window: Optional[str] = None
     asia_stop_atr_pct: Optional[float] = None
     asia_min_gap_atr_pct: Optional[float] = None
     asia_stop_orb_pct: Optional[float] = None
     asia_min_gap_orb_pct: Optional[float] = None
+    asia_qualifying_move_atr_pct: Optional[float] = None
+    asia_min_stop_points: Optional[float] = None
+    asia_min_tp1_points: Optional[float] = None
+    asia_rth_start: Optional[str] = None
+    asia_orb_window: Optional[str] = None
+    asia_entry_window: Optional[str] = None
+    asia_flat_window: Optional[str] = None
     ldn_stop_atr_pct: Optional[float] = None
     ldn_min_gap_atr_pct: Optional[float] = None
     ldn_stop_orb_pct: Optional[float] = None
     ldn_min_gap_orb_pct: Optional[float] = None
+    ldn_qualifying_move_atr_pct: Optional[float] = None
+    ldn_min_stop_points: Optional[float] = None
+    ldn_min_tp1_points: Optional[float] = None
+    ldn_rth_start: Optional[str] = None
+    ldn_orb_window: Optional[str] = None
+    ldn_entry_window: Optional[str] = None
+    ldn_flat_window: Optional[str] = None
+
+    lsi_n_left: Optional[int] = None
+    lsi_n_right: Optional[int] = None
+    lsi_fvg_window_left: Optional[int] = None
+    lsi_fvg_window_right: Optional[int] = None
+    lsi_stop_mode: Optional[str] = None
+    lsi_entry_mode: Optional[str] = None
+    lsi_first_fvg_only: Optional[bool] = None
+    lsi_clean_path: Optional[bool] = None
+    lsi_be_swing_n_left: Optional[int] = None
+    lsi_cancel_on_swing: Optional[bool] = None
+
+
+_DOW_NAME_MAP = {
+    "mon": 0,
+    "monday": 0,
+    "tue": 1,
+    "tues": 1,
+    "tuesday": 1,
+    "wed": 2,
+    "wednesday": 2,
+    "thu": 3,
+    "thurs": 3,
+    "thursday": 3,
+    "fri": 4,
+    "friday": 4,
+}
+
+
+def _coerce_boolish(value: bool | str | None) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"on", "true", "1", "yes"}:
+        return True
+    if normalized in {"off", "false", "0", "no"}:
+        return False
+    return None
+
+
+def _parse_dow_values(values: list[str | int] | None) -> tuple[int, ...] | None:
+    if values is None:
+        return None
+    parsed: list[int] = []
+    for value in values:
+        if isinstance(value, int):
+            day = value
+        else:
+            normalized = value.strip().lower()
+            if normalized.isdigit():
+                day = int(normalized)
+            else:
+                if normalized not in _DOW_NAME_MAP:
+                    raise BacktestError(
+                        "INVALID_DOW",
+                        f"Unknown day-of-week value '{value}'",
+                        "Use Mon/Tue/Wed/Thu/Fri or 0-4",
+                        status_code=400,
+                    )
+                day = _DOW_NAME_MAP[normalized]
+        if day < 0 or day > 4:
+            raise BacktestError(
+                "INVALID_DOW",
+                f"Day-of-week index '{day}' is out of range",
+                "Use weekday indices 0-4",
+                status_code=400,
+            )
+        if day not in parsed:
+            parsed.append(day)
+    return tuple(parsed)
+
+
+def _parse_window_override(
+    overrides: dict[str, Any],
+    session_prefix: str,
+    field_name: str,
+    window: str | None,
+) -> None:
+    if not window:
+        return
+    parts = [part.strip() for part in window.split("-", 1)]
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise BacktestError(
+            "INVALID_WINDOW",
+            f"Invalid {session_prefix}_{field_name} value '{window}'",
+            "Use HH:MM-HH:MM",
+            status_code=400,
+        )
+    overrides[f"{session_prefix}_{field_name}_start"] = parts[0]
+    overrides[f"{session_prefix}_{field_name}_end"] = parts[1]
 
 
 # ── Discovery endpoints ─────────────────────────────────────────────
@@ -379,14 +498,44 @@ def run_backtest_endpoint(req: BacktestRequest):
     for field in (
         "rr", "tp1_ratio", "risk_usd", "atr_length",
         "strategy", "direction_filter", "use_bar_magnifier", "reverse_direction",
+        "swing_n_bars",
         "name", "notes",
         "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_stop_orb_pct", "ny_min_gap_orb_pct",
+        "ny_qualifying_move_atr_pct", "ny_min_stop_points", "ny_min_tp1_points", "ny_rth_start",
         "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_stop_orb_pct", "asia_min_gap_orb_pct",
+        "asia_qualifying_move_atr_pct", "asia_min_stop_points", "asia_min_tp1_points", "asia_rth_start",
         "ldn_stop_atr_pct", "ldn_min_gap_atr_pct", "ldn_stop_orb_pct", "ldn_min_gap_orb_pct",
+        "ldn_qualifying_move_atr_pct", "ldn_min_stop_points", "ldn_min_tp1_points", "ldn_rth_start",
+        "lsi_n_left", "lsi_n_right", "lsi_fvg_window_left", "lsi_fvg_window_right",
+        "lsi_stop_mode", "lsi_entry_mode", "lsi_first_fvg_only", "lsi_clean_path",
+        "lsi_be_swing_n_left", "lsi_cancel_on_swing",
     ):
         val = getattr(req, field)
         if val is not None:
             overrides[field] = val
+
+    if req.bar_magnifier is not None and req.use_bar_magnifier is None:
+        boolish = _coerce_boolish(req.bar_magnifier)
+        if boolish is not None:
+            overrides["use_bar_magnifier"] = boolish
+
+    if req.impulse_close_filter is not None:
+        boolish = _coerce_boolish(req.impulse_close_filter)
+        if boolish is not None:
+            overrides["impulse_close_filter"] = boolish
+
+    if req.half_days is not None:
+        overrides["half_days"] = tuple(req.half_days)
+    if req.excluded_dates is not None:
+        overrides["excluded_dates"] = tuple(req.excluded_dates)
+    parsed_excluded_days = _parse_dow_values(req.excluded_days)
+    if parsed_excluded_days is not None:
+        overrides["excluded_days"] = parsed_excluded_days
+
+    for session_prefix in ("ny", "asia", "ldn"):
+        _parse_window_override(overrides, session_prefix, "orb", getattr(req, f"{session_prefix}_orb_window"))
+        _parse_window_override(overrides, session_prefix, "entry", getattr(req, f"{session_prefix}_entry_window"))
+        _parse_window_override(overrides, session_prefix, "flat", getattr(req, f"{session_prefix}_flat_window"))
 
     if overrides:
         config = with_overrides(config, **overrides)
@@ -397,8 +546,14 @@ def run_backtest_endpoint(req: BacktestRequest):
     except FileNotFoundError as e:
         raise data_not_found(str(e))
 
+    df_1m = None
+    try:
+        df_1m = load_1m_for_5m(instrument.data_file, start=req.start, end=req.end)
+    except FileNotFoundError:
+        pass
+
     # Run backtest
-    trades = run_backtest(df, config, start_date=req.start)
+    trades = run_backtest(df, config, start_date=req.start, end_date=req.end, df_1m=df_1m)
 
     # Build response with equity curve
     result = results_to_dict(
