@@ -13,12 +13,17 @@ import { StrategyTag } from './StrategyTag';
 import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
+import { useRegimeReports } from "@/backtesting/hooks/useRegimeReports";
 
 export function BacktestDashboard() {
     const { history, activeId, refreshHistory, loadBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
         useBacktestHistory();
+    const { createReport } = useRegimeReports();
     const [data, setData] = useState<BacktestResult | null>(null);
     const [loading, setLoading] = useState(false);
+    const [regimeMethod, setRegimeMethod] = useState<"both" | "hmm" | "lstm">("both");
+    const [regimeLoading, setRegimeLoading] = useState(false);
+    const [regimeError, setRegimeError] = useState<string | null>(null);
 
     // Date filter state
     const [filterStart, setFilterStart] = useState('');
@@ -110,11 +115,44 @@ export function BacktestDashboard() {
         }
     }, [activeId, mcMethod, mcSims]);
 
+    const handleCreateRegimeReport = useCallback(async () => {
+        if (!activeId) return;
+        setRegimeLoading(true);
+        setRegimeError(null);
+        try {
+            await createReport(activeId, regimeMethod);
+        } catch (e) {
+            setRegimeError((e as Error).message);
+        } finally {
+            setRegimeLoading(false);
+        }
+    }, [activeId, createReport, regimeMethod]);
+
     return (
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             {/* Header */}
             <div className="mb-6">
-                <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={regimeMethod}
+                            onChange={(e) => setRegimeMethod(e.target.value as "both" | "hmm" | "lstm")}
+                            className="rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent"
+                        >
+                            <option value="both">HMM + LSTM</option>
+                            <option value="hmm">HMM only</option>
+                            <option value="lstm">LSTM only</option>
+                        </select>
+                        <button
+                            onClick={handleCreateRegimeReport}
+                            disabled={!activeId || regimeLoading}
+                            className="rounded-md border border-accent bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+                        >
+                            {regimeLoading ? "Creating…" : "Create Regime Report"}
+                        </button>
+                    </div>
+                </div>
                 {loading && <Skeleton className="mt-1.5 h-4 w-48 rounded" />}
                 {data?.config?.instrument && !loading && (
                     <div className="mt-0.5 flex items-center gap-2 text-sm text-text-muted">
@@ -126,6 +164,11 @@ export function BacktestDashboard() {
                         {data.config.instrument} &middot; R:R {data.config.rr} &middot;
                         Risk ${data.config.risk_usd?.toLocaleString()}
                         <StrategyTag strategy={data.config.strategy} />
+                    </div>
+                )}
+                {regimeError && (
+                    <div className="mt-2 rounded-md border border-loss/30 bg-loss/5 px-3 py-2 text-xs text-loss">
+                        {regimeError}
                     </div>
                 )}
             </div>

@@ -101,7 +101,12 @@ from .experiments import (
     list_risk_engine_layouts,
     save_risk_engine_layout,
     delete_risk_engine_layout,
+    log_regime_report,
+    list_regime_reports,
+    get_regime_report,
+    delete_regime_report,
 )
+from .analysis.regime_reports import build_regime_report, RegimeReportConfig
 
 app = FastAPI(title="ORB+FVG Backtester API")
 
@@ -1097,6 +1102,53 @@ def save_news_straddle_run_endpoint(req: NewsStraddleRunSaveRequest):
     """Save a news straddle run (used by remote sync)."""
     rowid = log_news_straddle_run(req.result_dict, req.result_id)
     return ok({"rowid": rowid})
+
+
+# ── Regime Reports ───────────────────────────────────────────────────
+
+
+class RegimeReportRequest(BaseModel):
+    backtest_result_id: str
+    method: Optional[str] = "both"
+
+
+@app.post("/api/regime-reports")
+def create_regime_report(req: RegimeReportRequest):
+    """Generate and save a regime report for a backtest result."""
+    import hashlib as _hl
+    import time as _time
+
+    cfg = RegimeReportConfig(method=req.method or "both")
+    report = build_regime_report(req.backtest_result_id, cfg)
+
+    fingerprint = f"{req.backtest_result_id}_{cfg.method}_{int(_time.time())}"
+    result_id = _hl.md5(fingerprint.encode()).hexdigest()[:12]
+    log_regime_report(report, result_id)
+    report["result_id"] = result_id
+    return ok(report)
+
+
+@app.get("/api/regime-reports")
+def list_regime_reports_endpoint(limit: int = Query(100)):
+    """List saved regime reports."""
+    return ok(list_regime_reports(limit=limit))
+
+
+@app.get("/api/regime-reports/{result_id}")
+def get_regime_report_endpoint(result_id: str):
+    """Load a full regime report."""
+    result = get_regime_report(result_id)
+    if result is None:
+        raise experiment_not_found(result_id)
+    return ok(result)
+
+
+@app.delete("/api/regime-reports/{result_id}")
+def delete_regime_report_endpoint(result_id: str):
+    """Delete a regime report."""
+    if not delete_regime_report(result_id):
+        raise experiment_not_found(result_id)
+    return ok({"deleted": True})
 
 
 # ── Risk Engine Layouts ────────────────────────────────────────────

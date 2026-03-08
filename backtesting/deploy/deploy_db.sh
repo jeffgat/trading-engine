@@ -47,7 +47,7 @@ experiments-db = "experiments_api:app"
 TOML
 
     echo "--- Creating .env ---"
-    ssh "$DROPLET" "echo 'EXPERIMENTS_DB_PATH=/opt/experiments-db/experiments.db' > $REMOTE_DIR/.env"
+    ssh "$DROPLET" "printf 'EXPERIMENTS_DB_PATH=/opt/experiments-db/experiments.db\nEXPERIMENTS_DB_URL=\n' > $REMOTE_DIR/.env"
 
     echo "--- Installing uv dependencies ---"
     ssh "$DROPLET" "cd $REMOTE_DIR && uv sync"

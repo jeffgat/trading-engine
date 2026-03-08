@@ -268,6 +268,35 @@ def delete_news_straddle_run(result_id):
         return False
 
 
+# --- Regime Reports CRUD ---
+
+def log_regime_report(result_dict, result_id):
+    resp = _post("/api/regime-reports", {
+        "result_dict": result_dict,
+        "result_id": result_id,
+    })
+    return resp.get("rowid")
+
+
+def list_regime_reports(limit=100):
+    return _get(f"/api/regime-reports?limit={limit}")
+
+
+def get_regime_report(result_id):
+    try:
+        return _get(f"/api/regime-reports/{result_id}")
+    except RuntimeError:
+        return None
+
+
+def delete_regime_report(result_id):
+    try:
+        _delete(f"/api/regime-reports/{result_id}")
+        return True
+    except RuntimeError:
+        return False
+
+
 # --- Sync / Import ---
 
 def import_runs(rows):

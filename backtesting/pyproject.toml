@@ -17,6 +17,8 @@ dependencies = [
     "uvicorn>=0.40.0",
     "fastapi>=0.129.0",
     "python-multipart>=0.0.22",
+    "hmmlearn>=0.3.3",
+    "torch>=2.10.0",
 ]
 
 [project.optional-dependencies]

@@ -254,6 +254,85 @@ export interface OptimizationHistoryItem {
   name?: string;
 }
 
+// ── Regime report types ───────────────────────────────────────────────
+
+export interface RegimeCoverage {
+  mapped: number;
+  unmapped: number;
+  total: number;
+}
+
+export interface RegimeStat {
+  regime: number;
+  trades: number;
+  win_rate: number;
+  total_r: number;
+  avg_r: number;
+  pf: number;
+  long_trades: number;
+  short_trades: number;
+  // Volatility profile (from daily regime data)
+  days?: number;
+  pct_days?: number;
+  mean_vol?: number | null;
+  mean_range_pct?: number | null;
+}
+
+export interface RegimeReportSection {
+  coverage: RegimeCoverage;
+  regime_stats: RegimeStat[];
+  states?: number;
+  clusters?: number;
+  bic?: number;
+  silhouette?: number;
+  device?: string;
+}
+
+export interface RegimeReportSummary {
+  methods: string[];
+  trade_count: number;
+  hmm_total_r?: number;
+  lstm_total_r?: number;
+  hmm_best_pf?: number;
+  lstm_best_pf?: number;
+}
+
+export interface RegimeReportMeta {
+  backtest_result_id: string;
+  backtest_name?: string;
+  instrument: string;
+  sessions: string;
+  date_start: string;
+  date_end: string;
+}
+
+export interface RegimeReportResult {
+  result_id?: string;
+  meta: RegimeReportMeta;
+  summary: RegimeReportSummary;
+  hmm?: RegimeReportSection;
+  lstm?: RegimeReportSection;
+}
+
+export interface RegimeReportHistoryItem {
+  id: number;
+  result_id: string;
+  timestamp: string;
+  instrument: string;
+  sessions: string | null;
+  backtest_result_id: string;
+  backtest_name?: string | null;
+  date_start?: string | null;
+  date_end?: string | null;
+  methods: string;
+  hmm_states?: number | null;
+  lstm_clusters?: number | null;
+  hmm_total_r?: number | null;
+  lstm_total_r?: number | null;
+  hmm_best_pf?: number | null;
+  lstm_best_pf?: number | null;
+}
+
 // ── News Straddle types ──────────────────────────────────────────────
 
 export interface NewsStraddleEvent {

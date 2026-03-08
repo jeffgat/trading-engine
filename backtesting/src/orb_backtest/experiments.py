@@ -221,6 +221,28 @@ CREATE TABLE IF NOT EXISTS news_straddle_runs (
 );
 """
 
+_REGIME_REPORTS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS regime_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id TEXT NOT NULL UNIQUE,
+    timestamp TEXT NOT NULL,
+    instrument TEXT NOT NULL,
+    sessions TEXT,
+    backtest_result_id TEXT NOT NULL,
+    backtest_name TEXT,
+    date_start TEXT,
+    date_end TEXT,
+    methods TEXT NOT NULL,
+    hmm_states INTEGER,
+    lstm_clusters INTEGER,
+    hmm_total_r REAL,
+    lstm_total_r REAL,
+    hmm_best_pf REAL,
+    lstm_best_pf REAL,
+    report_json TEXT NOT NULL
+);
+"""
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -237,6 +259,7 @@ def init_db() -> Path:
         conn.executescript(_TESTING_PLAN_SCHEMA)
         conn.executescript(_NEWS_STRADDLE_SCHEMA)
         conn.executescript(_RISK_ENGINE_LAYOUTS_SCHEMA)
+        conn.executescript(_REGIME_REPORTS_SCHEMA)
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
         ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
@@ -1444,6 +1467,90 @@ def delete_news_straddle_run(result_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Regime Reports CRUD
+# ---------------------------------------------------------------------------
+
+
+def log_regime_report(result_dict: dict, result_id: str) -> int:
+    """Save a regime report to the DB."""
+    init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    meta = result_dict.get("meta", {})
+    summary = result_dict.get("summary", {})
+    hmm = result_dict.get("hmm", {}) if result_dict.get("hmm") else {}
+    lstm = result_dict.get("lstm", {}) if result_dict.get("lstm") else {}
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO regime_reports
+               (result_id, timestamp, instrument, sessions, backtest_result_id, backtest_name,
+                date_start, date_end, methods, hmm_states, lstm_clusters,
+                hmm_total_r, lstm_total_r, hmm_best_pf, lstm_best_pf, report_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                result_id,
+                now,
+                meta.get("instrument", ""),
+                meta.get("sessions", ""),
+                meta.get("backtest_result_id", ""),
+                meta.get("backtest_name"),
+                meta.get("date_start"),
+                meta.get("date_end"),
+                json.dumps(summary.get("methods", [])),
+                hmm.get("states"),
+                lstm.get("clusters"),
+                hmm.get("total_r"),
+                lstm.get("total_r"),
+                hmm.get("best_pf"),
+                lstm.get("best_pf"),
+                json.dumps(result_dict, default=_json_default),
+            ),
+        )
+        return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def list_regime_reports(limit: int = 100) -> list[dict]:
+    """List recent regime reports (most recent first)."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """SELECT id, result_id, timestamp, instrument, sessions, backtest_result_id,
+                      backtest_name, date_start, date_end, methods, hmm_states, lstm_clusters,
+                      hmm_total_r, lstm_total_r, hmm_best_pf, lstm_best_pf
+               FROM regime_reports
+               ORDER BY timestamp DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_regime_report(result_id: str) -> dict | None:
+    """Load a full regime report by result_id."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT report_json FROM regime_reports WHERE result_id = ?",
+            (result_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return json.loads(row[0])
+
+
+def delete_regime_report(result_id: str) -> bool:
+    """Delete a regime report by result_id."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.execute(
+            "DELETE FROM regime_reports WHERE result_id = ?",
+            (result_id,),
+        )
+        return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
 # Risk Engine Layouts
 # ---------------------------------------------------------------------------
 
@@ -1524,6 +1631,7 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
     _local_log_optimization = log_optimization
     _local_log_sweep_runs = log_sweep_runs
     _local_log_news_straddle_run = log_news_straddle_run
+    _local_log_regime_report = log_regime_report
 
     # Import all remote functions (overwrites reads/queries to use remote)
     from .experiments_remote import *  # noqa: F401, F403
@@ -1594,4 +1702,9 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
     def log_news_straddle_run(result_dict, result_id):
         local_id = _local_log_news_straddle_run(result_dict, result_id)
         _remote_fire(_remote.log_news_straddle_run, result_dict, result_id)
+        return local_id
+
+    def log_regime_report(result_dict, result_id):
+        local_id = _local_log_regime_report(result_dict, result_id)
+        _remote_fire(_remote.log_regime_report, result_dict, result_id)
         return local_id

@@ -50,6 +50,10 @@ from orb_backtest.experiments import (
     list_news_straddle_history,
     get_news_straddle_run,
     delete_news_straddle_run,
+    log_regime_report,
+    list_regime_reports,
+    get_regime_report,
+    delete_regime_report,
     list_risk_engine_layouts,
     save_risk_engine_layout,
     delete_risk_engine_layout,
@@ -337,6 +341,39 @@ def get_news_straddle(result_id: str):
 def delete_news_straddle(result_id: str):
     success = delete_news_straddle_run(result_id)
     if not success:
+        return fail("not found", 404)
+    return ok({"deleted": True})
+
+
+# --- Regime Reports CRUD ---
+
+class RegimeReportSaveRequest(BaseModel):
+    result_dict: dict
+    result_id: str
+
+
+@app.post("/api/regime-reports")
+def save_regime_report_endpoint(req: RegimeReportSaveRequest):
+    rowid = log_regime_report(req.result_dict, req.result_id)
+    return ok({"rowid": rowid})
+
+
+@app.get("/api/regime-reports")
+def list_regime_reports_endpoint(limit: int = 100):
+    return ok(list_regime_reports(limit=limit))
+
+
+@app.get("/api/regime-reports/{result_id}")
+def get_regime_report_endpoint(result_id: str):
+    result = get_regime_report(result_id)
+    if result is None:
+        return fail("not found", 404)
+    return ok(result)
+
+
+@app.delete("/api/regime-reports/{result_id}")
+def delete_regime_report_endpoint(result_id: str):
+    if not delete_regime_report(result_id):
         return fail("not found", 404)
     return ok({"deleted": True})
 
