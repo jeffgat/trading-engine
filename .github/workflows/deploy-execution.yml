@@ -1,0 +1,46 @@
+name: Deploy Execution Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'execution/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          known_hosts: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+
+      - name: Deploy Execution Service
+        run: |
+          DROPLET="root@143.110.148.234"
+          REMOTE_DIR="/opt/orb-trader"
+
+          echo "--- Syncing source files ---"
+          rsync -avz --delete \
+            --exclude '.venv/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '.env' \
+            --exclude 'logs/' \
+            --exclude 'config/checkpoint.json' \
+            --exclude 'config/trade_history.json' \
+            execution/ "$DROPLET:$REMOTE_DIR/"
+
+          echo "--- Installing dependencies ---"
+          ssh "$DROPLET" "cd $REMOTE_DIR && uv sync"
+
+          echo "--- Restarting service ---"
+          ssh "$DROPLET" "systemctl restart orb-trader"
+
+          echo "--- Verifying ---"
+          sleep 3
+          ssh "$DROPLET" "systemctl is-active orb-trader && ss -tlnp | grep 8000 || echo 'WARNING: port 8000 not yet listening'"
