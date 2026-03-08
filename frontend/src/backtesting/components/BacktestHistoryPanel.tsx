@@ -4,6 +4,7 @@ import { formatPct } from "@/backtesting/lib/utils";
 import { CopyIdButton } from './CopyIdButton';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { SessionTag } from './SessionTag';
+import { StrategyTag } from './StrategyTag';
 import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
 
 type SortKey =
@@ -103,7 +104,7 @@ export function BacktestHistoryPanel({
     onLoad,
     onDelete,
     onRefresh,
-    onStar,
+    onStar: _onStar,
     onHide,
     onRename,
     onBulkStar,
@@ -423,6 +424,7 @@ export function BacktestHistoryPanel({
                             )}
                             <SortHeader label="Instrument" sortBy="instrument" align="left" />
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Sessions</th>
+                            <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Strategy</th>
                             <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Date Range</th>
                             <SortHeader label="RR" sortBy="rr" />
                             <th className="whitespace-nowrap px-3 py-2 text-right font-medium">P1</th>
@@ -436,7 +438,7 @@ export function BacktestHistoryPanel({
                             <SortHeader label="Calmar" sortBy="calmar_ratio" />
                             <SortHeader label="PF" sortBy="profit_factor" />
                             <SortHeader label="Created" sortBy="timestamp" />
-                            <th className="w-20 px-2 py-2" />
+                            <th className="w-8 px-2 py-2" />
                         </tr>
                     </thead>
                     <tbody>
@@ -547,6 +549,9 @@ export function BacktestHistoryPanel({
                                             ))}
                                         </div>
                                     </td>
+                                    <td className="px-3 py-2 text-left">
+                                        <StrategyTag strategy={item.strategy} />
+                                    </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-left text-text-muted">
                                         {formatDateRange(item.date_start, item.date_end)}
                                     </td>
@@ -592,67 +597,15 @@ export function BacktestHistoryPanel({
                                     <td className="whitespace-nowrap px-3 py-2 text-right text-text-muted">
                                         {formatCreated(item.timestamp)}
                                     </td>
-                                    <td className="px-2 py-2 text-center">
-                                        {!selectMode && <span className="inline-flex items-center gap-0.5">
-                                            {onStar && (
-                                                <span
-                                                    role="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onStar(item.id);
-                                                    }}
-                                                    className={`rounded p-0.5 transition-colors ${
-                                                        item.starred
-                                                            ? 'inline-block text-yellow-400 hover:bg-bg-secondary'
-                                                            : 'hidden text-text-muted hover:bg-bg-secondary hover:text-yellow-400 group-hover:inline-block'
-                                                    }`}
-                                                    title={item.starred ? 'Unstar' : 'Star'}>
-                                                    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1">
-                                                        <path d="M8 1.5l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12.2 3.8 14.5l.8-4.7L1.2 6.5l4.7-.7z" />
-                                                    </svg>
-                                                </span>
-                                            )}
-                                            {onHide && (
-                                                <span
-                                                    role="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        onHide(item.id);
-                                                    }}
-                                                    className={`rounded p-0.5 transition-colors ${
-                                                        item.hidden
-                                                            ? 'inline-block text-text-muted hover:bg-bg-secondary hover:text-text-primary'
-                                                            : 'hidden text-text-muted hover:bg-bg-secondary hover:text-text-primary group-hover:inline-block'
-                                                    }`}
-                                                    title={item.hidden ? 'Unhide' : 'Hide'}>
-                                                    <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                                        {item.hidden ? (
-                                                            <><path d="M2 2l12 12" /><path d="M6.5 6.5a2 2 0 002.8 2.8M4 4.5C2.8 5.6 1.8 7.2 1 8c1 1.5 3.5 5 7 5 1 0 1.9-.2 2.7-.6M9.5 4.2c.5.2 1 .5 1.5.8 1.5 1 3 3 4 3-1-1.5-3.5-5-7-5-.3 0-.7 0-1 .1" /></>
-                                                        ) : (
-                                                            <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" /><circle cx="8" cy="8" r="2" /></>
-                                                        )}
-                                                    </svg>
-                                                </span>
-                                            )}
-                                            <span
-                                                role="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setDeleteId(item.id);
-                                                }}
-                                                className="hidden rounded p-0.5 text-text-muted hover:bg-red-500/15 hover:text-red-400 group-hover:inline-block"
-                                                title="Delete">
-                                                <svg
-                                                    className="h-3.5 w-3.5"
-                                                    viewBox="0 0 16 16"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    strokeWidth="1.5">
-                                                    <path d="M2 4h12M5.5 4V2.5h5V4M6 7v4.5M10 7v4.5M3.5 4l.5 9.5h8l.5-9.5" />
+                                    {!selectMode && (
+                                        <td className="px-2 py-2 text-center">
+                                            {item.starred && (
+                                                <svg className="inline h-3.5 w-3.5 text-yellow-400" viewBox="0 0 16 16" fill="currentColor" stroke="currentColor" strokeWidth="1">
+                                                    <path d="M8 1.5l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12.2 3.8 14.5l.8-4.7L1.2 6.5l4.7-.7z" />
                                                 </svg>
-                                            </span>
-                                        </span>}
-                                    </td>
+                                            )}
+                                        </td>
+                                    )}
                                 </tr>
                             );
                         })}

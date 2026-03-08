@@ -13,6 +13,7 @@ import { StrategyTag } from './StrategyTag';
 import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
+import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { useRegimeReports } from "@/backtesting/hooks/useRegimeReports";
 
 const SESSION_PREFIXES = ['ny', 'asia', 'ldn'] as const;
@@ -38,6 +39,9 @@ export function BacktestDashboard() {
     const [regimeMethod, setRegimeMethod] = useState<"both" | "hmm" | "lstm">("both");
     const [regimeLoading, setRegimeLoading] = useState(false);
     const [regimeError, setRegimeError] = useState<string | null>(null);
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+    const activeItem = useMemo(() => history.find((h) => h.id === activeId), [history, activeId]);
 
     // Date filter state
     const [filterStart, setFilterStart] = useState('');
@@ -177,7 +181,55 @@ export function BacktestDashboard() {
             <div className="mb-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                        {/* Row actions */}
+                        <button
+                            onClick={() => activeId && starBacktest(activeId)}
+                            disabled={!activeId}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                                activeItem?.starred
+                                    ? 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20'
+                                    : 'border-border bg-bg-secondary text-text-secondary hover:bg-bg-card-hover'
+                            }`}
+                        >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill={activeItem?.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1">
+                                <path d="M8 1.5l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12.2 3.8 14.5l.8-4.7L1.2 6.5l4.7-.7z" />
+                            </svg>
+                            {activeItem?.starred ? 'Starred' : 'Star'}
+                        </button>
+                        <button
+                            onClick={() => activeId && hideBacktest(activeId)}
+                            disabled={!activeId}
+                            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                                activeItem?.hidden
+                                    ? 'border-text-muted/30 bg-text-muted/10 text-text-secondary hover:bg-text-muted/20'
+                                    : 'border-border bg-bg-secondary text-text-secondary hover:bg-bg-card-hover'
+                            }`}
+                        >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                {activeItem?.hidden ? (
+                                    <><path d="M2 2l12 12" /><path d="M6.5 6.5a2 2 0 002.8 2.8M4 4.5C2.8 5.6 1.8 7.2 1 8c1 1.5 3.5 5 7 5 1 0 1.9-.2 2.7-.6M9.5 4.2c.5.2 1 .5 1.5.8 1.5 1 3 3 4 3-1-1.5-3.5-5-7-5-.3 0-.7 0-1 .1" /></>
+                                ) : (
+                                    <><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" /><circle cx="8" cy="8" r="2" /></>
+                                )}
+                            </svg>
+                            {activeItem?.hidden ? 'Hidden' : 'Hide'}
+                        </button>
+                        <button
+                            onClick={() => setDeleteConfirmOpen(true)}
+                            disabled={!activeId}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                        >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M2 4h12M5.5 4V2.5h5V4M6 7v4.5M10 7v4.5M3.5 4l.5 9.5h8l.5-9.5" />
+                            </svg>
+                            Delete
+                        </button>
+
+                        {/* Divider */}
+                        <div className="mx-1 h-5 w-px bg-border" />
+
+                        {/* Config & report actions */}
                         {saveConfigMsg && (
                             <span className={`text-xs ${saveConfigMsg.startsWith("Failed") ? "text-loss" : "text-profit"}`}>
                                 {saveConfigMsg}
@@ -186,9 +238,13 @@ export function BacktestDashboard() {
                         <button
                             onClick={handleSaveAsConfig}
                             disabled={!data || saveConfigLoading}
-                            className="rounded-md border border-border bg-bg-secondary px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-card-hover disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-card-hover disabled:opacity-40"
                         >
-                            {saveConfigLoading ? "Saving..." : "Save as Config"}
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M12.5 14.5h-9a1 1 0 01-1-1v-11a1 1 0 011-1h7l3 3v9a1 1 0 01-1 1z" />
+                                <path d="M10.5 1.5v3h3M5.5 9.5h5M5.5 12h3" />
+                            </svg>
+                            {saveConfigLoading ? "Saving..." : "Save Config"}
                         </button>
                         <select
                             value={regimeMethod}
@@ -202,9 +258,12 @@ export function BacktestDashboard() {
                         <button
                             onClick={handleCreateRegimeReport}
                             disabled={!activeId || regimeLoading}
-                            className="rounded-md border border-accent bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-accent bg-accent/10 px-2.5 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20 disabled:opacity-40"
                         >
-                            {regimeLoading ? "Creating…" : "Create Regime Report"}
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M2 2.5h12M2 5.5h8M2 8.5h10M2 11.5h6M2 14.5h9" />
+                            </svg>
+                            {regimeLoading ? "Creating..." : "Regime Report"}
                         </button>
                     </div>
                 </div>
@@ -305,6 +364,19 @@ export function BacktestDashboard() {
                     Select a backtest to view
                 </div>
             )}
+
+            <ConfirmDeleteDialog
+                open={deleteConfirmOpen}
+                onOpenChange={setDeleteConfirmOpen}
+                onConfirm={() => {
+                    if (activeId) {
+                        deleteBacktest(activeId);
+                        setData(null);
+                    }
+                }}
+                title="Delete this backtest?"
+                description="The saved backtest result will be permanently removed."
+            />
         </div>
     );
 }

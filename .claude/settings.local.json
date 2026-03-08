@@ -164,7 +164,12 @@
       "Bash(# Check how to run a backtest from CLI ls backtesting/src/orb_backtest/cli*.py backtesting/run*.py backtesting/scripts/*.py)",
       "Bash(uv pip list)",
       "Bash(gh run list --limit 5)",
-      "Bash(gh run view 22824467259 --log)"
+      "Bash(gh run view 22824467259 --log)",
+      "Bash(gh run view 22824467259 --log-failed)",
+      "Bash(ssh-keyscan 143.110.148.234)",
+      "Bash(gh workflow run deploy-db.yml --ref main)",
+      "Bash(gh run rerun 22824467259)",
+      "Bash(gh run watch 22824467259 --exit-status)"
     ]
   }
 }

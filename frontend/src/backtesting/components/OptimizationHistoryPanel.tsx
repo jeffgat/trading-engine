@@ -4,6 +4,7 @@ import { formatNumber, pnlColor } from "@/backtesting/lib/utils";
 import { CopyIdButton } from "./CopyIdButton";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SessionTag } from "./SessionTag";
+import { StrategyTag } from "./StrategyTag";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 
 type SortKey =
@@ -144,6 +145,7 @@ export function OptimizationHistoryPanel({
             <tr className="border-b border-border text-text-muted">
               <SortHeader label="Instrument" sortBy="instrument" align="left" />
               <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Sessions</th>
+              <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Strategy</th>
               <th className="whitespace-nowrap px-3 py-2 text-left font-medium">Swept Params</th>
               <SortHeader label="Combos" sortBy="total_combinations" />
               <SortHeader label="Best Sharpe" sortBy="best_sharpe" />
@@ -185,6 +187,9 @@ export function OptimizationHistoryPanel({
                         <SessionTag key={s} session={s} />
                       ))}
                     </div>
+                  </td>
+                  <td className="px-3 py-2 text-left">
+                    <StrategyTag strategy={item.strategy} />
                   </td>
                   <td className="px-3 py-2 text-left text-text-muted">
                     {item.swept_params.join(", ")}
