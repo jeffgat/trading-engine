@@ -276,6 +276,9 @@ export interface RegimeStat {
   pct_days?: number;
   mean_vol?: number | null;
   mean_range_pct?: number | null;
+  // Feature fingerprint & label
+  label?: string;
+  features?: Record<string, number>;
 }
 
 export interface RegimeReportSection {
@@ -286,6 +289,8 @@ export interface RegimeReportSection {
   bic?: number;
   silhouette?: number;
   device?: string;
+  description?: string;
+  feature_cols?: string[];
 }
 
 export interface RegimeReportSummary {

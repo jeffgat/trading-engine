@@ -166,7 +166,7 @@ def _run_hmm_regimes(daily: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
                 continue
 
     states = best_model.predict(X_scaled)
-    hmm_daily = daily[["realized_vol_21d", "range_pct"]].copy()
+    hmm_daily = daily[["realized_vol_21d", "range_pct", "abs_return", "atr_pct"]].copy()
     hmm_daily["regime"] = states
     order = hmm_daily.groupby("regime")["realized_vol_21d"].mean().sort_values().index.tolist()
     map_h = {old: new for new, old in enumerate(order)}
@@ -175,11 +175,23 @@ def _run_hmm_regimes(daily: pd.DataFrame, trades_df: pd.DataFrame) -> dict:
     mapped, coverage = _map_trades_to_regimes(trades_df, hmm_daily)
     stats = _regime_stats(mapped, hmm_daily)
 
+    # Add per-regime feature fingerprint
+    feature_fingerprint = _build_feature_fingerprint(
+        hmm_daily, feature_cols, regime_col="regime"
+    )
+    for s in stats:
+        r = s["regime"]
+        if r in feature_fingerprint:
+            s["features"] = feature_fingerprint[r]
+            s["label"] = _label_hmm_regime(s)
+
     return {
         "states": best_n,
         "bic": float(best_bic),
         "coverage": coverage,
         "regime_stats": stats,
+        "feature_cols": feature_cols,
+        "description": "Gaussian HMM on 4 volatility features. States ordered by mean 21d realized vol (low to high).",
     }
 
 
@@ -288,7 +300,7 @@ def _run_lstm_regimes(daily: pd.DataFrame, trades_df: pd.DataFrame, lookback: in
         if score > best_score:
             best_k, best_score, best_labels = k, score, labels
 
-    lstm_daily = daily.loc[seq_dates, ["realized_vol_21d", "range_pct"]].copy()
+    lstm_daily = daily.loc[seq_dates, feature_cols].copy()
     lstm_daily["regime"] = best_labels
     order = lstm_daily.groupby("regime")["realized_vol_21d"].mean().sort_values().index.tolist()
     map_l = {old: new for new, old in enumerate(order)}
@@ -297,12 +309,24 @@ def _run_lstm_regimes(daily: pd.DataFrame, trades_df: pd.DataFrame, lookback: in
     mapped, coverage = _map_trades_to_regimes(trades_df, lstm_daily)
     stats = _regime_stats(mapped, lstm_daily)
 
+    # Add per-regime feature fingerprint
+    feature_fingerprint = _build_feature_fingerprint(
+        lstm_daily, feature_cols, regime_col="regime"
+    )
+    for s in stats:
+        r = s["regime"]
+        if r in feature_fingerprint:
+            s["features"] = feature_fingerprint[r]
+            s["label"] = _label_lstm_regime(s)
+
     return {
         "clusters": int(best_k),
         "silhouette": float(best_score),
         "device": str(device),
         "coverage": coverage,
         "regime_stats": stats,
+        "feature_cols": feature_cols,
+        "description": "LSTM autoencoder (8D latent) + K-Means on 13 market features. Clusters ordered by mean 21d realized vol.",
     }
 
 
@@ -357,6 +381,82 @@ def _regime_stats(mapped: pd.DataFrame, daily_regimes: pd.DataFrame | None = Non
             row.update(vol_profile[int(r)])
         stats.append(row)
     return stats
+
+
+def _build_feature_fingerprint(
+    daily_regimes: pd.DataFrame, feature_cols: list[str], regime_col: str = "regime"
+) -> dict[int, dict[str, float]]:
+    """Compute mean feature values per regime for display."""
+    result = {}
+    for r in sorted(daily_regimes[regime_col].unique()):
+        rd = daily_regimes[daily_regimes[regime_col] == r]
+        means = {}
+        for col in feature_cols:
+            if col in rd.columns:
+                means[col] = float(rd[col].mean())
+        result[int(r)] = means
+    return result
+
+
+# Human-readable labels for regimes based on vol characteristics
+_VOL_LABELS = ["Low Vol", "Moderate Vol", "Elevated Vol", "High Vol", "Extreme Vol"]
+
+
+def _label_hmm_regime(stat: dict) -> str:
+    """Generate a label for an HMM regime based on vol level."""
+    vol = stat.get("mean_vol")
+    if vol is None:
+        return f"Regime {stat['regime']}"
+    if vol < 0.10:
+        return "Quiet"
+    elif vol < 0.15:
+        return "Low Vol"
+    elif vol < 0.22:
+        return "Normal"
+    elif vol < 0.30:
+        return "Elevated"
+    else:
+        return "Crisis / High Vol"
+
+
+def _label_lstm_regime(stat: dict) -> str:
+    """Generate a label for an LSTM regime from its feature fingerprint."""
+    f = stat.get("features", {})
+    if not f:
+        return f"Cluster {stat['regime']}"
+
+    parts = []
+    # Trend: close vs SMA50
+    sma50 = f.get("close_vs_sma50", 0)
+    if sma50 > 0.02:
+        parts.append("Trending Up")
+    elif sma50 < -0.02:
+        parts.append("Trending Down")
+    else:
+        parts.append("Range-Bound")
+
+    # Vol character
+    vol = f.get("realized_vol_21d", 0)
+    if vol > 0.25:
+        parts.append("High Vol")
+    elif vol < 0.12:
+        parts.append("Low Vol")
+
+    # Volume
+    vz = f.get("volume_zscore", 0)
+    if vz > 0.5:
+        parts.append("Heavy Volume")
+    elif vz < -0.3:
+        parts.append("Thin Volume")
+
+    # Skew
+    up_ratio = f.get("up_vol_ratio", 1.0)
+    if up_ratio > 1.3:
+        parts.append("Bullish Skew")
+    elif up_ratio < 0.7:
+        parts.append("Bearish Skew")
+
+    return " / ".join(parts) if parts else f"Cluster {stat['regime']}"
 
 
 def _attach_summary_rollups(report: dict) -> None:
