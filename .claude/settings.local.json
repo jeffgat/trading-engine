@@ -159,7 +159,9 @@
       "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_exec_portfolio.py --start 2016-01-01 --end 2026-01-01)",
       "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_exec_portfolio.py --risk 5000)",
       "Bash(.venv/bin/pip install databento)",
-      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab .venv/bin/python scripts/fetch_latest_1s.py NQ ES GC)"
+      "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab .venv/bin/python scripts/fetch_latest_1s.py NQ ES GC)",
+      "Bash(python3 /dev/stdin:*)",
+      "Bash(# Check how to run a backtest from CLI ls backtesting/src/orb_backtest/cli*.py backtesting/run*.py backtesting/scripts/*.py)"
     ]
   }
 }
