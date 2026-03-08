@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useBacktestHistory } from "@/backtesting/hooks/useBacktestHistory";
-import type { BacktestResult, MonteCarloResult } from "@/backtesting/lib/types";
+import type { BacktestConfig, BacktestResult, MonteCarloResult } from "@/backtesting/lib/types";
 import { filterTradesByDate } from "@/backtesting/lib/filterTrades";
 import { BacktestHistoryPanel } from './BacktestHistoryPanel';
 import { ConfigBar } from './ConfigBar';
@@ -14,6 +14,20 @@ import { TradesTable } from './TradesTable';
 import { VariablesTested } from './VariablesTested';
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
 import { useRegimeReports } from "@/backtesting/hooks/useRegimeReports";
+
+const SESSION_PREFIXES = ['ny', 'asia', 'ldn'] as const;
+
+function detectSessionsFromConfig(config: BacktestConfig): string[] {
+    const sessions: string[] = [];
+    for (const key of Object.keys(config)) {
+        for (const prefix of SESSION_PREFIXES) {
+            if (key.startsWith(`${prefix}_`) && !sessions.includes(prefix.toUpperCase())) {
+                sessions.push(prefix.toUpperCase());
+            }
+        }
+    }
+    return sessions.length > 0 ? sessions : ["NY"];
+}
 
 export function BacktestDashboard() {
     const { history, activeId, refreshHistory, loadBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
@@ -40,6 +54,35 @@ export function BacktestDashboard() {
     const [mcOpen, setMcOpen] = useState(false);
     const [mcMethod, setMcMethod] = useState<"bootstrap" | "shuffle">("bootstrap");
     const [mcSims, setMcSims] = useState(1000);
+
+    // Save as config state
+    const [saveConfigLoading, setSaveConfigLoading] = useState(false);
+    const [saveConfigMsg, setSaveConfigMsg] = useState<string | null>(null);
+
+    const handleSaveAsConfig = useCallback(async () => {
+        if (!data?.config) return;
+        setSaveConfigLoading(true);
+        setSaveConfigMsg(null);
+        try {
+            const config = data.config;
+            const instrument = (config.instrument as string) ?? "NQ";
+            const sessions = detectSessionsFromConfig(config);
+            const strategy = (config.strategy as string) ?? "continuation";
+            const name = data.name || `${instrument} ${sessions.join("+")} ${strategy}`;
+            const res = await fetch("/bt-api/configs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, instrument, sessions, strategy, config }),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            setSaveConfigMsg("Saved to Configs");
+            setTimeout(() => setSaveConfigMsg(null), 3000);
+        } catch (e) {
+            setSaveConfigMsg(`Failed: ${(e as Error).message}`);
+        } finally {
+            setSaveConfigLoading(false);
+        }
+    }, [data]);
 
     const handleLoad = async (id: string) => {
         setLoading(true);
@@ -135,6 +178,18 @@ export function BacktestDashboard() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
                     <div className="flex items-center gap-2">
+                        {saveConfigMsg && (
+                            <span className={`text-xs ${saveConfigMsg.startsWith("Failed") ? "text-loss" : "text-profit"}`}>
+                                {saveConfigMsg}
+                            </span>
+                        )}
+                        <button
+                            onClick={handleSaveAsConfig}
+                            disabled={!data || saveConfigLoading}
+                            className="rounded-md border border-border bg-bg-secondary px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-card-hover disabled:opacity-50"
+                        >
+                            {saveConfigLoading ? "Saving..." : "Save as Config"}
+                        </button>
                         <select
                             value={regimeMethod}
                             onChange={(e) => setRegimeMethod(e.target.value as "both" | "hmm" | "lstm")}

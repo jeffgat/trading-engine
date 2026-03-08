@@ -57,6 +57,11 @@ from orb_backtest.experiments import (
     list_risk_engine_layouts,
     save_risk_engine_layout,
     delete_risk_engine_layout,
+    list_saved_configs,
+    get_saved_config,
+    create_saved_config,
+    update_saved_config,
+    delete_saved_config,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -452,6 +457,62 @@ async def upload_db(request: Request):
         "optimizations": opt_count,
         "starred": starred,
     })
+
+
+# --- Saved Configs CRUD ---
+
+class SavedConfigRequest(BaseModel):
+    name: str
+    notes: Optional[str] = None
+    instrument: str
+    sessions: list[str]
+    strategy: str
+    config: dict
+
+@app.get("/api/configs")
+def list_configs(limit: int = 200):
+    return ok(list_saved_configs(limit=limit))
+
+@app.get("/api/configs/{config_id}")
+def get_config(config_id: int):
+    row = get_saved_config(config_id)
+    if row is None:
+        return fail("not found", 404)
+    return ok(row)
+
+@app.post("/api/configs")
+def create_config(req: SavedConfigRequest):
+    result = create_saved_config(
+        name=req.name,
+        notes=req.notes,
+        instrument=req.instrument,
+        sessions=req.sessions,
+        strategy=req.strategy,
+        config=req.config,
+    )
+    return ok(result)
+
+@app.put("/api/configs/{config_id}")
+def update_config(config_id: int, req: SavedConfigRequest):
+    result = update_saved_config(
+        config_id=config_id,
+        name=req.name,
+        notes=req.notes,
+        instrument=req.instrument,
+        sessions=req.sessions,
+        strategy=req.strategy,
+        config=req.config,
+    )
+    if result is None:
+        return fail("not found", 404)
+    return ok(result)
+
+@app.delete("/api/configs/{config_id}")
+def delete_config_ep(config_id: int):
+    success = delete_saved_config(config_id)
+    if not success:
+        return fail("not found", 404)
+    return ok({"deleted": True})
 
 
 if __name__ == "__main__":
