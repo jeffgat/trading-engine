@@ -197,6 +197,22 @@ CREATE TABLE IF NOT EXISTS risk_engine_layouts (
 );
 """
 
+_SAVED_CONFIGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS saved_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    name TEXT NOT NULL,
+    notes TEXT,
+    instrument TEXT NOT NULL,
+    sessions TEXT NOT NULL,
+    strategy TEXT NOT NULL,
+    config_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_saved_configs_instrument ON saved_configs(instrument);
+CREATE INDEX IF NOT EXISTS idx_saved_configs_strategy ON saved_configs(strategy);
+"""
+
 _NEWS_STRADDLE_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS news_straddle_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,6 +275,7 @@ def init_db() -> Path:
         conn.executescript(_TESTING_PLAN_SCHEMA)
         conn.executescript(_NEWS_STRADDLE_SCHEMA)
         conn.executescript(_RISK_ENGINE_LAYOUTS_SCHEMA)
+        conn.executescript(_SAVED_CONFIGS_SCHEMA)
         conn.executescript(_REGIME_REPORTS_SCHEMA)
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
@@ -1617,6 +1634,174 @@ def delete_risk_engine_layout(name: str) -> bool:
         )
         return cur.rowcount > 0
 
+
+# ---------------------------------------------------------------------------
+# Saved configs CRUD
+# ---------------------------------------------------------------------------
+
+
+def list_saved_configs(limit: int = 200) -> list[dict]:
+    """List saved config presets (most recent first)."""
+    init_db()
+    sql = """
+        SELECT id, timestamp, updated_at, name, notes, instrument, sessions, strategy, config_json
+        FROM saved_configs
+        ORDER BY updated_at DESC, id DESC
+        LIMIT ?
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, [limit]).fetchall()
+    results: list[dict] = []
+    for row in rows:
+        results.append({
+            "id": row["id"],
+            "timestamp": row["timestamp"],
+            "updated_at": row["updated_at"],
+            "name": row["name"],
+            "notes": row["notes"],
+            "instrument": row["instrument"],
+            "sessions": (row["sessions"] or "").split("+") if row["sessions"] else [],
+            "strategy": row["strategy"],
+            "config": json.loads(row["config_json"]) if row["config_json"] else {},
+        })
+    return results
+
+
+def get_saved_config(config_id: int) -> dict | None:
+    """Load a saved config by id."""
+    init_db()
+    sql = """
+        SELECT id, timestamp, updated_at, name, notes, instrument, sessions, strategy, config_json
+        FROM saved_configs
+        WHERE id = ?
+        LIMIT 1
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(sql, [config_id]).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row["id"],
+        "timestamp": row["timestamp"],
+        "updated_at": row["updated_at"],
+        "name": row["name"],
+        "notes": row["notes"],
+        "instrument": row["instrument"],
+        "sessions": (row["sessions"] or "").split("+") if row["sessions"] else [],
+        "strategy": row["strategy"],
+        "config": json.loads(row["config_json"]) if row["config_json"] else {},
+    }
+
+
+def create_saved_config(
+    *,
+    name: str,
+    notes: str | None,
+    instrument: str,
+    sessions: list[str],
+    strategy: str,
+    config: dict,
+) -> dict:
+    """Create a new saved config and return it."""
+    init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    sessions_str = "+".join(sessions)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            """INSERT INTO saved_configs
+               (timestamp, updated_at, name, notes, instrument, sessions, strategy, config_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                now,
+                now,
+                name,
+                notes,
+                instrument,
+                sessions_str,
+                strategy,
+                _dumps(config),
+            ),
+        )
+        row_id = cur.lastrowid
+        row = conn.execute(
+            "SELECT id, timestamp, updated_at, name, notes, instrument, sessions, strategy, config_json "
+            "FROM saved_configs WHERE id = ?",
+            [row_id],
+        ).fetchone()
+    return {
+        "id": row["id"],
+        "timestamp": row["timestamp"],
+        "updated_at": row["updated_at"],
+        "name": row["name"],
+        "notes": row["notes"],
+        "instrument": row["instrument"],
+        "sessions": (row["sessions"] or "").split("+") if row["sessions"] else [],
+        "strategy": row["strategy"],
+        "config": json.loads(row["config_json"]) if row["config_json"] else {},
+    }
+
+
+def update_saved_config(
+    config_id: int,
+    *,
+    name: str,
+    notes: str | None,
+    instrument: str,
+    sessions: list[str],
+    strategy: str,
+    config: dict,
+) -> dict | None:
+    """Update a saved config. Returns updated object or None if missing."""
+    init_db()
+    now = datetime.now(timezone.utc).isoformat()
+    sessions_str = "+".join(sessions)
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            """UPDATE saved_configs
+               SET updated_at = ?, name = ?, notes = ?, instrument = ?, sessions = ?, strategy = ?, config_json = ?
+               WHERE id = ?""",
+            (
+                now,
+                name,
+                notes,
+                instrument,
+                sessions_str,
+                strategy,
+                _dumps(config),
+                config_id,
+            ),
+        )
+        if cur.rowcount == 0:
+            return None
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT id, timestamp, updated_at, name, notes, instrument, sessions, strategy, config_json "
+            "FROM saved_configs WHERE id = ?",
+            [config_id],
+        ).fetchone()
+    return {
+        "id": row["id"],
+        "timestamp": row["timestamp"],
+        "updated_at": row["updated_at"],
+        "name": row["name"],
+        "notes": row["notes"],
+        "instrument": row["instrument"],
+        "sessions": (row["sessions"] or "").split("+") if row["sessions"] else [],
+        "strategy": row["strategy"],
+        "config": json.loads(row["config_json"]) if row["config_json"] else {},
+    }
+
+
+def delete_saved_config(config_id: int) -> bool:
+    """Delete a saved config by id. Returns True if deleted."""
+    init_db()
+    backup_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute("DELETE FROM saved_configs WHERE id = ?", [config_id])
+        return cur.rowcount > 0
 
 # ---------------------------------------------------------------------------
 # Dual-write: always save locally, also send to remote when configured.

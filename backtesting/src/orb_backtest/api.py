@@ -105,6 +105,11 @@ from .experiments import (
     list_regime_reports,
     get_regime_report,
     delete_regime_report,
+    list_saved_configs,
+    get_saved_config,
+    create_saved_config,
+    update_saved_config,
+    delete_saved_config,
 )
 from .analysis.regime_reports import build_regime_report, RegimeReportConfig
 
@@ -699,6 +704,67 @@ def delete_plan_item(item_id: int):
 def reorder_plan(req: TestingPlanReorderRequest):
     reorder_testing_plan(req.instrument, req.item_ids)
     return ok({"reordered": True})
+
+
+# ── Saved configs endpoints ──────────────────────────────────────────
+
+
+class SavedConfigRequest(BaseModel):
+    name: str
+    notes: Optional[str] = None
+    instrument: str
+    sessions: list[str]
+    strategy: str
+    config: dict[str, Any]
+
+
+@app.get("/api/configs")
+def list_configs(limit: int = Query(200)):
+    return ok(list_saved_configs(limit=limit))
+
+
+@app.get("/api/configs/{config_id}")
+def get_config(config_id: int):
+    result = get_saved_config(config_id)
+    if result is None:
+        raise BacktestError("CONFIG_NOT_FOUND", f"Config '{config_id}' not found", "Check the config id", status_code=404)
+    return ok(result)
+
+
+@app.post("/api/configs")
+def create_config(req: SavedConfigRequest):
+    result = create_saved_config(
+        name=req.name.strip(),
+        notes=req.notes,
+        instrument=req.instrument,
+        sessions=req.sessions,
+        strategy=req.strategy,
+        config=req.config,
+    )
+    return ok(result)
+
+
+@app.put("/api/configs/{config_id}")
+def update_config(config_id: int, req: SavedConfigRequest):
+    result = update_saved_config(
+        config_id,
+        name=req.name.strip(),
+        notes=req.notes,
+        instrument=req.instrument,
+        sessions=req.sessions,
+        strategy=req.strategy,
+        config=req.config,
+    )
+    if result is None:
+        raise BacktestError("CONFIG_NOT_FOUND", f"Config '{config_id}' not found", "Check the config id", status_code=404)
+    return ok(result)
+
+
+@app.delete("/api/configs/{config_id}")
+def delete_config(config_id: int):
+    if not delete_saved_config(config_id):
+        raise BacktestError("CONFIG_NOT_FOUND", f"Config '{config_id}' not found", "Check the config id", status_code=404)
+    return ok({"deleted": True})
 
 
 # ── VWAP Reversion endpoints ────────────────────────────────────────

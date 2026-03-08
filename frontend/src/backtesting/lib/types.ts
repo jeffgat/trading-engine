@@ -99,6 +99,18 @@ export interface BacktestResult {
   equity_curve: EquityCurvePoint[];
 }
 
+export interface SavedConfig {
+  id: number;
+  timestamp: string;
+  updated_at: string;
+  name: string;
+  notes?: string | null;
+  instrument: string;
+  sessions: string[];
+  strategy: string;
+  config: BacktestConfig;
+}
+
 export interface BacktestHistoryItem {
   id: string;
   timestamp: string;
