@@ -162,7 +162,9 @@
       "Bash(DATABENTO_API_KEY=db-BuvVPgWhxExBAAFaSkqhq4xNyHYab .venv/bin/python scripts/fetch_latest_1s.py NQ ES GC)",
       "Bash(python3 /dev/stdin:*)",
       "Bash(# Check how to run a backtest from CLI ls backtesting/src/orb_backtest/cli*.py backtesting/run*.py backtesting/scripts/*.py)",
-      "Bash(uv pip list)"
+      "Bash(uv pip list)",
+      "Bash(gh run list --limit 5)",
+      "Bash(gh run view 22824467259 --log)"
     ]
   }
 }
