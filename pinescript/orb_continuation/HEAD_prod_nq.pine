@@ -1,6 +1,6 @@
 //@version=6
 strategy(
-     title              = "ORB V6 NQ Combined Longs (NY R11 + London + Asia R9)",
+     title              = "ORB V6 NQ Combined Longs (NY R11 + Asia R9)",
      overlay            = true,
      initial_capital    = 50000,
      pyramiding         = 0,
@@ -18,8 +18,7 @@ strategy(
 // Inputs - Shared Risk Settings
 // ----------------------------------------------------------------------------------------
 nyRiskUsd    = input.float(200, "NY Risk per trade ($)", step=50, group="Risk Settings")
-asiaRiskUsd  = input.float(150, "Asia Risk per trade ($)", step=50, group="Risk Settings")
-ldnRiskUsd   = input.float(150, "London Risk per trade ($)", step=50, group="Risk Settings")
+asiaRiskUsd  = input.float(200, "Asia Risk per trade ($)", step=50, group="Risk Settings")
 minQty       = input.float(1.0, "Min Qty", step=0.1, group="Risk Settings")
 qtyStep      = input.float(1.0, "Qty Step", step=0.1, group="Risk Settings")
 beOffsetTicks = input.int(4, "BE Offset (ticks)", step=1, tooltip="Ticks above entry for BE stop to cover commission (Asia only). NY uses 0.", group="Risk Settings")
@@ -33,27 +32,14 @@ asiaSessionRTH   = input.session("1800-0700", "Asia RTH (ny time)", group="Asia 
 asiaOrbSession   = input.session("2000-2015", "Asia ORB window (ny time)", group="Asia Session")
 asiaEntryWindow  = input.session("2015-2230", "Asia Entry window (ny time)", group="Asia Session")
 asiaFlatWindow   = input.session("0400-0700", "Asia Flat window (ny time)", group="Asia Session")
-asiaRR           = input.float(6.0, "Reward/Risk", step=0.25, group="Asia Session")
-asiaTP1Ratio     = input.float(0.3, "Partial TP & BE Level (0.3 = 30% of target)", step=0.1, minval=0.1, maxval=0.9, group="Asia Session")
-asiaStopOrbPct   = input.float(100.0, "Asia Stop Loss (% ORB range)", step=5.0, minval=10.0, tooltip="Stop distance as percentage of ORB range", group="Asia Session")
-asiaMinGapOrbPct = input.float(10.0, "Asia Min Gap (% ORB range)", step=1.0, tooltip="Minimum gap size as percentage of ORB range", group="Asia Session")
+asiaRR           = input.float(5.0, "Reward/Risk", step=0.25, group="Asia Session")
+asiaTP1Ratio     = input.float(0.25, "Partial TP & BE Level (0.25 = 25% of target)", step=0.1, minval=0.1, maxval=0.9, group="Asia Session")
+asiaStopOrbPct   = input.float(150.0, "Asia Stop Loss (% ORB range)", step=5.0, minval=10.0, tooltip="Stop distance as percentage of ORB range", group="Asia Session")
+asiaMinGapOrbPct = input.float(15.0, "Asia Min Gap (% ORB range)", step=1.0, tooltip="Minimum gap size as percentage of ORB range", group="Asia Session")
 asiaExcludeTuesday = input.bool(true, "Exclude Tuesday sessions", tooltip="Skip Asia sessions where the 20:00 bar falls on Tuesday", group="Asia Session")
 
 // ----------------------------------------------------------------------------------------
-// Inputs - London Session Settings (long only, ATR-based stop and gap filters)
-// ----------------------------------------------------------------------------------------
-ldnAtrLength     = input.int(12, "London ATR Length", minval=1, group="London Session")
-ldnSessionRTH    = input.session("0300-0925", "London RTH (ny time)", group="London Session")
-ldnOrbSession    = input.session("0300-0330", "London ORB window (ny time)", group="London Session")
-ldnEntryWindow   = input.session("0330-0825", "London Entry window (ny time)", group="London Session")
-ldnFlatWindow    = input.session("0820-0825", "London Flat window (ny time)", group="London Session")
-ldnRR            = input.float(6.0, "Reward/Risk", step=0.25, group="London Session")
-ldnTP1Ratio      = input.float(0.7, "Partial TP & BE Level (0.7 = 70% of target)", step=0.1, minval=0.1, maxval=0.9, group="London Session")
-ldnMinGapAtrPct  = input.float(1.0, "London Min Gap (% ATR)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR", group="London Session")
-ldnStopAtrPct    = input.float(1.5, "London Stop Loss (% ATR)", step=0.5, minval=0.5, tooltip="Stop distance as percentage of daily ATR", group="London Session")
-
-// ----------------------------------------------------------------------------------------
-// Inputs - NY Session Settings (R11 — long only, ICF OFF, Friday exclusion)
+// Inputs - NY Session Settings (long only, ICF OFF, Friday exclusion)
 // ATR-based stop and gap filters
 // ----------------------------------------------------------------------------------------
 nyAtrLength      = input.int(12, "NY ATR Length", minval=1, group="NY Session")
@@ -92,15 +78,6 @@ inAsiaORB      = not na(time(timeframe.period, asiaOrbSession, "America/New_York
 inAsiaEntryWin = not na(time(timeframe.period, asiaEntryWindow, "America/New_York"))
 inAsiaFlatWin  = not na(time(timeframe.period, asiaFlatWindow, "America/New_York"))
 asiaAfterCutoff = inAsiaRTH and not inAsiaEntryWin
-
-// ----------------------------------------------------------------------------------------
-// Session filters - London
-// ----------------------------------------------------------------------------------------
-inLdnRTH      = not na(time(timeframe.period, ldnSessionRTH, "America/New_York"))
-inLdnORB      = not na(time(timeframe.period, ldnOrbSession, "America/New_York"))
-inLdnEntryWin = not na(time(timeframe.period, ldnEntryWindow, "America/New_York"))
-inLdnFlatWin  = not na(time(timeframe.period, ldnFlatWindow, "America/New_York"))
-ldnAfterCutoff = inLdnRTH and not inLdnEntryWin
 
 // ----------------------------------------------------------------------------------------
 // Session filters - NY
@@ -158,32 +135,7 @@ var int asia_longSetupBar  = na
 var int asia_fillBar = na
 
 // ----------------------------------------------------------------------------------------
-// London Session State Variables (long only)
-// ----------------------------------------------------------------------------------------
-var float ldn_orbHigh  = na
-var float ldn_orbLow   = na
-var bool  ldn_orbReady = false
-var bool  ldn_hasTradedToday = false
-var int   ldn_closedTradesAtDayStart = 0
-
-var bool  ldn_longSetupActive  = false
-var bool  ldn_longFirstFvgFound  = false
-
-var float ldn_longStopStored   = na
-var float ldn_longTargetStored = na
-var float ldn_longHalfwayStored = na
-var float ldn_longEntryStored  = na
-var float ldn_longQtyStored    = na
-var float ldn_longHalfQty      = na
-var bool  ldn_longBEActive      = false
-var bool  ldn_longSingleContract = false
-var float ldn_longFilledEntry  = na
-
-var int ldn_longSetupBar  = na
-var int ldn_fillBar = na
-
-// ----------------------------------------------------------------------------------------
-// NY Session State Variables (R11 — long only)
+// NY Session State Variables (long only)
 // ----------------------------------------------------------------------------------------
 var float ny_orbHigh  = na
 var float ny_orbLow   = na
@@ -239,27 +191,6 @@ if newDay
     asia_longSetupBar := na
     asia_fillBar := na
 
-    // London reset
-    ldn_orbHigh := na
-    ldn_orbLow  := na
-    ldn_orbReady := false
-    ldn_hasTradedToday := false
-    ldn_closedTradesAtDayStart := strategy.closedtrades
-
-    ldn_longSetupActive := false
-    ldn_longFirstFvgFound := false
-    ldn_longStopStored := na
-    ldn_longTargetStored := na
-    ldn_longHalfwayStored := na
-    ldn_longEntryStored := na
-    ldn_longQtyStored := na
-    ldn_longHalfQty := na
-    ldn_longBEActive := false
-    ldn_longSingleContract := false
-    ldn_longFilledEntry := na
-    ldn_longSetupBar := na
-    ldn_fillBar := na
-
     // NY reset
     ny_orbHigh := na
     ny_orbLow  := na
@@ -285,7 +216,6 @@ if newDay
     activeSession := na
 
     strategy.cancel("AL")
-    strategy.cancel("LL")
     strategy.cancel("NL")
 
 // ----------------------------------------------------------------------------------------
@@ -299,15 +229,6 @@ if asiaTradeHappened and not asia_hasTradedToday
     asia_longFirstFvgFound := true
     asia_longEntryStored := na
     strategy.cancel("AL")
-
-ldnTradeHappened = ((strategy.opentrades > 0 and activeSession == "ldn") or (strategy.closedtrades > ldn_closedTradesAtDayStart and activeSession == "ldn"))
-
-if ldnTradeHappened and not ldn_hasTradedToday
-    ldn_hasTradedToday := true
-    ldn_longSetupActive := false
-    ldn_longFirstFvgFound := true
-    ldn_longEntryStored := na
-    strategy.cancel("LL")
 
 nyTradeHappened = ((strategy.opentrades > 0 and activeSession == "ny") or (strategy.closedtrades > ny_closedTradesAtDayStart and activeSession == "ny"))
 
@@ -329,16 +250,6 @@ if not inAsiaORB and inAsiaRTH and is5m and not asia_orbReady and not na(asia_or
     asia_orbReady := true
 
 // ----------------------------------------------------------------------------------------
-// Build ORB - London (03:00-03:30, 6 bars)
-// ----------------------------------------------------------------------------------------
-if inLdnORB and inLdnRTH and is5m
-    ldn_orbHigh := na(ldn_orbHigh) ? high : math.max(ldn_orbHigh, high)
-    ldn_orbLow  := na(ldn_orbLow)  ? low  : math.min(ldn_orbLow, low)
-
-if not inLdnORB and inLdnRTH and is5m and not ldn_orbReady and not na(ldn_orbHigh) and not na(ldn_orbLow)
-    ldn_orbReady := true
-
-// ----------------------------------------------------------------------------------------
 // Build ORB - NY (09:30-09:50, 4 bars)
 // ----------------------------------------------------------------------------------------
 if inNyORB and inNyRTH and is5m and not ny_sessionSkipped
@@ -349,10 +260,9 @@ if not inNyORB and inNyRTH and is5m and not ny_orbReady and not na(ny_orbHigh) a
     ny_orbReady := true
 
 // ----------------------------------------------------------------------------------------
-// Daily ATR — London and NY (Asia uses ORB range, not ATR)
+// Daily ATR — NY (Asia uses ORB range, not ATR)
 // ----------------------------------------------------------------------------------------
 dailyATR_ny  = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
-dailyATR_ldn = request.security(syminfo.tickerid, "D", ta.atr(ldnAtrLength)[1], lookahead=barmerge.lookahead_on)
 
 // ----------------------------------------------------------------------------------------
 // ORB range for Asia stop/gap calculations
@@ -361,10 +271,9 @@ asiaOrbRange = not na(asia_orbHigh) and not na(asia_orbLow) ? (asia_orbHigh - as
 
 // ----------------------------------------------------------------------------------------
 // FVG size requirements
-// Asia: ORB-based gap filter | London & NY: ATR-based gap filter
+// Asia: ORB-based gap filter | NY: ATR-based gap filter
 // ----------------------------------------------------------------------------------------
 asiaMinGap = (asiaMinGapOrbPct / 100) * asiaOrbRange
-ldnMinGap  = (ldnMinGapAtrPct / 100) * nz(dailyATR_ldn)
 nyMinGap   = (nyMinGapAtrPct / 100) * nz(dailyATR_ny)
 
 // ----------------------------------------------------------------------------------------
@@ -380,10 +289,6 @@ baseLongFVG = high[2] < low and high[2] < high[1] and low[2] < low
 asiaLongGapValid = longGapSize >= asiaMinGap
 asiaLongOrbOk    = longFvgTop > asia_orbHigh
 asiaLongFVG      = baseLongFVG and asiaLongOrbOk and asiaLongGapValid
-
-// London FVG validation (long only, ICF OFF: standard ORB check only)
-ldnLongGapValid = longGapSize >= ldnMinGap
-ldnLongFVG      = baseLongFVG and longFvgTop > ldn_orbHigh and ldnLongGapValid
 
 // NY FVG validation (long only, ICF OFF: standard ORB check only)
 nyLongGapValid = longGapSize >= nyMinGap
@@ -428,35 +333,6 @@ if asiaCanArmSetup and not asia_longFirstFvgFound and asiaLongFVG
             asia_longSetupBar     := bar_index
 
 // ----------------------------------------------------------------------------------------
-// Activate setup - London Session (long only, ATR-based stop)
-// ----------------------------------------------------------------------------------------
-ldnCanArmSetup = (is5m and barClosed and inLdnRTH and inLdnEntryWin and ldn_orbReady and not ldn_hasTradedToday and not isExcludedDate and strategy.position_size == 0 and not ldn_longSetupActive)
-
-if ldnCanArmSetup and not ldn_longFirstFvgFound and ldnLongFVG
-    entry   = longFvgTop
-    stop    = entry - (ldnStopAtrPct / 100) * nz(dailyATR_ldn)
-    riskPts = entry - stop
-
-    if riskPts > 0
-        qtyRaw = ldnRiskUsd / (riskPts * execPointValue)
-        qty    = floorToStep(qtyRaw, qtyStep)
-        isSingleContract = qty <= minQty
-        halfQty = isSingleContract ? qty : floorToStep(qty / 2, qtyStep)
-        halfQty := math.max(halfQty, minQty)
-
-        if qty >= minQty
-            ldn_longStopStored   := stop
-            ldn_longTargetStored := entry + ldnRR * riskPts
-            ldn_longHalfwayStored := entry + (ldnRR * riskPts * ldnTP1Ratio)
-            ldn_longEntryStored  := entry
-            ldn_longQtyStored    := qty
-            ldn_longHalfQty      := halfQty
-            ldn_longSingleContract := isSingleContract
-            ldn_longSetupActive  := true
-            ldn_longFirstFvgFound := true
-            ldn_longSetupBar     := bar_index
-
-// ----------------------------------------------------------------------------------------
 // Activate setup - NY Session (long only, ATR-based stop)
 // ----------------------------------------------------------------------------------------
 nyCanArmSetup = (is5m and barClosed and inNyRTH and inNyEntryWin and ny_orbReady and not ny_hasTradedToday and not ny_sessionSkipped and not isExcludedDate and strategy.position_size == 0 and not ny_longSetupActive)
@@ -492,10 +368,6 @@ if strategy.position_size > 0 and na(asia_longFilledEntry) and asia_longSetupAct
     asia_longFilledEntry := strategy.opentrades.entry_price(0)
     activeSession := "asia"
     asia_fillBar := bar_index
-if strategy.position_size > 0 and na(ldn_longFilledEntry) and ldn_longSetupActive
-    ldn_longFilledEntry := strategy.opentrades.entry_price(0)
-    activeSession := "ldn"
-    ldn_fillBar := bar_index
 if strategy.position_size > 0 and na(ny_longFilledEntry) and ny_longSetupActive
     ny_longFilledEntry := strategy.opentrades.entry_price(0)
     activeSession := "ny"
@@ -519,18 +391,6 @@ if strategy.position_size > 0 and activeSession == "asia" and not na(asia_fillBa
             asia_longBEActive := true
 
 // ----------------------------------------------------------------------------------------
-// Update breakeven state - London (gated on fill bar + 1)
-// ----------------------------------------------------------------------------------------
-if strategy.position_size > 0 and activeSession == "ldn" and not na(ldn_fillBar) and bar_index > ldn_fillBar
-    if ldn_longSingleContract
-        if not na(ldn_longHalfwayStored) and high >= ldn_longHalfwayStored
-            ldn_longBEActive := true
-    else
-        positionReduced = strategy.position_size < ldn_longQtyStored and ldn_longQtyStored > 0 and not na(ldn_longFilledEntry)
-        if positionReduced
-            ldn_longBEActive := true
-
-// ----------------------------------------------------------------------------------------
 // Update breakeven state - NY (gated on fill bar + 1)
 // ----------------------------------------------------------------------------------------
 if strategy.position_size > 0 and activeSession == "ny" and not na(ny_fillBar) and bar_index > ny_fillBar
@@ -548,13 +408,6 @@ if strategy.position_size > 0 and activeSession == "ny" and not na(ny_fillBar) a
 if is5m and inAsiaRTH and inAsiaEntryWin and not asia_hasTradedToday and not asia_sessionSkipped and strategy.position_size == 0
     if asia_longSetupActive and bar_index > asia_longSetupBar
         strategy.entry("AL", strategy.long, qty=asia_longQtyStored, limit=asia_longEntryStored)
-
-// ----------------------------------------------------------------------------------------
-// Entry orders - London (long only)
-// ----------------------------------------------------------------------------------------
-if is5m and inLdnRTH and inLdnEntryWin and not ldn_hasTradedToday and strategy.position_size == 0
-    if ldn_longSetupActive and bar_index > ldn_longSetupBar
-        strategy.entry("LL", strategy.long, qty=ldn_longQtyStored, limit=ldn_longEntryStored)
 
 // ----------------------------------------------------------------------------------------
 // Entry orders - NY (long only)
@@ -575,19 +428,6 @@ if strategy.position_size > 0 and activeSession == "asia" and not na(asia_fillBa
     else
         strategy.exit("AL-P", from_entry="AL", qty=asia_longHalfQty, stop=finalStop, limit=asia_longHalfwayStored, comment_loss=asia_longBEActive ? "a-l-be" : "a-l-sl", comment_profit="a-l-tp1")
         strategy.exit("AL-F", from_entry="AL", stop=finalStop, limit=asia_longTargetStored, comment_loss=asia_longBEActive ? "a-l-be" : "a-l-sl", comment_profit="a-l-tp2")
-
-// ----------------------------------------------------------------------------------------
-// Exit orders - London (gated on fill bar, BE at entry = 0 offset)
-// ----------------------------------------------------------------------------------------
-if strategy.position_size > 0 and activeSession == "ldn" and not na(ldn_fillBar) and bar_index >= ldn_fillBar
-    beStopPrice = not na(ldn_longFilledEntry) ? ldn_longFilledEntry : ldn_longEntryStored
-    finalStop = ldn_longBEActive ? beStopPrice : ldn_longStopStored
-
-    if ldn_longSingleContract
-        strategy.exit("LL-F", from_entry="LL", stop=finalStop, limit=ldn_longTargetStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp2")
-    else
-        strategy.exit("LL-P", from_entry="LL", qty=ldn_longHalfQty, stop=finalStop, limit=ldn_longHalfwayStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp1")
-        strategy.exit("LL-F", from_entry="LL", stop=finalStop, limit=ldn_longTargetStored, comment_loss=ldn_longBEActive ? "l-l-be" : "l-l-sl", comment_profit="l-l-tp2")
 
 // ----------------------------------------------------------------------------------------
 // Exit orders - NY (gated on fill bar, BE at entry = 0 offset)
@@ -622,25 +462,6 @@ if not inAsiaRTH
     asia_longSetupBar := na
 
 // ----------------------------------------------------------------------------------------
-// Cancel pending orders after cutoff - London
-// ----------------------------------------------------------------------------------------
-if ldnAfterCutoff
-    if ldn_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
-    strategy.cancel("LL")
-    ldn_longSetupActive := false
-    ldn_longEntryStored := na
-    ldn_longSetupBar := na
-
-if not inLdnRTH
-    if ldn_longSetupActive and strategy.position_size == 0
-        alert('{"ticker": "MNQ", "action": "cancel"}', alert.freq_once_per_bar_close)
-    strategy.cancel("LL")
-    ldn_longSetupActive := false
-    ldn_longEntryStored := na
-    ldn_longSetupBar := na
-
-// ----------------------------------------------------------------------------------------
 // Cancel pending orders after cutoff - NY
 // ----------------------------------------------------------------------------------------
 if nyAfterCutoff
@@ -665,9 +486,6 @@ if not inNyRTH
 if inAsiaFlatWin and strategy.position_size > 0 and activeSession == "asia"
     strategy.close("AL", comment="asia-eod-flat")
 
-if inLdnFlatWin and strategy.position_size > 0 and activeSession == "ldn"
-    strategy.close("LL", comment="ldn-eod-flat")
-
 nyFlatNow = isNyHalfDay ? inNyHalfDayFlatWin : inNyFlatWin
 if nyFlatNow and strategy.position_size > 0 and activeSession == "ny"
     strategy.close("NL", comment="ny-eod-flat")
@@ -675,32 +493,32 @@ if nyFlatNow and strategy.position_size > 0 and activeSession == "ny"
 // ----------------------------------------------------------------------------------------
 // Hidden Plots for TradersPost Webhooks
 // ----------------------------------------------------------------------------------------
-currentTP1 = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longHalfwayStored : activeSession == "ldn" ? ldn_longHalfwayStored : ny_longHalfwayStored) : na
+currentTP1 = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longHalfwayStored : ny_longHalfwayStored) : na
 
-currentTP2 = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longTargetStored : activeSession == "ldn" ? ldn_longTargetStored : ny_longTargetStored) : na
+currentTP2 = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longTargetStored : ny_longTargetStored) : na
 
-currentStop = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longStopStored : activeSession == "ldn" ? ldn_longStopStored : ny_longStopStored) : na
+currentStop = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longStopStored : ny_longStopStored) : na
 
-currentBE = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longFilledEntry + beOffset : activeSession == "ldn" ? ldn_longFilledEntry : ny_longFilledEntry) : na
+currentBE = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longFilledEntry + beOffset : ny_longFilledEntry) : na
 
-currentEntry = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longEntryStored : activeSession == "ldn" ? ldn_longEntryStored : ny_longEntryStored) : na
+currentEntry = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longEntryStored : ny_longEntryStored) : na
 
-currentQty = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longQtyStored : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longQtyStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longQtyStored : strategy.position_size > 0 ? (activeSession == "asia" ? asia_longQtyStored : activeSession == "ldn" ? ldn_longQtyStored : ny_longQtyStored) : na
+currentQty = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longQtyStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longQtyStored : strategy.position_size > 0 ? (activeSession == "asia" ? asia_longQtyStored : ny_longQtyStored) : na
 
-currentHalfQty = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longHalfQty : activeSession == "ldn" ? ldn_longHalfQty : ny_longHalfQty) : na
-currentSingleContract = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longSingleContract : activeSession == "ldn" ? ldn_longSingleContract : ny_longSingleContract) : false
+currentHalfQty = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longHalfQty : ny_longHalfQty) : na
+currentSingleContract = strategy.position_size > 0 ? (activeSession == "asia" ? asia_longSingleContract : ny_longSingleContract) : false
 
-setupEntry = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longEntryStored : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longEntryStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longEntryStored : na
+setupEntry = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longEntryStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longEntryStored : na
 
-setupStop = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longStopStored : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longStopStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longStopStored : na
+setupStop = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longStopStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longStopStored : na
 
-setupTP1 = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longHalfwayStored : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longHalfwayStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longHalfwayStored : na
+setupTP1 = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longHalfwayStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longHalfwayStored : na
 
-setupTP2 = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longTargetStored : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longTargetStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longTargetStored : na
+setupTP2 = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longTargetStored : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longTargetStored : na
 
-setupHalfQty = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longHalfQty : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longHalfQty : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longHalfQty : na
+setupHalfQty = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longHalfQty : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longHalfQty : na
 
-setupSingleContract = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longSingleContract : (ldn_longSetupActive and ldn_longSetupActive[1] == false) ? ldn_longSingleContract : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longSingleContract : false
+setupSingleContract = (asia_longSetupActive and asia_longSetupActive[1] == false) ? asia_longSingleContract : (ny_longSetupActive and ny_longSetupActive[1] == false) ? ny_longSingleContract : false
 
 plot(currentTP1, "TP1", display=display.none)
 plot(currentTP2, "TP2", display=display.none)
@@ -717,10 +535,10 @@ plot(setupTP2, "SetupTP2", display=display.none)
 // ----------------------------------------------------------------------------------------
 // Alert Conditions for TradersPost
 // ----------------------------------------------------------------------------------------
-longEntrySignal = ((asia_longSetupActive and asia_longSetupActive[1] == false) or (ldn_longSetupActive and ldn_longSetupActive[1] == false) or (ny_longSetupActive and ny_longSetupActive[1] == false))
+longEntrySignal = ((asia_longSetupActive and asia_longSetupActive[1] == false) or (ny_longSetupActive and ny_longSetupActive[1] == false))
 
 // TP1 hit detection (long only)
-activeFillBar = activeSession == "asia" ? asia_fillBar : activeSession == "ldn" ? ldn_fillBar : activeSession == "ny" ? ny_fillBar : na
+activeFillBar = activeSession == "asia" ? asia_fillBar : activeSession == "ny" ? ny_fillBar : na
 positionMature = not na(activeFillBar) and bar_index > activeFillBar
 
 tp1TouchLong = strategy.position_size > 0 and not na(currentTP1) and high >= currentTP1 and positionMature
@@ -759,9 +577,6 @@ prevPos := strategy.position_size
 if inAsiaFlatWin and strategy.position_size > 0 and activeSession == "asia"
     alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
 
-if inLdnFlatWin and strategy.position_size > 0 and activeSession == "ldn"
-    alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
-
 nyFlatAlertNow = isNyHalfDay ? inNyHalfDayFlatWin : inNyFlatWin
 if nyFlatAlertNow and strategy.position_size > 0 and activeSession == "ny"
     alert('{"ticker": "MNQ", "action": "exit"}', alert.freq_once_per_bar_close)
@@ -772,10 +587,6 @@ if nyFlatAlertNow and strategy.position_size > 0 and activeSession == "ny"
 plotAsiaORB = inAsiaRTH and inAsiaEntryWin
 plot(plotAsiaORB ? asia_orbHigh : na, "Asia ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#2196F3, 0))
 plot(plotAsiaORB ? asia_orbLow  : na, "Asia ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#64B5F6, 0))
-
-plotLdnORB = inLdnRTH and inLdnEntryWin
-plot(plotLdnORB ? ldn_orbHigh : na, "London ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#FF9800, 0))
-plot(plotLdnORB ? ldn_orbLow  : na, "London ORB Low",  style=plot.style_linebr, linewidth=2, color=color.new(#FFB74D, 0))
 
 plotNyORB = inNyRTH and inNyEntryWin
 plot(plotNyORB ? ny_orbHigh : na, "NY ORB High", style=plot.style_linebr, linewidth=2, color=color.new(#18b79c, 0))

@@ -597,8 +597,8 @@ def create_app(state: DashboardState) -> FastAPI:
     @app.put("/api/config/exec/{config_name}/webhooks")
     async def update_exec_webhooks(config_name: str, body: "ExecWebhooksRequest"):
         """Replace the webhooks list for an execution config and persist to disk."""
-        from .main import EXEC_CONFIGS_PATH, WebhookEntry, load_exec_configs, save_exec_configs
-        import json
+        from .main import WebhookEntry, load_exec_configs, save_exec_configs
+        from .broker import TradersPostClient, MultiBroker
 
         configs = load_exec_configs()
         target = next((c for c in configs if c.name == config_name), None)
@@ -617,11 +617,40 @@ def create_app(state: DashboardState) -> FastAPI:
         target.webhooks = new_webhooks
         save_exec_configs(configs)
 
+        # Rebuild live runtime brokers so the change takes effect immediately.
+        # Close old broker sessions first.
+        old_multi = state.multi_brokers_by_config.get(config_name)
+        if old_multi:
+            await old_multi.close()
+
+        if new_webhooks:
+            new_brokers = [
+                TradersPostClient(
+                    webhook_url=w.url,
+                    config_name=f"{config_name}[{w.label}]" if w.label else config_name,
+                )
+                for w in new_webhooks
+            ]
+        else:
+            # No webhooks → dry-run stub
+            new_brokers = [
+                TradersPostClient(webhook_url="", config_name=config_name)
+            ]
+        new_multi = MultiBroker(new_brokers)
+        state.multi_brokers_by_config[config_name] = new_multi
+
+        # Point all engines for this config to the new broker
+        for eng in state.engines_by_config.get(config_name, []):
+            eng.broker = new_multi
+
         # Update metadata so the API reflects the change immediately
         state.exec_configs[config_name]["webhooks"] = [
             {"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier}
             for w in new_webhooks
         ]
+
+        mode = "LIVE" if new_webhooks else "DRY-RUN"
+        logger.info("[%s] Webhooks updated → %s (%d webhooks)", config_name, mode, len(new_webhooks))
 
         await state.broadcast({"type": "config_update", "data": {
             "exec_config": config_name,

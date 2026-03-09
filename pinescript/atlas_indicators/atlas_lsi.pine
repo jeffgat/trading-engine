@@ -26,10 +26,10 @@ drawbackDays = input.int(1, "Days Back", minval=1, maxval=50, tooltip="Number of
 i_nqNyEntryWindow  = input.session("0935-1530", "Entry Window (ny time)", group="NQ: NY")
 i_nqNyDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: NY")
 i_nqNyEntryMode    = input.string("FVG Limit", "Entry Mode", options=["Bar Close", "FVG Limit"], tooltip="Bar Close = enter at inversion bar close. FVG Limit = limit order at FVG boundary after inversion.", group="NQ: NY")
-i_nqNyRR           = input.float(3.0, "Reward/Risk", step=0.25, group="NQ: NY")
-i_nqNyTp1Ratio     = input.float(0.3, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
+i_nqNyRR           = input.float(2.5, "Reward/Risk", step=0.25, group="NQ: NY")
+i_nqNyTp1Ratio     = input.float(0.2, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
 i_nqNyAtrLength    = input.int(10, "ATR Length", minval=1, group="NQ: NY")
-i_nqNyMinGapPct    = input.float(5.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum FVG size as percentage of daily ATR", group="NQ: NY")
+i_nqNyMinGapPct    = input.float(3.75, "Min Gap (% ATR)", step=0.25, tooltip="Minimum FVG size as percentage of daily ATR", group="NQ: NY")
 nqNyFvgPendColor   = input.color(#787b86, "FVG Pending Color", group="NQ: NY")
 nqNyFvgSweptColor  = input.color(#26a69a, "FVG Swept Color", group="NQ: NY")
 
@@ -39,7 +39,7 @@ nqNyFvgSweptColor  = input.color(#26a69a, "FVG Swept Color", group="NQ: NY")
 i_nqAsiaEntryWindow  = input.session("2040-2330", "Entry Window (ny time)", group="NQ: Asia")
 i_nqAsiaDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: Asia")
 i_nqAsiaEntryMode    = input.string("Bar Close", "Entry Mode", options=["Bar Close", "FVG Limit"], tooltip="Bar Close = enter at inversion bar close. FVG Limit = limit order at FVG boundary after inversion.", group="NQ: Asia")
-i_nqAsiaRR           = input.float(2.0, "Reward/Risk", step=0.25, group="NQ: Asia")
+i_nqAsiaRR           = input.float(1.75, "Reward/Risk", step=0.25, group="NQ: Asia")
 i_nqAsiaTp1Ratio     = input.float(0.7, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: Asia")
 i_nqAsiaAtrLength    = input.int(40, "ATR Length", minval=1, group="NQ: Asia")
 i_nqAsiaMinGapPct    = input.float(1.75, "Min Gap (% ATR)", step=0.25, tooltip="Minimum FVG size as percentage of daily ATR", group="NQ: Asia")
@@ -66,6 +66,7 @@ i_nqNySkipTue = input.bool(false, "Skip Tuesday",   group="NQ: NY Skip Days")
 i_nqNySkipWed = input.bool(true,  "Skip Wednesday", group="NQ: NY Skip Days")
 i_nqNySkipThu = input.bool(true,  "Skip Thursday",  group="NQ: NY Skip Days")
 i_nqNySkipFri = input.bool(false, "Skip Friday",    group="NQ: NY Skip Days")
+
 
 // ============================================================================
 // INPUTS - Skip Days - NQ: Asia
