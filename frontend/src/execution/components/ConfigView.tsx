@@ -25,8 +25,28 @@ interface ConfigViewProps {
   onUpdateSession: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
   onResetSession: (name: string) => Promise<void>;
   onUpdateWebhooks: (configName: string, webhooks: WebhookEntry[]) => Promise<void>;
+  onToggleEnabled?: (configName: string, enabled: boolean) => Promise<void>;
   execConfigs: Record<string, ExecConfigMeta>;
 }
+
+/** Derive the 3-state mode from config metadata. */
+function getConfigMode(meta: ExecConfigMeta): "live" | "dry-run" | "disabled" {
+  if (!meta.enabled) return "disabled";
+  if (meta.webhooks.length > 0) return "live";
+  return "dry-run";
+}
+
+const MODE_STYLES = {
+  live: "text-profit bg-profit/10",
+  "dry-run": "text-amber-400 bg-amber-400/10",
+  disabled: "text-text-muted bg-text-muted/10",
+} as const;
+
+const MODE_LABELS = {
+  live: "Live",
+  "dry-run": "Dry Run",
+  disabled: "Disabled",
+} as const;
 
 interface GlobalRiskDefaults {
   risk_usd: number;
@@ -1113,6 +1133,7 @@ export function ConfigView({
   onUpdateSession,
   onResetSession,
   onUpdateWebhooks,
+  onToggleEnabled,
   execConfigs,
 }: ConfigViewProps) {
   if (loading) {
@@ -1167,14 +1188,24 @@ export function ConfigView({
                         <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorClasses}`}>
                           {name}
                         </span>
-                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                          meta.enabled
-                            ? "text-profit bg-profit/10"
-                            : "text-text-muted bg-text-muted/10"
-                        }`}>
-                          {meta.enabled ? "enabled" : "disabled"}
-                        </span>
+                        {(() => {
+                          const mode = getConfigMode(meta);
+                          return (
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${MODE_STYLES[mode]}`}>
+                              {MODE_LABELS[mode]}
+                            </span>
+                          );
+                        })()}
                       </div>
+                      {/* Toggle dry-run ↔ disabled (only when no webhooks) */}
+                      {meta.webhooks.length === 0 && onToggleEnabled && (
+                        <button
+                          onClick={() => onToggleEnabled(name, !meta.enabled)}
+                          className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
+                        >
+                          {meta.enabled ? "Disable" : "Enable"}
+                        </button>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">

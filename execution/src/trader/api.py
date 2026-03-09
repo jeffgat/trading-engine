@@ -706,6 +706,30 @@ def create_app(state: DashboardState) -> FastAPI:
 
         return {"config": config_name, "webhook_index": webhook_index, "tickers": tickers, "status": "sent"}
 
+    @app.patch("/api/config/exec/{config_name}/enabled")
+    async def patch_exec_enabled(config_name: str, body: "EnabledPatchRequest"):
+        """Toggle enabled state for an execution config (dry-run ↔ disabled)."""
+        from .main import load_exec_configs, save_exec_configs
+
+        configs = load_exec_configs()
+        target = next((c for c in configs if c.name == config_name), None)
+        if target is None:
+            raise HTTPException(404, f"Exec config '{config_name}' not found")
+
+        target.enabled = body.enabled
+        save_exec_configs(configs)
+
+        # Update in-memory state
+        if config_name in state.exec_configs:
+            state.exec_configs[config_name]["enabled"] = body.enabled
+
+        await state.broadcast({"type": "config_update", "data": {
+            "exec_config": config_name,
+            "enabled": body.enabled,
+        }})
+
+        return {"config": config_name, "enabled": body.enabled}
+
     @app.delete("/api/config/sessions/{session_name}")
     async def reset_session_config(session_name: str):
         engine = _find_engine(state, session_name)
@@ -838,6 +862,12 @@ class WebhookPatchRequest(BaseModel):
 
     paused: bool | None = None
     multiplier: float | None = None
+
+
+class EnabledPatchRequest(BaseModel):
+    """Toggle enabled state for an execution config."""
+
+    enabled: bool
 
 
 # ---------------------------------------------------------------------------

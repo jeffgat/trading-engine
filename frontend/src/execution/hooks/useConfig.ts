@@ -256,6 +256,32 @@ export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void
     [],
   );
 
+  const toggleEnabled = useCallback(
+    async (configName: string, enabled: boolean) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const r = await fetch(`/exec-api/config/exec/${configName}/enabled`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        }
+        await fetchConfig();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to toggle enabled";
+        setError(msg);
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchConfig],
+  );
+
   const execConfigs: Record<string, ExecConfigMeta> = useMemo(() => {
     return config?.exec_configs ?? {};
   }, [config]);
@@ -264,6 +290,6 @@ export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void
     config, loading, saving, error,
     updateSession, resetSession, updateWebhooks, execConfigs,
     pauseWebhook, resumeWebhook, updateWebhookMultiplier, flattenWebhook,
-    pauseEngine, resumeEngine,
+    pauseEngine, resumeEngine, toggleEnabled,
   };
 }

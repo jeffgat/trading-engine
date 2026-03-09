@@ -50,6 +50,7 @@ export function ExecutionApp() {
         flattenWebhook,
         pauseEngine,
         resumeEngine,
+        toggleEnabled,
     } = useConfig(subscribe);
 
     // Derive config names from the status response
@@ -138,6 +139,7 @@ export function ExecutionApp() {
                         onUpdateSession={updateSession}
                         onResetSession={resetSession}
                         onUpdateWebhooks={updateWebhooks}
+                        onToggleEnabled={toggleEnabled}
                         execConfigs={execConfigs}
                     />
                 )}

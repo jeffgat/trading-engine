@@ -4,11 +4,7 @@ import type { EquityCurvePoint } from "@/backtesting/lib/types";
 
 const STORAGE_KEY = "exec_backtest_mappings";
 
-/** Default backtest baselines for each exec config (from run_exec_portfolio.py). */
-const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {
-  FAST: { backtestId: "bt-exec-fast-portfolio-10yr-5000-19d3d8", deployDate: "" },
-  SLOW: { backtestId: "bt-exec-slow-portfolio-10yr-5000-f9e888", deployDate: "" },
-};
+const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {};
 
 interface BacktestCurveData {
   curve: { date: string; r: number }[];

@@ -325,7 +325,7 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     time to ensure the restored state is still appropriate:
     - MANAGING: restore as-is (financial exposure)
     - ARMED_LIMIT: restore as MANAGING (legacy checkpoint compat)
-    - WAITING_FOR_SWEEP / WAITING_FOR_GAP / WAITING_FOR_INVERSION:
+    - SCANNING / WAITING_FOR_GAP / WAITING_FOR_INVERSION:
       check if entry window still open
     - FLAT: restore as FLAT
     - IDLE: skip (normal on_bar flow will handle it)
@@ -335,6 +335,9 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     from .lsi_engine import LSIState
 
     state_str = data.get("state", "idle")
+    # Migrate renamed states from old checkpoints
+    _STATE_MIGRATIONS = {"waiting_for_sweep": "scanning"}
+    state_str = _STATE_MIGRATIONS.get(state_str, state_str)
     try:
         target_state = LSIState(state_str)
     except ValueError:
@@ -405,7 +408,7 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
 
     # Setup-discovery states — valid only if entry window still open
     _discovery_states = (
-        LSIState.WAITING_FOR_SWEEP,
+        LSIState.SCANNING,
         LSIState.WAITING_FOR_GAP,
         LSIState.COLLECTING_GAPS,
         LSIState.WAITING_FOR_INVERSION,
