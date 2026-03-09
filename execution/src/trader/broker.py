@@ -125,26 +125,19 @@ class TradersPostClient:
             ticker: Execution ticker override (e.g. "MNQ"). Falls back to default.
         """
         t = self._resolve_ticker(ticker)
-        results = []
 
-        # Step 1: flatten stale position (Pine: lines 747, 756)
-        results.append(await self._post({
-            "ticker": t,
-            "action": "exit",
-        }))
-
-        # Step 2: entry with bracket (Pine: lines 750-753, 759-762)
-        results.append(await self._post({
+        # Single bracket entry — no pre-flatten needed since the engine's
+        # state machine guarantees no open position when entering.
+        result = await self._post({
             "ticker": t,
             "action": action,
             "quantity": qty,
             "price": price,
             "takeProfit": {"limitPrice": tp2},
             "stopLoss": {"type": "stop", "stopPrice": stop},
-            "delay": 3,
-        }))
+        })
 
-        return results
+        return [result]
 
     # ------------------------------------------------------------------
     # TP1 partial exit — multi-contract (Pine: lines 763-778)

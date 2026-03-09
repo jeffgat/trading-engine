@@ -62,6 +62,11 @@ from orb_backtest.experiments import (
     create_saved_config,
     update_saved_config,
     delete_saved_config,
+    log_live_trade,
+    list_live_trades,
+    get_live_trade,
+    update_live_trade,
+    delete_live_trade,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -404,6 +409,57 @@ def delete_layout(name: str):
     if not delete_risk_engine_layout(name):
         return fail("not found", 404)
     return ok({"deleted": name})
+
+
+# --- Live Trades CRUD ---
+
+class LogLiveTradeRequest(BaseModel):
+    trade: dict
+
+@app.post("/api/live-trades")
+def create_live_trade(req: LogLiveTradeRequest):
+    rowid = log_live_trade(req.trade)
+    return ok({"rowid": rowid})
+
+@app.get("/api/live-trades")
+def get_live_trades(
+    session: str = "",
+    config: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 500,
+):
+    trades = list_live_trades(
+        session=session,
+        config_name=config,
+        date_from=date_from,
+        date_to=date_to,
+        limit=limit,
+    )
+    return ok(trades)
+
+@app.get("/api/live-trades/{trade_id}")
+def get_live_trade_ep(trade_id: int):
+    trade = get_live_trade(trade_id)
+    if trade is None:
+        return fail("not found", 404)
+    return ok(trade)
+
+class UpdateLiveTradeRequest(BaseModel):
+    updates: dict
+
+@app.patch("/api/live-trades/{trade_id}")
+def update_live_trade_ep(trade_id: int, req: UpdateLiveTradeRequest):
+    result = update_live_trade(trade_id, req.updates)
+    if result is None:
+        return fail("not found", 404)
+    return ok(result)
+
+@app.delete("/api/live-trades/{trade_id}")
+def delete_live_trade_ep(trade_id: int):
+    if not delete_live_trade(trade_id):
+        return fail("not found", 404)
+    return ok({"deleted": True})
 
 
 # --- DB Upload (one-time migration) ---

@@ -307,3 +307,43 @@ def import_runs(rows):
 def import_optimizations(rows):
     resp = _post("/api/sync/import", {"runs": [], "optimizations": rows})
     return resp.get("optimizations_imported", 0)
+
+
+# --- Live Trades CRUD ---
+
+def log_live_trade(trade):
+    resp = _post("/api/live-trades", {"trade": trade})
+    return resp.get("rowid")
+
+
+def list_live_trades(session="", config_name="", date_from="", date_to="", limit=500):
+    params = urlencode({k: v for k, v in {
+        "session": session,
+        "config": config_name,
+        "date_from": date_from,
+        "date_to": date_to,
+        "limit": limit,
+    }.items() if v})
+    return _get(f"/api/live-trades?{params}")
+
+
+def get_live_trade(trade_id):
+    try:
+        return _get(f"/api/live-trades/{trade_id}")
+    except RuntimeError:
+        return None
+
+
+def update_live_trade(trade_id, updates):
+    try:
+        return _patch(f"/api/live-trades/{trade_id}", {"updates": updates})
+    except RuntimeError:
+        return None
+
+
+def delete_live_trade(trade_id):
+    try:
+        _delete(f"/api/live-trades/{trade_id}")
+        return True
+    except RuntimeError:
+        return False

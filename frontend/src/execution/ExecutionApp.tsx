@@ -9,6 +9,7 @@ import { useConfig } from '@/execution/hooks/useConfig';
 import { useMainLogs } from '@/execution/hooks/useMainLogs';
 import { useStatus } from '@/execution/hooks/useStatus';
 import { useTradeLogs } from '@/execution/hooks/useTradeLogs';
+import { useLiveTrades } from '@/execution/hooks/useLiveTrades';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
 import { useMemo, useState } from 'react';
 
@@ -34,6 +35,7 @@ export function ExecutionApp() {
         engines,
     } = useStatus(subscribe);
     const tradeLogs = useTradeLogs(subscribe);
+    const liveTrades = useLiveTrades();
     const mainLogs = useMainLogs(subscribe);
     const {
         config,
@@ -128,6 +130,8 @@ export function ExecutionApp() {
                         activeConfig={activeConfig}
                         configNames={configNames}
                         setActiveConfig={setActiveConfig}
+                        dbTrades={liveTrades.trades}
+                        dbLoading={liveTrades.loading}
                     />
                 )}
                 {activeTab === 'config' && (

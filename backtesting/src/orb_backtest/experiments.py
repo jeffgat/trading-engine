@@ -237,6 +237,29 @@ CREATE TABLE IF NOT EXISTS news_straddle_runs (
 );
 """
 
+_LIVE_TRADES_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS live_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    session TEXT NOT NULL,
+    date TEXT NOT NULL,
+    direction INTEGER NOT NULL,
+    entry_price REAL NOT NULL,
+    stop_price REAL NOT NULL,
+    tp1_price REAL NOT NULL,
+    tp2_price REAL NOT NULL,
+    exit_type TEXT NOT NULL,
+    tp1_hit INTEGER NOT NULL DEFAULT 0,
+    exit_timestamp TEXT NOT NULL,
+    config_name TEXT NOT NULL DEFAULT '',
+    r_result REAL,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_live_trades_date ON live_trades(date);
+CREATE INDEX IF NOT EXISTS idx_live_trades_session ON live_trades(session);
+CREATE INDEX IF NOT EXISTS idx_live_trades_config ON live_trades(config_name);
+"""
+
 _REGIME_REPORTS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS regime_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,6 +300,7 @@ def init_db() -> Path:
         conn.executescript(_RISK_ENGINE_LAYOUTS_SCHEMA)
         conn.executescript(_SAVED_CONFIGS_SCHEMA)
         conn.executescript(_REGIME_REPORTS_SCHEMA)
+        conn.executescript(_LIVE_TRADES_SCHEMA)
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
         ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
@@ -1804,6 +1828,116 @@ def delete_saved_config(config_id: int) -> bool:
         return cur.rowcount > 0
 
 # ---------------------------------------------------------------------------
+# Live Trades CRUD
+# ---------------------------------------------------------------------------
+
+def log_live_trade(trade: dict) -> int:
+    """Insert a live trade record. Returns the rowid."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            """\
+            INSERT INTO live_trades
+                (timestamp, session, date, direction, entry_price, stop_price,
+                 tp1_price, tp2_price, exit_type, tp1_hit, exit_timestamp,
+                 config_name, r_result, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                datetime.now(timezone.utc).isoformat(),
+                trade["session"],
+                trade["date"],
+                trade["direction"],
+                trade["entry_price"],
+                trade["stop_price"],
+                trade["tp1_price"],
+                trade["tp2_price"],
+                trade["exit_type"],
+                1 if trade.get("tp1_hit") else 0,
+                trade["exit_timestamp"],
+                trade.get("config_name", ""),
+                trade.get("r_result"),
+                trade.get("notes"),
+            ],
+        )
+        return cur.lastrowid
+
+
+def list_live_trades(
+    session: str = "",
+    config_name: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 500,
+) -> list[dict]:
+    """List live trades with optional filters. Returns newest-first."""
+    init_db()
+    clauses: list[str] = []
+    params: list = []
+    if session:
+        clauses.append("session = ?")
+        params.append(session)
+    if config_name:
+        clauses.append("config_name = ?")
+        params.append(config_name)
+    if date_from:
+        clauses.append("date >= ?")
+        params.append(date_from)
+    if date_to:
+        clauses.append("date <= ?")
+        params.append(date_to)
+
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+    sql = f"SELECT * FROM live_trades {where} ORDER BY date DESC, id DESC LIMIT ?"
+    params.append(limit)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_live_trade(trade_id: int) -> dict | None:
+    """Get a single live trade by id."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM live_trades WHERE id = ?", [trade_id]).fetchone()
+    return dict(row) if row else None
+
+
+def update_live_trade(trade_id: int, updates: dict) -> dict | None:
+    """Update fields on a live trade. Returns the updated record or None."""
+    allowed = {
+        "session", "date", "direction", "entry_price", "stop_price",
+        "tp1_price", "tp2_price", "exit_type", "tp1_hit", "exit_timestamp",
+        "config_name", "r_result", "notes",
+    }
+    fields = {k: v for k, v in updates.items() if k in allowed}
+    if not fields:
+        return get_live_trade(trade_id)
+
+    if "tp1_hit" in fields:
+        fields["tp1_hit"] = 1 if fields["tp1_hit"] else 0
+
+    sets = ", ".join(f"{k} = ?" for k in fields)
+    vals = list(fields.values()) + [trade_id]
+
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(f"UPDATE live_trades SET {sets} WHERE id = ?", vals)
+    return get_live_trade(trade_id)
+
+
+def delete_live_trade(trade_id: int) -> bool:
+    """Delete a live trade by id. Returns True if deleted."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute("DELETE FROM live_trades WHERE id = ?", [trade_id])
+        return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
 # Dual-write: always save locally, also send to remote when configured.
 # Read/query functions route to remote when EXPERIMENTS_DB_URL is set.
 # ---------------------------------------------------------------------------
@@ -1817,6 +1951,7 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
     _local_log_sweep_runs = log_sweep_runs
     _local_log_news_straddle_run = log_news_straddle_run
     _local_log_regime_report = log_regime_report
+    _local_log_live_trade = log_live_trade
 
     # Import all remote functions (overwrites reads/queries to use remote)
     from .experiments_remote import *  # noqa: F401, F403
@@ -1892,4 +2027,9 @@ if _os.environ.get("EXPERIMENTS_DB_URL"):
     def log_regime_report(result_dict, result_id):
         local_id = _local_log_regime_report(result_dict, result_id)
         _remote_fire(_remote.log_regime_report, result_dict, result_id)
+        return local_id
+
+    def log_live_trade(trade):
+        local_id = _local_log_live_trade(trade)
+        _remote_fire(_remote.log_live_trade, trade)
         return local_id

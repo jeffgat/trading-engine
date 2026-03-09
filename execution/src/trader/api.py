@@ -28,7 +28,80 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+
+# Experiments DB URL for live trade persistence
+_EXPERIMENTS_DB_URL = "http://143.110.148.234:8100"
+
+
+def _write_trade_to_db(record: "TradeRecord") -> None:
+    """Write a trade record to the experiments DB (non-blocking)."""
+    import threading
+    from dataclasses import asdict
+
+    def _send():
+        try:
+            import json
+            import urllib.request
+            trade_dict = asdict(record)
+            # Remap fields for DB schema
+            payload = {
+                "trade": {
+                    "session": trade_dict["session"],
+                    "date": trade_dict["date"],
+                    "direction": trade_dict["direction"],
+                    "entry_price": trade_dict["entry_price"],
+                    "stop_price": trade_dict["stop_price"],
+                    "tp1_price": trade_dict["tp1_price"],
+                    "tp2_price": trade_dict["tp2_price"],
+                    "exit_type": trade_dict["exit_type"],
+                    "tp1_hit": trade_dict["tp1_hit"],
+                    "exit_timestamp": trade_dict["timestamp"],
+                    "config_name": trade_dict.get("config_name", ""),
+                }
+            }
+            data = json.dumps(payload).encode()
+            req = urllib.request.Request(
+                f"{_EXPERIMENTS_DB_URL}/api/live-trades",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                resp.read()
+            logger.debug("Trade written to DB: %s %s %s", record.config_name, record.session, record.date)
+        except Exception as exc:
+            logger.warning("Failed to write trade to DB: %s", exc)
+
+    threading.Thread(target=_send, daemon=True).start()
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
+
+
+def _fetch_trades_from_db(
+    session: str = "",
+    config: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 500,
+) -> list[dict]:
+    """Fetch live trades from the experiments DB API."""
+    import json
+    import urllib.request
+    from urllib.parse import urlencode
+
+    params = {k: v for k, v in {
+        "session": session,
+        "config": config,
+        "date_from": date_from,
+        "date_to": date_to,
+        "limit": str(limit),
+    }.items() if v}
+    url = f"{_EXPERIMENTS_DB_URL}/api/live-trades?{urlencode(params)}"
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read().decode())
+    if result.get("success"):
+        return result.get("result", [])
+    return []
 
 # Known execution config names (used to distinguish config tag from asset tag in log parsing)
 _KNOWN_CONFIGS: set[str] = set()
@@ -72,7 +145,7 @@ class DashboardState:
             self._ws_clients.discard(ws)
 
     def record_trade(self, record: TradeRecord) -> None:
-        """Called by engines on trade exit. Stores record for G5 gate queries."""
+        """Called by engines on trade exit. Stores record for G5 gate + DB."""
         self.trade_history.append(record)
         logger.info(
             "Trade recorded: [%s] %s %s exit=%s tp1=%s",
@@ -82,6 +155,9 @@ class DashboardState:
         # Persist to disk for crash recovery
         from .checkpoint import save_trade_history
         save_trade_history(self.trade_history)
+
+        # Dual-write to experiments DB (fire-and-forget)
+        _write_trade_to_db(record)
 
     def asia_tp1_hit_for_date(self, date: str, config_name: str = "") -> bool:
         """Check if any Asia session hit TP1 on the given date (for G5 gate).
@@ -501,17 +577,75 @@ def create_app(state: DashboardState) -> FastAPI:
     async def get_trade_history(
         session: str = Query("", description="Filter by session name"),
         config: str = Query("", description="Filter by execution config name"),
-        limit: int = Query(100, ge=1, le=1000),
+        date_from: str = Query("", description="Filter from date (YYYYMMDD)"),
+        date_to: str = Query("", description="Filter to date (YYYYMMDD)"),
+        limit: int = Query(500, ge=1, le=5000),
+        source: str = Query("db", description="'db' for experiments DB, 'memory' for in-memory"),
     ):
-        records = state.trade_history
-        if config:
-            records = [r for r in records if r.config_name == config]
-        if session:
-            records = [r for r in records if r.session == session]
-        # newest first, then limit
-        records = list(reversed(records))[:limit]
-        from dataclasses import asdict
-        return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+        if source == "memory":
+            # Legacy: return in-memory trade history (JSON-backed, 7-day window)
+            records = state.trade_history
+            if config:
+                records = [r for r in records if r.config_name == config]
+            if session:
+                records = [r for r in records if r.session == session]
+            records = list(reversed(records))[:limit]
+            from dataclasses import asdict
+            return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+
+        # Default: read from experiments DB
+        try:
+            trades = _fetch_trades_from_db(
+                session=session, config=config,
+                date_from=date_from, date_to=date_to, limit=limit,
+            )
+            return {"trades": trades, "total": len(trades)}
+        except Exception as exc:
+            logger.warning("DB trade fetch failed, falling back to memory: %s", exc)
+            records = state.trade_history
+            if config:
+                records = [r for r in records if r.config_name == config]
+            if session:
+                records = [r for r in records if r.session == session]
+            records = list(reversed(records))[:limit]
+            from dataclasses import asdict
+            return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+
+    class ManualTradeRequest(BaseModel):
+        session: str
+        date: str
+        direction: int
+        entry_price: float
+        stop_price: float
+        tp1_price: float
+        tp2_price: float
+        exit_type: str
+        tp1_hit: bool
+        exit_timestamp: str
+        config_name: str = ""
+        r_result: float | None = None
+        notes: str | None = None
+
+    @app.post("/api/trades/history")
+    async def create_manual_trade(req: ManualTradeRequest):
+        """Manually log a trade (retroactive or missed)."""
+        trade_dict = req.model_dump()
+        try:
+            import json
+            import urllib.request
+            payload = json.dumps({"trade": trade_dict}).encode()
+            http_req = urllib.request.Request(
+                f"{_EXPERIMENTS_DB_URL}/api/live-trades",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(http_req, timeout=10) as resp:
+                result = json.loads(resp.read().decode())
+            return {"success": True, "rowid": result.get("result", {}).get("rowid")}
+        except Exception as exc:
+            logger.error("Failed to log manual trade: %s", exc)
+            raise HTTPException(502, f"Failed to write to experiments DB: {exc}")
 
     @app.get("/api/config")
     async def get_config():

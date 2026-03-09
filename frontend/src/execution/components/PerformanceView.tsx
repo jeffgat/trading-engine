@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint } from "@/execution/lib/types";
+import type { LiveTrade } from "@/execution/hooks/useLiveTrades";
 import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
 import { EquityCurveComparison } from "@/execution/components/EquityCurveComparison";
 import { BacktestWindowSlider } from "@/execution/components/BacktestWindowSlider";
@@ -13,6 +14,8 @@ interface PerformanceViewProps {
   activeConfig: string;
   configNames: string[];
   setActiveConfig: (config: string) => void;
+  dbTrades?: LiveTrade[];
+  dbLoading?: boolean;
 }
 
 interface SessionCfg {
@@ -195,6 +198,85 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
   return rows;
 }
 
+/** Map DB exit_type to the R-value logic used by the log-based approach. */
+function getDbRValue(trade: LiveTrade, config: ConfigResponse | null): number | null {
+  // If the DB has a pre-computed r_result, use it
+  if (trade.r_result != null) return trade.r_result;
+
+  // Otherwise compute from exit_type + config rr/tp1_ratio
+  const sessionKey = trade.session; // e.g. "NQ_NY"
+  const baselineR = config?.baseline_r ?? 250;
+
+  // Find matching session config
+  let rr: number | undefined;
+  let tp1: number | undefined;
+  let riskUsd = baselineR;
+  if (config?.sessions) {
+    // Try compound key first (CONFIG:session), then short key
+    const compoundKey = `${trade.config_name}:${sessionKey}`;
+    const cfg = (config.sessions[compoundKey] ?? config.sessions[sessionKey]) as SessionCfg | undefined;
+    rr = cfg?.rr;
+    tp1 = cfg?.tp1_ratio;
+    riskUsd = cfg?.risk_usd ?? baselineR;
+  }
+
+  const scale = baselineR > 0 ? riskUsd / baselineR : 1;
+  const et = trade.exit_type;
+
+  if (et === "sl") return -1 * scale;
+  if (et === "tp1_be" || et === "tp1_eod") {
+    if (rr == null || tp1 == null) return null;
+    return 0.5 * rr * tp1 * scale;
+  }
+  if (et === "tp2_direct") {
+    if (rr == null) return null;
+    return rr * scale;
+  }
+  if (et === "tp2" || et === "tp1_tp2") {
+    if (rr == null || tp1 == null) return null;
+    return 0.5 * rr * (1 + tp1) * scale;
+  }
+  if (et === "eod") return 0;
+  return null;
+}
+
+function tickerFromSession(session: string): string {
+  const asset = session.split("_")[0]?.toUpperCase() ?? "";
+  if (asset.includes("NQ")) return "NQ";
+  if (asset.includes("ES")) return "ES";
+  if (asset.includes("GC")) return "GC";
+  return "\u2014";
+}
+
+function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null): PerfRow[] {
+  return trades.map((t) => {
+    const exitParts = splitTs(t.exit_timestamp.replace("T", " ").replace(/-\d{2}:\d{2}$/, ""));
+    // Format YYYYMMDD → YYYY-MM-DD for entry date display
+    const entryDate = t.date.length === 8
+      ? `${t.date.slice(0, 4)}-${t.date.slice(4, 6)}-${t.date.slice(6, 8)}`
+      : t.date;
+    const sessionParts = t.session.split("_");
+    const sessionLabel = sessionParts[1] ?? t.session;
+    const stratType = t.session.toLowerCase().includes("lsi") ? "LSI" : "ORB";
+
+    return {
+      id: `db-${t.id}`,
+      entryDate,
+      entryTime: "\u2014",
+      exitDate: exitParts.date,
+      exitTime: exitParts.time,
+      ticker: tickerFromSession(t.session),
+      session: sessionLabel,
+      config: t.config_name,
+      direction: t.direction === 1 ? "Long" as const : "Short" as const,
+      rValue: getDbRValue(t, config),
+      strategy: stratType,
+      notes: t.notes ?? "",
+      sortTs: t.exit_timestamp,
+    };
+  }).sort((a, b) => b.sortTs.localeCompare(a.sortTs));
+}
+
 function Pill({
   label,
   tone = "neutral",
@@ -297,8 +379,13 @@ function mergeEquityCurves(
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function PerformanceView({ entries, loading, config, activeConfig, configNames, setActiveConfig }: PerformanceViewProps) {
-  const allRows = buildRows(entries, config);
+export function PerformanceView({ entries, loading, config, activeConfig, configNames, setActiveConfig, dbTrades, dbLoading }: PerformanceViewProps) {
+  // Use DB trades when available, fall back to log-based rows
+  const useDb = (dbTrades?.length ?? 0) > 0;
+  const allRows = useMemo(() => {
+    if (useDb && dbTrades) return buildRowsFromDb(dbTrades, config);
+    return buildRows(entries, config);
+  }, [useDb, dbTrades, entries, config]);
 
   // Config-level filter (from the header pills)
   const configRows = useMemo(() => {
@@ -435,7 +522,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
     return { comparisonByConfig: comparison, rawLiveRByConfig: rawLiveR, backtestRByConfig: backtestR };
   }, [visibleConfigs, mappings, backtestCurves, allRows, effectiveBtStart, effectiveBtEnd]);
 
-  if (loading) {
+  if (loading && dbLoading) {
     return (
       <div className="flex items-center justify-center py-20 text-text-muted">
         Loading performance...
