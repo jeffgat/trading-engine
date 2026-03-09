@@ -1,19 +1,14 @@
 export const STATE_COLORS: Record<string, string> = {
   idle: "bg-sky-500/20 text-sky-200",
   orb_building: "bg-info/20 text-info",
-  waiting_for_gap: "bg-warning/20 text-warning",
+  waiting_for_gap: "bg-amber-500/20 text-amber-300",
   waiting_for_sweep: "bg-warning/20 text-warning",
-  waiting_for_inversion: "bg-warning/20 text-warning",
-  collecting_gaps: "bg-warning/20 text-warning",
+  waiting_for_inversion: "bg-violet-500/20 text-violet-300",
+  collecting_gaps: "bg-amber-500/20 text-amber-300",
   armed_limit: "bg-profit/20 text-profit",
   filled: "bg-accent/20 text-gold-200",
   managing: "bg-cyan-500/20 text-cyan-300",
   flat: "bg-orange-500/20 text-orange-200",
-  // IFVG engine states
-  waiting_for_gap: "bg-amber-500/20 text-amber-300",
-  collecting_gaps: "bg-amber-500/20 text-amber-300",
-  waiting_for_inversion: "bg-violet-500/20 text-violet-300",
-  armed_limit: "bg-profit/20 text-profit",
 };
 
 export const STATE_LABELS: Record<string, string> = {
@@ -27,11 +22,6 @@ export const STATE_LABELS: Record<string, string> = {
   filled: "Filled",
   managing: "Managing",
   flat: "Flat",
-  // IFVG engine states
-  waiting_for_gap: "Waiting for Gap",
-  collecting_gaps: "Collecting Gaps",
-  waiting_for_inversion: "Waiting for Inversion",
-  armed_limit: "Armed Limit",
 };
 
 export const EVENT_COLORS: Record<string, string> = {
@@ -71,5 +61,6 @@ export const SESSION_COLORS: Record<string, string> = {
 
 export const CONFIG_COLORS: Record<string, string> = {
   FAST: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  FAST_V2: "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
   SLOW: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
 };

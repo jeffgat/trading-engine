@@ -119,6 +119,34 @@ class DashboardState:
         }
 
 
+def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
+    """Load execution config metadata from disk and merge live webhook state."""
+    from .main import load_exec_configs
+
+    configs = load_exec_configs(state.config)
+    meta: dict[str, dict] = {}
+    for cfg in configs:
+        live_meta = state.exec_configs.get(cfg.name, {})
+        webhooks = live_meta.get("webhooks")
+        if webhooks is None:
+            webhooks = [
+                {
+                    "url": w.url,
+                    "label": w.label,
+                    "paused": w.paused,
+                    "multiplier": w.multiplier,
+                }
+                for w in cfg.webhooks
+            ]
+        meta[cfg.name] = {
+            "enabled": cfg.enabled,
+            "webhooks": webhooks,
+            "sessions": list(cfg.session_overrides.keys()),
+            "lsi_sessions": list(cfg.lsi_session_overrides.keys()),
+        }
+    return meta
+
+
 # ---------------------------------------------------------------------------
 # Log parsing
 # ---------------------------------------------------------------------------
@@ -490,6 +518,7 @@ def create_app(state: DashboardState) -> FastAPI:
         overrides = load_overrides()
         all_engines = state.all_engines
         risk_cfg = state.config.get("risk", {})
+        exec_configs = _build_exec_config_meta(state)
         return {
             "config": state.config,
             "baseline_r": risk_cfg.get("baseline_r", 250),
@@ -503,7 +532,7 @@ def create_app(state: DashboardState) -> FastAPI:
             "defaults": {
                 e.name: _defaults_for_session(e.name) for e in all_engines
             },
-            "exec_configs": state.exec_configs,
+            "exec_configs": exec_configs,
         }
 
     # ── Config override endpoints ──────────────────────────────────

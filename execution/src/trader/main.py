@@ -455,11 +455,10 @@ def build_engines(
     session_overrides = config.get("sessions", {})
     exec_overrides = exec_overrides or {}
 
-    # Half-day and excluded date configs
-    half_days = tuple(config.get("dates", {}).get("half_days", [
+    default_half_days = tuple(config.get("dates", {}).get("half_days", [
         "20250703", "20251128", "20251224", "20250109", "20260119",
     ]))
-    excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
+    default_excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
 
     engines = []
     symbol_map: dict[str, list] = {}
@@ -485,6 +484,8 @@ def build_engines(
         if not isinstance(toml_overrides, dict):
             toml_overrides = {}
         merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {}), **exec_overrides.get(sess_name, {})}
+        half_days = tuple(merged.get("half_days", default_half_days))
+        excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
 
         # Per-session instrument (signal data source) and execution ticker
         sess_instrument = merged.get("instrument", "NQ")
@@ -534,8 +535,8 @@ def build_engines(
             fomc_exclusion=merged.get("fomc_exclusion", False),
             excluded_dates=excluded_dates,
             half_days=half_days,
-            half_day_flat_start=config.get("dates", {}).get("half_day_flat_start", "12:50"),
-            half_day_flat_end=config.get("dates", {}).get("half_day_flat_end", "13:00"),
+            half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
+            half_day_flat_end=merged.get("half_day_flat_end", config.get("dates", {}).get("half_day_flat_end", "13:00")),
         )
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
@@ -570,10 +571,10 @@ def build_lsi_engines(
     if not lsi_enabled:
         return []
 
-    half_days = tuple(config.get("dates", {}).get("half_days", [
+    default_half_days = tuple(config.get("dates", {}).get("half_days", [
         "20250703", "20251128", "20251224", "20250109", "20260119",
     ]))
-    excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
+    default_excluded_dates = tuple(config.get("dates", {}).get("excluded", []))
 
     engines = []
     for sess_name in lsi_enabled:
@@ -593,6 +594,8 @@ def build_lsi_engines(
 
         # Merge exec config overrides (e.g. risk_usd) on top of base config
         merged = {**sess_cfg, **lsi_overrides.get(sess_name, {})}
+        half_days = tuple(merged.get("half_days", default_half_days))
+        excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
 
         # Handle excluded_dow as list → first value for single exclusion
         excl_dow = merged.get("excluded_dow")
@@ -624,8 +627,8 @@ def build_lsi_engines(
             excluded_dow=excl_dow,
             excluded_dates=excluded_dates,
             half_days=half_days,
-            half_day_flat_start=config.get("dates", {}).get("half_day_flat_start", "12:50"),
-            half_day_flat_end=config.get("dates", {}).get("half_day_flat_end", "13:00"),
+            half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
+            half_day_flat_end=merged.get("half_day_flat_end", config.get("dates", {}).get("half_day_flat_end", "13:00")),
             lsi_n_left=merged.get("lsi_n_left", 3),
             lsi_n_right=merged.get("lsi_n_right", 3),
         )

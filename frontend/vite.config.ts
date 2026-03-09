@@ -22,14 +22,11 @@ export default defineConfig({
         target: "http://143.110.148.234:8000",
         rewrite: (path) => path.replace(/^\/exec-api/, "/api"),
       },
-      // Backtesting API — candles served locally (needs data files on disk)
-      "/bt-api/candles": {
-        target: "http://localhost:8000",
-        rewrite: (path) => path.replace(/^\/bt-api/, "/api"),
-      },
-      // Backtesting API — everything else goes to remote DB server
+      // Backtesting API — serve through the local FastAPI app.
+      // The local app already dual-writes/reads via the shared experiments DB,
+      // and compute endpoints like backtest/optimize need local data access.
       "/bt-api": {
-        target: "http://143.110.148.234:8100",
+        target: "http://localhost:8000",
         rewrite: (path) => path.replace(/^\/bt-api/, "/api"),
       },
     },

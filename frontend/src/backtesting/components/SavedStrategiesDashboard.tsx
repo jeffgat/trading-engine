@@ -19,11 +19,17 @@ import { VariablesTested } from './VariablesTested';
 const SESSION_PREFIXES = ['ny', 'asia', 'ldn'] as const;
 
 function detectSessionsFromConfig(config: BacktestConfig): string[] {
+    const sessionLabels = {
+        ny: "NY",
+        asia: "Asia",
+        ldn: "LDN",
+    } as const;
     const sessions: string[] = [];
     for (const key of Object.keys(config)) {
         for (const prefix of SESSION_PREFIXES) {
-            if (key.startsWith(`${prefix}_`) && !sessions.includes(prefix.toUpperCase())) {
-                sessions.push(prefix.toUpperCase());
+            const label = sessionLabels[prefix];
+            if (key.startsWith(`${prefix}_`) && !sessions.includes(label)) {
+                sessions.push(label);
             }
         }
     }

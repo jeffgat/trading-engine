@@ -29,6 +29,13 @@ function getDefaultBacktestRange() {
   };
 }
 
+function normalizeSessionName(session: string): string {
+  const normalized = session.trim().toUpperCase();
+  if (normalized === "ASIA") return "Asia";
+  if (normalized === "LDN") return "LDN";
+  return "NY";
+}
+
 /** Build a flat params object from a SavedConfig for the backtest API. */
 function configToBacktestParams(
   config: SavedConfig,
@@ -38,7 +45,7 @@ function configToBacktestParams(
   const c = config.config;
   const params: Record<string, unknown> = {
     instrument: config.instrument,
-    sessions: config.sessions,
+    sessions: config.sessions.map(normalizeSessionName),
     start,
     end,
     name: config.name,
@@ -83,7 +90,7 @@ export function ConfigsDashboard() {
 
   // Backtest run state
   const [btLoading, setBtLoading] = useState(false);
-  const [btResult, setBtResult] = useState<{ id: string; trades: number; netR: number; sharpe: number; maxDD: number; winRate: number } | null>(null);
+  const [btResult, setBtResult] = useState<{ id: string; trades: number; netR: number; sharpe: number; maxDDR: number; winRate: number } | null>(null);
   const [btError, setBtError] = useState<string | null>(null);
 
   const active = configs.find((c) => c.id === activeId) ?? null;
@@ -125,14 +132,17 @@ export function ConfigsDashboard() {
       }
       const json = await res.json();
       const result = json.result ?? json;
+      const riskUsd = result.config?.risk_usd ?? active.config.risk_usd ?? 50000;
       setBtResult({
         id: result.id,
         trades: result.summary?.total_trades ?? 0,
-        netR: result.summary?.avg_r != null && result.summary?.total_trades != null
-          ? +(result.summary.avg_r * result.summary.total_trades).toFixed(1)
+        netR: result.summary?.total_pnl_usd != null
+          ? +(result.summary.total_pnl_usd / riskUsd).toFixed(1)
           : 0,
         sharpe: result.summary?.sharpe_ratio ?? 0,
-        maxDD: result.summary?.max_drawdown_pct ?? 0,
+        maxDDR: result.summary?.max_drawdown_usd != null
+          ? +(result.summary.max_drawdown_usd / riskUsd).toFixed(2)
+          : 0,
         winRate: result.summary?.win_rate ?? 0,
       });
     } catch (err) {
@@ -332,7 +342,7 @@ export function ConfigsDashboard() {
                       <span className="text-text-secondary">Net R: <span className={btResult.netR >= 0 ? "text-profit" : "text-loss"}>{btResult.netR > 0 ? "+" : ""}{btResult.netR.toFixed(1)}</span></span>
                       <span className="text-text-secondary">WR: {(btResult.winRate * 100).toFixed(1)}%</span>
                       <span className="text-text-secondary">Sharpe: {btResult.sharpe.toFixed(2)}</span>
-                      <span className="text-text-secondary">Max DD: <span className="text-loss">{(btResult.maxDD * 100).toFixed(1)}%</span></span>
+                      <span className="text-text-secondary">Max DD: <span className="text-loss">{btResult.maxDDR.toFixed(2)}R</span></span>
                     </div>
                     <p className="mt-1 text-[10px] text-text-muted">Saved as: {btResult.id}</p>
                   </div>

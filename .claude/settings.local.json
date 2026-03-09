@@ -171,7 +171,17 @@
       "Bash(gh run rerun 22824467259)",
       "Bash(gh run watch 22824467259 --exit-status)",
       "WebFetch(domain:143.110.148.234)",
-      "Bash(python3 -c \" import json, sys data = json.load\\(sys.stdin\\) for r in data: if ''to optimize for -4R'' in r.get\\(''name'', ''''\\): print\\(json.dumps\\(r, indent=2\\)\\) break \")"
+      "Bash(python3 -c \" import json, sys data = json.load\\(sys.stdin\\) for r in data: if ''to optimize for -4R'' in r.get\\(''name'', ''''\\): print\\(json.dumps\\(r, indent=2\\)\\) break \")",
+      "Bash(python3 -c \" import sys, json data = json.load\\(sys.stdin\\) for item in data: name = item.get\\(''name'', ''''\\) or item.get\\(''config_name'', ''''\\) or '''' print\\(f'' {name} \\(keys: {list\\(item.keys\\(\\)\\)[:5]}...\\)''\\) \")",
+      "Bash(backtesting/.venv/bin/python -c \":*)",
+      "Read(//Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/**)",
+      "Bash(__NEW_LINE_2b67f8722969cdad__ backtesting/.venv/bin/python /tmp/run_comparison.py)",
+      "Bash(__NEW_LINE_3e1d3b9cab47b2a1__ backtesting/.venv/bin/python /tmp/run_comparison.py)",
+      "Bash(__NEW_LINE_f7fd261ca59ff42d__ backtesting/.venv/bin/python /tmp/run_comparison.py)",
+      "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_es_asia_both_phase1_2x.py)",
+      "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_nq_asia_both_phase1.py)",
+      "Bash(uv run python3 -c \":*)",
+      "Bash(uv run python -c \" from orb_backtest.experiments import list_history runs = list_history\\(limit=20\\) for r in runs: name = r.get\\(''name'', ''''\\) rid = r.get\\(''result_id'', ''''\\) print\\(f''{rid[:12]} {name}''\\) \")"
     ]
   }
 }
