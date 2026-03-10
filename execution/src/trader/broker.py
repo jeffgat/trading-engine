@@ -164,10 +164,13 @@ class TradersPostClient:
         close_action = "sell" if direction == "long" else "buy"
         results = []
 
-        # Step 1: market exit half qty (Pine: lines 765, 773)
+        # Step 1: market close half qty (Pine: lines 765, 773)
+        # Use sell/buy market order instead of "exit" — TradersPost treats
+        # "exit" as a full flatten that ignores quantity and cancels all
+        # working orders.
         results.append(await self._post({
             "ticker": t,
-            "action": "exit",
+            "action": close_action,
             "quantity": half_qty,
         }))
 
