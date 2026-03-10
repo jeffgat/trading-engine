@@ -74,6 +74,7 @@ export function NewsTradeChartModal({
       date: event.date,
       seconds_before: String(secondsBefore),
       seconds_after: String(secondsAfter),
+      event_type: event.event_type,
     });
 
     fetch(`/bt-api/news-candles?${params}`)
@@ -277,32 +278,29 @@ export function NewsTradeChartModal({
       text: string;
     }[] = [];
 
-    // Find the 08:30:00 bar for the release marker
+    // Find the release bar marker
+    // Build release time as fake-UTC seconds directly (Eastern wall-clock)
     const releaseDateStr = event.date; // YYYY-MM-DD
-    const releaseTarget = `${releaseDateStr}T08:30:00`;
-    const releaseCandle = chartData.find((c) => {
-      // Match within 1 second
-      const releaseSeconds = toFakeUtcSeconds(
-        `${releaseTarget}-05:00`
-      );
-      return Math.abs((c.time as number) - releaseSeconds) < 2;
-    });
+    const [ry, rm, rd] = releaseDateStr.split("-").map(Number);
+    const releaseHour = event.event_type === "NY_OPEN" ? 9 : 8;
+    const releaseSeconds = Date.UTC(ry, rm - 1, rd, releaseHour, 30, 0) / 1000;
+    const releaseCandle = chartData.find((c) =>
+      Math.abs((c.time as number) - releaseSeconds) < 2
+    );
     if (releaseCandle) {
       markers.push({
         time: releaseCandle.time,
         position: "aboveBar",
         color: "#F8C159",
         shape: "arrowDown",
-        text: "NEWS",
+        text: event.event_type === "NY_OPEN" ? "OPEN" : "NEWS",
       });
     }
 
     // Fill marker
     if (event.direction_filled && event.seconds_to_fill >= 0) {
       const fillSeconds = event.seconds_to_fill;
-      const fillTarget = toFakeUtcSeconds(
-        `${releaseDateStr}T08:30:00-05:00`
-      ) + fillSeconds;
+      const fillTarget = releaseSeconds + fillSeconds;
       const fillCandle = chartData.find(
         (c) => Math.abs((c.time as number) - fillTarget) < 2
       );
@@ -357,10 +355,12 @@ export function NewsTradeChartModal({
                   className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
                     event.event_type === "NFP"
                       ? "bg-info/20 text-info"
-                      : "bg-accent/20 text-accent"
+                      : event.event_type === "NY_OPEN"
+                        ? "bg-profit/20 text-profit"
+                        : "bg-accent/20 text-accent"
                   }`}
                 >
-                  {event.event_type}
+                  {event.event_type === "NY_OPEN" ? "NY Open" : event.event_type}
                 </span>
                 {event.direction_filled && (
                   <span

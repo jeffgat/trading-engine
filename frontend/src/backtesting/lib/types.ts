@@ -405,6 +405,7 @@ export interface NewsStraddleSummary {
   avg_time_to_mfe_seconds: number;
   stop_loss_count: number;
   stop_loss_rate: number;
+  filtered_out?: number;
   by_event_type: Record<string, NewsStraddleByEventType>;
 }
 
@@ -463,4 +464,5 @@ export interface NewsStraddleHistoryItem {
   avg_mae: number | null;
   avg_final_points: number | null;
   stop_loss_points: number | null;
+  starred: number;
 }

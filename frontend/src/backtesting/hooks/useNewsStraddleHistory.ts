@@ -54,5 +54,24 @@ export function useNewsStraddleHistory() {
     []
   );
 
-  return { history, loading, refresh, loadRun, deleteRun };
+  const starRun = useCallback(
+    async (resultId: string) => {
+      try {
+        const res = await fetch(`/bt-api/news-straddle/runs/${resultId}/star`, {
+          method: "POST",
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const starred = (json.result ?? json).starred ? 1 : 0;
+        setHistory((h) =>
+          h.map((r) => (r.result_id === resultId ? { ...r, starred } : r)),
+        );
+      } catch {
+        // silent
+      }
+    },
+    [],
+  );
+
+  return { history, loading, refresh, loadRun, deleteRun, starRun };
 }

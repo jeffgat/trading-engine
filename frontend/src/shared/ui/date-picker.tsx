@@ -37,6 +37,9 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", class
           mode="single"
           selected={date}
           onSelect={(d) => onChange(d ? format(d, "yyyy-MM-dd") : "")}
+          captionLayout="dropdown"
+          startMonth={new Date(2015, 0)}
+          endMonth={new Date(2030, 11)}
           initialFocus
         />
       </PopoverContent>

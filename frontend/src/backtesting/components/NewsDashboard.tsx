@@ -1,26 +1,29 @@
-import { useState, useMemo, useEffect, useRef } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  Cell,
-} from "recharts";
+import { NewsRegimeReport } from "@/backtesting/components/NewsRegimeReport";
+import { NewsTradeChartModal } from "@/backtesting/components/NewsTradeChartModal";
+import { StatCard } from "@/backtesting/components/StatCard";
+import { DatePicker } from "@/shared/ui/date-picker";
 import { useNewsStraddle } from "@/backtesting/hooks/useNewsStraddle";
 import { useNewsStraddleHistory } from "@/backtesting/hooks/useNewsStraddleHistory";
-import { StatCard } from "@/backtesting/components/StatCard";
-import { NewsTradeChartModal } from "@/backtesting/components/NewsTradeChartModal";
-import { formatPct, formatNumber, pnlColor } from "@/backtesting/lib/utils";
 import type {
   NewsStraddleEvent,
   NewsStraddleHistoryItem,
   NewsStraddleSweepRow,
 } from "@/backtesting/lib/types";
+import { formatNumber, formatPct, pnlColor } from "@/backtesting/lib/utils";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ReferenceLine,
+  ResponsiveContainer,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type Mode = "single" | "sweep";
 type SortKey = keyof NewsStraddleEvent;
@@ -44,6 +47,7 @@ export function NewsDashboard() {
     refresh: refreshHistory,
     loadRun,
     deleteRun,
+    starRun,
   } = useNewsStraddleHistory();
 
   const [mode, setMode] = useState<Mode>("single");
@@ -58,15 +62,23 @@ export function NewsDashboard() {
     wasLoading.current = loading;
   }, [loading, singleData, refreshHistory]);
 
-  // Single run config
-  const [bufferPoints, setBufferPoints] = useState(5);
-  const [targetPoints, setTargetPoints] = useState(25);
+  // Single run config — stored as strings so users can clear & retype freely
+  const [bufferPoints, setBufferPoints] = useState("5");
+  const [targetPoints, setTargetPoints] = useState("25");
   const [nfpChecked, setNfpChecked] = useState(true);
   const [cpiChecked, setCpiChecked] = useState(true);
-  const [obsWindow, setObsWindow] = useState(120);
-  const [stopLossPoints, setStopLossPoints] = useState<number | null>(10);
+  const [nyOpenChecked, setNyOpenChecked] = useState(false);
+  const [obsWindow, setObsWindow] = useState("120");
+  const [stopLossPoints, setStopLossPoints] = useState("10");
   const [start, setStart] = useState("2021-01-01");
   const [end, setEnd] = useState("2025-12-31");
+
+  // Regime filter state
+  const [maxAtrPct, setMaxAtrPct] = useState("");
+  const [minVolumeRatio, setMinVolumeRatio] = useState("");
+  const [maxVolumeRatio, setMaxVolumeRatio] = useState("");
+  const [directionFilter, setDirectionFilter] = useState<string>(""); // "" | "long" | "short"
+  const [skipDays, setSkipDays] = useState<Set<number>>(new Set());
 
   // Sweep config
   const [bufferRange, setBufferRange] = useState("1:20:1");
@@ -86,17 +98,27 @@ export function NewsDashboard() {
   const eventTypes = [
     ...(nfpChecked ? ["NFP"] : []),
     ...(cpiChecked ? ["CPI"] : []),
+    ...(nyOpenChecked ? ["NY_OPEN"] : []),
   ];
+
+  const regimeFilters = {
+    max_atr_pct: maxAtrPct === "" ? null : Number(maxAtrPct) || null,
+    min_volume_ratio: minVolumeRatio === "" ? null : Number(minVolumeRatio) || null,
+    max_volume_ratio: maxVolumeRatio === "" ? null : Number(maxVolumeRatio) || null,
+    direction_filter: directionFilter || null,
+    skip_days: skipDays.size > 0 ? [...skipDays] : null,
+  };
 
   const handleRunSingle = () => {
     runSingle({
-      buffer_points: bufferPoints,
-      target_points: targetPoints,
+      buffer_points: Number(bufferPoints) || 0,
+      target_points: Number(targetPoints) || 0,
       event_types: eventTypes,
-      observation_window_seconds: obsWindow,
+      observation_window_seconds: Number(obsWindow) || 120,
       start,
       end,
-      stop_loss_points: stopLossPoints,
+      stop_loss_points: stopLossPoints === "" ? null : Number(stopLossPoints) || 0,
+      ...regimeFilters,
     });
   };
 
@@ -105,10 +127,11 @@ export function NewsDashboard() {
       buffer_range: bufferRange,
       target_range: targetRange,
       event_types: eventTypes,
-      observation_window_seconds: obsWindow,
+      observation_window_seconds: Number(obsWindow) || 120,
       start,
       end,
-      stop_loss_points: stopLossPoints,
+      stop_loss_points: stopLossPoints === "" ? null : Number(stopLossPoints) || 0,
+      ...regimeFilters,
     });
   };
 
@@ -168,6 +191,21 @@ export function NewsDashboard() {
       }));
   }, [singleData?.events]);
 
+  // Timeseries: wins vs losses per event (chronological)
+  const timeseriesData = useMemo(() => {
+    if (!singleData?.events) return [];
+    return singleData.events
+      .filter((e) => e.direction_filled)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((e) => ({
+        date: e.date,
+        points: e.final_points,
+        type: e.event_type,
+        dir: e.direction_filled,
+        targetHit: e.target_hit,
+      }));
+  }, [singleData?.events]);
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
@@ -176,8 +214,8 @@ export function NewsDashboard() {
           News Straddle Backtest
         </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Stop-buy above / stop-sell below price 1s before NFP/CPI release.
-          Find optimal buffer and target.
+          Stop-buy above / stop-sell below price 1s before NFP/CPI release or
+          NY open. Find optimal buffer and target.
         </p>
       </div>
 
@@ -192,13 +230,14 @@ export function NewsDashboard() {
           if (full) {
             setSingleData(full);
             // Sync config inputs
-            setBufferPoints(item.buffer_points);
-            setTargetPoints(item.target_points);
-            setObsWindow(item.observation_window_seconds);
+            setBufferPoints(String(item.buffer_points));
+            setTargetPoints(String(item.target_points));
+            setObsWindow(String(item.observation_window_seconds));
             const types: string[] = JSON.parse(item.event_types);
             setNfpChecked(types.includes("NFP"));
             setCpiChecked(types.includes("CPI"));
-            setStopLossPoints(item.stop_loss_points);
+            setNyOpenChecked(types.includes("NY_OPEN"));
+            setStopLossPoints(item.stop_loss_points != null ? String(item.stop_loss_points) : "");
             if (item.date_start) setStart(item.date_start);
             if (item.date_end) setEnd(item.date_end);
           }
@@ -207,6 +246,7 @@ export function NewsDashboard() {
           await deleteRun(item.result_id);
           if (selectedRunId === item.result_id) setSelectedRunId(null);
         }}
+        onStar={(item) => starRun(item.result_id)}
       />
 
       {/* Mode toggle */}
@@ -236,12 +276,10 @@ export function NewsDashboard() {
                   Buffer (pts)
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   value={bufferPoints}
-                  onChange={(e) => setBufferPoints(Number(e.target.value))}
-                  min={1}
-                  max={50}
-                  step={0.25}
+                  onChange={(e) => setBufferPoints(e.target.value)}
                   className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary"
                 />
               </div>
@@ -250,12 +288,10 @@ export function NewsDashboard() {
                   Target (pts)
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   value={targetPoints}
-                  onChange={(e) => setTargetPoints(Number(e.target.value))}
-                  min={1}
-                  max={100}
-                  step={1}
+                  onChange={(e) => setTargetPoints(e.target.value)}
                   className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary"
                 />
               </div>
@@ -293,15 +329,10 @@ export function NewsDashboard() {
               Stop Loss (pts)
             </label>
             <input
-              type="number"
-              value={stopLossPoints ?? ""}
-              onChange={(e) =>
-                setStopLossPoints(
-                  e.target.value === "" ? null : Number(e.target.value)
-                )
-              }
-              min={0}
-              step={1}
+              type="text"
+              inputMode="numeric"
+              value={stopLossPoints}
+              onChange={(e) => setStopLossPoints(e.target.value)}
               placeholder="None"
               className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary placeholder:text-text-muted/50"
             />
@@ -311,18 +342,17 @@ export function NewsDashboard() {
               Window (sec)
             </label>
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               value={obsWindow}
-              onChange={(e) => setObsWindow(Number(e.target.value))}
-              min={10}
-              max={600}
+              onChange={(e) => setObsWindow(e.target.value)}
               className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary"
             />
           </div>
           <div>
             <label className="mb-1 block text-xs text-text-muted">Events</label>
-            <div className="flex gap-3 pt-1.5">
-              <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+            <div className="flex flex-col gap-1 pt-0.5">
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <input
                   type="checkbox"
                   checked={nfpChecked}
@@ -331,7 +361,7 @@ export function NewsDashboard() {
                 />
                 NFP
               </label>
-              <label className="flex items-center gap-1.5 text-sm text-text-secondary">
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <input
                   type="checkbox"
                   checked={cpiChecked}
@@ -340,27 +370,99 @@ export function NewsDashboard() {
                 />
                 CPI
               </label>
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={nyOpenChecked}
+                  onChange={(e) => setNyOpenChecked(e.target.checked)}
+                  className="accent-accent"
+                />
+                NY Open
+              </label>
             </div>
           </div>
           <div>
             <label className="mb-1 block text-xs text-text-muted">Start</label>
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary"
-            />
+            <DatePicker value={start} onChange={setStart} placeholder="Start date" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-text-muted">End</label>
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary"
-            />
+            <DatePicker value={end} onChange={setEnd} placeholder="End date" />
           </div>
         </div>
+
+        {/* Regime filters row */}
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 md:grid-cols-6">
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Max ATR %</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 1.5"
+              value={maxAtrPct}
+              onChange={(e) => setMaxAtrPct(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary placeholder:text-text-muted/40"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Min Vol Ratio</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 0.8"
+              value={minVolumeRatio}
+              onChange={(e) => setMinVolumeRatio(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary placeholder:text-text-muted/40"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Max Vol Ratio</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="e.g. 2.0"
+              value={maxVolumeRatio}
+              onChange={(e) => setMaxVolumeRatio(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 font-mono text-sm text-text-primary placeholder:text-text-muted/40"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-text-muted">Direction</label>
+            <select
+              value={directionFilter}
+              onChange={(e) => setDirectionFilter(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-3 py-1.5 text-sm text-text-primary"
+            >
+              <option value="">Both</option>
+              <option value="long">Long only</option>
+              <option value="short">Short only</option>
+            </select>
+          </div>
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs text-text-muted">Skip Days</label>
+            <div className="flex flex-wrap gap-2 pt-0.5">
+              {["Mon", "Tue", "Wed", "Thu", "Fri"].map((day, i) => (
+                <label key={day} className="flex items-center gap-1 text-xs text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={skipDays.has(i)}
+                    onChange={(e) => {
+                      setSkipDays((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(i);
+                        else next.delete(i);
+                        return next;
+                      });
+                    }}
+                    className="accent-accent"
+                  />
+                  {day}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="mt-4">
           <button
             onClick={mode === "single" ? handleRunSingle : handleRunSweep}
@@ -408,7 +510,7 @@ export function NewsDashboard() {
               label="Fills"
               value={`${singleData.summary.fills}`}
               subValue={`L:${singleData.summary.long_fills} S:${singleData.summary.short_fills}`}
-              tooltip={`${singleData.summary.events_with_data} events with data, ${singleData.summary.skipped_no_data} skipped`}
+              tooltip={`${singleData.summary.events_with_data} events with data, ${singleData.summary.skipped_no_data} skipped${singleData.summary.filtered_out ? `, ${singleData.summary.filtered_out} filtered out` : ""}`}
             />
             {singleData.summary.stop_loss_count > 0 && (
               <StatCard
@@ -488,6 +590,12 @@ export function NewsDashboard() {
               </div>
             </div>
           )}
+
+          {/* Regime analysis */}
+          <NewsRegimeReport
+            events={singleData.events}
+            instrument={singleData.config.instrument}
+          />
 
           {/* Charts row */}
           <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -590,6 +698,46 @@ export function NewsDashboard() {
             </div>
           </div>
 
+          {/* Wins vs Losses timeseries */}
+          {timeseriesData.length > 0 && (
+            <div className="mb-6 rounded-lg border border-border bg-bg-card p-4">
+              <h3 className="mb-3 text-sm font-medium text-text-secondary">
+                Wins vs Losses (chronological)
+              </h3>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={timeseriesData} barCategoryGap={2}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2c2c33" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fill: "#a0a0ab", fontSize: 10 }}
+                    interval="preserveStartEnd"
+                    tickFormatter={(d: string) => d.slice(5)}
+                  />
+                  <YAxis tick={{ fill: "#a0a0ab", fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1c1c21",
+                      border: "1px solid #2c2c33",
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                    formatter={(v: number) => [`${formatNumber(v)} pts`, "Final"]}
+                    labelFormatter={(d: string) => d}
+                  />
+                  <ReferenceLine y={0} stroke="#62626b" />
+                  <Bar dataKey="points" radius={[2, 2, 0, 0]}>
+                    {timeseriesData.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry.points >= 0 ? "#3dd68c" : "#f0615e"}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* Events table */}
           <div className="rounded-lg border border-border bg-bg-card">
             <div className="border-b border-border px-4 py-3">
@@ -650,10 +798,12 @@ export function NewsDashboard() {
                           className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
                             e.event_type === "NFP"
                               ? "bg-info/20 text-info"
-                              : "bg-accent/20 text-accent"
+                              : e.event_type === "NY_OPEN"
+                                ? "bg-profit/20 text-profit"
+                                : "bg-accent/20 text-accent"
                           }`}
                         >
-                          {e.event_type}
+                          {e.event_type === "NY_OPEN" ? "NY Open" : e.event_type}
                         </span>
                       </td>
                       <td className="px-3 py-2">
@@ -844,7 +994,7 @@ export function NewsDashboard() {
       <NewsTradeChartModal
         event={chartEvent}
         instrument="NQ"
-        observationWindowSeconds={obsWindow}
+        observationWindowSeconds={Number(obsWindow) || 120}
         open={chartOpen}
         onOpenChange={setChartOpen}
       />
@@ -859,11 +1009,13 @@ function NewsStraddleHistoryPanel({
   selectedRunId,
   onSelect,
   onDelete,
+  onStar,
 }: {
   history: NewsStraddleHistoryItem[];
   selectedRunId: string | null;
   onSelect: (item: NewsStraddleHistoryItem) => void;
   onDelete: (item: NewsStraddleHistoryItem) => void;
+  onStar: (item: NewsStraddleHistoryItem) => void;
 }) {
   const fmtDate = (ts: string) => {
     try {
@@ -879,6 +1031,12 @@ function NewsStraddleHistoryPanel({
     }
   };
 
+  // Sort: starred first, then by timestamp
+  const sorted = [...history].sort((a, b) => {
+    if (a.starred !== b.starred) return b.starred - a.starred;
+    return 0; // preserve original timestamp order
+  });
+
   return (
     <div className="mb-6 rounded-lg border border-border bg-bg-card">
       <div className="border-b border-border px-4 py-2.5">
@@ -893,23 +1051,25 @@ function NewsStraddleHistoryPanel({
           </div>
         ) : (
         <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-bg-card text-text-muted">
+          <thead className="sticky top-0 z-10 bg-bg-card text-text-muted">
             <tr>
-              <th className="px-3 py-1.5">Run Date</th>
+              <th className="sticky left-0 z-20 bg-bg-card px-2 py-1.5 w-8" />
+              <th className="whitespace-nowrap px-3 py-1.5">Run Date</th>
               <th className="px-3 py-1.5">Buffer</th>
               <th className="px-3 py-1.5">Target</th>
-              <th className="px-3 py-1.5">Stop Loss</th>
+              <th className="px-3 py-1.5">SL</th>
               <th className="px-3 py-1.5">Window</th>
               <th className="px-3 py-1.5">Events</th>
-              <th className="px-3 py-1.5">Period</th>
+              <th className="whitespace-nowrap px-3 py-1.5">Period</th>
               <th className="px-3 py-1.5">Fills</th>
               <th className="px-3 py-1.5">Hit Rate</th>
               <th className="px-3 py-1.5">Whipsaw</th>
-              <th className="px-3 py-1.5" />
+              <th className="px-3 py-1.5">Avg Pts</th>
+              <th className="px-3 py-1.5 w-8" />
             </tr>
           </thead>
           <tbody>
-            {history.map((item) => {
+            {sorted.map((item) => {
               const isSelected = item.result_id === selectedRunId;
               let events: string[];
               try {
@@ -927,6 +1087,22 @@ function NewsStraddleHistoryPanel({
                       : "hover:bg-bg-card-hover"
                   }`}
                 >
+                  <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStar(item);
+                      }}
+                      className={`text-sm transition-colors ${
+                        item.starred
+                          ? "text-accent"
+                          : "text-text-muted/30 hover:text-accent/60"
+                      }`}
+                      title={item.starred ? "Unstar" : "Star"}
+                    >
+                      {item.starred ? "\u2605" : "\u2606"}
+                    </button>
+                  </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-text-muted">
                     {fmtDate(item.timestamp)}
                   </td>
@@ -946,7 +1122,7 @@ function NewsStraddleHistoryPanel({
                     {events.join(", ")}
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-text-muted">
-                    {item.date_start ?? "—"} → {item.date_end ?? "—"}
+                    {item.date_start ?? "—"} &rarr; {item.date_end ?? "—"}
                   </td>
                   <td className="px-3 py-1.5 font-mono text-text-secondary">
                     {item.fills ?? "—"}
@@ -954,11 +1130,14 @@ function NewsStraddleHistoryPanel({
                   <td className="px-3 py-1.5 font-mono" style={{ color: "var(--color-profit)" }}>
                     {item.target_hit_rate != null ? formatPct(item.target_hit_rate) : "—"}
                   </td>
+                  <td className="px-3 py-1.5 font-mono" style={{ color: "var(--color-loss)" }}>
+                    {item.whipsaw_rate != null ? formatPct(item.whipsaw_rate) : "—"}
+                  </td>
                   <td
                     className="px-3 py-1.5 font-mono"
-                    style={{ color: "var(--color-loss)" }}
+                    style={{ color: item.avg_final_points != null ? (item.avg_final_points >= 0 ? "var(--color-profit)" : "var(--color-loss)") : undefined }}
                   >
-                    {item.whipsaw_rate != null ? formatPct(item.whipsaw_rate) : "—"}
+                    {item.avg_final_points != null ? formatNumber(item.avg_final_points) : "—"}
                   </td>
                   <td className="px-3 py-1.5">
                     <button
@@ -969,7 +1148,7 @@ function NewsStraddleHistoryPanel({
                       className="text-text-muted hover:text-loss transition-colors"
                       title="Delete run"
                     >
-                      ×
+                      &times;
                     </button>
                   </td>
                 </tr>

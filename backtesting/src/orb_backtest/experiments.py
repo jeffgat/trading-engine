@@ -309,6 +309,8 @@ def init_db() -> Path:
             conn.execute(
                 "UPDATE news_straddle_runs SET stop_loss_points = json_extract(result_json, '$.config.stop_loss_points')"
             )
+        if "starred" not in ns_existing:
+            conn.execute("ALTER TABLE news_straddle_runs ADD COLUMN starred INTEGER NOT NULL DEFAULT 0")
 
         # Migrate: add columns to optimizations if missing
         opt_existing = {row[1] for row in conn.execute("PRAGMA table_info(optimizations)").fetchall()}
@@ -1474,7 +1476,8 @@ def list_news_straddle_history(limit: int = 100) -> list[dict]:
                       buffer_points, target_points, observation_window_seconds,
                       event_types, date_start, date_end,
                       fills, target_hit_rate, whipsaw_rate, pct_profitable,
-                      avg_mfe, avg_mae, avg_final_points, stop_loss_points
+                      avg_mfe, avg_mae, avg_final_points, stop_loss_points,
+                      starred
                FROM news_straddle_runs
                ORDER BY timestamp DESC
                LIMIT ?""",
@@ -1505,6 +1508,24 @@ def delete_news_straddle_run(result_id: str) -> bool:
             (result_id,),
         )
         return cursor.rowcount > 0
+
+
+def toggle_news_straddle_star(result_id: str) -> bool | None:
+    """Toggle the starred state of a news straddle run. Returns new state or None if not found."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT starred FROM news_straddle_runs WHERE result_id = ?",
+            (result_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        new_val = 0 if row[0] else 1
+        conn.execute(
+            "UPDATE news_straddle_runs SET starred = ? WHERE result_id = ?",
+            (new_val, result_id),
+        )
+        return bool(new_val)
 
 
 # ---------------------------------------------------------------------------

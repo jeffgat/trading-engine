@@ -1,7 +1,15 @@
 import { useState, useCallback } from "react";
 import type { NewsStraddleResult, NewsStraddleSweepResult } from "@/backtesting/lib/types";
 
-interface SingleParams {
+interface RegimeFilters {
+  max_atr_pct?: number | null;
+  min_volume_ratio?: number | null;
+  max_volume_ratio?: number | null;
+  direction_filter?: string | null;
+  skip_days?: number[] | null;
+}
+
+interface SingleParams extends RegimeFilters {
   buffer_points?: number;
   target_points?: number;
   event_types?: string[];
@@ -12,7 +20,7 @@ interface SingleParams {
   stop_loss_points?: number | null;
 }
 
-interface SweepParams {
+interface SweepParams extends RegimeFilters {
   buffer_range?: string;
   target_range?: string;
   event_types?: string[];

@@ -20,6 +20,8 @@ function Calendar({
         month: "flex flex-col gap-4",
         month_caption: "flex justify-center pt-1 relative items-center w-full",
         caption_label: "text-sm font-medium",
+        dropdowns: "flex items-center gap-2",
+        dropdown: "rounded-md border border-border bg-bg-secondary px-1.5 py-0.5 text-xs text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent",
         nav: "flex items-center gap-1",
         button_previous: cn(
           buttonVariants({ variant: "outline" }),

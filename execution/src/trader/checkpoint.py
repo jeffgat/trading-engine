@@ -179,6 +179,8 @@ def serialize_orb_engine(engine: Any) -> dict:
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
         "paused": engine.paused,
+        "exit_type": engine._exit_type,
+        "r_result": engine._r_result,
     }
 
 
@@ -225,6 +227,8 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
 
     engine._bars = [_deserialize_bar(b) for b in data.get("bars", [])]
     engine.paused = data.get("paused", False)
+    engine._exit_type = data.get("exit_type")
+    engine._r_result = data.get("r_result")
 
     # Time-validate: ensure the restored state is still appropriate
     now = datetime.now(tz=ET)
@@ -234,10 +238,10 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
 
     logger.info(
         "[%s] Restored from checkpoint: state=%s (checkpoint=%s) date=%s "
-        "orb=%.2f/%.2f levels=%s tp1_hit=%s paused=%s",
+        "orb=%.2f/%.2f levels=%s tp1_hit=%s exit_type=%s paused=%s",
         engine.name, validated_state.value, state_str, engine._current_date,
         engine._orb_high, engine._orb_low,
-        bool(engine._levels), engine._tp1_hit, engine.paused,
+        bool(engine._levels), engine._tp1_hit, engine._exit_type, engine.paused,
     )
     return True
 
@@ -315,6 +319,8 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "bars": [_serialize_bar(b) for b in engine._bars],
         "swing_tracker": engine._swings.to_dict(),
         "paused": engine.paused,
+        "exit_type": engine._exit_type,
+        "r_result": engine._r_result,
     }
 
 
@@ -374,6 +380,8 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
         engine._swings.restore(swing_data)
 
     engine.paused = data.get("paused", False)
+    engine._exit_type = data.get("exit_type")
+    engine._r_result = data.get("r_result")
 
     # Time-validate: ensure the restored state is still appropriate
     now = datetime.now(tz=ET)
@@ -383,9 +391,9 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
 
     logger.info(
         "[%s] Restored from checkpoint: state=%s (checkpoint=%s) date=%s "
-        "levels=%s tp1_hit=%s paused=%s",
+        "levels=%s tp1_hit=%s exit_type=%s paused=%s",
         engine.name, validated_state.value, state_str, engine._current_date,
-        bool(engine._levels), engine._tp1_hit, engine.paused,
+        bool(engine._levels), engine._tp1_hit, engine._exit_type, engine.paused,
     )
     return True
 
@@ -402,9 +410,17 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
     if checkpoint_state in (LSIState.ARMED_LIMIT, LSIState.MANAGING):
         return checkpoint_state
 
-    # FLAT — keep as flat, UNLESS we're before the entry window for a
-    # daytime session (pre-session).  In that case downgrade to IDLE so the
-    # normal IDLE→SCANNING transition fires when the entry window opens.
+    # FLAT — usually keep as flat, but with two exceptions:
+    #
+    # 1. Pre-session (before entry window): downgrade to IDLE so the normal
+    #    IDLE→SCANNING transition fires when the entry window opens.
+    #
+    # 2. Entry window still open AND no trade was taken: downgrade to
+    #    SCANNING.  This handles the case where a previous buggy process
+    #    checkpointed FLAT prematurely (e.g. recover_session_state set FLAT
+    #    instead of IDLE before the entry window, which then persisted).
+    #    If the engine already took a trade (has levels), keep FLAT — the
+    #    session genuinely completed.
     if checkpoint_state == LSIState.FLAT:
         if not engine._crosses_midnight and now_t < engine._entry_start_t:
             logger.info(
@@ -412,6 +428,12 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
                 engine.name,
             )
             return LSIState.IDLE
+        if engine._in_entry(now_t) and engine._levels is None:
+            logger.info(
+                "[%s] Checkpoint was FLAT with no trade during open entry window — setting SCANNING",
+                engine.name,
+            )
+            return LSIState.SCANNING
         return LSIState.FLAT
 
     # Setup-discovery states — valid only if entry window still open

@@ -27,6 +27,13 @@ class NewsStraddleConfig:
     instrument: str = "NQ"
     stop_loss_points: float | None = None  # fixed stop after fill, None = no stop
 
+    # ── Regime filters (all optional, None = no filter) ──
+    max_atr_pct: float | None = None       # skip if prior-day ATR% above this
+    min_volume_ratio: float | None = None   # skip if volume/21d-MA below this
+    max_volume_ratio: float | None = None   # skip if volume/21d-MA above this
+    direction_filter: str | None = None     # "long" or "short" only; None = both
+    skip_days: tuple[int, ...] = ()         # weekday ints to exclude (0=Mon, 4=Fri)
+
 
 @dataclass
 class NewsStraddleEvent:
@@ -48,14 +55,29 @@ class NewsStraddleEvent:
     exit_type: str  # "target", "stop_loss", "eow" (end of window), "no_fill"
 
 
-def _get_event_dates(event_types: tuple[str, ...]) -> list[tuple[str, str]]:
-    """Return sorted list of (YYYYMMDD, event_type) tuples."""
+def _get_event_dates(
+    event_types: tuple[str, ...],
+    df_1s: pd.DataFrame | None = None,
+) -> list[tuple[str, str]]:
+    """Return sorted list of (YYYYMMDD, event_type) tuples.
+
+    For NY_OPEN, trading days are derived from the 1s data index.
+    """
     dates: list[tuple[str, str]] = []
     for et in event_types:
-        if et.upper() == "NFP":
+        upper = et.upper()
+        if upper == "NFP":
             dates.extend((d, "NFP") for d in NFP_DATES)
-        elif et.upper() == "CPI":
+        elif upper == "CPI":
             dates.extend((d, "CPI") for d in CPI_DATES)
+        elif upper == "NY_OPEN":
+            if df_1s is not None and not df_1s.empty:
+                # Derive every trading day from 1s data that has a 09:29:59 bar
+                unique_dates = df_1s.index.normalize().unique()
+                for dt in unique_dates:
+                    candidate = dt.replace(hour=9, minute=29, second=59)
+                    if candidate in df_1s.index:
+                        dates.append((dt.strftime("%Y%m%d"), "NY_OPEN"))
     dates.sort(key=lambda x: x[0])
     return dates
 
@@ -78,8 +100,14 @@ def simulate_single_event(
 ) -> NewsStraddleEvent | None:
     """Simulate a news straddle for a single event."""
     year, month, day = int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8])
-    ref_time = datetime(year, month, day, 8, 29, 59)
-    release_time = datetime(year, month, day, 8, 30, 0)
+
+    # NY_OPEN uses 09:30 ET; NFP/CPI use 08:30 ET
+    if event_type == "NY_OPEN":
+        ref_time = datetime(year, month, day, 9, 29, 59)
+        release_time = datetime(year, month, day, 9, 30, 0)
+    else:
+        ref_time = datetime(year, month, day, 8, 29, 59)
+        release_time = datetime(year, month, day, 8, 30, 0)
 
     if ref_time not in df_1s.index:
         return None
@@ -198,8 +226,10 @@ def simulate_single_event(
             elif not is_long and high >= opposite_level:
                 whipsaw = True
 
-        # --- Fill bar (j == 0): special handling ---
-        if j == 0:
+        # --- Fill bar (j == 0): special handling (NFP/CPI only) ---
+        # NY_OPEN fills on normal 1s bars — skip the wick-and-reverse heuristic
+        # and let the standard target/stop logic handle it.
+        if j == 0 and event_type != "NY_OPEN":
             # Assume price reaches the candle extreme; check target first
             if favorable >= config.target_points:
                 target_hit = True
@@ -223,7 +253,7 @@ def simulate_single_event(
             # Fill bar didn't hit target or reverse — continue to next bars
             continue
 
-        # --- Subsequent bars (j > 0) ---
+        # --- Subsequent bars (j >= 0 for NY_OPEN, j > 0 otherwise) ---
 
         # Check if both SL and TP hit on the same bar
         sl_hit = sl is not None and adverse >= sl
@@ -356,6 +386,59 @@ def _compute_summary(events: list[NewsStraddleEvent]) -> dict:
     }
 
 
+def _has_regime_filters(config: NewsStraddleConfig) -> bool:
+    """Check if any regime-based filters are active."""
+    return (
+        config.max_atr_pct is not None
+        or config.min_volume_ratio is not None
+        or config.max_volume_ratio is not None
+        or config.direction_filter is not None
+        or len(config.skip_days) > 0
+    )
+
+
+def _load_regime_features(instrument: str, start: str | None, end: str | None) -> pd.DataFrame:
+    """Load daily features for regime filtering (reuses news_regime module)."""
+    from ..analysis.news_regime import _load_daily_features
+    feat_start = start or "2010-01-01"
+    feat_end = end or "2030-12-31"
+    return _load_daily_features(instrument, feat_start, feat_end)
+
+
+def _passes_regime_filter(
+    date_str: str,
+    config: NewsStraddleConfig,
+    features: pd.DataFrame,
+) -> bool:
+    """Return True if this event date passes all active regime filters."""
+    dt = pd.Timestamp(date_str).normalize()
+
+    # Day-of-week filter
+    if config.skip_days and dt.dayofweek in config.skip_days:
+        return False
+
+    # Feature-based filters require a matching row
+    if dt in features.index:
+        row = features.loc[dt]
+
+        if config.max_atr_pct is not None:
+            v = row.get("atr_pct")
+            if pd.notna(v) and v > config.max_atr_pct:
+                return False
+
+        if config.min_volume_ratio is not None:
+            v = row.get("volume_ratio")
+            if pd.notna(v) and v < config.min_volume_ratio:
+                return False
+
+        if config.max_volume_ratio is not None:
+            v = row.get("volume_ratio")
+            if pd.notna(v) and v > config.max_volume_ratio:
+                return False
+
+    return True
+
+
 def run_news_straddle(
     config: NewsStraddleConfig,
     start: str | None = None,
@@ -363,7 +446,7 @@ def run_news_straddle(
 ) -> dict:
     """Run a news straddle backtest."""
     df_1s = _load_1s_data(config.instrument, start, end)
-    event_dates = _get_event_dates(config.event_types)
+    event_dates = _get_event_dates(config.event_types, df_1s)
 
     if start:
         start_yyyymmdd = start.replace("-", "")
@@ -372,11 +455,30 @@ def run_news_straddle(
         end_yyyymmdd = end.replace("-", "")
         event_dates = [(d, et) for d, et in event_dates if d <= end_yyyymmdd]
 
+    # Load daily features if any regime filters are active
+    features = pd.DataFrame()
+    use_filters = _has_regime_filters(config)
+    if use_filters:
+        features = _load_regime_features(config.instrument, start, end)
+
     events: list[NewsStraddleEvent] = []
     skipped = 0
+    filtered_out = 0
     for date_str, event_type in event_dates:
+        # Apply regime filters before simulation
+        if use_filters:
+            yyyymmdd_to_iso = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+            if not _passes_regime_filter(yyyymmdd_to_iso, config, features):
+                filtered_out += 1
+                continue
+
         result = simulate_single_event(df_1s, date_str, event_type, config)
         if result is not None:
+            # Direction filter applied post-fill
+            if config.direction_filter and result.direction_filled:
+                if result.direction_filled != config.direction_filter:
+                    filtered_out += 1
+                    continue
             events.append(result)
         else:
             skipped += 1
@@ -385,6 +487,7 @@ def run_news_straddle(
     summary["total_events"] = len(event_dates)
     summary["events_with_data"] = len(events)
     summary["skipped_no_data"] = skipped
+    summary["filtered_out"] = filtered_out
 
     return {
         "config": {
@@ -394,6 +497,11 @@ def run_news_straddle(
             "observation_window_seconds": config.observation_window_seconds,
             "instrument": config.instrument,
             "stop_loss_points": config.stop_loss_points,
+            "max_atr_pct": config.max_atr_pct,
+            "min_volume_ratio": config.min_volume_ratio,
+            "max_volume_ratio": config.max_volume_ratio,
+            "direction_filter": config.direction_filter,
+            "skip_days": list(config.skip_days),
         },
         "summary": summary,
         "events": [asdict(e) for e in events],
@@ -409,16 +517,50 @@ def run_news_straddle_sweep(
     start: str | None = None,
     end: str | None = None,
     stop_loss_points: float | None = None,
+    *,
+    max_atr_pct: float | None = None,
+    min_volume_ratio: float | None = None,
+    max_volume_ratio: float | None = None,
+    direction_filter: str | None = None,
+    skip_days: tuple[int, ...] = (),
 ) -> dict:
     """Sweep over buffer x target grid."""
     df_1s = _load_1s_data(instrument, start, end)
-    event_dates = _get_event_dates(event_types)
+    event_dates = _get_event_dates(event_types, df_1s)
     if start:
         start_yyyymmdd = start.replace("-", "")
         event_dates = [(d, et) for d, et in event_dates if d >= start_yyyymmdd]
     if end:
         end_yyyymmdd = end.replace("-", "")
         event_dates = [(d, et) for d, et in event_dates if d <= end_yyyymmdd]
+
+    # Pre-load features once if any regime filter is active
+    has_filters = (
+        max_atr_pct is not None
+        or min_volume_ratio is not None
+        or max_volume_ratio is not None
+        or direction_filter is not None
+        or len(skip_days) > 0
+    )
+    features = pd.DataFrame()
+    if has_filters:
+        features = _load_regime_features(instrument, start, end)
+
+    # Pre-filter event dates by date-level gates (ATR, volume, DOW) once
+    if has_filters:
+        filter_config = NewsStraddleConfig(
+            instrument=instrument,
+            max_atr_pct=max_atr_pct,
+            min_volume_ratio=min_volume_ratio,
+            max_volume_ratio=max_volume_ratio,
+            skip_days=skip_days,
+        )
+        event_dates = [
+            (d, et) for d, et in event_dates
+            if _passes_regime_filter(
+                f"{d[:4]}-{d[4:6]}-{d[6:]}", filter_config, features
+            )
+        ]
 
     results: list[dict] = []
 
@@ -431,12 +573,16 @@ def run_news_straddle_sweep(
                 observation_window_seconds=observation_window_seconds,
                 instrument=instrument,
                 stop_loss_points=stop_loss_points,
+                direction_filter=direction_filter,
             )
 
             events: list[NewsStraddleEvent] = []
             for date_str, event_type in event_dates:
                 result = simulate_single_event(df_1s, date_str, event_type, config)
                 if result is not None:
+                    if direction_filter and result.direction_filled:
+                        if result.direction_filled != direction_filter:
+                            continue
                     events.append(result)
 
             summary = _compute_summary(events)

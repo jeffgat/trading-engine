@@ -98,6 +98,7 @@ from .experiments import (
     list_news_straddle_history,
     get_news_straddle_run,
     delete_news_straddle_run,
+    toggle_news_straddle_star,
     list_risk_engine_layouts,
     save_risk_engine_layout,
     delete_risk_engine_layout,
@@ -1155,6 +1156,12 @@ class NewsStraddleRequest(BaseModel):
     start: Optional[str] = None
     end: Optional[str] = None
     stop_loss_points: Optional[float] = None
+    # Regime filters
+    max_atr_pct: Optional[float] = None
+    min_volume_ratio: Optional[float] = None
+    max_volume_ratio: Optional[float] = None
+    direction_filter: Optional[str] = None  # "long" | "short" | None
+    skip_days: Optional[list[int]] = None   # weekday ints (0=Mon, 4=Fri)
 
 
 class NewsStraddleSweepRequest(BaseModel):
@@ -1166,6 +1173,12 @@ class NewsStraddleSweepRequest(BaseModel):
     start: Optional[str] = None
     end: Optional[str] = None
     stop_loss_points: Optional[float] = None
+    # Regime filters
+    max_atr_pct: Optional[float] = None
+    min_volume_ratio: Optional[float] = None
+    max_volume_ratio: Optional[float] = None
+    direction_filter: Optional[str] = None
+    skip_days: Optional[list[int]] = None
 
 
 def _parse_range_spec(spec: str) -> list[float]:
@@ -1186,12 +1199,14 @@ def _parse_range_spec(spec: str) -> list[float]:
 def get_news_candles(
     instrument: str = Query("NQ"),
     date: str = Query(..., description="Event date YYYY-MM-DD"),
-    seconds_before: int = Query(1, description="Seconds before 08:30 release to include"),
-    seconds_after: int = Query(300, description="Seconds after 08:30 release to include"),
+    seconds_before: int = Query(1, description="Seconds before release to include"),
+    seconds_after: int = Query(300, description="Seconds after release to include"),
+    event_type: str = Query("NFP", description="Event type (NFP, CPI, NY_OPEN)"),
 ):
     """Return 1s OHLCV bars around a news event.
 
-    The window is [08:30 - seconds_before, 08:30 + seconds_after] ET.
+    The window is [release - seconds_before, release + seconds_after] ET.
+    Release time is 09:30 for NY_OPEN, 08:30 for NFP/CPI.
     Used by the NewsTradeChartModal to render a candlestick chart for a
     specific news straddle event.
     """
@@ -1211,9 +1226,10 @@ def get_news_candles(
     except FileNotFoundError as e:
         raise data_not_found(str(e))
 
-    # Window: centered on 08:30:00 release time
+    # NY_OPEN releases at 09:30 ET; NFP/CPI at 08:30 ET
+    release_hour = 9 if event_type.upper() == "NY_OPEN" else 8
     release = pd.Timestamp(datetime.combine(
-        trade_date, datetime.min.time().replace(hour=8, minute=30)
+        trade_date, datetime.min.time().replace(hour=release_hour, minute=30)
     ))
     ws = release - pd.Timedelta(seconds=seconds_before)
     we = release + pd.Timedelta(seconds=seconds_after)
@@ -1253,13 +1269,18 @@ def run_news_straddle_endpoint(req: NewsStraddleRequest):
         observation_window_seconds=req.observation_window_seconds,
         instrument=req.instrument,
         stop_loss_points=req.stop_loss_points,
+        max_atr_pct=req.max_atr_pct,
+        min_volume_ratio=req.min_volume_ratio,
+        max_volume_ratio=req.max_volume_ratio,
+        direction_filter=req.direction_filter,
+        skip_days=tuple(req.skip_days) if req.skip_days else (),
     )
     result = run_news_straddle(config, start=req.start, end=req.end)
 
     # Auto-save to history
     result["config"]["date_start"] = req.start
     result["config"]["date_end"] = req.end
-    fingerprint = f"{req.buffer_points}_{req.target_points}_{req.observation_window_seconds}_{req.event_types}_{req.start}_{req.end}_{req.stop_loss_points}"
+    fingerprint = f"{req.buffer_points}_{req.target_points}_{req.observation_window_seconds}_{req.event_types}_{req.start}_{req.end}_{req.stop_loss_points}_{req.max_atr_pct}_{req.min_volume_ratio}_{req.max_volume_ratio}_{req.direction_filter}_{req.skip_days}"
     result_id = _hl.md5(fingerprint.encode()).hexdigest()[:12]
     try:
         log_news_straddle_run(result, result_id)
@@ -1284,6 +1305,11 @@ def run_news_straddle_sweep_endpoint(req: NewsStraddleSweepRequest):
         start=req.start,
         end=req.end,
         stop_loss_points=req.stop_loss_points,
+        max_atr_pct=req.max_atr_pct,
+        min_volume_ratio=req.min_volume_ratio,
+        max_volume_ratio=req.max_volume_ratio,
+        direction_filter=req.direction_filter,
+        skip_days=tuple(req.skip_days) if req.skip_days else (),
     )
     return ok(result)
 
@@ -1313,6 +1339,15 @@ def delete_news_straddle_run_endpoint(result_id: str):
     return ok({"deleted": True})
 
 
+@app.post("/api/news-straddle/runs/{result_id}/star")
+def toggle_news_straddle_star_endpoint(result_id: str):
+    """Toggle the starred state of a news straddle run."""
+    new_state = toggle_news_straddle_star(result_id)
+    if new_state is None:
+        raise experiment_not_found(result_id)
+    return ok({"starred": new_state})
+
+
 class NewsStraddleRunSaveRequest(BaseModel):
     result_dict: dict
     result_id: str
@@ -1323,6 +1358,23 @@ def save_news_straddle_run_endpoint(req: NewsStraddleRunSaveRequest):
     """Save a news straddle run (used by remote sync)."""
     rowid = log_news_straddle_run(req.result_dict, req.result_id)
     return ok({"rowid": rowid})
+
+
+# ── News Straddle Regime Analysis ────────────────────────────────────
+
+
+class NewsRegimeRequest(BaseModel):
+    events: list[dict]
+    instrument: str = "NQ"
+
+
+@app.post("/api/news-straddle/regime")
+def news_straddle_regime_endpoint(req: NewsRegimeRequest):
+    """Run regime analysis on news straddle events."""
+    from .analysis.news_regime import build_news_regime_report
+
+    report = build_news_regime_report(req.events, req.instrument)
+    return ok(report)
 
 
 # ── Regime Reports ───────────────────────────────────────────────────
