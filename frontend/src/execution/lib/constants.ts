@@ -1,6 +1,7 @@
 export const STATE_COLORS: Record<string, string> = {
   idle: "bg-sky-500/20 text-sky-200",
   orb_building: "bg-info/20 text-info",
+  scanning: "bg-sky-500/20 text-sky-300",
   waiting_for_gap: "bg-amber-500/20 text-amber-300",
   waiting_for_sweep: "bg-warning/20 text-warning",
   waiting_for_inversion: "bg-violet-500/20 text-violet-300",
@@ -14,6 +15,7 @@ export const STATE_COLORS: Record<string, string> = {
 export const STATE_LABELS: Record<string, string> = {
   idle: "Idle",
   orb_building: "ORB Building",
+  scanning: "Scanning",
   waiting_for_gap: "Waiting for Gap",
   waiting_for_sweep: "Waiting for Sweep",
   waiting_for_inversion: "Waiting for Inversion",

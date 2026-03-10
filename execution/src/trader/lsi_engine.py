@@ -315,9 +315,15 @@ class LSIEngine:
             self._state = LSIState.SCANNING
         elif self._in_flat(dummy_bar):
             self._state = LSIState.FLAT
+        elif not self._crosses_midnight and now_t < self._entry_start_t:
+            # Pre-session (daytime sessions only): stay IDLE so the normal
+            # IDLE→SCANNING transition fires when the entry window opens.
+            # Cross-midnight sessions are excluded because a pre-entry_start
+            # time (e.g. 02:15 with entry_start 20:40) is actually *after*
+            # the session's entry window, not before it.
+            self._state = LSIState.IDLE
         else:
-            # Between entry_end and flat_start, or outside session entirely
-            # Check if we're in the post-entry / pre-flat zone (session active but no new entries)
+            # Between entry_end and flat_start — session over, no new entries
             self._state = LSIState.FLAT
 
         logger.info(

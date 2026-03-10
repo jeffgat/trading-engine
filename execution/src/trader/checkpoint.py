@@ -402,8 +402,16 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
     if checkpoint_state in (LSIState.ARMED_LIMIT, LSIState.MANAGING):
         return checkpoint_state
 
-    # FLAT — keep as flat
+    # FLAT — keep as flat, UNLESS we're before the entry window for a
+    # daytime session (pre-session).  In that case downgrade to IDLE so the
+    # normal IDLE→SCANNING transition fires when the entry window opens.
     if checkpoint_state == LSIState.FLAT:
+        if not engine._crosses_midnight and now_t < engine._entry_start_t:
+            logger.info(
+                "[%s] Checkpoint was FLAT but entry window hasn't started — setting IDLE",
+                engine.name,
+            )
+            return LSIState.IDLE
         return LSIState.FLAT
 
     # Setup-discovery states — valid only if entry window still open
