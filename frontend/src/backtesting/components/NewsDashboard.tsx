@@ -240,6 +240,13 @@ export function NewsDashboard() {
             setStopLossPoints(item.stop_loss_points != null ? String(item.stop_loss_points) : "");
             if (item.date_start) setStart(item.date_start);
             if (item.date_end) setEnd(item.date_end);
+            // Restore regime filters from loaded config
+            const cfg = full.config;
+            setMaxAtrPct(cfg.max_atr_pct != null ? String(cfg.max_atr_pct) : "");
+            setMinVolumeRatio(cfg.min_volume_ratio != null ? String(cfg.min_volume_ratio) : "");
+            setMaxVolumeRatio(cfg.max_volume_ratio != null ? String(cfg.max_volume_ratio) : "");
+            setDirectionFilter(cfg.direction_filter ?? "");
+            setSkipDays(new Set(cfg.skip_days ?? []));
           }
         }}
         onDelete={async (item) => {
@@ -1002,6 +1009,37 @@ export function NewsDashboard() {
   );
 }
 
+// ── Filter Badges (compact display of active regime filters) ──
+
+const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function FilterBadges({ item }: { item: NewsStraddleHistoryItem }) {
+  const badges: string[] = [];
+  if (item.max_atr_pct != null) badges.push(`ATR<${item.max_atr_pct}%`);
+  if (item.min_volume_ratio != null) badges.push(`Vol>${item.min_volume_ratio}`);
+  if (item.max_volume_ratio != null) badges.push(`Vol<${item.max_volume_ratio}`);
+  if (item.direction_filter) badges.push(item.direction_filter === "long" ? "Long" : "Short");
+  if (item.skip_days) {
+    try {
+      const days: number[] = typeof item.skip_days === "string" ? JSON.parse(item.skip_days) : item.skip_days;
+      if (days.length > 0) badges.push(`Skip ${days.map((d) => DOW_LABELS[d] ?? d).join(",")}`);
+    } catch { /* ignore */ }
+  }
+  if (badges.length === 0) return <span className="text-text-muted/40">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {badges.map((b) => (
+        <span
+          key={b}
+          className="inline-block whitespace-nowrap rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+        >
+          {b}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // ── History Panel ──
 
 function NewsStraddleHistoryPanel({
@@ -1060,6 +1098,7 @@ function NewsStraddleHistoryPanel({
               <th className="px-3 py-1.5">SL</th>
               <th className="px-3 py-1.5">Window</th>
               <th className="px-3 py-1.5">Events</th>
+              <th className="px-3 py-1.5">Filters</th>
               <th className="whitespace-nowrap px-3 py-1.5">Period</th>
               <th className="px-3 py-1.5">Fills</th>
               <th className="px-3 py-1.5">Hit Rate</th>
@@ -1120,6 +1159,9 @@ function NewsStraddleHistoryPanel({
                   </td>
                   <td className="px-3 py-1.5 text-text-secondary">
                     {events.join(", ")}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <FilterBadges item={item} />
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-text-muted">
                     {item.date_start ?? "—"} &rarr; {item.date_end ?? "—"}

@@ -417,6 +417,11 @@ export interface NewsStraddleResult {
     observation_window_seconds: number;
     instrument: string;
     stop_loss_points: number | null;
+    max_atr_pct?: number | null;
+    min_volume_ratio?: number | null;
+    max_volume_ratio?: number | null;
+    direction_filter?: string | null;
+    skip_days?: number[];
   };
   summary: NewsStraddleSummary;
   events: NewsStraddleEvent[];
@@ -465,4 +470,9 @@ export interface NewsStraddleHistoryItem {
   avg_final_points: number | null;
   stop_loss_points: number | null;
   starred: number;
+  max_atr_pct: number | null;
+  min_volume_ratio: number | null;
+  max_volume_ratio: number | null;
+  direction_filter: string | null;
+  skip_days: string | null; // JSON array string from sqlite json_extract
 }

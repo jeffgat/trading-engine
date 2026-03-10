@@ -1477,7 +1477,12 @@ def list_news_straddle_history(limit: int = 100) -> list[dict]:
                       event_types, date_start, date_end,
                       fills, target_hit_rate, whipsaw_rate, pct_profitable,
                       avg_mfe, avg_mae, avg_final_points, stop_loss_points,
-                      starred
+                      starred,
+                      json_extract(result_json, '$.config.max_atr_pct') AS max_atr_pct,
+                      json_extract(result_json, '$.config.min_volume_ratio') AS min_volume_ratio,
+                      json_extract(result_json, '$.config.max_volume_ratio') AS max_volume_ratio,
+                      json_extract(result_json, '$.config.direction_filter') AS direction_filter,
+                      json_extract(result_json, '$.config.skip_days') AS skip_days
                FROM news_straddle_runs
                ORDER BY timestamp DESC
                LIMIT ?""",

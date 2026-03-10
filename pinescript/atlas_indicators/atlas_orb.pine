@@ -451,7 +451,7 @@ barClosed5 = ta.change(t5) != 0
 // ORB OHLC - current bar data (no [1] shift) for building the ORB range
 // The FVG candles need the [1] shift for look-ahead safety, but ORB high/low
 // should use the actual bar within the ORB window, not the previous one.
-[orbH5, orbL5, orbT5] = request.security(regTicker, "5", [high, low, time], lookahead=barmerge.lookahead_on)
+[orbH5, orbL5, orbC5, orbT5] = request.security(regTicker, "5", [high, low, close, time], lookahead=barmerge.lookahead_on)
 orbBarClosed5 = ta.change(orbT5) != 0
 
 // Session start detection (rising edge of session filter)
@@ -714,10 +714,82 @@ if enableAsia and orbBarClosed5 and not inAsiaORB and inAsiaRTH and not asia_orb
     asia_orbReady := true
 
 // ============================================================================
-// DAILY ATR + GLOBEX OPEN
+// CUSTOM DAILY ATR — midnight-ET boundaries (matches Python engine exactly)
+//
+// Pine's request.security("D", ta.atr()) uses exchange session boundaries
+// (6 PM ET → 5 PM ET for CME futures), but the Python backtester resamples
+// 5m bars by calendar date (midnight ET → midnight ET). This causes a 10-15%
+// ATR discrepancy. The fix: accumulate 5m OHLC into daily bars at midnight ET,
+// then compute Wilder's ATR manually for each session's ATR length.
 // ============================================================================
-nyDailyATR   = request.security(syminfo.tickerid, "D", ta.atr(nyAtrLength)[1], lookahead=barmerge.lookahead_on)
-asiaDailyATR = request.security(syminfo.tickerid, "D", ta.atr(asiaAtrLength)[1], lookahead=barmerge.lookahead_on)
+atr_curDay     = dayofmonth(orbT5, "America/New_York")
+
+// Daily OHLC accumulation (shared by both NY and Asia ATR)
+var float atr_dayHigh   = na
+var float atr_dayLow    = na
+var float atr_dayClose  = na
+var int   atr_lastDay   = -1
+var float atr_lastClose = na
+
+// NY ATR state (Wilder's smoothing)
+var float ny_atr_value    = na
+var float ny_atr_building = na
+var int   ny_atr_count    = 0
+var array<float> ny_atr_trHist = array.new<float>(0)
+
+// Asia ATR state (Wilder's smoothing)
+var float asia_atr_value    = na
+var float asia_atr_building = na
+var int   asia_atr_count    = 0
+var array<float> asia_atr_trHist = array.new<float>(0)
+
+if orbBarClosed5
+    if atr_lastDay != -1 and atr_curDay != atr_lastDay and not na(atr_dayHigh)
+        // Day transition — close out the previous calendar day
+        if not na(atr_lastClose)
+            tr = math.max(atr_dayHigh - atr_dayLow, math.max(math.abs(atr_dayHigh - atr_lastClose), math.abs(atr_dayLow - atr_lastClose)))
+
+            // NY ATR update
+            ny_atr_count += 1
+            if ny_atr_count <= nyAtrLength
+                array.push(ny_atr_trHist, tr)
+                if ny_atr_count == nyAtrLength
+                    sum = 0.0
+                    for i = 0 to nyAtrLength - 1
+                        sum += array.get(ny_atr_trHist, i)
+                    ny_atr_building := sum / nyAtrLength
+            else
+                ny_atr_building := (ny_atr_building * (nyAtrLength - 1) + tr) / nyAtrLength
+
+            // Asia ATR update
+            asia_atr_count += 1
+            if asia_atr_count <= asiaAtrLength
+                array.push(asia_atr_trHist, tr)
+                if asia_atr_count == asiaAtrLength
+                    sum = 0.0
+                    for i = 0 to asiaAtrLength - 1
+                        sum += array.get(asia_atr_trHist, i)
+                    asia_atr_building := sum / asiaAtrLength
+            else
+                asia_atr_building := (asia_atr_building * (asiaAtrLength - 1) + tr) / asiaAtrLength
+
+        // Lag: bars during the new day see ATR through the previous completed day
+        ny_atr_value    := ny_atr_building
+        asia_atr_value  := asia_atr_building
+        atr_lastClose   := atr_dayClose
+        // Reset accumulator for the new day
+        atr_dayHigh  := orbH5
+        atr_dayLow   := orbL5
+        atr_dayClose := orbC5
+    else
+        // Same day — accumulate
+        atr_dayHigh  := na(atr_dayHigh) ? orbH5 : math.max(atr_dayHigh, orbH5)
+        atr_dayLow   := na(atr_dayLow)  ? orbL5 : math.min(atr_dayLow, orbL5)
+        atr_dayClose := orbC5
+    atr_lastDay := atr_curDay
+
+nyDailyATR   = ny_atr_value
+asiaDailyATR = asia_atr_value
 
 // ============================================================================
 // ALERT TRIGGER FLAGS (per-bar, non-persistent)

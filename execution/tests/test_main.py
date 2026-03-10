@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from trader.api import DashboardState, _build_exec_config_meta
-from trader.main import build_engines, build_lsi_engines
+from trader.main import apply_atr_values, build_engines, build_lsi_engines
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -121,3 +121,49 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
     assert meta["FAST_V2"]["lsi_sessions"] == ["NQ_NY_LSI"]
     assert meta["FAST_V2"]["webhooks"][0]["paused"] is True
     assert meta["FAST_V2"]["webhooks"][0]["multiplier"] == 2.0
+
+
+def test_build_engines_symbol_map():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+    _engines, sym_map, _atr_lens = build_engines(
+        config,
+        broker,
+        config_name="FAST",
+        session_list=["NQ_NY", "ES_NY"],
+        exec_overrides={},
+    )
+    assert "NQ.FUT" in sym_map
+    assert "ES.FUT" in sym_map
+
+
+def test_apply_atr_values_updates_engines():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+    engines, sym_map, _atr_lens = build_engines(
+        config,
+        broker,
+        config_name="FAST",
+        session_list=["NQ_NY"],
+        exec_overrides={},
+    )
+    apply_atr_values(sym_map, {"NQ.FUT": 123.0})
+    assert engines[0]._daily_atr == 123.0

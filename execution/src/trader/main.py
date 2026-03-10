@@ -416,6 +416,14 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
         f.write("\n")
 
 
+def apply_atr_values(symbol_map: dict[str, list], atr_values: dict[str, float]) -> None:
+    for symbol, target_engines in symbol_map.items():
+        atr = atr_values.get(symbol, 0.0)
+        if atr > 0:
+            for engine in target_engines:
+                engine._daily_atr = atr
+
+
 # ---------------------------------------------------------------------------
 # Build engines from config
 # ---------------------------------------------------------------------------
@@ -840,15 +848,17 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         atr_length=global_atr_length,
     )
 
-    # Seed ATR from historical daily bars so it's ready on first live bar
-    feed.warm_up(lookback_days=60)
+    # Refresh ATR from historical daily bars (prior completed day)
+    atr_refresh_days = 60
+    refresh_info = feed.refresh_atr_daily(lookback_days=atr_refresh_days)
+    if refresh_info:
+        logger.info(
+            "ATR refresh complete: %s",
+            {i.symbol: {"last_date": str(i.last_daily_date), "atr": round(i.atr_value, 2)} for i in refresh_info},
+        )
 
     atr_values = feed.get_atr_values()
-    for symbol, target_engines in global_symbol_map.items():
-        atr = atr_values.get(symbol, 0.0)
-        if atr > 0:
-            for engine in target_engines:
-                engine._daily_atr = atr
+    apply_atr_values(global_symbol_map, atr_values)
 
     # recover current-day opening ranges / session state from recent intraday history
     intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
@@ -879,6 +889,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             "Checkpoint recovery: %d engine(s) restored from checkpoint",
             checkpoint_restored,
         )
+        apply_atr_values(global_symbol_map, atr_values)
 
     logger.info(
         "Starting ORB Trader — configs=%s feeds=%s total_engines=%d api=:%d",
@@ -887,6 +898,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
 
     # Graceful shutdown handler — cancel/flatten active positions on SIGTERM/SIGINT
     shutdown_event = asyncio.Event()
+    last_atr_refresh_date = datetime.now(tz=ET).date()
 
     def _handle_shutdown_signal(signum, _frame):
         sig_name = signal.Signals(signum).name
@@ -917,11 +929,34 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         logger.info("Graceful shutdown complete. Final checkpoint saved.")
         server.should_exit = True
 
+    async def _atr_refresh_loop():
+        nonlocal last_atr_refresh_date
+        while not shutdown_event.is_set():
+            now = datetime.now(tz=ET)
+            if last_atr_refresh_date != now.date():
+                try:
+                    refresh_info = feed.refresh_atr_daily(lookback_days=atr_refresh_days)
+                    atr_values = feed.get_atr_values()
+                    apply_atr_values(global_symbol_map, atr_values)
+                    last_atr_refresh_date = now.date()
+                    if refresh_info:
+                        logger.info(
+                            "Daily ATR refresh complete: %s",
+                            {i.symbol: {"last_date": str(i.last_daily_date), "atr": round(i.atr_value, 2)} for i in refresh_info},
+                        )
+                except Exception:
+                    logger.exception("Daily ATR refresh failed")
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=60)
+            except asyncio.TimeoutError:
+                pass
+
     try:
         await asyncio.gather(
             feed.run(),
             server.serve(),
             tailer.run(),
+            _atr_refresh_loop(),
             _shutdown_watcher(),
         )
     except (KeyboardInterrupt, asyncio.CancelledError):

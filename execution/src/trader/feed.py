@@ -137,6 +137,19 @@ class ATRCalculator:
 
 
 # ---------------------------------------------------------------------------
+# ATR refresh metadata
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ATRRefreshInfo:
+    symbol: str
+    last_daily_date: date | None
+    atr_value: float
+    refreshed_at: str
+    bars_used: int
+
+
+# ---------------------------------------------------------------------------
 # 1m → 5m bar aggregator
 # ---------------------------------------------------------------------------
 
@@ -302,16 +315,53 @@ class DataBentoFeed:
         Fetches `lookback_days` of daily OHLCV for each symbol and feeds
         them into the ATR calculator so it's initialized on first live bar.
         """
+        self.refresh_atr_daily(lookback_days=lookback_days)
+
+    def _refresh_atr_from_daily_bars(
+        self,
+        sym: str,
+        bars: list[tuple[date, float, float, float, float]],
+    ) -> ATRRefreshInfo:
+        """Reseed ATR from daily bars and return refresh metadata."""
+        if not bars:
+            current = self._atrs[sym]
+            return ATRRefreshInfo(
+                symbol=sym,
+                last_daily_date=None,
+                atr_value=current.value,
+                refreshed_at=datetime.now(tz=ET).isoformat(),
+                bars_used=0,
+            )
+
+        calc = ATRCalculator(length=self._atrs[sym].length)
+        calc.seed_daily(bars)
+        self._atrs[sym] = calc
+        last_date = bars[-1][0]
+        return ATRRefreshInfo(
+            symbol=sym,
+            last_daily_date=last_date,
+            atr_value=calc.value,
+            refreshed_at=datetime.now(tz=ET).isoformat(),
+            bars_used=len(bars),
+        )
+
+    def refresh_atr_daily(
+        self,
+        lookback_days: int = 30,
+        end_date: date | None = None,
+    ) -> list[ATRRefreshInfo]:
+        """Refresh ATR using daily bars up to the last completed day."""
         import databento as db
 
-        end = date.today()
+        end = end_date or (date.today() - timedelta(days=1))
         start = end - timedelta(days=lookback_days)
+        refreshed: list[ATRRefreshInfo] = []
 
         for sym in self.symbols:
             try:
                 logger.info(
-                    "Warming up ATR for %s: fetching %d days of daily bars",
-                    sym, lookback_days,
+                    "Refreshing ATR for %s: fetching %d days ending %s",
+                    sym, lookback_days, end.isoformat(),
                 )
                 client = db.Historical(key=self.api_key)
                 data = client.timeseries.get_range(
@@ -328,12 +378,17 @@ class DataBentoFeed:
                 if "symbol" in df.columns:
                     df = df[~df["symbol"].str.contains("-", na=False)]
 
-                # Group by date, pick the row with highest volume (front month)
                 if df.empty:
                     logger.warning("No daily bars returned for %s", sym)
+                    refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
                     continue
 
                 df = df.reset_index()
+                if "ts_event" not in df.columns:
+                    logger.warning("Daily bars missing ts_event for %s", sym)
+                    refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
+                    continue
+
                 df["bar_date"] = df["ts_event"].dt.date
                 daily = (
                     df.sort_values("volume", ascending=False)
@@ -348,10 +403,13 @@ class DataBentoFeed:
                     for d, row in daily.iterrows()
                 ]
 
-                self._atrs[sym].seed_daily(bars)
-
+                info = self._refresh_atr_from_daily_bars(sym, bars)
+                refreshed.append(info)
             except Exception:
-                logger.exception("Failed to warm up ATR for %s", sym)
+                logger.exception("Failed to refresh ATR for %s", sym)
+                refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
+
+        return refreshed
 
     def get_atr_values(self) -> dict[str, float]:
         """Return current ATR values per symbol (from warmup or live)."""

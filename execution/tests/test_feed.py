@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trader.feed import ATRCalculator, BarAggregator, DailyBar
+from trader.feed import ATRCalculator, BarAggregator, DailyBar, DataBentoFeed
 from trader.engine import Bar
 
 ET = ZoneInfo("America/New_York")
@@ -285,3 +285,33 @@ class TestATRCalculator:
 
         # ATR should now have changed (new TR from Jan 16 was large: 30 range)
         assert calc.value != pytest.approx(atr_at_start)
+
+
+class TestATRRefresh:
+    def test_refresh_atr_from_daily_bars(self):
+        feed = DataBentoFeed(symbols=["NQ.FUT"], atr_length=3)
+        bars = [
+            (date(2025, 1, 1), 100.0, 110.0, 90.0, 100.0),
+            (date(2025, 1, 2), 100.0, 111.0, 89.0, 100.0),
+            (date(2025, 1, 3), 100.0, 112.0, 88.0, 100.0),
+            (date(2025, 1, 4), 100.0, 113.0, 87.0, 100.0),
+        ]
+        info = feed._refresh_atr_from_daily_bars("NQ.FUT", bars)
+        assert info.last_daily_date == date(2025, 1, 4)
+        assert info.bars_used == 4
+        assert feed.get_atr_values()["NQ.FUT"] > 0
+
+    def test_refresh_atr_empty_bars_preserves_value(self):
+        feed = DataBentoFeed(symbols=["NQ.FUT"], atr_length=3)
+        seed_bars = [
+            (date(2025, 1, 1), 100.0, 110.0, 90.0, 100.0),
+            (date(2025, 1, 2), 100.0, 111.0, 89.0, 100.0),
+            (date(2025, 1, 3), 100.0, 112.0, 88.0, 100.0),
+            (date(2025, 1, 4), 100.0, 113.0, 87.0, 100.0),
+        ]
+        feed._refresh_atr_from_daily_bars("NQ.FUT", seed_bars)
+        before = feed.get_atr_values()["NQ.FUT"]
+        info = feed._refresh_atr_from_daily_bars("NQ.FUT", [])
+        after = feed.get_atr_values()["NQ.FUT"]
+        assert info.bars_used == 0
+        assert after == pytest.approx(before)
