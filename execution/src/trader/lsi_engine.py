@@ -78,6 +78,7 @@ class LSIEngine:
         # Strategy params
         rr: float = 3.0,
         tp1_ratio: float = 0.3,
+        atr_length: int = 14,
         min_gap_atr_pct: float = 5.0,
         min_stop_points: float = 0.0,
         fvg_window_left: int = 10,
@@ -124,6 +125,7 @@ class LSIEngine:
         # Strategy
         self.rr = rr
         self.tp1_ratio = tp1_ratio
+        self.atr_length = atr_length
         self.min_gap_atr_pct = min_gap_atr_pct
         self.min_stop_points = min_stop_points
         self.fvg_window_left = fvg_window_left
@@ -1085,6 +1087,7 @@ class LSIEngine:
             "type": "lsi",
             "date": self._current_date,
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
+            "atr_length": self.atr_length,
             "latest_swing_high": round(sw.latest_swing_high, 2) if not math.isnan(sw.latest_swing_high) else None,
             "latest_swing_low": round(sw.latest_swing_low, 2) if not math.isnan(sw.latest_swing_low) else None,
             # Nested levels dict — matches ORB engine format for frontend

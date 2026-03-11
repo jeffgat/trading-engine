@@ -230,16 +230,18 @@ class BarAggregator:
 # ---------------------------------------------------------------------------
 # Callback type
 # ---------------------------------------------------------------------------
-OnBarCallback = Callable[[Bar, float], Awaitable[None]]
-# Signature: async def on_bar(bar: Bar, daily_atr: float) -> None
+ATRValuesByLength = dict[int, float]
+
+OnBarCallback = Callable[[Bar, ATRValuesByLength], Awaitable[None]]
+# Signature: async def on_bar(bar: Bar, daily_atrs: dict[int, float]) -> None
 
 # Multi-symbol callback includes the symbol name
-OnSymbolBarCallback = Callable[[str, Bar, float], Awaitable[None]]
-# Signature: async def on_bar(symbol: str, bar: Bar, daily_atr: float) -> None
+OnSymbolBarCallback = Callable[[str, Bar, ATRValuesByLength], Awaitable[None]]
+# Signature: async def on_bar(symbol: str, bar: Bar, daily_atrs: dict[int, float]) -> None
 
 # 1-second tick callback (same signature — each 1s bar forwarded as-is)
-OnSymbolTickCallback = Callable[[str, Bar, float], Awaitable[None]]
-# Signature: async def on_tick(symbol: str, tick: Bar, daily_atr: float) -> None
+OnSymbolTickCallback = Callable[[str, Bar, ATRValuesByLength], Awaitable[None]]
+# Signature: async def on_tick(symbol: str, tick: Bar, daily_atrs: dict[int, float]) -> None
 
 
 # ---------------------------------------------------------------------------
@@ -257,9 +259,10 @@ class DataBentoFeed:
         api_key: DataBento API key (or reads from DATABENTO_API_KEY env var).
         symbols: DataBento parent symbols (e.g., ["NQ.FUT", "ES.FUT"]).
         dataset: DataBento dataset (default: "GLBX.MDP3").
-        on_bar: Async callback for each completed 5m bar (symbol, bar, atr).
-        on_tick: Async callback for each 1s bar (symbol, tick, atr).
-        atr_length: ATR period (default: 14 days).
+        on_bar: Async callback for each completed 5m bar (symbol, bar, atrs).
+        on_tick: Async callback for each 1s bar (symbol, tick, atrs).
+        atr_length: Fallback ATR period when no per-symbol mapping is given.
+        atr_lengths_by_symbol: Optional ATR lengths per symbol.
         reconnect_delay: Initial reconnect delay in seconds.
         max_reconnect_delay: Maximum reconnect delay.
     """
@@ -272,6 +275,7 @@ class DataBentoFeed:
         on_bar: OnSymbolBarCallback | None = None,
         on_tick: OnSymbolTickCallback | None = None,
         atr_length: int = 14,
+        atr_lengths_by_symbol: dict[str, list[int] | set[int] | tuple[int, ...]] | None = None,
         reconnect_delay: float = 1.0,
         max_reconnect_delay: float = 60.0,
         # Legacy single-symbol support
@@ -292,12 +296,18 @@ class DataBentoFeed:
         self.reconnect_delay = reconnect_delay
         self.max_reconnect_delay = max_reconnect_delay
 
-        # Per-symbol aggregator + ATR
+        # per-symbol aggregator + ATR
         self._aggregators: dict[str, BarAggregator] = {}
-        self._atrs: dict[str, ATRCalculator] = {}
+        self._atr_lengths_by_symbol: dict[str, list[int]] = {}
+        self._atrs: dict[str, dict[int, ATRCalculator]] = {}
         for sym in self.symbols:
             self._aggregators[sym] = BarAggregator()
-            self._atrs[sym] = ATRCalculator(length=atr_length)
+            raw_lengths = None if atr_lengths_by_symbol is None else atr_lengths_by_symbol.get(sym)
+            lengths = sorted({int(length) for length in (raw_lengths or [atr_length])})
+            self._atr_lengths_by_symbol[sym] = lengths
+            self._atrs[sym] = {
+                length: ATRCalculator(length=length) for length in lengths
+            }
 
         self._running = False
         # Populated after connection — maps instrument_id to parent symbol
@@ -323,8 +333,9 @@ class DataBentoFeed:
         bars: list[tuple[date, float, float, float, float]],
     ) -> ATRRefreshInfo:
         """Reseed ATR from daily bars and return refresh metadata."""
+        primary_length = self._atr_lengths_by_symbol[sym][0]
         if not bars:
-            current = self._atrs[sym]
+            current = self._atrs[sym][primary_length]
             return ATRRefreshInfo(
                 symbol=sym,
                 last_daily_date=None,
@@ -333,14 +344,19 @@ class DataBentoFeed:
                 bars_used=0,
             )
 
-        calc = ATRCalculator(length=self._atrs[sym].length)
-        calc.seed_daily(bars)
-        self._atrs[sym] = calc
+        refreshed_values: ATRValuesByLength = {}
+        refreshed_calcs: dict[int, ATRCalculator] = {}
+        for length in self._atr_lengths_by_symbol[sym]:
+            calc = ATRCalculator(length=length)
+            calc.seed_daily(bars)
+            refreshed_calcs[length] = calc
+            refreshed_values[length] = calc.value
+        self._atrs[sym] = refreshed_calcs
         last_date = bars[-1][0]
         return ATRRefreshInfo(
             symbol=sym,
             last_daily_date=last_date,
-            atr_value=calc.value,
+            atr_value=refreshed_values[primary_length],
             refreshed_at=datetime.now(tz=ET).isoformat(),
             bars_used=len(bars),
         )
@@ -411,9 +427,22 @@ class DataBentoFeed:
 
         return refreshed
 
+    def get_atr_value(self, symbol: str, atr_length: int) -> float:
+        calc = self._atrs.get(symbol, {}).get(atr_length)
+        return calc.value if calc is not None else 0.0
+
+    def get_atr_values_for_symbol(self, symbol: str) -> ATRValuesByLength:
+        return {
+            length: calc.value for length, calc in self._atrs.get(symbol, {}).items()
+        }
+
     def get_atr_values(self) -> dict[str, float]:
-        """Return current ATR values per symbol (from warmup or live)."""
-        return {sym: calc.value for sym, calc in self._atrs.items()}
+        """Return the primary ATR value per symbol (backward-compatible)."""
+        result: dict[str, float] = {}
+        for sym in self.symbols:
+            primary_length = self._atr_lengths_by_symbol[sym][0]
+            result[sym] = self._atrs[sym][primary_length].value
+        return result
 
     def preload_intraday_5m(self, lookback_hours: int = 18) -> dict[str, list[Bar]]:
         """load recent 1m history and build 5m bars for restart recovery."""
@@ -645,23 +674,28 @@ class DataBentoFeed:
         ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
 
         aggregator = self._aggregators[symbol]
-        atr_calc = self._atrs[symbol]
+        atr_calcs = self._atrs[symbol]
 
         bar_5m = aggregator.add_1m_bar(ts_dt, o, h, l, c, v)
 
         if bar_5m is not None:
-            # Update daily ATR
-            atr_calc.on_5m_bar(bar_5m)
+            # update daily ATR for each configured length on this symbol
+            for atr_calc in atr_calcs.values():
+                atr_calc.on_5m_bar(bar_5m)
+            atr_values = {
+                length: calc.value for length, calc in atr_calcs.items()
+            }
 
             logger.debug(
-                "5m bar [%s]: %s O=%.2f H=%.2f L=%.2f C=%.2f V=%d ATR=%.2f",
+                "5m bar [%s]: %s O=%.2f H=%.2f L=%.2f C=%.2f V=%d ATRs=%s",
                 symbol, bar_5m.timestamp, bar_5m.open, bar_5m.high, bar_5m.low,
-                bar_5m.close, bar_5m.volume, atr_calc.value,
+                bar_5m.close, bar_5m.volume,
+                {length: round(value, 2) for length, value in atr_values.items()},
             )
 
-            # Call session engines with symbol tag
+            # call session engines with symbol tag
             if self.on_bar is not None:
-                await self.on_bar(symbol, bar_5m, atr_calc.value)
+                await self.on_bar(symbol, bar_5m, atr_values)
 
     async def _handle_ohlcv_1s(self, record) -> None:
         """Process a single 1s OHLCV record — forwarded directly to engines."""
@@ -686,8 +720,7 @@ class DataBentoFeed:
         tick = Bar(timestamp=ts_dt, open=o, high=h, low=l, close=c, volume=v)
 
         if self.on_tick is not None:
-            atr_value = self._atrs[symbol].value
-            await self.on_tick(symbol, tick, atr_value)
+            await self.on_tick(symbol, tick, self.get_atr_values_for_symbol(symbol))
 
     def stop(self) -> None:
         """Signal the feed to stop."""
@@ -716,15 +749,19 @@ class ReplayFeed:
         csv_path: str,
         on_bar: OnBarCallback | None = None,
         atr_length: int = 14,
+        atr_lengths: list[int] | set[int] | tuple[int, ...] | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> None:
         self.csv_path = csv_path
         self.on_bar = on_bar
         self.atr_length = atr_length
+        self.atr_lengths = sorted({int(length) for length in (atr_lengths or [atr_length])})
         self.start_date = start_date
         self.end_date = end_date
-        self._atr = ATRCalculator(length=atr_length)
+        self._atrs = {
+            length: ATRCalculator(length=length) for length in self.atr_lengths
+        }
 
     async def run(self) -> None:
         """Replay all bars from the CSV."""
@@ -752,7 +789,11 @@ class ReplayFeed:
                 volume=int(row.get("volume", 0)),
             )
 
-            self._atr.on_5m_bar(bar)
+            for atr_calc in self._atrs.values():
+                atr_calc.on_5m_bar(bar)
 
             if self.on_bar is not None:
-                await self.on_bar(bar, self._atr.value)
+                await self.on_bar(
+                    bar,
+                    {length: calc.value for length, calc in self._atrs.items()},
+                )

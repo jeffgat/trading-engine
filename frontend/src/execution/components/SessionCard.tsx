@@ -155,7 +155,8 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
               : "—"}
           </span>
           <span className="text-text-muted">
-            ATR{" "}
+            ATR
+            {engine.atr_length ? ` (${engine.atr_length}) ` : " "}
             <span className="font-mono text-text-secondary">
               {engine.daily_atr > 0 ? engine.daily_atr.toFixed(2) : "—"}
             </span>

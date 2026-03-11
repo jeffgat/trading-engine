@@ -315,3 +315,22 @@ class TestATRRefresh:
         after = feed.get_atr_values()["NQ.FUT"]
         assert info.bars_used == 0
         assert after == pytest.approx(before)
+
+    def test_refresh_atr_multiple_lengths(self):
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            atr_lengths_by_symbol={"NQ.FUT": {3, 5}},
+        )
+        bars = [
+            (date(2025, 1, 1), 100.0, 110.0, 90.0, 100.0),
+            (date(2025, 1, 2), 100.0, 111.0, 89.0, 100.0),
+            (date(2025, 1, 3), 100.0, 112.0, 88.0, 100.0),
+            (date(2025, 1, 4), 100.0, 113.0, 87.0, 100.0),
+            (date(2025, 1, 5), 100.0, 114.0, 86.0, 100.0),
+            (date(2025, 1, 6), 100.0, 115.0, 85.0, 100.0),
+        ]
+        feed._refresh_atr_from_daily_bars("NQ.FUT", bars)
+        atrs = feed.get_atr_values_for_symbol("NQ.FUT")
+        assert set(atrs) == {3, 5}
+        assert atrs[3] > 0
+        assert atrs[5] > 0

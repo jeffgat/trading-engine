@@ -144,6 +144,9 @@ def test_build_engines_symbol_map():
     )
     assert "NQ.FUT" in sym_map
     assert "ES.FUT" in sym_map
+    assert _engines[0].atr_length == 12
+    assert _atr_lens["NQ.FUT"] == {12}
+    assert _atr_lens["ES.FUT"] == {7}
 
 
 def test_apply_atr_values_updates_engines():
@@ -165,5 +168,38 @@ def test_apply_atr_values_updates_engines():
         session_list=["NQ_NY"],
         exec_overrides={},
     )
-    apply_atr_values(sym_map, {"NQ.FUT": 123.0})
+    apply_atr_values(sym_map, {"NQ.FUT": {12: 123.0}})
     assert engines[0]._daily_atr == 123.0
+
+
+def test_apply_atr_values_uses_engine_specific_length():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+    cont_engines, sym_map, atr_lens = build_engines(
+        config,
+        broker,
+        config_name="FAST",
+        session_list=["NQ_NY"],
+        exec_overrides={},
+    )
+    lsi_engines = build_lsi_engines(
+        config,
+        broker,
+        sym_map,
+        atr_lens,
+        config_name="FAST_V2",
+        lsi_list=["NQ_Asia_LSI"],
+        lsi_overrides={"NQ_Asia_LSI": {"atr_length": 40}},
+    )
+    apply_atr_values(sym_map, {"NQ.FUT": {12: 123.0, 40: 456.0}})
+    assert cont_engines[0]._daily_atr == 123.0
+    assert lsi_engines[0]._daily_atr == 456.0

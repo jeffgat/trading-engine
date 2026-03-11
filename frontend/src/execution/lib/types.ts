@@ -12,6 +12,7 @@ export interface SessionStatus {
   state: string;
   date: string;
   daily_atr: number;
+  atr_length?: number;
   tp1_hit: boolean;
   exit_type: string | null;
   r_result: number | null;
@@ -108,6 +109,7 @@ export interface SessionConfig {
   fvg_window_left: number;
   qty_multiplier: number;
   // Common strategy fields
+  atr_length?: number;
   rr: number;
   tp1_ratio: number;
   long_only: boolean;

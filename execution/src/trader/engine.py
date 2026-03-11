@@ -177,6 +177,7 @@ class ORBEngine:
     qty_step: float
     be_offset_ticks: int
     min_tick: float
+    atr_length: int = 14
 
     # Stop basis: "atr" or "orb"
     stop_basis: str = "atr"
@@ -1396,6 +1397,7 @@ class ORBEngine:
             "orb_low": self._orb_low if self._orb_low == self._orb_low else None,
             "orb_range": self._orb_range if self._orb_range > 0 else None,
             "daily_atr": self._daily_atr,
+            "atr_length": self.atr_length,
             "levels": {
                 "entry": self._levels.entry,
                 "stop": self._levels.stop,

@@ -416,11 +416,15 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
         f.write("\n")
 
 
-def apply_atr_values(symbol_map: dict[str, list], atr_values: dict[str, float]) -> None:
+def apply_atr_values(
+    symbol_map: dict[str, list],
+    atr_values_by_symbol: dict[str, dict[int, float]],
+) -> None:
     for symbol, target_engines in symbol_map.items():
-        atr = atr_values.get(symbol, 0.0)
-        if atr > 0:
-            for engine in target_engines:
+        symbol_atrs = atr_values_by_symbol.get(symbol, {})
+        for engine in target_engines:
+            atr = symbol_atrs.get(getattr(engine, "atr_length", 14), 0.0)
+            if atr > 0:
                 engine._daily_atr = atr
 
 
@@ -435,7 +439,7 @@ def build_engines(
     config_name: str = "",
     session_list: list[str] | None = None,
     exec_overrides: dict[str, dict] | None = None,
-) -> tuple[list, dict[str, list], dict[str, int]]:
+) -> tuple[list, dict[str, list], dict[str, set[int]]]:
     """Build ORBEngine instances from config.
 
     Args:
@@ -448,7 +452,7 @@ def build_engines(
     Returns:
         (engines, symbol_map, atr_lengths) where:
         - symbol_map maps DataBento symbol (e.g. "NQ.FUT") to engines.
-        - atr_lengths maps DataBento symbol to the ATR period for that feed.
+        - atr_lengths maps DataBento symbol to ATR periods needed by that feed.
     """
     from .engine import ORBEngine
     from .overrides import load_overrides
@@ -470,8 +474,8 @@ def build_engines(
 
     engines = []
     symbol_map: dict[str, list] = {}
-    # Track ATR length per feed symbol (use the longest if multiple sessions share a feed)
-    atr_lengths: dict[str, int] = {}
+    # track ATR lengths per feed symbol
+    atr_lengths: dict[str, set[int]] = {}
 
     for sess_name in sessions_enabled:
         sess_cfg = SESSION_CONFIGS.get(sess_name)
@@ -504,9 +508,9 @@ def build_engines(
         exec_ticker = merged.get("exec_ticker") or SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
         exec_inst = INSTRUMENTS.get(exec_ticker, inst)
 
-        # Track ATR length per symbol (use max of all sessions for that symbol)
+        # track ATR lengths per symbol
         sess_atr_length = merged.get("atr_length", 14)
-        atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
+        atr_lengths.setdefault(db_symbol, set()).add(sess_atr_length)
 
         engine = ORBEngine(
             name=sess_name,
@@ -524,6 +528,7 @@ def build_engines(
             max_gap_atr_pct=merged.get("max_gap_atr_pct", 0),
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
+            atr_length=sess_atr_length,
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
@@ -561,7 +566,7 @@ def build_lsi_engines(
     config: dict,
     broker,
     symbol_map: dict[str, list],
-    atr_lengths: dict[str, int],
+    atr_lengths: dict[str, set[int]],
     *,
     config_name: str = "",
     lsi_list: list[str] | None = None,
@@ -591,17 +596,15 @@ def build_lsi_engines(
             logger.warning("Unknown LSI session '%s', skipping", sess_name)
             continue
 
-        sess_instrument = sess_cfg.get("instrument", "NQ")
+        # Merge exec config overrides (e.g. risk_usd) on top of base config
+        merged = {**sess_cfg, **lsi_overrides.get(sess_name, {})}
+        sess_instrument = merged.get("instrument", "NQ")
         inst = INSTRUMENTS.get(sess_instrument, INSTRUMENTS["NQ"])
         db_symbol = inst["db_symbol"]
         exec_ticker = SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
         exec_inst = INSTRUMENTS.get(exec_ticker, inst)
-
-        sess_atr_length = sess_cfg.get("atr_length", 10)
-        atr_lengths[db_symbol] = max(atr_lengths.get(db_symbol, 0), sess_atr_length)
-
-        # Merge exec config overrides (e.g. risk_usd) on top of base config
-        merged = {**sess_cfg, **lsi_overrides.get(sess_name, {})}
+        sess_atr_length = merged.get("atr_length", sess_cfg.get("atr_length", 14))
+        atr_lengths.setdefault(db_symbol, set()).add(sess_atr_length)
         half_days = tuple(merged.get("half_days", default_half_days))
         excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
 
@@ -619,6 +622,7 @@ def build_lsi_engines(
             flat_end=merged["flat_end"],
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
+            atr_length=sess_atr_length,
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
             min_stop_points=merged.get("min_stop_points", 0.0),
             fvg_window_left=merged.get("fvg_window_left", 10),
@@ -674,7 +678,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     engines_by_config: dict[str, list] = {}
     brokers: list[TradersPostClient] = []
     global_symbol_map: dict[str, list] = {}
-    global_atr_lengths: dict[str, int] = {}
+    global_atr_lengths: dict[str, set[int]] = {}
     exec_configs_meta: dict[str, dict] = {}  # metadata for API
     multi_brokers_by_config: dict[str, "MultiBroker"] = {}  # for per-account API control
 
@@ -729,8 +733,8 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         # Merge into global maps (feed routes bars to ALL engines across all configs)
         for sym, eng_list in sym_map.items():
             global_symbol_map.setdefault(sym, []).extend(eng_list)
-        for sym, length in atr_lens.items():
-            global_atr_lengths[sym] = max(global_atr_lengths.get(sym, 0), length)
+        for sym, lengths in atr_lens.items():
+            global_atr_lengths.setdefault(sym, set()).update(lengths)
 
         # Store metadata for API
         exec_configs_meta[ec.name] = {
@@ -822,22 +826,22 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     server = uvicorn.Server(uvi_config)
 
     # Bar callback — route 5m bars to engines for signal detection (ORB, FVG)
-    async def on_bar(symbol: str, bar, daily_atr: float):
+    async def on_bar(symbol: str, bar, daily_atrs: dict[int, float]):
         target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
+            daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
             await engine.on_bar(bar, daily_atr)
 
     # Tick callback — route 1s bars to engines for fill/exit management
-    async def on_tick(symbol: str, tick, daily_atr: float):
+    async def on_tick(symbol: str, tick, daily_atrs: dict[int, float]):
         target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
+            daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
             await engine.on_tick(tick, daily_atr)
 
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key")
     feed_symbols = list(global_symbol_map.keys())
-
-    global_atr_length = max(global_atr_lengths.values()) if global_atr_lengths else 14
 
     feed = DataBentoFeed(
         api_key=api_key or None,
@@ -845,7 +849,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         dataset=db_cfg.get("dataset", "GLBX.MDP3"),
         on_bar=on_bar,
         on_tick=on_tick,
-        atr_length=global_atr_length,
+        atr_lengths_by_symbol=global_atr_lengths,
     )
 
     # Refresh ATR from historical daily bars (prior completed day)
@@ -857,7 +861,9 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             {i.symbol: {"last_date": str(i.last_daily_date), "atr": round(i.atr_value, 2)} for i in refresh_info},
         )
 
-    atr_values = feed.get_atr_values()
+    atr_values = {
+        symbol: feed.get_atr_values_for_symbol(symbol) for symbol in feed_symbols
+    }
     apply_atr_values(global_symbol_map, atr_values)
 
     # recover current-day opening ranges / session state from recent intraday history
@@ -936,7 +942,9 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             if last_atr_refresh_date != now.date():
                 try:
                     refresh_info = feed.refresh_atr_daily(lookback_days=atr_refresh_days)
-                    atr_values = feed.get_atr_values()
+                    atr_values = {
+                        symbol: feed.get_atr_values_for_symbol(symbol) for symbol in feed_symbols
+                    }
                     apply_atr_values(global_symbol_map, atr_values)
                     last_atr_refresh_date = now.date()
                     if refresh_info:
@@ -978,16 +986,19 @@ async def run_replay(config: dict, csv_path: str, start: str | None, end: str | 
 
     engines, _symbol_map, atr_lengths = build_engines(config, broker)
 
-    global_atr_length = max(atr_lengths.values()) if atr_lengths else 14
+    replay_atr_lengths = sorted({
+        length for lengths in atr_lengths.values() for length in lengths
+    }) or [14]
 
-    async def on_bar(bar, daily_atr):
+    async def on_bar(bar, daily_atrs: dict[int, float]):
         for engine in engines:
+            daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
             await engine.on_bar(bar, daily_atr)
 
     feed = ReplayFeed(
         csv_path=csv_path,
         on_bar=on_bar,
-        atr_length=global_atr_length,
+        atr_lengths=replay_atr_lengths,
         start_date=start,
         end_date=end,
     )
