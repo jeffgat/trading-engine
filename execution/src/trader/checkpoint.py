@@ -389,6 +389,17 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     validated_state = _validate_lsi_state(engine, target_state, now_t)
     engine._state = validated_state
 
+    # If the validator downgraded to IDLE (new session starting), update the
+    # date so the card shows today instead of the stale checkpoint date.
+    from .lsi_engine import LSIState
+    if validated_state == LSIState.IDLE and engine._current_date != now.strftime("%Y%m%d"):
+        old_date = engine._current_date
+        engine._current_date = now.strftime("%Y%m%d")
+        logger.info(
+            "[%s] Updated stale date %s → %s after IDLE downgrade",
+            engine.name, old_date, engine._current_date,
+        )
+
     logger.info(
         "[%s] Restored from checkpoint: state=%s (checkpoint=%s) date=%s "
         "levels=%s tp1_hit=%s exit_type=%s paused=%s",
@@ -422,9 +433,19 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
     #    If the engine already took a trade (has levels), keep FLAT — the
     #    session genuinely completed.
     if checkpoint_state == LSIState.FLAT:
+        # Pre-session check: downgrade to IDLE so IDLE→SCANNING fires at entry_start.
+        # For daytime sessions: now < entry_start means pre-session.
+        # For cross-midnight sessions: the daytime gap between flat_end and
+        # entry_start (e.g. 07:00–20:40) is the pre-session window.
         if not engine._crosses_midnight and now_t < engine._entry_start_t:
             logger.info(
                 "[%s] Checkpoint was FLAT but entry window hasn't started — setting IDLE",
+                engine.name,
+            )
+            return LSIState.IDLE
+        if engine._crosses_midnight and engine._flat_end_t <= now_t < engine._entry_start_t:
+            logger.info(
+                "[%s] Checkpoint was FLAT but cross-midnight entry window hasn't started — setting IDLE",
                 engine.name,
             )
             return LSIState.IDLE

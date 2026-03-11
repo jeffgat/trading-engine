@@ -320,9 +320,11 @@ class LSIEngine:
         elif not self._crosses_midnight and now_t < self._entry_start_t:
             # Pre-session (daytime sessions only): stay IDLE so the normal
             # IDLE→SCANNING transition fires when the entry window opens.
-            # Cross-midnight sessions are excluded because a pre-entry_start
-            # time (e.g. 02:15 with entry_start 20:40) is actually *after*
-            # the session's entry window, not before it.
+            self._state = LSIState.IDLE
+        elif self._crosses_midnight and self._flat_end_t <= now_t < self._entry_start_t:
+            # Pre-session for cross-midnight sessions: the daytime gap between
+            # flat_end and entry_start (e.g. 07:00–20:40). Post-midnight times
+            # like 02:15 don't match because 02:15 < flat_end (07:00).
             self._state = LSIState.IDLE
         else:
             # Between entry_end and flat_start — session over, no new entries
