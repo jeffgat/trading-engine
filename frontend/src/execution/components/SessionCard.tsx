@@ -41,6 +41,25 @@ function getSkipDays(engine: SessionStatus): string[] {
   return days;
 }
 
+function getEnginePyWeekday(engine: SessionStatus): number | null {
+  if (!engine.date || engine.date.length !== 8) return null;
+  const year = Number(engine.date.slice(0, 4));
+  const month = Number(engine.date.slice(4, 6));
+  const day = Number(engine.date.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (Number.isNaN(date.getTime())) return null;
+  return (date.getUTCDay() + 6) % 7;
+}
+
+function isSkippedToday(engine: SessionStatus): boolean {
+  const dow = getEnginePyWeekday(engine);
+  if (dow == null || engine.excluded_dow == null) return false;
+  const dows = Array.isArray(engine.excluded_dow)
+    ? engine.excluded_dow
+    : [engine.excluded_dow];
+  return dows.includes(dow);
+}
+
 const EXIT_LABELS: Record<string, string> = {
   sl: "SL Hit",
   tp1_be: "BE Hit",
@@ -90,9 +109,13 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
         : null
     : null;
   const isPaused = engine.paused ?? false;
-  const stateColor =
-    STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted";
-  const stateLabel = STATE_LABELS[engine.state] ?? engine.state;
+  const skippedToday = isSkippedToday(engine);
+  const stateColor = skippedToday && engine.state === "idle"
+    ? "bg-amber-500/20 text-amber-300"
+    : (STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted");
+  const stateLabel = skippedToday && engine.state === "idle"
+    ? "Skipped Today"
+    : (STATE_LABELS[engine.state] ?? engine.state);
 
   const handleToggle = async () => {
     setSaving(true);
@@ -270,7 +293,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
         {/* Idle — no data yet */}
         {engine.state === "idle" && !hasLevels && engine.orb_high == null && (
           <div className="text-center text-text-muted text-xs py-4">
-            Waiting for data...
+            {skippedToday ? "Excluded by day-of-week filter." : "Waiting for data..."}
           </div>
         )}
 
