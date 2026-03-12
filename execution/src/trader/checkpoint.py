@@ -177,6 +177,7 @@ def serialize_orb_engine(engine: Any) -> dict:
         "tp1_bar_count": engine._tp1_bar_count,
         "fill_bar_idx": engine._fill_bar_idx,
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
+        "fill_via_tick": engine._fill_via_tick,
         "bars": [_serialize_bar(b) for b in engine._bars],
         "paused": engine.paused,
         "exit_type": engine._exit_type,
@@ -224,6 +225,7 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
 
     fill_ts = data.get("fill_timestamp")
     engine._fill_timestamp = datetime.fromisoformat(fill_ts) if fill_ts else None
+    engine._fill_via_tick = data.get("fill_via_tick", False)
 
     engine._bars = [_deserialize_bar(b) for b in data.get("bars", [])]
     engine.paused = data.get("paused", False)

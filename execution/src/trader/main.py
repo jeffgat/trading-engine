@@ -334,6 +334,7 @@ class ExecutionConfig:
 
     name: str
     enabled: bool = True
+    max_open_contracts: float = 0.0
     webhooks: list[WebhookEntry] = field(default_factory=list)
     session_overrides: dict[str, dict] = field(default_factory=dict)
     lsi_session_overrides: dict[str, dict] = field(default_factory=dict)
@@ -379,6 +380,7 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
             configs.append(ExecutionConfig(
                 name=name,
                 enabled=data.get("enabled", True),
+                max_open_contracts=float(data.get("max_open_contracts", 0.0)),
                 webhooks=_parse_webhooks(data),
                 session_overrides=data.get("sessions", {}),
                 lsi_session_overrides=data.get("lsi_sessions", {}),
@@ -407,6 +409,7 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
     for ec in configs:
         raw[ec.name] = {
             "enabled": ec.enabled,
+            "max_open_contracts": ec.max_open_contracts,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": ec.session_overrides,
             "lsi_sessions": ec.lsi_session_overrides,
@@ -439,6 +442,7 @@ def build_engines(
     config_name: str = "",
     session_list: list[str] | None = None,
     exec_overrides: dict[str, dict] | None = None,
+    position_manager=None,
 ) -> tuple[list, dict[str, list], dict[str, set[int]]]:
     """Build ORBEngine instances from config.
 
@@ -550,6 +554,8 @@ def build_engines(
             half_days=half_days,
             half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
             half_day_flat_end=merged.get("half_day_flat_end", config.get("dates", {}).get("half_day_flat_end", "13:00")),
+            position_manager=position_manager,
+            position_limit_key=f"{config_name or 'DEFAULT'}:{sess_name}",
         )
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
@@ -571,6 +577,7 @@ def build_lsi_engines(
     config_name: str = "",
     lsi_list: list[str] | None = None,
     lsi_overrides: dict[str, dict] | None = None,
+    position_manager=None,
 ) -> list:
     """Build LSIEngine instances for LSI reversal sessions.
 
@@ -644,6 +651,8 @@ def build_lsi_engines(
             lsi_n_left=merged.get("lsi_n_left", 3),
             lsi_n_right=merged.get("lsi_n_right", 3),
         )
+        engine.position_manager = position_manager
+        engine.position_limit_key = f"{config_name or 'DEFAULT'}:{sess_name}"
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
@@ -666,6 +675,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     from .api import DashboardState, LogTailer, create_app
     from .broker import TradersPostClient
     from .feed import ET, DataBentoFeed
+    from .position_limits import ContractCapManager
 
     general = config.get("general", {})
     db_cfg = config.get("databento", {})
@@ -708,6 +718,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         from .broker import MultiBroker
         broker = MultiBroker(config_brokers)
         multi_brokers_by_config[ec.name] = broker
+        position_manager = ContractCapManager(max_open_contracts=ec.max_open_contracts)
 
         # Build continuation engines for this config's sessions
         session_list = list(ec.session_overrides.keys())
@@ -716,6 +727,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             config_name=ec.name,
             session_list=session_list,
             exec_overrides=ec.session_overrides,
+            position_manager=position_manager,
         )
 
         # Build LSI engines for this config's LSI sessions
@@ -725,6 +737,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             config_name=ec.name,
             lsi_list=lsi_list,
             lsi_overrides=ec.lsi_session_overrides,
+            position_manager=position_manager,
         )
 
         config_engines = engines + lsi_engines
@@ -739,6 +752,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         # Store metadata for API
         exec_configs_meta[ec.name] = {
             "enabled": ec.enabled,
+            "max_open_contracts": ec.max_open_contracts,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
             "sessions": session_list,
             "lsi_sessions": lsi_list,
@@ -896,6 +910,25 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             checkpoint_restored,
         )
         apply_atr_values(global_symbol_map, atr_values)
+
+    for cfg_name, cfg_engines in engines_by_config.items():
+        if not cfg_engines:
+            continue
+        position_manager = getattr(cfg_engines[0], "position_manager", None)
+        if position_manager is None or not position_manager.enabled:
+            continue
+        for engine in cfg_engines:
+            levels = getattr(engine, "_levels", None)
+            state = getattr(engine, "_state", None)
+            if levels is None or state is None:
+                continue
+            state_value = getattr(state, "value", "")
+            if state_value not in {"armed_limit", "managing"}:
+                continue
+            if getattr(engine, "_tp1_hit", False) and not levels.is_single_contract:
+                position_manager.adjust(engine.position_limit_key, max(0.0, levels.qty - levels.half_qty))
+            else:
+                position_manager.adjust(engine.position_limit_key, levels.qty)
 
     logger.info(
         "Starting ORB Trader — configs=%s feeds=%s total_engines=%d api=:%d",

@@ -216,6 +216,7 @@ def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
             ]
         meta[cfg.name] = {
             "enabled": cfg.enabled,
+            "max_open_contracts": getattr(cfg, "max_open_contracts", 0.0),
             "webhooks": webhooks,
             "sessions": list(cfg.session_overrides.keys()),
             "lsi_sessions": list(cfg.lsi_session_overrides.keys()),
@@ -271,16 +272,16 @@ def parse_trade_log_line(line: str) -> dict | None:
     details: dict[str, str] = {}
 
     if detail_str:
-        for match in re.finditer(r'(\w+)=(\S+)', detail_str):
-            details[match.group(1)] = match.group(2)
+        for match in re.finditer(r'(\w+)=([^|]+?)(?=\s+\w+=|$)', detail_str):
+            details[match.group(1)] = match.group(2).strip()
 
     # Some events embed key=value in the event string itself
     if not details and " " in event:
         ev_parts = event.split(None, 1)
         event = ev_parts[0]
         if len(ev_parts) > 1:
-            for match in re.finditer(r'(\w+)=(\S+)', ev_parts[1]):
-                details[match.group(1)] = match.group(2)
+            for match in re.finditer(r'(\w+)=([^|]+?)(?=\s+\w+=|$)', ev_parts[1]):
+                details[match.group(1)] = match.group(2).strip()
 
     return {
         "timestamp": timestamp,

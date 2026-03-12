@@ -28,6 +28,7 @@ from typing import Callable
 
 from .broker import TradersPostClient
 from .engine import Bar, TradeRecord
+from .position_limits import ContractCapManager, resize_trade_levels
 from .sizing import TradeLevels, compute_trade_levels
 from .swing import SweepEvent, SwingTracker
 
@@ -202,6 +203,8 @@ class LSIEngine:
         self.on_state_change: Callable[[dict], None] | None = None
         self.on_trade_exit: Callable[[TradeRecord], None] | None = None
         self.on_checkpoint: Callable[[], None] | None = None
+        self.position_manager: ContractCapManager | None = None
+        self.position_limit_key: str = ""
 
     # ------------------------------------------------------------------
     # Checkpoint
@@ -211,6 +214,68 @@ class LSIEngine:
         """Request a state checkpoint to disk for crash recovery."""
         if self.on_checkpoint is not None:
             self.on_checkpoint()
+
+    def _position_cap_key(self) -> str:
+        return self.position_limit_key or f"{self.config_name or 'DEFAULT'}:{self.name}"
+
+    def _apply_position_cap(self, levels: TradeLevels) -> TradeLevels | None:
+        if self.position_manager is None or not self.position_manager.enabled:
+            return levels
+
+        requested_qty = levels.qty
+        approved_qty = self.position_manager.reserve(
+            self._position_cap_key(),
+            requested_qty,
+            qty_step=self.qty_step,
+            min_qty=self.min_qty,
+        )
+        if approved_qty <= 0:
+            self._log_trade(
+                "ENTRY_SKIPPED_CAP",
+                "requested_qty=%.1f open_qty=%.1f limit=%.1f"
+                % (
+                    requested_qty,
+                    self.position_manager.total_allocated(),
+                    self.position_manager.max_open_contracts,
+                ),
+            )
+            return None
+        if approved_qty < requested_qty:
+            self._log_trade(
+                "ENTRY_QTY_CAPPED",
+                "requested_qty=%.1f approved_qty=%.1f open_qty=%.1f limit=%.1f"
+                % (
+                    requested_qty,
+                    approved_qty,
+                    self.position_manager.total_allocated(),
+                    self.position_manager.max_open_contracts,
+                ),
+            )
+            return resize_trade_levels(
+                levels,
+                approved_qty,
+                min_qty=self.min_qty,
+                qty_step=self.qty_step,
+            )
+        return levels
+
+    def _remaining_position_qty(self) -> float:
+        levels = self._levels
+        if levels is None:
+            return 0.0
+        if self._tp1_hit and not levels.is_single_contract:
+            return max(0.0, levels.qty - levels.half_qty)
+        return levels.qty
+
+    def _sync_position_cap(self) -> None:
+        if self.position_manager is None or not self.position_manager.enabled:
+            return
+        self.position_manager.adjust(self._position_cap_key(), self._remaining_position_qty())
+
+    def _release_position_cap(self) -> None:
+        if self.position_manager is None or not self.position_manager.enabled:
+            return
+        self.position_manager.release(self._position_cap_key())
 
     # ------------------------------------------------------------------
     # Time helpers
@@ -487,6 +552,7 @@ class LSIEngine:
             else:
                 if self._state == LSIState.MANAGING:
                     await self._exit_position(bar, "eod")
+                self._release_position_cap()
                 self._current_date = bar_date
                 self._state = LSIState.IDLE
                 self._active_sweep = None
@@ -815,6 +881,13 @@ class LSIEngine:
             direction=direction,
             gap_size=gap_size,
         )
+        self._levels = self._apply_position_cap(self._levels)
+        if self._levels is None:
+            self._state = LSIState.SCANNING
+            self._active_sweep = None
+            self._active_gap = None
+            self._notify_state_change()
+            return
 
         # Persist LSI overlay for dashboard display
         self._swept_level = self._active_sweep.level if self._active_sweep else None
@@ -833,7 +906,7 @@ class LSIEngine:
             "FILLED",
             "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (%s)"
             % (dir_str, entry, raw_stop,
-               self._levels.tp1, self._levels.tp2, qty, mode_str),
+               self._levels.tp1, self._levels.tp2, self._levels.qty, mode_str),
         )
 
         if self._should_send:
@@ -898,6 +971,7 @@ class LSIEngine:
                 self._tp1_hit = True
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
+                self._sync_position_cap()
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f" % (dir_str, levels.tp1, levels.be))
                     if self._should_send:
@@ -936,6 +1010,7 @@ class LSIEngine:
         levels = self._levels
         dir_str = "long" if (levels and levels.direction == 1) else "short"
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
+        self._release_position_cap()
         if self._should_send:
             await self.broker.send_flatten(ticker=self.exec_ticker)
         self._emit_trade_record(exit_type)
@@ -977,6 +1052,7 @@ class LSIEngine:
         # EOD flat
         if self._in_flat(tick):
             self._log_trade("EOD_FLAT", "dir=%s tick_time=%s resolution=1s" % (dir_str, tick.timestamp))
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
@@ -996,6 +1072,7 @@ class LSIEngine:
 
             if sl_hit and tp1_touched:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f (1s ambiguous) resolution=1s" % (dir_str, levels.stop))
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
@@ -1006,6 +1083,7 @@ class LSIEngine:
 
             if sl_hit:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f resolution=1s" % (dir_str, levels.stop))
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
@@ -1018,6 +1096,7 @@ class LSIEngine:
                 self._tp1_hit = True
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
+                self._sync_position_cap()
                 if levels.is_single_contract:
                     self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f resolution=1s" % (dir_str, levels.tp1, levels.be))
                     if self._should_send:
@@ -1034,6 +1113,7 @@ class LSIEngine:
             tp2_hit = (is_long and tick.high >= levels.tp2) or (not is_long and tick.low <= levels.tp2)
             if tp2_hit:
                 self._log_trade("TP2_DIRECT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
@@ -1049,6 +1129,7 @@ class LSIEngine:
 
             if be_hit:
                 self._log_trade("BE_HIT", "dir=%s be=%.2f resolution=1s" % (dir_str, levels.be))
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
@@ -1059,6 +1140,7 @@ class LSIEngine:
 
             if tp2_hit:
                 self._log_trade("TP2_HIT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")

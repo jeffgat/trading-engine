@@ -454,6 +454,14 @@ barClosed5 = ta.change(t5) != 0
 [orbH5, orbL5, orbC5, orbT5] = request.security(regTicker, "5", [high, low, close, time], lookahead=barmerge.lookahead_on)
 orbBarClosed5 = ta.change(orbT5) != 0
 
+// Current-bar FVG data (no [1] shift) for real-time alerts
+// The main FVG feed uses [1] shift for look-ahead safety on historical bars,
+// which delays alerts by 5 minutes. This feed uses [0] so alerts fire immediately
+// when the FVG pattern completes. On historical bars lookahead_on sees the full bar
+// early, but alerts only matter on the realtime bar where this is correct.
+[rt_h5, rt_l5, rt_h5_1, rt_l5_1, rt_h5_2, rt_l5_2, rt_c5_1, rt_t5] = request.security(regTicker, "5", [high, low, high[1], low[1], high[2], low[2], close[1], time], lookahead=barmerge.lookahead_on)
+rtBarClosed5 = ta.change(rt_t5) != 0
+
 // Session start detection (rising edge of session filter)
 nyRTHStart   = inNyRTH and not inNyRTH[1]
 asiaRTHStart = inAsiaRTH and not inAsiaRTH[1]
@@ -851,13 +859,105 @@ asiaLongFVG  = asiaDetectLongs and h5_2 < l5 and h5_2 < h5_1 and l5_2 < l5 and a
 asiaShortFVG = asiaDetectShorts and l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5 and asiaShortBreakout and asiaShortGapValid
 
 // ============================================================================
+// REAL-TIME FVG DETECTION (for alerts — no [1] delay)
+// Same pattern logic but using current-bar data so alerts fire immediately
+// ============================================================================
+rt_longFvgTop     = rt_l5
+rt_longFvgBottom  = rt_h5_2
+rt_shortFvgTop    = rt_l5_2
+rt_shortFvgBottom = rt_h5
+rt_longGapSize    = rt_longFvgTop - rt_longFvgBottom
+rt_shortGapSize   = rt_shortFvgTop - rt_shortFvgBottom
+
+// NY real-time FVG
+rt_nyLongGapValid  = rt_longGapSize >= nyMinGap
+rt_nyShortGapValid = rt_shortGapSize >= nyMinGap
+rt_nyLongBreakout  = rt_longFvgTop > ny_orbHigh or (nyImpulseClose and rt_c5_1 > ny_orbHigh)
+rt_nyShortBreakout = rt_shortFvgBottom < ny_orbLow or (nyImpulseClose and rt_c5_1 < ny_orbLow)
+rt_nyLongFVG  = nyDetectLongs and rt_h5_2 < rt_l5 and rt_h5_2 < rt_h5_1 and rt_l5_2 < rt_l5 and rt_nyLongBreakout and rt_nyLongGapValid
+rt_nyShortFVG = nyDetectShorts and rt_l5_2 > rt_h5 and rt_l5_2 > rt_l5_1 and rt_h5_2 > rt_h5 and rt_nyShortBreakout and rt_nyShortGapValid
+
+// Asia real-time FVG
+rt_asiaLongGapValid  = rt_longGapSize >= asiaMinGap
+rt_asiaShortGapValid = rt_shortGapSize >= asiaMinGap
+rt_asiaLongBreakout  = rt_longFvgTop > asia_orbHigh or (asiaImpulseClose and rt_c5_1 > asia_orbHigh)
+rt_asiaShortBreakout = rt_shortFvgBottom < asia_orbLow or (asiaImpulseClose and rt_c5_1 < asia_orbLow)
+rt_asiaLongFVG  = asiaDetectLongs and rt_h5_2 < rt_l5 and rt_h5_2 < rt_h5_1 and rt_l5_2 < rt_l5 and rt_asiaLongBreakout and rt_asiaLongGapValid
+rt_asiaShortFVG = asiaDetectShorts and rt_l5_2 > rt_h5 and rt_l5_2 > rt_l5_1 and rt_h5_2 > rt_h5 and rt_asiaShortBreakout and rt_asiaShortGapValid
+
+// Real-time alert detection — fires 5min earlier than drawings
+// Uses persistent flags to prevent re-alerting once the delayed detection also fires
+var bool rt_ny_longAlerted  = false
+var bool rt_ny_shortAlerted = false
+var bool rt_asia_longAlerted  = false
+var bool rt_asia_shortAlerted = false
+
+if nyRTHStart
+    rt_ny_longAlerted  := false
+    rt_ny_shortAlerted := false
+if asiaRTHStart
+    rt_asia_longAlerted  := false
+    rt_asia_shortAlerted := false
+
+rt_nyCanDetect   = enableNY and rtBarClosed5 and inNyRTH and inNyEntryWin and ny_orbReady and not nySkipToday
+rt_asiaCanDetect = enableAsia and rtBarClosed5 and inAsiaRTH and inAsiaEntryWin and asia_orbReady and not asiaSkipToday
+
+if rt_nyCanDetect and not rt_ny_longAlerted and not ny_longFirstFvgFound and rt_nyLongFVG
+    rt_ny_longAlerted := true
+    ny_longSetupAlert := enableAlerts
+    // Compute trade levels for alert text
+    rt_entry     = rt_longFvgTop
+    rt_stopDist  = nyStopMode == "ORB" ? (nyStopPct / 100) * nyOrbRange : (nyStopPct / 100) * nz(nyDailyATR)
+    rt_stop      = rt_entry - rt_stopDist
+    rt_riskPts   = rt_entry - rt_stop
+    ny_longEntry := rt_entry
+    ny_longStop  := rt_stop
+    ny_longTp1   := rt_entry + (nyRR * rt_riskPts * nyTp1Ratio)
+    ny_longTp2   := rt_entry + (nyRR * rt_riskPts)
+
+if rt_nyCanDetect and not rt_ny_shortAlerted and not ny_shortFirstFvgFound and rt_nyShortFVG
+    rt_ny_shortAlerted := true
+    ny_shortSetupAlert := enableAlerts
+    rt_entry     = rt_shortFvgBottom
+    rt_stopDist  = nyStopMode == "ORB" ? (nyStopPct / 100) * nyOrbRange : (nyStopPct / 100) * nz(nyDailyATR)
+    rt_stop      = rt_entry + rt_stopDist
+    rt_riskPts   = rt_stop - rt_entry
+    ny_shortEntry := rt_entry
+    ny_shortStop  := rt_stop
+    ny_shortTp1   := rt_entry - (nyRR * rt_riskPts * nyTp1Ratio)
+    ny_shortTp2   := rt_entry - (nyRR * rt_riskPts)
+
+if rt_asiaCanDetect and not rt_asia_longAlerted and not asia_longFirstFvgFound and rt_asiaLongFVG
+    rt_asia_longAlerted := true
+    asia_longSetupAlert := enableAlerts
+    rt_entry     = rt_longFvgTop
+    rt_stopDist  = asiaStopMode == "ORB" ? (asiaStopPct / 100) * asiaOrbRange : (asiaStopPct / 100) * nz(asiaDailyATR)
+    rt_stop      = rt_entry - rt_stopDist
+    rt_riskPts   = rt_entry - rt_stop
+    asia_longEntry := rt_entry
+    asia_longStop  := rt_stop
+    asia_longTp1   := rt_entry + (asiaRR * rt_riskPts * asiaTp1Ratio)
+    asia_longTp2   := rt_entry + (asiaRR * rt_riskPts)
+
+if rt_asiaCanDetect and not rt_asia_shortAlerted and not asia_shortFirstFvgFound and rt_asiaShortFVG
+    rt_asia_shortAlerted := true
+    asia_shortSetupAlert := enableAlerts
+    rt_entry     = rt_shortFvgBottom
+    rt_stopDist  = asiaStopMode == "ORB" ? (asiaStopPct / 100) * asiaOrbRange : (asiaStopPct / 100) * nz(asiaDailyATR)
+    rt_stop      = rt_entry + rt_stopDist
+    rt_riskPts   = rt_stop - rt_entry
+    asia_shortEntry := rt_entry
+    asia_shortStop  := rt_stop
+    asia_shortTp1   := rt_entry - (asiaRR * rt_riskPts * asiaTp1Ratio)
+    asia_shortTp2   := rt_entry - (asiaRR * rt_riskPts)
+
+// ============================================================================
 // DETECT FIRST FVG - NY
 // ============================================================================
 nyCanDetect = enableNY and barClosed5 and inNyRTH and inNyEntryWin and ny_orbReady and not nySkipToday
 
 if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
     ny_longFirstFvgFound := true
-    ny_longSetupAlert := enableAlerts
     ny_longFvgTopStored  := longFvgTop
     ny_longFvgBotStored  := longFvgBottom
     ny_longFvgStartTime  := t5_2
@@ -893,7 +993,6 @@ if nyCanDetect and not ny_longFirstFvgFound and nyLongFVG
 
 if nyCanDetect and not ny_shortFirstFvgFound and nyShortFVG
     ny_shortFirstFvgFound := true
-    ny_shortSetupAlert := enableAlerts
     ny_shortFvgTopStored  := shortFvgTop
     ny_shortFvgBotStored  := shortFvgBottom
     ny_shortFvgStartTime  := t5_2
@@ -934,7 +1033,6 @@ asiaCanDetect = enableAsia and barClosed5 and inAsiaRTH and inAsiaEntryWin and a
 
 if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
     asia_longFirstFvgFound := true
-    asia_longSetupAlert := enableAlerts
     asia_longFvgTopStored  := longFvgTop
     asia_longFvgBotStored  := longFvgBottom
     asia_longFvgStartTime  := t5_2
@@ -970,7 +1068,6 @@ if asiaCanDetect and not asia_longFirstFvgFound and asiaLongFVG
 
 if asiaCanDetect and not asia_shortFirstFvgFound and asiaShortFVG
     asia_shortFirstFvgFound := true
-    asia_shortSetupAlert := enableAlerts
     asia_shortFvgTopStored  := shortFvgTop
     asia_shortFvgBotStored  := shortFvgBottom
     asia_shortFvgStartTime  := t5_2

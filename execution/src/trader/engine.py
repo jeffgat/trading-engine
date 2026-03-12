@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, time
 from typing import Callable
 
+from .position_limits import ContractCapManager, resize_trade_levels
 from .broker import TradersPostClient
 from .sizing import TradeLevels, compute_trade_levels
 
@@ -226,6 +227,9 @@ class ORBEngine:
     g5_gate_check: Callable[[str], bool] | None = None
     # Optional callback to request a state checkpoint to disk (crash recovery)
     on_checkpoint: Callable[[], None] | None = None
+    # Optional per-config position cap manager
+    position_manager: ContractCapManager | None = None
+    position_limit_key: str = ""
 
     # Internal state (reset daily)
     _state: State = field(default=State.IDLE, init=False)
@@ -237,6 +241,7 @@ class ORBEngine:
     _tp1_bar_count: int = field(default=-1, init=False)  # _bar_count when TP1 hit (1s)
     _fill_bar_idx: int = field(default=-1, init=False)
     _fill_timestamp: datetime | None = field(default=None, init=False)
+    _fill_via_tick: bool = field(default=False, init=False)
     _bar_count: int = field(default=0, init=False)
     _long_fvg_found: bool = field(default=False, init=False)
     _short_fvg_found: bool = field(default=False, init=False)
@@ -288,6 +293,69 @@ class ORBEngine:
         """Request a state checkpoint to disk for crash recovery."""
         if self.on_checkpoint is not None:
             self.on_checkpoint()
+
+    def _position_cap_key(self) -> str:
+        return self.position_limit_key or f"{self.config_name or 'DEFAULT'}:{self.name}"
+
+    def _apply_position_cap(self, levels: TradeLevels) -> TradeLevels | None:
+        """Resize or block a setup based on remaining config-level contract capacity."""
+        if self.position_manager is None or not self.position_manager.enabled:
+            return levels
+
+        requested_qty = levels.qty
+        approved_qty = self.position_manager.reserve(
+            self._position_cap_key(),
+            requested_qty,
+            qty_step=self.qty_step,
+            min_qty=self.min_qty,
+        )
+        if approved_qty <= 0:
+            self._log_trade(
+                "ENTRY_SKIPPED_CAP",
+                "requested_qty=%.1f open_qty=%.1f limit=%.1f"
+                % (
+                    requested_qty,
+                    self.position_manager.total_allocated(),
+                    self.position_manager.max_open_contracts,
+                ),
+            )
+            return None
+        if approved_qty < requested_qty:
+            self._log_trade(
+                "ENTRY_QTY_CAPPED",
+                "requested_qty=%.1f approved_qty=%.1f open_qty=%.1f limit=%.1f"
+                % (
+                    requested_qty,
+                    approved_qty,
+                    self.position_manager.total_allocated(),
+                    self.position_manager.max_open_contracts,
+                ),
+            )
+            return resize_trade_levels(
+                levels,
+                approved_qty,
+                min_qty=self.min_qty,
+                qty_step=self.qty_step,
+            )
+        return levels
+
+    def _remaining_position_qty(self) -> float:
+        levels = self._levels
+        if levels is None:
+            return 0.0
+        if self._tp1_hit and not levels.is_single_contract:
+            return max(0.0, levels.qty - levels.half_qty)
+        return levels.qty
+
+    def _sync_position_cap(self) -> None:
+        if self.position_manager is None or not self.position_manager.enabled:
+            return
+        self.position_manager.adjust(self._position_cap_key(), self._remaining_position_qty())
+
+    def _release_position_cap(self) -> None:
+        if self.position_manager is None or not self.position_manager.enabled:
+            return
+        self.position_manager.release(self._position_cap_key())
 
     def _log_trade(self, event: str, details: str = "") -> None:
         """emit trade log with config + asset + session tags."""
@@ -436,6 +504,7 @@ class ORBEngine:
 
     def _reset_day(self, date_str: str, notify: bool = True) -> None:
         """Reset all state for a new trading day."""
+        self._release_position_cap()
         self._state = State.IDLE
         self._orb_high = float("nan")
         self._orb_low = float("nan")
@@ -445,6 +514,7 @@ class ORBEngine:
         self._tp1_bar_count = -1
         self._fill_bar_idx = -1
         self._fill_timestamp = None
+        self._fill_via_tick = False
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
@@ -659,6 +729,7 @@ class ORBEngine:
         if not self._in_rth(bar_time):
             # If we were in an active state and left RTH, go flat
             if self._state not in (State.IDLE, State.FLAT):
+                self._release_position_cap()
                 if self._state == State.ARMED_LIMIT:
                     self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
                     if self._should_send:
@@ -828,6 +899,8 @@ class ORBEngine:
                         max_single_risk_usd=self.max_single_risk_usd,
                     )
                     if levels is not None:
+                        levels = self._apply_position_cap(levels)
+                    if levels is not None:
                         self._levels = levels
                         self._state = State.ARMED_LIMIT
                         self._request_checkpoint()
@@ -902,6 +975,8 @@ class ORBEngine:
                     max_single_risk_usd=self.max_single_risk_usd,
                 )
                 if levels is not None:
+                    levels = self._apply_position_cap(levels)
+                if levels is not None:
                     self._levels = levels
                     # Re-use ARMED_LIMIT state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
@@ -949,6 +1024,7 @@ class ORBEngine:
                 "CANCELLED_LIMITS",
                 "entry window expired entry=%.2f" % levels.entry,
             )
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
@@ -957,8 +1033,8 @@ class ORBEngine:
             return
 
         # Check for fill: did price touch our limit entry?
-        filled = False
         is_long = levels.direction == 1
+        filled = False
         if is_long and bar.low <= levels.entry:
             filled = True
         elif not is_long and bar.high >= levels.entry:
@@ -967,6 +1043,7 @@ class ORBEngine:
         if filled:
             self._fill_bar_idx = self._bar_count
             self._fill_timestamp = bar.timestamp
+            self._fill_via_tick = False
             self._log_trade(
                 "FILLED",
                 "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f bar_time=%s resolution=5m"
@@ -993,6 +1070,7 @@ class ORBEngine:
                 "EOD_FLAT",
                 f"dir={direction_str} bar_time={bar.timestamp} resolution=5m",
             )
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
@@ -1003,6 +1081,11 @@ class ORBEngine:
 
         # Gate: don't check exits on the fill bar itself (same-bar prevention)
         if self._bar_count <= self._fill_bar_idx:
+            return
+
+        # If the fill happened on a 1s tick, only the 1s path can preserve
+        # correct pre-fill/post-fill sequencing for exits.
+        if self._fill_via_tick:
             return
 
         # Gate: skip the 5m bar that contains the TP1 hit.
@@ -1028,6 +1111,7 @@ class ORBEngine:
                 "dir=%s stop=%.2f bar_time=%s resolution=5m"
                 % (direction_str, levels.stop, bar.timestamp),
             )
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("sl")
@@ -1047,6 +1131,7 @@ class ORBEngine:
             self._tp1_hit = True
             self._request_checkpoint()
             self._tp1_bar_count = self._bar_count
+            self._sync_position_cap()
 
             if levels.is_single_contract:
                 self._log_trade(
@@ -1100,6 +1185,7 @@ class ORBEngine:
                     "dir=%s be=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.be, bar.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
@@ -1120,6 +1206,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")
@@ -1141,6 +1228,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
@@ -1182,6 +1270,7 @@ class ORBEngine:
                 "CANCELLED_LIMITS",
                 "entry window expired (1s) entry=%.2f" % levels.entry,
             )
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_cancel(ticker=self.exec_ticker)
             self._state = State.FLAT
@@ -1190,8 +1279,8 @@ class ORBEngine:
             return
 
         # Check fill
-        filled = False
         is_long = levels.direction == 1
+        filled = False
         if is_long and tick.low <= levels.entry:
             filled = True
         elif not is_long and tick.high >= levels.entry:
@@ -1200,6 +1289,7 @@ class ORBEngine:
         if filled:
             self._fill_timestamp = tick.timestamp
             self._fill_bar_idx = self._bar_count
+            self._fill_via_tick = True
             self._state = State.MANAGING
             self._request_checkpoint()
             self._log_trade(
@@ -1230,6 +1320,7 @@ class ORBEngine:
                 "EOD_FLAT",
                 f"dir={direction_str} tick_time={tick.timestamp} resolution=1s",
             )
+            self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
             self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
@@ -1258,6 +1349,7 @@ class ORBEngine:
                     "dir=%s stop=%.2f (1s ambiguous, pessimistic) tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
@@ -1272,6 +1364,7 @@ class ORBEngine:
                     "dir=%s stop=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("sl")
@@ -1284,6 +1377,7 @@ class ORBEngine:
                 self._tp1_hit = True
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
+                self._sync_position_cap()
                 if levels.is_single_contract:
                     self._log_trade(
                         "TP1_BE_SINGLE",
@@ -1330,6 +1424,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp2_direct")
@@ -1351,6 +1446,7 @@ class ORBEngine:
                     "dir=%s be=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.be, tick.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_be")
@@ -1365,6 +1461,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
+                self._release_position_cap()
                 if self._should_send:
                     await self.broker.send_flatten(ticker=self.exec_ticker)
                 self._emit_trade_record("tp1_tp2")

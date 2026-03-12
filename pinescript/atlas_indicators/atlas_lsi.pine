@@ -156,9 +156,15 @@ regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
 [h5, l5, h5_1, l5_1, h5_2, l5_2, c5, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], close[1], time[1], time[3]], lookahead=barmerge.lookahead_on)
 barClosed5 = ta.change(t5) != 0
 
-// Current-bar 5m data (no [1] shift) for ATR accumulation
+// Current-bar 5m data (no [1] shift) for ATR accumulation and real-time alerts
+// The main FVG feed uses [1] shift for look-ahead safety on historical bars,
+// which delays alerts by 5 minutes. This feed uses [0] so alerts fire immediately.
 [atr_h5, atr_l5, atr_c5, atr_t5] = request.security(regTicker, "5", [high, low, close, time], lookahead=barmerge.lookahead_on)
 atr_barClosed5 = ta.change(atr_t5) != 0
+
+// Real-time FVG + close data for immediate alert detection
+[rt_h5, rt_l5, rt_h5_1, rt_l5_1, rt_h5_2, rt_l5_2, rt_c5, rt_t5, rt_t5_2] = request.security(regTicker, "5", [high, low, high[1], low[1], high[2], low[2], close, time, time[2]], lookahead=barmerge.lookahead_on)
+rtBarClosed5 = ta.change(rt_t5) != 0
 
 // Session start detection (rising edge of RTH filter)
 nyRTHStart   = inNyRTH and not inNyRTH[1]
@@ -323,6 +329,17 @@ ny_setupAlert   = false
 asia_setupAlert = false
 
 // ============================================================================
+// REAL-TIME ALERT STATE (no [1] delay — fires 5min earlier)
+// ============================================================================
+var bool rt_ny_alerted   = false
+var bool rt_asia_alerted = false
+// Real-time FVG zone arrays (populated 5min ahead of delayed arrays)
+var rt_ny_bearFvgs  = array.new<FvgZone>(0)
+var rt_ny_bullFvgs  = array.new<FvgZone>(0)
+var rt_asia_bearFvgs = array.new<FvgZone>(0)
+var rt_asia_bullFvgs = array.new<FvgZone>(0)
+
+// ============================================================================
 // HELPER: compute bar time at session end
 // ============================================================================
 calcEndBarTime(sessionStr, tz) =>
@@ -364,6 +381,9 @@ drawTradeLevels(entryVal, stopVal, tp1Val, tp2Val, dirVal, dailyATR, entryWinStr
 if nyRTHStart
     array.clear(ny_bearFvgs)
     array.clear(ny_bullFvgs)
+    array.clear(rt_ny_bearFvgs)
+    array.clear(rt_ny_bullFvgs)
+    rt_ny_alerted := false
     ny_armed     := false
     ny_inverted  := false
     ny_limitPrice := na
@@ -385,6 +405,9 @@ if nyRTHStart
 if asiaRTHStart
     array.clear(asia_bearFvgs)
     array.clear(asia_bullFvgs)
+    array.clear(rt_asia_bearFvgs)
+    array.clear(rt_asia_bullFvgs)
+    rt_asia_alerted := false
     asia_armed     := false
     asia_inverted  := false
     asia_limitPrice := na
@@ -423,6 +446,17 @@ bearFvgTop  = l5_2     // low of "before" candle
 bearFvgBot  = h5       // high of "after" candle
 bearGapSize = bearFvgTop - bearFvgBot
 isBearFvg   = l5_2 > h5 and l5_2 > l5_1 and h5_2 > h5
+
+// Real-time FVG detection (no [1] shift) for immediate alerts
+rt_bullFvgTop  = rt_l5
+rt_bullFvgBot  = rt_h5_2
+rt_bullGapSize = rt_bullFvgTop - rt_bullFvgBot
+rt_isBullFvg   = rt_h5_2 < rt_l5 and rt_h5_2 < rt_h5_1 and rt_l5_2 < rt_l5
+
+rt_bearFvgTop  = rt_l5_2
+rt_bearFvgBot  = rt_h5
+rt_bearGapSize = rt_bearFvgTop - rt_bearFvgBot
+rt_isBearFvg   = rt_l5_2 > rt_h5 and rt_l5_2 > rt_l5_1 and rt_h5_2 > rt_h5
 
 // ============================================================================
 // DETECT & STORE FVGs - NY
@@ -486,7 +520,150 @@ if asiaCanDetect
         array.push(asia_bullFvgs, zone)
 
 // ============================================================================
-// INVERSION DETECTION - NY
+// REAL-TIME FVG STORAGE (no [1] delay — zones appear 5min earlier for alerts)
+// No drawings — just zone data for the real-time inversion check below
+// ============================================================================
+rt_nyCanDetect   = enableNY and rtBarClosed5 and inNyRTH and inNyEntryWin and nz(nyDailyATR) > 0 and not nySkipToday
+rt_asiaCanDetect = enableAsia and rtBarClosed5 and inAsiaRTH and inAsiaEntryWin and nz(asiaDailyATR) > 0 and not asiaSkipToday
+
+if rt_nyCanDetect
+    if nyDetectLongs and rt_isBearFvg and rt_bearGapSize >= nyMinGap
+        initHigh = math.max(rt_h5_2, rt_h5_1, rt_h5)
+        initLow  = math.min(rt_l5_2, rt_l5_1, rt_l5)
+        array.push(rt_ny_bearFvgs, FvgZone.new(rt_bearFvgTop, rt_bearFvgBot, rt_t5_2, na, na, initHigh, initLow))
+    if nyDetectShorts and rt_isBullFvg and rt_bullGapSize >= nyMinGap
+        initHigh = math.max(rt_h5_2, rt_h5_1, rt_h5)
+        initLow  = math.min(rt_l5_2, rt_l5_1, rt_l5)
+        array.push(rt_ny_bullFvgs, FvgZone.new(rt_bullFvgTop, rt_bullFvgBot, rt_t5_2, na, na, initHigh, initLow))
+
+if rt_asiaCanDetect
+    if asiaDetectLongs and rt_isBearFvg and rt_bearGapSize >= asiaMinGap
+        initHigh = math.max(rt_h5_2, rt_h5_1, rt_h5)
+        initLow  = math.min(rt_l5_2, rt_l5_1, rt_l5)
+        array.push(rt_asia_bearFvgs, FvgZone.new(rt_bearFvgTop, rt_bearFvgBot, rt_t5_2, na, na, initHigh, initLow))
+    if asiaDetectShorts and rt_isBullFvg and rt_bullGapSize >= asiaMinGap
+        initHigh = math.max(rt_h5_2, rt_h5_1, rt_h5)
+        initLow  = math.min(rt_l5_2, rt_l5_1, rt_l5)
+        array.push(rt_asia_bullFvgs, FvgZone.new(rt_bullFvgTop, rt_bullFvgBot, rt_t5_2, na, na, initHigh, initLow))
+
+// ============================================================================
+// REAL-TIME INVERSION DETECTION (for alerts — fires 5min earlier than drawings)
+// Only sets alert flags + trade levels for alert text. Drawings handled by delayed block.
+// ============================================================================
+// NY real-time inversion
+if rtBarClosed5 and inNyRTH and inNyEntryWin and not ny_armed and not rt_ny_alerted and nz(nyDailyATR) > 0 and not nySkipToday
+    // Check bearish FVGs for LONG inversion
+    if nyDetectLongs and array.size(rt_ny_bearFvgs) > 0
+        for i = 0 to array.size(rt_ny_bearFvgs) - 1
+            if rt_ny_alerted
+                break
+            zone = array.get(rt_ny_bearFvgs, i)
+            if rt_c5 > zone.top
+                if not nyIsFvgLimit
+                    rt_ny_alerted := true
+                    ny_setupAlert := enableAlerts
+                    ny_dir   := 1
+                    ny_entry := rt_c5
+                    ny_stop  := nz(zone.rangeLow, ny_entry - 1.0)
+                    riskPts  = ny_entry - ny_stop
+                    ny_tp1   := ny_entry + (nyRR * riskPts * nyTp1Ratio)
+                    ny_tp2   := ny_entry + (nyRR * riskPts)
+    // Check bullish FVGs for SHORT inversion
+    if not rt_ny_alerted and nyDetectShorts and array.size(rt_ny_bullFvgs) > 0
+        for i = 0 to array.size(rt_ny_bullFvgs) - 1
+            if rt_ny_alerted
+                break
+            zone = array.get(rt_ny_bullFvgs, i)
+            if rt_c5 < zone.bot
+                if not nyIsFvgLimit
+                    rt_ny_alerted := true
+                    ny_setupAlert := enableAlerts
+                    ny_dir   := -1
+                    ny_entry := rt_c5
+                    ny_stop  := nz(zone.rangeHigh, ny_entry + 1.0)
+                    riskPts  = ny_stop - ny_entry
+                    ny_tp1   := ny_entry - (nyRR * riskPts * nyTp1Ratio)
+                    ny_tp2   := ny_entry - (nyRR * riskPts)
+
+// Asia real-time inversion
+if rtBarClosed5 and inAsiaRTH and inAsiaEntryWin and not asia_armed and not rt_asia_alerted and nz(asiaDailyATR) > 0 and not asiaSkipToday
+    // Check bearish FVGs for LONG inversion
+    if asiaDetectLongs and array.size(rt_asia_bearFvgs) > 0
+        for i = 0 to array.size(rt_asia_bearFvgs) - 1
+            if rt_asia_alerted
+                break
+            zone = array.get(rt_asia_bearFvgs, i)
+            if rt_c5 > zone.top
+                if not asiaIsFvgLimit
+                    rt_asia_alerted := true
+                    asia_setupAlert := enableAlerts
+                    asia_dir   := 1
+                    asia_entry := rt_c5
+                    asia_stop  := nz(zone.rangeLow, asia_entry - 1.0)
+                    riskPts    = asia_entry - asia_stop
+                    asia_tp1   := asia_entry + (asiaRR * riskPts * asiaTp1Ratio)
+                    asia_tp2   := asia_entry + (asiaRR * riskPts)
+    // Check bullish FVGs for SHORT inversion
+    if not rt_asia_alerted and asiaDetectShorts and array.size(rt_asia_bullFvgs) > 0
+        for i = 0 to array.size(rt_asia_bullFvgs) - 1
+            if rt_asia_alerted
+                break
+            zone = array.get(rt_asia_bullFvgs, i)
+            if rt_c5 < zone.bot
+                if not asiaIsFvgLimit
+                    rt_asia_alerted := true
+                    asia_setupAlert := enableAlerts
+                    asia_dir   := -1
+                    asia_entry := rt_c5
+                    asia_stop  := nz(zone.rangeHigh, asia_entry + 1.0)
+                    riskPts    = asia_stop - asia_entry
+                    asia_tp1   := asia_entry - (asiaRR * riskPts * asiaTp1Ratio)
+                    asia_tp2   := asia_entry - (asiaRR * riskPts)
+
+// Real-time limit fill scan - NY
+if ny_inverted and not ny_armed and not rt_ny_alerted and rtBarClosed5 and inNyRTH and inNyEntryWin
+    isLong = ny_limitDir == 1
+    filled = (isLong and rt_l5 <= ny_limitPrice) or (not isLong and rt_h5 >= ny_limitPrice)
+    if filled
+        rt_ny_alerted := true
+        ny_setupAlert := enableAlerts
+        ny_dir   := ny_limitDir
+        ny_entry := ny_limitPrice
+        zone     = ny_limitZone
+        if isLong
+            ny_stop := nz(zone.rangeLow, ny_entry - 1.0)
+            riskPts = ny_entry - ny_stop
+            ny_tp1  := ny_entry + (nyRR * riskPts * nyTp1Ratio)
+            ny_tp2  := ny_entry + (nyRR * riskPts)
+        else
+            ny_stop := nz(zone.rangeHigh, ny_entry + 1.0)
+            riskPts = ny_stop - ny_entry
+            ny_tp1  := ny_entry - (nyRR * riskPts * nyTp1Ratio)
+            ny_tp2  := ny_entry - (nyRR * riskPts)
+
+// Real-time limit fill scan - Asia
+if asia_inverted and not asia_armed and not rt_asia_alerted and rtBarClosed5 and inAsiaRTH and inAsiaEntryWin
+    isLong = asia_limitDir == 1
+    filled = (isLong and rt_l5 <= asia_limitPrice) or (not isLong and rt_h5 >= asia_limitPrice)
+    if filled
+        rt_asia_alerted := true
+        asia_setupAlert := enableAlerts
+        asia_dir   := asia_limitDir
+        asia_entry := asia_limitPrice
+        zone       = asia_limitZone
+        if isLong
+            asia_stop := nz(zone.rangeLow, asia_entry - 1.0)
+            riskPts   = asia_entry - asia_stop
+            asia_tp1  := asia_entry + (asiaRR * riskPts * asiaTp1Ratio)
+            asia_tp2  := asia_entry + (asiaRR * riskPts)
+        else
+            asia_stop := nz(zone.rangeHigh, asia_entry + 1.0)
+            riskPts   = asia_stop - asia_entry
+            asia_tp1  := asia_entry - (asiaRR * riskPts * asiaTp1Ratio)
+            asia_tp2  := asia_entry - (asiaRR * riskPts)
+
+// ============================================================================
+// INVERSION DETECTION - NY (delayed — handles drawings + state)
 // Bearish FVG: close > FVG top → LONG
 // Bullish FVG: close < FVG bot → SHORT
 // Entry mode: "Bar Close" = entry at c5, "FVG Limit" = entry at FVG boundary
@@ -517,7 +694,6 @@ if barClosed5 and inNyRTH and inNyEntryWin and not ny_armed and not ny_inverted 
                     riskPts  = ny_entry - ny_stop
                     ny_tp1   := ny_entry + (nyRR * riskPts * nyTp1Ratio)
                     ny_tp2   := ny_entry + (nyRR * riskPts)
-                    ny_setupAlert := enableAlerts
                     if canDraw
                         [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(ny_entry, ny_stop, ny_tp1, ny_tp2, ny_dir, nyDailyATR, nyEntryWindow, "America/New_York")
                         ny_entryLine := eLine
@@ -550,7 +726,6 @@ if barClosed5 and inNyRTH and inNyEntryWin and not ny_armed and not ny_inverted 
                     riskPts  = ny_stop - ny_entry
                     ny_tp1   := ny_entry - (nyRR * riskPts * nyTp1Ratio)
                     ny_tp2   := ny_entry - (nyRR * riskPts)
-                    ny_setupAlert := enableAlerts
                     if canDraw
                         [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(ny_entry, ny_stop, ny_tp1, ny_tp2, ny_dir, nyDailyATR, nyEntryWindow, "America/New_York")
                         ny_entryLine := eLine
@@ -582,7 +757,6 @@ if ny_inverted and not ny_armed and barClosed5 and inNyRTH and inNyEntryWin
             riskPts = ny_stop - ny_entry
             ny_tp1  := ny_entry - (nyRR * riskPts * nyTp1Ratio)
             ny_tp2  := ny_entry - (nyRR * riskPts)
-        ny_setupAlert := enableAlerts
         if canDraw
             [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(ny_entry, ny_stop, ny_tp1, ny_tp2, ny_dir, nyDailyATR, nyEntryWindow, "America/New_York")
             ny_entryLine := eLine
@@ -626,7 +800,6 @@ if barClosed5 and inAsiaRTH and inAsiaEntryWin and not asia_armed and not asia_i
                     riskPts    = asia_entry - asia_stop
                     asia_tp1   := asia_entry + (asiaRR * riskPts * asiaTp1Ratio)
                     asia_tp2   := asia_entry + (asiaRR * riskPts)
-                    asia_setupAlert := enableAlerts
                     if canDraw
                         [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(asia_entry, asia_stop, asia_tp1, asia_tp2, asia_dir, asiaDailyATR, asiaEntryWindow, "America/New_York")
                         asia_entryLine := eLine
@@ -659,7 +832,6 @@ if barClosed5 and inAsiaRTH and inAsiaEntryWin and not asia_armed and not asia_i
                     riskPts    = asia_stop - asia_entry
                     asia_tp1   := asia_entry - (asiaRR * riskPts * asiaTp1Ratio)
                     asia_tp2   := asia_entry - (asiaRR * riskPts)
-                    asia_setupAlert := enableAlerts
                     if canDraw
                         [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(asia_entry, asia_stop, asia_tp1, asia_tp2, asia_dir, asiaDailyATR, asiaEntryWindow, "America/New_York")
                         asia_entryLine := eLine
@@ -690,7 +862,6 @@ if asia_inverted and not asia_armed and barClosed5 and inAsiaRTH and inAsiaEntry
             riskPts   = asia_stop - asia_entry
             asia_tp1  := asia_entry - (asiaRR * riskPts * asiaTp1Ratio)
             asia_tp2  := asia_entry - (asiaRR * riskPts)
-        asia_setupAlert := enableAlerts
         if canDraw
             [eLine, sLine, t1Line, t2Line, sLbl, t1Lbl, t2Lbl] = drawTradeLevels(asia_entry, asia_stop, asia_tp1, asia_tp2, asia_dir, asiaDailyATR, asiaEntryWindow, "America/New_York")
             asia_entryLine := eLine
@@ -757,6 +928,33 @@ if enableAsia and inAsiaRTH and inAsiaEntryWin
             if barClosed5
                 zone.rangeHigh := math.max(nz(zone.rangeHigh), h5)
                 zone.rangeLow  := math.min(nz(zone.rangeLow, 1e10), l5)
+
+// ============================================================================
+// RANGE TRACKING - Real-time FVG zones (no drawings, just range updates)
+// ============================================================================
+if enableNY and inNyRTH and inNyEntryWin and rtBarClosed5
+    if array.size(rt_ny_bearFvgs) > 0
+        for i = 0 to array.size(rt_ny_bearFvgs) - 1
+            zone = array.get(rt_ny_bearFvgs, i)
+            zone.rangeHigh := math.max(nz(zone.rangeHigh), rt_h5)
+            zone.rangeLow  := math.min(nz(zone.rangeLow, 1e10), rt_l5)
+    if array.size(rt_ny_bullFvgs) > 0
+        for i = 0 to array.size(rt_ny_bullFvgs) - 1
+            zone = array.get(rt_ny_bullFvgs, i)
+            zone.rangeHigh := math.max(nz(zone.rangeHigh), rt_h5)
+            zone.rangeLow  := math.min(nz(zone.rangeLow, 1e10), rt_l5)
+
+if enableAsia and inAsiaRTH and inAsiaEntryWin and rtBarClosed5
+    if array.size(rt_asia_bearFvgs) > 0
+        for i = 0 to array.size(rt_asia_bearFvgs) - 1
+            zone = array.get(rt_asia_bearFvgs, i)
+            zone.rangeHigh := math.max(nz(zone.rangeHigh), rt_h5)
+            zone.rangeLow  := math.min(nz(zone.rangeLow, 1e10), rt_l5)
+    if array.size(rt_asia_bullFvgs) > 0
+        for i = 0 to array.size(rt_asia_bullFvgs) - 1
+            zone = array.get(rt_asia_bullFvgs, i)
+            zone.rangeHigh := math.max(nz(zone.rangeHigh), rt_h5)
+            zone.rangeLow  := math.min(nz(zone.rangeLow, 1e10), rt_l5)
 
 // ============================================================================
 // EXTEND TRADE LEVEL LINES + LABELS

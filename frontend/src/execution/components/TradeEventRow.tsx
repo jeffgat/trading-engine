@@ -15,6 +15,8 @@ export function TradeEventRow({ entry, strategyType, onClick, clickable }: Trade
   const eventColor =
     EVENT_COLORS[entry.event] ?? "bg-text-muted/20 text-text-muted";
   const [datePart, timePart] = entry.timestamp.split(" ");
+  const eventTime = entry.details.tick_time ?? entry.details.bar_time;
+  const resolution = entry.details.resolution;
 
   const detailParts = Object.entries(entry.details).filter(
     ([key]) => key !== "bar_time" && key !== "tick_time" && key !== "resolution",
@@ -66,6 +68,21 @@ export function TradeEventRow({ entry, strategyType, onClick, clickable }: Trade
       <Badge variant="outline" className={`border-0 text-xs ${eventColor}`}>
         {entry.event}
       </Badge>
+
+      {resolution && (
+        <span className="rounded bg-text-muted/10 px-1.5 py-0.5 font-mono text-[10px] text-text-muted whitespace-nowrap">
+          {resolution}
+        </span>
+      )}
+
+      {eventTime && (
+        <span className="text-xs whitespace-nowrap">
+          <span className="text-text-muted">
+            {entry.details.tick_time ? "tick_time=" : "bar_time="}
+          </span>
+          <span className="font-mono text-text-secondary">{eventTime}</span>
+        </span>
+      )}
 
       {/* Details */}
       {detailParts.length > 0 && (

@@ -472,6 +472,26 @@ class TestTickPath:
         broker.send_flatten.assert_not_called()
         assert engine._state == State.MANAGING
 
+    async def test_tick_filled_trade_ignores_5m_exit_management(self, engine, broker):
+        await advance_to_armed(engine, orb_high=19530.0)
+        entry_price = engine._levels.entry
+        tp1 = engine._levels.tp1
+        be = engine._levels.be
+
+        fill_tick = make_bar("2025-01-15 10:00", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        await engine.on_tick(fill_tick, 300.0)
+        assert engine._state == State.MANAGING
+        assert engine._fill_via_tick is True
+
+        # A 5m bar can contain stale pre-fill excursion, so it must not manage exits.
+        stale_bar = make_bar("2025-01-15 10:05", entry_price, tp1 + 5, be - 5, entry_price)
+        await engine.on_bar(stale_bar, 300.0)
+
+        broker.send_tp1_multi.assert_not_called()
+        broker.send_tp1_single.assert_not_called()
+        broker.send_flatten.assert_not_called()
+        assert engine._state == State.MANAGING
+
     async def test_tick_sl_in_managing(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
         stop = eng._levels.stop

@@ -93,6 +93,7 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
         def __init__(self):
             self.name = "FAST_V2"
             self.enabled = True
+            self.max_open_contracts = 20
             self.webhooks = [FakeWebhook("https://example.test/hook", "Account 1")]
             self.session_overrides = {"NQ_NY": {}, "ES_NY": {}}
             self.lsi_session_overrides = {"NQ_NY_LSI": {}}
@@ -117,6 +118,7 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
 
     meta = _build_exec_config_meta(state)
     assert list(meta) == ["FAST_V2"]
+    assert meta["FAST_V2"]["max_open_contracts"] == 20
     assert meta["FAST_V2"]["sessions"] == ["NQ_NY", "ES_NY"]
     assert meta["FAST_V2"]["lsi_sessions"] == ["NQ_NY_LSI"]
     assert meta["FAST_V2"]["webhooks"][0]["paused"] is True
