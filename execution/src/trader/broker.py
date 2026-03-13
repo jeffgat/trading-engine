@@ -164,13 +164,14 @@ class TradersPostClient:
         close_action = "sell" if direction == "long" else "buy"
         results = []
 
-        # Step 1: market close half qty (Pine: lines 765, 773)
-        # Use sell/buy market order instead of "exit" — TradersPost treats
-        # "exit" as a full flatten that ignores quantity and cancels all
-        # working orders.
+        # Step 1: partially exit half the position.
+        # TradersPost only honors partial exits via action="exit" with an
+        # explicit quantity. Using buy/sell here can open the opposite side
+        # if our engine thinks the entry filled but the broker never got a
+        # position on.
         results.append(await self._post({
             "ticker": t,
-            "action": close_action,
+            "action": "exit",
             "quantity": half_qty,
         }))
 

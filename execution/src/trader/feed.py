@@ -187,7 +187,7 @@ class BarAggregator:
         bucket = self._bucket_for(ts)
         result: Bar | None = None
 
-        # If this bar belongs to a new bucket, close the old one
+        # If this bar belongs to a new bucket, close any still-open partial bucket.
         if self._bucket_start is not None and bucket != self._bucket_start:
             result = Bar(
                 timestamp=self._bucket_start,
@@ -214,6 +214,19 @@ class BarAggregator:
         self._close = c
         self._volume += v
         self._count += 1
+
+        # In the normal live path, emit immediately when the 5th constituent
+        # 1m bar completes so the engine reacts on the 5m close, not 1 minute later.
+        if self._count >= 5:
+            result = Bar(
+                timestamp=self._bucket_start,
+                open=self._open,
+                high=self._high,
+                low=self._low,
+                close=self._close,
+                volume=self._volume,
+            )
+            self._reset()
 
         return result
 

@@ -246,6 +246,14 @@ class TestArmedToManaging:
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
         assert eng._state == State.MANAGING
 
+    async def test_5m_fill_can_be_disabled_for_live_mode(self, broker):
+        eng = _make_orb_engine(broker, allow_5m_fill_detection=False)
+        await advance_to_armed(eng, orb_high=19530.0)
+        entry_price = eng._levels.entry
+        bar = make_bar("2025-01-15 10:00", entry_price + 10, entry_price + 20, entry_price - 5, entry_price + 15)
+        await eng.on_bar(bar, 300.0)
+        assert eng._state == State.ARMED_LIMIT
+
     async def test_no_fill_when_low_above_entry(self, engine, broker):
         await advance_to_armed(engine, orb_high=19530.0)
         entry_price = engine._levels.entry

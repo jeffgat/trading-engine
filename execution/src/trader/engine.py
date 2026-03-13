@@ -216,6 +216,9 @@ class ORBEngine:
     # Execution config name (e.g. "FAST", "SLOW")
     config_name: str = ""
 
+    # Fill detection mode
+    allow_5m_fill_detection: bool = True
+
     # Per-leg pause: when True, all broker.send_*() calls are suppressed
     paused: bool = False
 
@@ -1030,6 +1033,9 @@ class ORBEngine:
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
+            return
+
+        if not self.allow_5m_fill_detection:
             return
 
         # Check for fill: did price touch our limit entry?

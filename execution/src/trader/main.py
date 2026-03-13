@@ -521,6 +521,7 @@ def build_engines(
             broker=broker,
             exec_ticker=exec_ticker,
             config_name=config_name,
+            allow_5m_fill_detection=False,
             orb_start=merged["orb_start"],
             orb_end=merged["orb_end"],
             entry_start=merged["entry_start"],

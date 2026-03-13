@@ -31,6 +31,25 @@ class TestBarAggregator:
         result = agg.add_1m_bar(make_dt("2025-01-15", "09:30"), 100, 105, 99, 103, 50)
         assert result is None
 
+    def test_fifth_bar_emits_immediately(self):
+        agg = BarAggregator()
+        result = None
+        for minute in range(5):
+            ts = make_dt("2025-01-15", "09:30") + timedelta(minutes=minute)
+            result = agg.add_1m_bar(ts, 100 + minute, 105 + minute, 99, 103 + minute, 10)
+        assert result is not None
+        assert result.timestamp == make_dt("2025-01-15", "09:30")
+        assert result.open == pytest.approx(100.0)
+        assert result.close == pytest.approx(107.0)
+
+    def test_next_bucket_does_not_duplicate_already_emitted_bar(self):
+        agg = BarAggregator()
+        for minute in range(5):
+            ts = make_dt("2025-01-15", "09:30") + timedelta(minutes=minute)
+            agg.add_1m_bar(ts, 100, 105, 99, 103, 10)
+        result = agg.add_1m_bar(make_dt("2025-01-15", "09:35"), 103, 110, 102, 108, 20)
+        assert result is None
+
     def test_four_bars_same_bucket_all_return_none(self):
         agg = BarAggregator()
         results = [
