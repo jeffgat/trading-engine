@@ -74,7 +74,7 @@ nqAsiaOrbHighColor   = input.color(#2196F3, "ORB High Color", group="NQ: Asia")
 nqAsiaOrbLowColor    = input.color(#A5DFFA, "ORB Low Color", group="NQ: Asia")
 
 // ============================================================================
-// INPUTS - GC: NY
+// INPUTS - GC: NY (not part of FAST_V2; kept for reference only)
 // ============================================================================
 i_gcOrbSession   = input.session("0930-0938", "ORB Window (ny time)", group="GC: NY")
 i_gcEntryWindow  = input.session("0938-1200", "Entry Window (ny time)", group="GC: NY")
@@ -143,9 +143,12 @@ tp2Style   = input.string("Dashed", "Style", options=["Solid", "Dashed", "Dotted
 enableAlerts = input.bool(true, "Enable Setup Alerts", tooltip="Enable alert conditions for when a new FVG setup is detected", group="Alerts")
 
 // ============================================================================
-// RESOLVE ACTIVE CONFIG — select from per-asset inputs
+// RESOLVE ACTIVE CONFIG — FAST_V2 ORB legs only
+//   NQ_NY
+//   NQ_Asia
+//   ES_Asia
 // ============================================================================
-enableNY   = asset == "NQ" or asset == "GC"
+enableNY   = asset == "NQ"
 enableAsia = asset == "NQ" or asset == "ES"
 
 // Session RTH (fixed, same for all assets)
