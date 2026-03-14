@@ -21,6 +21,10 @@ from trader.lsi_engine import GapInfo, LSIEngine, LSIState
 
 ET = ZoneInfo("America/New_York")
 
+# Backward-compat for renamed state in the live engine.
+if not hasattr(LSIState, "WAITING_FOR_SWEEP"):
+    LSIState.WAITING_FOR_SWEEP = LSIState.SCANNING  # type: ignore[attr-defined]
+
 
 # =============================================================================
 # Helpers
@@ -652,6 +656,81 @@ class TestDashboardOverlay:
         assert status["swept_level"] == pytest.approx(19400.0)
         assert status["fvg_top"] == pytest.approx(gap.top)
         assert status["fvg_bottom"] == pytest.approx(gap.bottom)
+
+
+class TestTradeOverlap:
+    async def test_long_inversion_blocked_when_orb_short_has_priority(self):
+        eng = make_lsi_engine()
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        eng.trade_overlap_check = lambda direction: direction == 1
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, gap.top + 5)
+
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.WAITING_FOR_INVERSION
+        assert eng.broker.send_entry.await_count == 0
+
+        status = eng.status_dict()
+        assert status["state"] == "trade_overlap"
+        assert status["raw_state"] == LSIState.WAITING_FOR_INVERSION.value
+        assert status["trade_overlap"] is True
+
+    async def test_armed_long_limit_blocked_from_filling_when_orb_turns_short(self):
+        eng = make_lsi_engine(lsi_entry_mode="fvg_limit")
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        eng.trade_overlap_check = lambda direction: False
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", gap.top + 3, gap.top + 10, gap.top + 1, gap.top + 5)
+
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng.broker.send_entry.await_count == 0
+
+        eng.trade_overlap_check = lambda direction: direction == 1
+        fill_bar = make_bar(
+            "2025-01-15 10:00",
+            eng._limit_price + 4,
+            eng._limit_price + 8,
+            eng._limit_price - 2,
+            eng._limit_price + 1,
+        )
+
+        await eng.on_bar(fill_bar, 300.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng.broker.send_entry.await_count == 0
+
+        status = eng.status_dict()
+        assert status["state"] == "trade_overlap"
+        assert status["raw_state"] == LSIState.ARMED_LIMIT.value
+        assert status["trade_overlap"] is True
+
+    async def test_long_inversion_allowed_when_overlap_check_does_not_block(self):
+        eng = make_lsi_engine()
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        eng.trade_overlap_check = lambda direction: False
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, gap.top + 5)
+
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.MANAGING
+        eng.broker.send_entry.assert_awaited_once()
+
+        status = eng.status_dict()
+        assert status["state"] == LSIState.MANAGING.value
+        assert status["trade_overlap"] is False
 
 
 # =============================================================================

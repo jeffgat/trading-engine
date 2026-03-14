@@ -4,7 +4,7 @@ Strategy: patch client._post() to capture payloads without making real HTTP call
 This gives exact field-level assertions on every webhook sent.
 
 Critical correctness requirements verified here:
-  - Entry flatten → bracket order sequence
+  - Entry bracket order payload
   - TP1 multi: 3 steps with exact fields
   - cancel=False MUST be explicit on TP2 limit (regression guard)
   - Direction-aware close_action (sell for long, buy for short)
@@ -50,21 +50,16 @@ def client_and_captured():
 # =============================================================================
 
 class TestSendEntryLong:
-    async def test_sends_two_webhooks(self, client_and_captured):
+    async def test_sends_single_bracket_webhook(self, client_and_captured):
         client, captured = client_and_captured
         results = await client.send_entry("buy", 2.0, 19500.0, 19700.0, 19400.0)
-        assert len(results) == 2
-        assert len(captured) == 2
-
-    async def test_first_webhook_is_flatten(self, client_and_captured):
-        client, captured = client_and_captured
-        await client.send_entry("buy", 2.0, 19500.0, 19700.0, 19400.0)
-        assert captured[0] == {"ticker": "MNQ", "action": "exit"}
+        assert len(results) == 1
+        assert len(captured) == 1
 
     async def test_entry_payload_fields(self, client_and_captured):
         client, captured = client_and_captured
         await client.send_entry("buy", 2.0, 19500.0, 19700.0, 19400.0)
-        entry = captured[1]
+        entry = captured[0]
         assert entry["ticker"] == "MNQ"
         assert entry["action"] == "buy"
         assert entry["quantity"] == 2.0
@@ -72,16 +67,16 @@ class TestSendEntryLong:
         assert entry["takeProfit"]["limitPrice"] == 19700.0
         assert entry["stopLoss"]["type"] == "stop"
         assert entry["stopLoss"]["stopPrice"] == 19400.0
-        assert entry["delay"] == 3
 
     async def test_entry_no_extra_fields(self, client_and_captured):
         """Entry payload must NOT have orderType/sentiment/cancel at top level."""
         client, captured = client_and_captured
         await client.send_entry("buy", 2.0, 19500.0, 19700.0, 19400.0)
-        entry = captured[1]
+        entry = captured[0]
         assert "orderType" not in entry
         assert "sentiment" not in entry
         assert "cancel" not in entry
+        assert "delay" not in entry
 
 
 # =============================================================================
@@ -92,17 +87,17 @@ class TestSendEntryShort:
     async def test_short_action_is_sell(self, client_and_captured):
         client, captured = client_and_captured
         await client.send_entry("sell", 1.0, 19500.0, 19300.0, 19600.0)
-        assert captured[1]["action"] == "sell"
+        assert captured[0]["action"] == "sell"
 
     async def test_short_stop_above_entry(self, client_and_captured):
         client, captured = client_and_captured
         await client.send_entry("sell", 1.0, 19500.0, 19300.0, 19600.0)
-        assert captured[1]["stopLoss"]["stopPrice"] > captured[1]["price"]
+        assert captured[0]["stopLoss"]["stopPrice"] > captured[0]["price"]
 
     async def test_short_tp_below_entry(self, client_and_captured):
         client, captured = client_and_captured
         await client.send_entry("sell", 1.0, 19500.0, 19300.0, 19600.0)
-        assert captured[1]["takeProfit"]["limitPrice"] < captured[1]["price"]
+        assert captured[0]["takeProfit"]["limitPrice"] < captured[0]["price"]
 
 
 # =============================================================================
@@ -245,7 +240,6 @@ class TestTickerResolution:
         client, captured = client_and_captured
         await client.send_entry("buy", 1.0, 19500.0, 19700.0, 19400.0, ticker="NQ")
         assert captured[0]["ticker"] == "NQ"
-        assert captured[1]["ticker"] == "NQ"
 
     async def test_none_ticker_uses_default(self, client_and_captured):
         client, captured = client_and_captured

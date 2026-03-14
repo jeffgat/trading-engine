@@ -538,21 +538,23 @@ class TestCheckpointCycle:
 
 class TestTradeHistory:
     def test_save_and_load_round_trip(self, tmp_path):
+        recent_date_1 = (datetime.now(tz=ET) - timedelta(days=1)).strftime("%Y%m%d")
+        recent_date_2 = datetime.now(tz=ET).strftime("%Y%m%d")
         trades = [
             TradeRecord(
-                session="NQ_Asia", date="20260301", direction=1,
+                session="NQ_Asia", date=recent_date_1, direction=1,
                 entry_price=19500.0, stop_price=19468.25,
                 tp1_price=19545.0, tp2_price=19612.0,
                 exit_type="tp1_be", tp1_hit=True,
-                timestamp="2026-03-02T04:15:23.456789",
+                timestamp=f"{recent_date_1[:4]}-{recent_date_1[4:6]}-{recent_date_1[6:]}T04:15:23.456789",
                 config_name="FAST",
             ),
             TradeRecord(
-                session="NQ_NY", date="20260302", direction=1,
+                session="NQ_NY", date=recent_date_2, direction=1,
                 entry_price=19600.0, stop_price=19570.0,
                 tp1_price=19660.0, tp2_price=19750.0,
                 exit_type="sl", tp1_hit=False,
-                timestamp="2026-03-02T11:30:00",
+                timestamp=f"{recent_date_2[:4]}-{recent_date_2[4:6]}-{recent_date_2[6:]}T11:30:00",
                 config_name="FAST",
             ),
         ]
@@ -596,9 +598,21 @@ class TestTradeHistory:
         """asia_tp1_hit_for_date() returns True after trade history restore."""
         from trader.api import DashboardState
 
+        recent_date = datetime.now(tz=ET).strftime("%Y%m%d")
         trades = [
-            TradeRecord("NQ_Asia", "20260301", 1, 19500, 19468, 19545, 19612,
-                        "tp1_be", True, "2026-03-02T04:15:00", "FAST"),
+            TradeRecord(
+                "NQ_Asia",
+                recent_date,
+                1,
+                19500,
+                19468,
+                19545,
+                19612,
+                "tp1_be",
+                True,
+                f"{recent_date[:4]}-{recent_date[4:6]}-{recent_date[6:]}T04:15:00",
+                "FAST",
+            ),
         ]
         path = tmp_path / "trade_history.json"
         save_trade_history(trades, path=path)
@@ -606,8 +620,9 @@ class TestTradeHistory:
         dashboard = DashboardState()
         dashboard.trade_history = load_trade_history(path=path)
 
-        assert dashboard.asia_tp1_hit_for_date("20260301", config_name="FAST") is True
-        assert dashboard.asia_tp1_hit_for_date("20260302", config_name="FAST") is False
+        assert dashboard.asia_tp1_hit_for_date(recent_date, config_name="FAST") is True
+        next_date = (datetime.now(tz=ET) + timedelta(days=1)).strftime("%Y%m%d")
+        assert dashboard.asia_tp1_hit_for_date(next_date, config_name="FAST") is False
 
 
 # =============================================================================

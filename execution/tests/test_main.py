@@ -151,6 +151,30 @@ def test_build_engines_symbol_map():
     assert _atr_lens["ES.FUT"] == {7}
 
 
+def test_build_engines_respects_long_only_override():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+
+    engines, _, _ = build_engines(
+        config,
+        broker,
+        config_name="FAST_V2",
+        session_list=["NQ_NY"],
+        exec_overrides={"NQ_NY": {"long_only": False}},
+    )
+
+    assert engines[0].long_only is False
+
+
 def test_apply_atr_values_updates_engines():
     broker = MagicMock()
     config = {
