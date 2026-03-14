@@ -25,22 +25,6 @@ else
 drawbackDays = input.int(1, "Days Back", minval=1, maxval=50, tooltip="Number of trading days to show drawings for", group="Display")
 
 // ============================================================================
-// INPUTS - ES: NY
-// ============================================================================
-i_esOrbSession   = input.session("0930-0945", "ORB Window (ny time)", group="ES: NY")
-i_esEntryWindow  = input.session("0945-1300", "Entry Window (ny time)", group="ES: NY")
-i_esDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="ES: NY")
-i_esImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="ES: NY")
-i_esRR           = input.float(3.0, "Reward/Risk", step=0.25, group="ES: NY")
-i_esTp1Ratio     = input.float(0.2, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="ES: NY")
-i_esStopMode     = input.string("ATR", "Stop Size Mode", options=["ATR", "ORB"], group="ES: NY")
-i_esAtrLength    = input.int(7, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="ES: NY")
-i_esStopPct      = input.float(5.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="ES: NY")
-i_esMinGapPct    = input.float(1.0, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="ES: NY")
-esOrbHighColor   = input.color(#18b79c, "ORB High Color", group="ES: NY")
-esOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="ES: NY")
-
-// ============================================================================
 // INPUTS - ES: Asia
 // ============================================================================
 i_esAsiaOrbSession   = input.session("2000-2010", "ORB Window (ny time)", group="ES: Asia")
@@ -59,16 +43,16 @@ esAsiaOrbLowColor    = input.color(#A5DFFA, "ORB Low Color", group="ES: Asia")
 // ============================================================================
 // INPUTS - NQ: NY
 // ============================================================================
-i_nqNyOrbSession   = input.session("0930-0950", "ORB Window (ny time)", group="NQ: NY")
-i_nqNyEntryWindow  = input.session("0950-1200", "Entry Window (ny time)", group="NQ: NY")
-i_nqNyDirection    = input.string("Long Only", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: NY")
+i_nqNyOrbSession   = input.session("0930-0945", "ORB Window (ny time)", group="NQ: NY")
+i_nqNyEntryWindow  = input.session("0945-1300", "Entry Window (ny time)", group="NQ: NY")
+i_nqNyDirection    = input.string("Both", "Direction", options=["Long Only", "Short Only", "Both"], group="NQ: NY")
 i_nqNyImpulseClose = input.bool(false, "Impulse Close Filter", tooltip="Accept FVGs where the impulse candle closes beyond ORB", group="NQ: NY")
-i_nqNyRR           = input.float(3.5, "Reward/Risk", step=0.25, group="NQ: NY")
-i_nqNyTp1Ratio     = input.float(0.4, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
+i_nqNyRR           = input.float(2.5, "Reward/Risk", step=0.25, group="NQ: NY")
+i_nqNyTp1Ratio     = input.float(0.3, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
 i_nqNyStopMode     = input.string("ATR", "Stop Size Mode", options=["ATR", "ORB"], group="NQ: NY")
-i_nqNyAtrLength    = input.int(12, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="NQ: NY")
-i_nqNyStopPct      = input.float(7.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="NQ: NY")
-i_nqNyMinGapPct    = input.float(2.5, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="NQ: NY")
+i_nqNyAtrLength    = input.int(14, "ATR Length", minval=1, tooltip="Only used when Stop Size Mode is ATR", group="NQ: NY")
+i_nqNyStopPct      = input.float(8.0, "Stop (%)", step=0.5, minval=0.5, tooltip="Percentage of daily ATR or ORB range", group="NQ: NY")
+i_nqNyMinGapPct    = input.float(2.25, "Min Gap (%)", step=0.25, tooltip="Minimum gap size as percentage of daily ATR or ORB range", group="NQ: NY")
 
 nqNyOrbHighColor   = input.color(#18b79c, "ORB High Color", group="NQ: NY")
 nqNyOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="NQ: NY")
@@ -106,15 +90,6 @@ gcOrbHighColor   = input.color(#18b79c, "ORB High Color", group="GC: NY")
 gcOrbLowColor    = input.color(#94E3DA, "ORB Low Color", group="GC: NY")
 
 // ============================================================================
-// INPUTS - Skip Days - ES: NY  (Python: excluded_dow=3 → Thursday)
-// ============================================================================
-i_esNySkipMon = input.bool(false, "Skip Monday",    group="ES: NY Skip Days")
-i_esNySkipTue = input.bool(false, "Skip Tuesday",   group="ES: NY Skip Days")
-i_esNySkipWed = input.bool(false, "Skip Wednesday", group="ES: NY Skip Days")
-i_esNySkipThu = input.bool(true,  "Skip Thursday",  group="ES: NY Skip Days")
-i_esNySkipFri = input.bool(false, "Skip Friday",    group="ES: NY Skip Days")
-
-// ============================================================================
 // INPUTS - Skip Days - ES: Asia  (Python: excluded_dow=None)
 // ============================================================================
 i_esAsiaSkipMon = input.bool(false, "Skip Monday",    group="ES: Asia Skip Days")
@@ -130,7 +105,7 @@ i_nqNySkipMon = input.bool(false, "Skip Monday",    group="NQ: NY Skip Days")
 i_nqNySkipTue = input.bool(false, "Skip Tuesday",   group="NQ: NY Skip Days")
 i_nqNySkipWed = input.bool(false, "Skip Wednesday", group="NQ: NY Skip Days")
 i_nqNySkipThu = input.bool(false, "Skip Thursday",  group="NQ: NY Skip Days")
-i_nqNySkipFri = input.bool(true,  "Skip Friday",    group="NQ: NY Skip Days")
+i_nqNySkipFri = input.bool(false, "Skip Friday",    group="NQ: NY Skip Days")
 
 // ============================================================================
 // INPUTS - Skip Days - NQ: Asia  (Python: excluded_dow=1 → Tuesday)
@@ -170,7 +145,7 @@ enableAlerts = input.bool(true, "Enable Setup Alerts", tooltip="Enable alert con
 // ============================================================================
 // RESOLVE ACTIVE CONFIG — select from per-asset inputs
 // ============================================================================
-enableNY   = asset == "ES" or asset == "NQ" or asset == "GC"
+enableNY   = asset == "NQ" or asset == "GC"
 enableAsia = asset == "NQ" or asset == "ES"
 
 // Session RTH (fixed, same for all assets)
@@ -178,28 +153,22 @@ nySessionRTH   = "0930-1600"
 asiaSessionRTH = "1800-0700"
 
 // NY session times
-nyOrbSession = if asset == "ES"
-    i_esOrbSession
-else if asset == "NQ"
+nyOrbSession = if asset == "NQ"
     i_nqNyOrbSession
 else if asset == "GC"
     i_gcOrbSession
 else
-    i_esOrbSession
+    i_nqNyOrbSession
 
-nyEntryWindow = if asset == "ES"
-    i_esEntryWindow
-else if asset == "NQ"
+nyEntryWindow = if asset == "NQ"
     i_nqNyEntryWindow
 else if asset == "GC"
     i_gcEntryWindow
 else
-    i_esEntryWindow
+    i_nqNyEntryWindow
 
 // NY direction
-nyDirection = if asset == "ES"
-    i_esDirection
-else if asset == "NQ"
+nyDirection = if asset == "NQ"
     i_nqNyDirection
 else if asset == "GC"
     i_gcDirection
@@ -214,69 +183,55 @@ else
     "Long Only"
 
 // NY trade params
-nyRR = if asset == "ES"
-    i_esRR
-else if asset == "NQ"
+nyRR = if asset == "NQ"
     i_nqNyRR
 else if asset == "GC"
     i_gcRR
 else
-    i_esRR
+    i_nqNyRR
 
-nyTp1Ratio = if asset == "ES"
-    i_esTp1Ratio
-else if asset == "NQ"
+nyTp1Ratio = if asset == "NQ"
     i_nqNyTp1Ratio
 else if asset == "GC"
     i_gcTp1Ratio
 else
-    i_esTp1Ratio
+    i_nqNyTp1Ratio
 
-nyImpulseClose = if asset == "ES"
-    i_esImpulseClose
-else if asset == "NQ"
+nyImpulseClose = if asset == "NQ"
     i_nqNyImpulseClose
 else if asset == "GC"
     i_gcImpulseClose
 else
     false
 
-nyStopMode = if asset == "ES"
-    i_esStopMode
-else if asset == "NQ"
+nyStopMode = if asset == "NQ"
     i_nqNyStopMode
 else if asset == "GC"
     i_gcStopMode
 else
     "ATR"
 
-nyStopPct = if asset == "ES"
-    i_esStopPct
-else if asset == "NQ"
+nyStopPct = if asset == "NQ"
     i_nqNyStopPct
 else if asset == "GC"
     i_gcStopPct
 else
-    i_esStopPct
+    i_nqNyStopPct
 
-nyMinGapPct = if asset == "ES"
-    i_esMinGapPct
-else if asset == "NQ"
+nyMinGapPct = if asset == "NQ"
     i_nqNyMinGapPct
 else if asset == "GC"
     i_gcMinGapPct
 else
-    i_esMinGapPct
+    i_nqNyMinGapPct
 
 // Per-session ATR lengths
-nyAtrLength = if asset == "ES"
-    i_esAtrLength
-else if asset == "NQ"
+nyAtrLength = if asset == "NQ"
     i_nqNyAtrLength
 else if asset == "GC"
     i_gcAtrLength
 else
-    i_esAtrLength
+    i_nqNyAtrLength
 
 asiaAtrLength = if asset == "ES"
     i_esAsiaAtrLength
@@ -344,23 +299,19 @@ else
     10.0
 
 // ORB colors
-nyOrbHighColor = if asset == "ES"
-    esOrbHighColor
-else if asset == "NQ"
+nyOrbHighColor = if asset == "NQ"
     nqNyOrbHighColor
 else if asset == "GC"
     gcOrbHighColor
 else
-    esOrbHighColor
+    nqNyOrbHighColor
 
-nyOrbLowColor = if asset == "ES"
-    esOrbLowColor
-else if asset == "NQ"
+nyOrbLowColor = if asset == "NQ"
     nqNyOrbLowColor
 else if asset == "GC"
     gcOrbLowColor
 else
-    esOrbLowColor
+    nqNyOrbLowColor
 
 asiaOrbHighColor = if asset == "ES"
     esAsiaOrbHighColor
@@ -398,18 +349,12 @@ inAsiaORB      = not na(time("5", asiaOrbSession, "America/New_York"))
 inAsiaEntryWin = not na(time("5", asiaEntryWindow, "America/New_York"))
 
 // ============================================================================
-// DOW SKIP FLAGS — resolved per active asset
+// DOW SKIP FLAGS — resolved per active session asset
 // dayofweek constants: Monday=2 ... Friday=6 in Pine v6
 // ============================================================================
 dow = dayofweek(time, "America/New_York")
 
-nySkipToday = if asset == "ES"
-    (dow == dayofweek.monday    and i_esNySkipMon)
-  or (dow == dayofweek.tuesday   and i_esNySkipTue)
-  or (dow == dayofweek.wednesday and i_esNySkipWed)
-  or (dow == dayofweek.thursday  and i_esNySkipThu)
-  or (dow == dayofweek.friday    and i_esNySkipFri)
-else if asset == "NQ"
+nySkipToday = if asset == "NQ"
     (dow == dayofweek.monday    and i_nqNySkipMon)
   or (dow == dayofweek.tuesday   and i_nqNySkipTue)
   or (dow == dayofweek.wednesday and i_nqNySkipWed)

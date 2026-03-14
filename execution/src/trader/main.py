@@ -741,6 +741,25 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             position_manager=position_manager,
         )
 
+        orb_by_name = {engine.name: engine for engine in engines}
+        lsi_by_name = {engine.name: engine for engine in lsi_engines}
+        nq_ny_orb = orb_by_name.get("NQ_NY")
+        nq_ny_lsi = lsi_by_name.get("NQ_NY_LSI")
+        if nq_ny_orb is not None and nq_ny_lsi is not None:
+            def _make_nq_ny_overlap_check(orb_engine):
+                def _check(direction: int) -> bool:
+                    if direction != 1:
+                        return False
+                    levels = getattr(orb_engine, "_levels", None)
+                    state = getattr(getattr(orb_engine, "_state", None), "value", "")
+                    if state not in {"armed_limit", "filled", "managing"}:
+                        return False
+                    return bool(levels is not None and getattr(levels, "direction", 0) == -1)
+
+                return _check
+
+            nq_ny_lsi.trade_overlap_check = _make_nq_ny_overlap_check(nq_ny_orb)
+
         config_engines = engines + lsi_engines
         engines_by_config[ec.name] = config_engines
 

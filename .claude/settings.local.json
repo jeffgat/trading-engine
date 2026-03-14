@@ -182,7 +182,8 @@
       "Bash(EXPERIMENTS_DB_URL=http://143.110.148.234:8100 uv run python scripts/run_nq_asia_both_phase1.py)",
       "Bash(uv run python3 -c \":*)",
       "Bash(uv run python -c \" from orb_backtest.experiments import list_history runs = list_history\\(limit=20\\) for r in runs: name = r.get\\(''name'', ''''\\) rid = r.get\\(''result_id'', ''''\\) print\\(f''{rid[:12]} {name}''\\) \")",
-      "Bash(ssh root@143.110.148.234 \"journalctl -u orb-trader -n 15 --no-pager && echo ''---'' && ss -tlnp | grep 8000\")"
+      "Bash(ssh root@143.110.148.234 \"journalctl -u orb-trader -n 15 --no-pager && echo ''---'' && ss -tlnp | grep 8000\")",
+      "Bash(python3 -c \":*)"
     ]
   }
 }

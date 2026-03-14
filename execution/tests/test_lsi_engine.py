@@ -627,6 +627,33 @@ class TestTP1BarGuard:
         assert eng._tp1_bar_count == eng._bar_count
 
 
+class TestDashboardOverlay:
+    async def test_waiting_for_gap_status_includes_swept_level(self):
+        eng = make_lsi_engine()
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
+
+        status = eng.status_dict()
+
+        assert status["state"] == LSIState.WAITING_FOR_GAP.value
+        assert status["swept_level"] == pytest.approx(19400.0)
+        assert status["fvg_top"] is None
+        assert status["fvg_bottom"] is None
+
+    async def test_waiting_for_inversion_status_includes_gap_bounds(self):
+        eng = make_lsi_engine()
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        gap = eng._active_gap
+        status = eng.status_dict()
+
+        assert status["state"] == LSIState.WAITING_FOR_INVERSION.value
+        assert status["swept_level"] == pytest.approx(19400.0)
+        assert status["fvg_top"] == pytest.approx(gap.top)
+        assert status["fvg_bottom"] == pytest.approx(gap.bottom)
+
+
 # =============================================================================
 # 1s tick path
 # =============================================================================

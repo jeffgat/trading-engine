@@ -205,6 +205,28 @@ class LSIEngine:
         self.on_checkpoint: Callable[[], None] | None = None
         self.position_manager: ContractCapManager | None = None
         self.position_limit_key: str = ""
+        self.trade_overlap_check: Callable[[int], bool] | None = None
+        self._trade_overlap: bool = False
+        self._trade_overlap_direction: int = 0
+
+    def _clear_dashboard_overlay(self) -> None:
+        """Clear the current LSI setup overlay shown on the dashboard."""
+        self._swept_level = None
+        self._fvg_top = None
+        self._fvg_bottom = None
+
+    def _set_sweep_overlay(self, sweep: SweepEvent) -> None:
+        """Persist the active swept level immediately after sweep detection."""
+        self._swept_level = sweep.level
+        self._fvg_top = None
+        self._fvg_bottom = None
+
+    def _set_gap_overlay(self, gap: GapInfo) -> None:
+        """Add the identified gap bounds to the current dashboard overlay."""
+        if self._active_sweep is not None:
+            self._swept_level = self._active_sweep.level
+        self._fvg_top = gap.top
+        self._fvg_bottom = gap.bottom
 
     # ------------------------------------------------------------------
     # Checkpoint
@@ -276,6 +298,54 @@ class LSIEngine:
         if self.position_manager is None or not self.position_manager.enabled:
             return
         self.position_manager.release(self._position_cap_key())
+
+    def _display_state(self) -> str:
+        if self._trade_overlap and self._state in {LSIState.WAITING_FOR_INVERSION, LSIState.ARMED_LIMIT}:
+            return "trade_overlap"
+        return self._state.value
+
+    def _set_trade_overlap(
+        self,
+        active: bool,
+        *,
+        direction: int = 0,
+        detail: str = "",
+        notify: bool = True,
+    ) -> None:
+        changed = (self._trade_overlap != active) or (active and self._trade_overlap_direction != direction)
+        self._trade_overlap = active
+        self._trade_overlap_direction = direction if active else 0
+        if not changed:
+            return
+        if active:
+            self._log_trade("TRADE_OVERLAP", detail)
+        if notify:
+            self._notify_state_change()
+
+    def _overlap_blocks(self, direction: int) -> bool:
+        if direction != 1:
+            return False
+        if self.trade_overlap_check is None:
+            return False
+        return self.trade_overlap_check(direction)
+
+    def _refresh_trade_overlap(self) -> None:
+        if not self._trade_overlap:
+            return
+        if not self._overlap_blocks(self._trade_overlap_direction):
+            self._set_trade_overlap(False)
+
+    def _block_for_overlap(self, direction: int) -> bool:
+        if self._overlap_blocks(direction):
+            self._set_trade_overlap(
+                True,
+                direction=direction,
+                detail="blocked_by=NQ_NY dir=long preferring_orb_short",
+            )
+            return True
+        if self._trade_overlap:
+            self._set_trade_overlap(False)
+        return False
 
     # ------------------------------------------------------------------
     # Time helpers
@@ -529,6 +599,7 @@ class LSIEngine:
         """
         self._daily_atr = daily_atr
         self._bar_count += 1
+        self._refresh_trade_overlap()
 
         # Store bar history (keep enough for absolute stop computation)
         self._bars.append(bar)
@@ -563,15 +634,14 @@ class LSIEngine:
                 self._limit_gap = None
                 self._limit_daily_atr = 0.0
                 self._levels = None
+                self._set_trade_overlap(False, notify=False)
                 self._tp1_hit = False
                 self._tp1_bar_count = -1
                 self._fill_bar_count = -1
                 self._fill_timestamp = None
                 self._exit_type = None
                 self._r_result = None
-                self._swept_level = None
-                self._fvg_top = None
-                self._fvg_bottom = None
+                self._clear_dashboard_overlay()
                 self._request_checkpoint()
 
         # Feed swing tracker (pivot detection + sweep check)
@@ -602,6 +672,7 @@ class LSIEngine:
                 if not (self.long_only and sweep.direction != 1):
                     self._active_sweep = sweep
                     self._sweep_bar_index = self._bar_count
+                    self._set_sweep_overlay(sweep)
                     self._log_trade(
                         "SWEEP_DETECTED",
                         "source=%s level=%.2f dir=%s bar_count=%d"
@@ -612,6 +683,7 @@ class LSIEngine:
                     promoted_gap = self._promote_recent_fvg(sweep)
                     if promoted_gap is not None:
                         self._active_gap = promoted_gap
+                        self._set_gap_overlay(promoted_gap)
                         self._state = LSIState.WAITING_FOR_INVERSION
                         self._request_checkpoint()
                         self._log_trade(
@@ -646,6 +718,8 @@ class LSIEngine:
                 self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since)
                 self._state = LSIState.SCANNING
                 self._active_sweep = None
+                self._active_gap = None
+                self._clear_dashboard_overlay()
                 self._notify_state_change()
                 return
 
@@ -656,6 +730,7 @@ class LSIEngine:
                 need_bearish = sweep_dir == 1
                 if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
                     self._active_gap = gap
+                    self._set_gap_overlay(gap)
                     self._state = LSIState.WAITING_FOR_INVERSION
                     self._request_checkpoint()
                     self._log_trade(
@@ -683,11 +758,15 @@ class LSIEngine:
             # Price-close inversion detected
             if gap.is_bullish and bar.close < gap.bottom:
                 if not self.long_only:
+                    if self._block_for_overlap(direction=-1):
+                        return
                     if self.lsi_entry_mode == "fvg_limit":
                         await self._arm_limit(bar, gap, direction=-1, daily_atr=daily_atr)
                     else:
                         await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
             elif not gap.is_bullish and bar.close > gap.top:
+                if self._block_for_overlap(direction=1):
+                    return
                 if self.lsi_entry_mode == "fvg_limit":
                     await self._arm_limit(bar, gap, direction=1, daily_atr=daily_atr)
                 else:
@@ -696,6 +775,7 @@ class LSIEngine:
         if self._state == LSIState.ARMED_LIMIT:
             if not self._in_entry(bar_time):
                 self._log_trade("LIMIT_CANCELLED", "entry window closed")
+                self._set_trade_overlap(False, notify=False)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -707,6 +787,8 @@ class LSIEngine:
                 not is_long and bar.high >= self._limit_price
             )
             if filled:
+                if self._block_for_overlap(self._limit_direction):
+                    return
                 await self._fill_limit(bar, daily_atr)
 
         if self._state == LSIState.MANAGING:
@@ -750,6 +832,7 @@ class LSIEngine:
         is_long = direction == 1
         limit_price = gap.top if is_long else gap.bottom
 
+        self._set_trade_overlap(False, notify=False)
         self._limit_price = limit_price
         self._limit_direction = direction
         self._limit_gap = gap
@@ -890,10 +973,9 @@ class LSIEngine:
             return
 
         # Persist LSI overlay for dashboard display
-        self._swept_level = self._active_sweep.level if self._active_sweep else None
-        self._fvg_top = gap.top
-        self._fvg_bottom = gap.bottom
+        self._set_gap_overlay(gap)
 
+        self._set_trade_overlap(False, notify=False)
         self._tp1_hit = False
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
@@ -1011,6 +1093,7 @@ class LSIEngine:
         dir_str = "long" if (levels and levels.direction == 1) else "short"
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
         self._release_position_cap()
+        self._set_trade_overlap(False, notify=False)
         if self._should_send:
             await self.broker.send_flatten(ticker=self.exec_ticker)
         self._emit_trade_record(exit_type)
@@ -1025,6 +1108,7 @@ class LSIEngine:
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
         """Process a 1s bar for fine-grained exit management and limit fill detection."""
         self._daily_atr = daily_atr
+        self._refresh_trade_overlap()
 
         # ARMED_LIMIT: check for limit fill on tick data
         if self._state == LSIState.ARMED_LIMIT:
@@ -1033,6 +1117,8 @@ class LSIEngine:
                 not is_long and tick.high >= self._limit_price
             )
             if filled:
+                if self._block_for_overlap(self._limit_direction):
+                    return
                 # Use the tick as the bar context for fill
                 await self._fill_limit(tick, daily_atr)
             return
@@ -1164,10 +1250,15 @@ class LSIEngine:
     def status_dict(self) -> dict:
         levels = self._levels
         sw = self._swings
+        overlap_active = self._trade_overlap and self._state in {
+            LSIState.WAITING_FOR_INVERSION,
+            LSIState.ARMED_LIMIT,
+        }
         result: dict = {
             "config_name": self.config_name,
             "session": self.name,
-            "state": self._state.value,
+            "state": self._display_state(),
+            "raw_state": self._state.value,
             "type": "lsi",
             "date": self._current_date,
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
@@ -1189,6 +1280,7 @@ class LSIEngine:
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "entry_mode": self.lsi_entry_mode,
+            "trade_overlap": overlap_active,
             # LSI overlay — swept level + FVG zone (persists into FLAT)
             "swept_level": round(self._swept_level, 2) if self._swept_level is not None else None,
             "fvg_top": round(self._fvg_top, 2) if self._fvg_top is not None else None,

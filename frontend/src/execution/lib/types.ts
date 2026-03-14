@@ -20,8 +20,8 @@ export interface SessionStatus {
   paused?: boolean;
   excluded_dow?: number | number[] | null;
   fomc_exclusion?: boolean;
-  // Engine type — absent for continuation, "ifvg" for LSI
-  type?: "ifvg";
+  // Engine type — absent for continuation, may be "ifvg" or "lsi" for LSI
+  type?: "ifvg" | "lsi";
   // ORB fields (continuation only)
   orb_high?: number | null;
   orb_low?: number | null;

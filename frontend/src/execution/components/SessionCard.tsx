@@ -229,8 +229,8 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
               Sweep &amp; Gap
             </div>
             <PriceRow label="Swept Level" value={engine.swept_level ?? null} />
-            <PriceRow label="FVG High" value={engine.fvg_top ?? null} />
-            <PriceRow label="FVG Low" value={engine.fvg_bottom ?? null} />
+            <PriceRow label="Gap High" value={engine.fvg_top ?? null} />
+            <PriceRow label="Gap Low" value={engine.fvg_bottom ?? null} />
           </div>
         )}
 

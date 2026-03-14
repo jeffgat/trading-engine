@@ -7,6 +7,7 @@ export const STATE_COLORS: Record<string, string> = {
   waiting_for_inversion: "bg-violet-500/20 text-violet-300",
   collecting_gaps: "bg-amber-500/20 text-amber-300",
   armed_limit: "bg-profit/20 text-profit",
+  trade_overlap: "bg-loss/20 text-loss",
   filled: "bg-accent/20 text-gold-200",
   managing: "bg-cyan-500/20 text-cyan-300",
   flat: "bg-orange-500/20 text-orange-200",
@@ -21,6 +22,7 @@ export const STATE_LABELS: Record<string, string> = {
   waiting_for_inversion: "Waiting for Inversion",
   collecting_gaps: "Collecting Gaps",
   armed_limit: "Armed Limit",
+  trade_overlap: "Trade Overlap",
   filled: "Filled",
   managing: "Managing",
   flat: "Flat",
@@ -41,6 +43,7 @@ export const EVENT_COLORS: Record<string, string> = {
   CANCEL: "bg-text-muted/20 text-text-muted",
   CANCELLED_LIMITS: "bg-text-muted/20 text-text-muted",
   NO_SETUP: "bg-text-muted/20 text-text-muted",
+  TRADE_OVERLAP: "bg-loss/20 text-loss",
 };
 
 export const LOG_LEVEL_COLORS: Record<string, string> = {
