@@ -96,8 +96,8 @@
     },
     "lsi_sessions": {
       "NQ_Asia_LSI": {
-        "entry_start": "20:40",
-        "entry_end": "23:30",
+        "entry_start": "20:45",
+        "entry_end": "22:00",
         "flat_start": "00:00",
         "flat_end": "01:00",
         "rr": 1.75,
@@ -114,8 +114,8 @@
         "lsi_n_right": 3
       },
       "NQ_NY_LSI": {
-        "entry_start": "09:35",
-        "entry_end": "15:30",
+        "entry_start": "10:10",
+        "entry_end": "14:30",
         "flat_start": "15:50",
         "flat_end": "16:00",
         "rr": 2.5,
