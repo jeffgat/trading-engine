@@ -11,7 +11,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from trader.feed import ATRCalculator, BarAggregator, DailyBar, DataBentoFeed
+from trader.feed import (
+    ATRCalculator,
+    BarAggregator,
+    DailyBar,
+    DataBentoFeed,
+    _normalize_1m_timestamp,
+)
 from trader.engine import Bar
 
 ET = ZoneInfo("America/New_York")
@@ -179,6 +185,25 @@ class TestBarAggregator:
         assert len(emitted) == 2
         assert emitted[0].timestamp.minute == 30
         assert emitted[1].timestamp.minute == 35
+
+    def test_close_stamped_1m_normalization_preserves_boundary_minute(self):
+        """A 09:35 close-stamped 1m bar belongs to the 09:30 5m candle."""
+        agg = BarAggregator()
+        result = None
+        lows = [100.0, 100.0, 100.0, 100.0, 90.0]
+        for minute, low in zip(range(31, 36), lows):
+            ts = _normalize_1m_timestamp(make_dt("2025-01-15", f"09:{minute:02d}"))
+            result = agg.add_1m_bar(ts, 100.0, 105.0, low, 103.0, 10)
+        assert result is not None
+        assert result.timestamp == make_dt("2025-01-15", "09:30")
+        assert result.low == pytest.approx(90.0)
+        assert result.volume == 50
+
+
+class TestTimestampNormalization:
+    def test_normalize_1m_timestamp_maps_close_to_bar_open(self):
+        ts = make_dt("2025-01-15", "09:35")
+        assert _normalize_1m_timestamp(ts) == make_dt("2025-01-15", "09:34")
 
 
 # =============================================================================

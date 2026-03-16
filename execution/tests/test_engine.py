@@ -383,6 +383,17 @@ class TestManagingExits5m:
         await eng.on_bar(bar, 300.0)
         assert records[0].exit_type == "eod"
 
+    async def test_eod_records_realized_r_result(self, engine, broker):
+        records = []
+        engine.on_trade_exit = records.append
+        eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
+        close_price = eng._levels.entry + 10.0
+        bar = make_bar("2025-01-15 15:51", close_price - 2, close_price + 2, close_price - 3, close_price)
+        await eng.on_bar(bar, 300.0)
+        expected_r = eng._price_to_r(close_price)
+        assert eng._r_result == pytest.approx(expected_r)
+        assert records[0].r_result == pytest.approx(expected_r)
+
     async def test_eod_with_tp1_emits_tp1_eod(self, engine, broker):
         records = []
         engine.on_trade_exit = records.append
@@ -392,6 +403,23 @@ class TestManagingExits5m:
         bar = make_bar("2025-01-15 15:51", 19550, 19560, 19540, 19550)
         await eng.on_bar(bar, 300.0)
         assert records[0].exit_type == "tp1_eod"
+
+    async def test_tp1_eod_records_realized_r_result(self, broker):
+        records = []
+        eng = _make_orb_engine(broker, risk_usd=2000, stop_atr_pct=5.0)
+        eng.on_trade_exit = records.append
+        eng, entry_price = await advance_to_managing(eng, atr=100.0, orb_high=19530.0)
+        if eng._levels.is_single_contract:
+            pytest.skip("Couldn't get multi-contract with these params")
+        eng._tp1_hit = True
+        eng._tp1_bar_count = 0
+        close_price = eng._levels.entry + 20.0
+        bar = make_bar("2025-01-15 15:51", close_price - 2, close_price + 2, close_price - 3, close_price)
+        await eng.on_bar(bar, 100.0)
+        expected_r = (eng._price_to_r(eng._levels.tp1) + eng._price_to_r(close_price)) / 2.0
+        assert eng._r_result == pytest.approx(expected_r)
+        assert records[0].exit_type == "tp1_eod"
+        assert records[0].r_result == pytest.approx(expected_r)
 
     async def test_sl_wins_over_tp1_same_bar(self, engine, broker):
         """When both SL and TP1 triggered on same bar, SL wins (pessimistic)."""

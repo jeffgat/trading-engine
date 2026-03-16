@@ -53,7 +53,8 @@
         "rr": 2.5,
         "tp1_ratio": 0.3,
         "risk_usd": 400,
-        "long_only": false
+        "long_only": false,
+        "excluded_dow": [4]
       },
       "NQ_Asia": {
         "orb_start": "20:00",
@@ -61,7 +62,7 @@
         "entry_start": "20:15",
         "entry_end": "22:30",
         "flat_start": "04:00",
-        "flat_end": "07:00",
+        "flat_end": "04:10",
         "stop_basis": "orb",
         "gap_filter_basis": "orb",
         "stop_atr_pct": 4.0,
@@ -73,7 +74,8 @@
         "tp1_ratio": 0.25,
         "risk_usd": 400,
         "excluded_dates": ["20241218"],
-        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"]
+        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"],
+        "excluded_dow": [1]
       },
       "ES_Asia": {
         "orb_start": "20:00",
@@ -81,7 +83,7 @@
         "entry_start": "20:10",
         "entry_end": "03:00",
         "flat_start": "06:45",
-        "flat_end": "07:00",
+        "flat_end": "06:55",
         "stop_basis": "atr",
         "gap_filter_basis": "atr",
         "stop_atr_pct": 2.5,
@@ -99,7 +101,7 @@
         "entry_start": "20:45",
         "entry_end": "22:00",
         "flat_start": "00:00",
-        "flat_end": "01:00",
+        "flat_end": "00:10",
         "rr": 1.75,
         "tp1_ratio": 0.7,
         "min_gap_atr_pct": 1.75,

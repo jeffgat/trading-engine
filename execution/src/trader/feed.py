@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 ET = ZoneInfo("America/New_York")
 
 
+def _normalize_1m_timestamp(ts: datetime) -> datetime:
+    """Convert a close-stamped 1m timestamp into its bar-open timestamp.
+
+    DataBento's ``ohlcv-1m`` bars are consumed here as completed minute bars.
+    Normalizing to the minute's open keeps 5m bucket boundaries aligned with
+    the ORB engine's session logic, which expects bar-open timestamps.
+    """
+    return ts - timedelta(minutes=1)
+
+
 # ---------------------------------------------------------------------------
 # Daily bar for ATR computation
 # ---------------------------------------------------------------------------
@@ -541,8 +551,9 @@ class DataBentoFeed:
             for _, row in df.iterrows():
                 symbol = str(row["parent_symbol"])
                 ts_et = row["ts_event"].tz_convert(ET).to_pydatetime()
+                ts_bar_open = _normalize_1m_timestamp(ts_et)
                 bar_5m = self._aggregators[symbol].add_1m_bar(
-                    ts=ts_et,
+                    ts=ts_bar_open,
                     o=float(row["open"]),
                     h=float(row["high"]),
                     l=float(row["low"]),
@@ -683,13 +694,15 @@ class DataBentoFeed:
         l = record.low / 1e9
         c = record.close / 1e9
 
-        # Convert timestamp to Eastern — ts_event is nanoseconds since epoch
+        # Convert timestamp to Eastern and normalize the completed 1m bar to
+        # its bar-open timestamp before 5m aggregation.
         ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
+        ts_bar_open = _normalize_1m_timestamp(ts_dt)
 
         aggregator = self._aggregators[symbol]
         atr_calcs = self._atrs[symbol]
 
-        bar_5m = aggregator.add_1m_bar(ts_dt, o, h, l, c, v)
+        bar_5m = aggregator.add_1m_bar(ts_bar_open, o, h, l, c, v)
 
         if bar_5m is not None:
             # update daily ATR for each configured length on this symbol

@@ -555,6 +555,39 @@ class TestManagingExits:
         broker.send_flatten.assert_called()
         assert eng._state == LSIState.FLAT
 
+    async def test_eod_records_realized_r_result(self):
+        records = []
+        eng = make_lsi_engine()
+        eng.on_trade_exit = records.append
+        eng, entry_price = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+        close_price = eng._levels.entry + 15.0
+        eod_bar = make_bar("2025-01-15 15:51", close_price - 2, close_price + 2, close_price - 3, close_price)
+        await eng.on_bar(eod_bar, 300.0)
+        expected_r = eng._price_to_r(close_price)
+        assert eng._r_result == pytest.approx(expected_r)
+        assert records[0].exit_type == "eod"
+        assert records[0].r_result == pytest.approx(expected_r)
+
+    async def test_tp1_eod_records_realized_r_result(self):
+        records = []
+        eng = make_lsi_engine(risk_usd=5000)
+        eng.on_trade_exit = records.append
+        eng, entry_price = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+        if eng._levels.is_single_contract:
+            pytest.skip("Need multi-contract")
+        eng._tp1_hit = True
+        close_price = eng._levels.entry + 20.0
+        eod_bar = make_bar("2025-01-15 15:51", close_price - 2, close_price + 2, close_price - 3, close_price)
+        await eng.on_bar(eod_bar, 300.0)
+        expected_r = (eng._price_to_r(eng._levels.tp1) + eng._price_to_r(close_price)) / 2.0
+        assert eng._r_result == pytest.approx(expected_r)
+        assert records[0].exit_type == "tp1_eod"
+        assert records[0].r_result == pytest.approx(expected_r)
+
 
 # =============================================================================
 # Fill-bar and TP1-bar guards

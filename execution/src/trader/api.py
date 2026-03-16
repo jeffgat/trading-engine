@@ -57,6 +57,7 @@ def _write_trade_to_db(record: "TradeRecord") -> None:
                     "tp1_hit": trade_dict["tp1_hit"],
                     "exit_timestamp": trade_dict["timestamp"],
                     "config_name": trade_dict.get("config_name", ""),
+                    "r_result": trade_dict.get("r_result"),
                 }
             }
             data = json.dumps(payload).encode()

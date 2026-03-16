@@ -500,9 +500,9 @@ class LSIEngine:
         if self.on_state_change:
             self.on_state_change(self.status_dict())
 
-    def _emit_trade_record(self, exit_type: str) -> None:
+    def _emit_trade_record(self, exit_type: str, exit_price: float | None = None) -> None:
         self._exit_type = exit_type
-        self._r_result = self._compute_r_result(exit_type)
+        self._r_result = self._compute_r_result(exit_type, exit_price=exit_price)
         if self.on_trade_exit is None:
             return
         levels = self._levels
@@ -518,26 +518,47 @@ class LSIEngine:
             tp1_hit=self._tp1_hit,
             timestamp=datetime.now().isoformat(),
             config_name=self.config_name,
+            r_result=self._r_result,
         )
         self.on_trade_exit(record)
 
-    def _compute_r_result(self, exit_type: str) -> float:
-        """Compute theoretical R-multiple for a trade exit."""
+    def _price_to_r(self, exit_price: float) -> float:
         levels = self._levels
-        is_single = levels.is_single_contract if levels else True
-        rr = self.rr
-        tp1r = self.tp1_ratio
+        if levels is None:
+            return 0.0
+        risk_pts = abs(levels.entry - levels.stop)
+        if risk_pts <= 0:
+            return 0.0
+        pnl_pts = exit_price - levels.entry if levels.direction == 1 else levels.entry - exit_price
+        return pnl_pts / risk_pts
+
+    def _compute_r_result(self, exit_type: str, exit_price: float | None = None) -> float:
+        """Compute realized R-multiple for a trade exit."""
+        levels = self._levels
+        if levels is None:
+            return 0.0
+
+        is_single = levels.is_single_contract
+        stop_r = self._price_to_r(levels.stop)
+        tp1_r = self._price_to_r(levels.tp1)
+        tp2_r = self._price_to_r(levels.tp2)
+        be_r = self._price_to_r(levels.be)
 
         if exit_type == "sl":
-            return -1.0
-        elif exit_type in ("tp1_be", "tp1_eod"):
-            return tp1r * rr if is_single else (tp1r * rr) / 2.0
+            return stop_r
+        elif exit_type == "tp1_be":
+            return be_r if is_single else (tp1_r + be_r) / 2.0
         elif exit_type == "tp1_tp2":
-            return rr if is_single else (tp1r * rr + rr) / 2.0
+            return tp2_r if is_single else (tp1_r + tp2_r) / 2.0
         elif exit_type == "tp2_direct":
-            return rr
+            return tp2_r
+        elif exit_type == "tp1_eod":
+            if exit_price is None:
+                return be_r if is_single else (tp1_r + be_r) / 2.0
+            exit_r = self._price_to_r(exit_price)
+            return exit_r if is_single else (tp1_r + exit_r) / 2.0
         elif exit_type == "eod":
-            return 0.0
+            return self._price_to_r(exit_price) if exit_price is not None else 0.0
         return 0.0
 
     # ------------------------------------------------------------------
@@ -1096,7 +1117,8 @@ class LSIEngine:
         self._set_trade_overlap(False, notify=False)
         if self._should_send:
             await self.broker.send_flatten(ticker=self.exec_ticker)
-        self._emit_trade_record(exit_type)
+        exit_price = bar.close if exit_type in {"eod", "tp1_eod"} else None
+        self._emit_trade_record(exit_type, exit_price=exit_price)
         self._state = LSIState.FLAT
         self._request_checkpoint()
         self._notify_state_change()
@@ -1141,7 +1163,7 @@ class LSIEngine:
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod")
+            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod", exit_price=tick.close)
             self._state = LSIState.FLAT
             self._request_checkpoint()
             self._notify_state_change()

@@ -427,6 +427,11 @@ regTicker = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
 [h5, l5, h5_1, l5_1, h5_2, l5_2, c5_1, o5_1, c5, t5, t5_2] = request.security(regTicker, "5", [high[1], low[1], high[2], low[2], high[3], low[3], close[2], open[2], close[1], time[1], time[3]], lookahead=barmerge.lookahead_on)
 barClosed5 = ta.change(t5) != 0
 
+// ORB OHLC - current bar data (no [1] shift) so the opening range uses the
+// actual 5m candles inside the ORB window instead of the delayed FVG feed.
+[orbH5, orbL5, orbC5, orbT5] = request.security(regTicker, "5", [high, low, close, time], lookahead=barmerge.lookahead_on)
+orbBarClosed5 = ta.change(orbT5) != 0
+
 // Session start detection (rising edge of session filter)
 nyRTHStart   = inNyRTH and not inNyRTH[1]
 asiaRTHStart = inAsiaRTH and not inAsiaRTH[1]
@@ -906,33 +911,33 @@ if ldnRTHStart
     ldnOrb_shortFvgLabel   := na
 
 // ============================================================================
-// BUILD ORB - NY (use 5m ohlc so boundaries align on all tfs)
+// BUILD ORB - NY (use current-bar 5m ohlc so the ORB is not shifted forward)
 // ============================================================================
-if enableNY and barClosed5 and inNyORB and inNyRTH
-    ny_orbHigh := na(ny_orbHigh) ? h5 : math.max(ny_orbHigh, h5)
-    ny_orbLow  := na(ny_orbLow)  ? l5 : math.min(ny_orbLow, l5)
+if enableNY and orbBarClosed5 and inNyORB and inNyRTH
+    ny_orbHigh := na(ny_orbHigh) ? orbH5 : math.max(ny_orbHigh, orbH5)
+    ny_orbLow  := na(ny_orbLow)  ? orbL5 : math.min(ny_orbLow, orbL5)
 
-if enableNY and barClosed5 and not inNyORB and inNyRTH and not ny_orbReady and not na(ny_orbHigh) and not na(ny_orbLow)
+if enableNY and orbBarClosed5 and not inNyORB and inNyRTH and not ny_orbReady and not na(ny_orbHigh) and not na(ny_orbLow)
     ny_orbReady := true
 
 // ============================================================================
-// BUILD ORB - ASIA (use 5m ohlc so boundaries align on all tfs)
+// BUILD ORB - ASIA (same current-bar ORB feed as NY)
 // ============================================================================
-if enableAsia and barClosed5 and inAsiaORB and inAsiaRTH
-    asia_orbHigh := na(asia_orbHigh) ? h5 : math.max(asia_orbHigh, h5)
-    asia_orbLow  := na(asia_orbLow)  ? l5 : math.min(asia_orbLow, l5)
+if enableAsia and orbBarClosed5 and inAsiaORB and inAsiaRTH
+    asia_orbHigh := na(asia_orbHigh) ? orbH5 : math.max(asia_orbHigh, orbH5)
+    asia_orbLow  := na(asia_orbLow)  ? orbL5 : math.min(asia_orbLow, orbL5)
 
-if enableAsia and barClosed5 and not inAsiaORB and inAsiaRTH and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
+if enableAsia and orbBarClosed5 and not inAsiaORB and inAsiaRTH and not asia_orbReady and not na(asia_orbHigh) and not na(asia_orbLow)
     asia_orbReady := true
 
 // ============================================================================
-// BUILD ORB - LDN ORB (use 5m ohlc so boundaries align on all tfs)
+// BUILD ORB - LDN ORB (same current-bar ORB feed as the other ORB sessions)
 // ============================================================================
-if enableLdnOrb and barClosed5 and inLdnOrbORB and inLdnRTH
-    ldnOrb_orbHigh := na(ldnOrb_orbHigh) ? h5 : math.max(ldnOrb_orbHigh, h5)
-    ldnOrb_orbLow  := na(ldnOrb_orbLow)  ? l5 : math.min(ldnOrb_orbLow, l5)
+if enableLdnOrb and orbBarClosed5 and inLdnOrbORB and inLdnRTH
+    ldnOrb_orbHigh := na(ldnOrb_orbHigh) ? orbH5 : math.max(ldnOrb_orbHigh, orbH5)
+    ldnOrb_orbLow  := na(ldnOrb_orbLow)  ? orbL5 : math.min(ldnOrb_orbLow, orbL5)
 
-if enableLdnOrb and barClosed5 and not inLdnOrbORB and inLdnRTH and not ldnOrb_orbReady and not na(ldnOrb_orbHigh) and not na(ldnOrb_orbLow)
+if enableLdnOrb and orbBarClosed5 and not inLdnOrbORB and inLdnRTH and not ldnOrb_orbReady and not na(ldnOrb_orbHigh) and not na(ldnOrb_orbLow)
     ldnOrb_orbReady := true
 
 // ============================================================================
