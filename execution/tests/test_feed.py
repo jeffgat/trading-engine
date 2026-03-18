@@ -186,12 +186,12 @@ class TestBarAggregator:
         assert emitted[0].timestamp.minute == 30
         assert emitted[1].timestamp.minute == 35
 
-    def test_close_stamped_1m_normalization_preserves_boundary_minute(self):
-        """A 09:35 close-stamped 1m bar belongs to the 09:30 5m candle."""
+    def test_open_stamped_1m_normalization_preserves_boundary_minute(self):
+        """A 09:30-09:34 1m sequence must emit a 09:30 5m candle."""
         agg = BarAggregator()
         result = None
         lows = [100.0, 100.0, 100.0, 100.0, 90.0]
-        for minute, low in zip(range(31, 36), lows):
+        for minute, low in zip(range(30, 35), lows):
             ts = _normalize_1m_timestamp(make_dt("2025-01-15", f"09:{minute:02d}"))
             result = agg.add_1m_bar(ts, 100.0, 105.0, low, 103.0, 10)
         assert result is not None
@@ -199,11 +199,85 @@ class TestBarAggregator:
         assert result.low == pytest.approx(90.0)
         assert result.volume == 50
 
+    def test_fifteen_open_stamped_1m_bars_emit_three_orb_buckets(self):
+        """09:30-09:44 bars should emit 09:30, 09:35, and 09:40."""
+        agg = BarAggregator()
+        emitted = []
+
+        for minute in range(30, 45):
+            ts = _normalize_1m_timestamp(make_dt("2025-01-15", f"09:{minute:02d}"))
+            result = agg.add_1m_bar(ts, 100.0, 105.0, 99.0, 103.0, 10)
+            if result is not None:
+                emitted.append(result)
+
+        assert [bar.timestamp for bar in emitted] == [
+            make_dt("2025-01-15", "09:30"),
+            make_dt("2025-01-15", "09:35"),
+            make_dt("2025-01-15", "09:40"),
+        ]
+
 
 class TestTimestampNormalization:
-    def test_normalize_1m_timestamp_maps_close_to_bar_open(self):
+    def test_normalize_1m_timestamp_keeps_interval_start(self):
         ts = make_dt("2025-01-15", "09:35")
-        assert _normalize_1m_timestamp(ts) == make_dt("2025-01-15", "09:34")
+        assert _normalize_1m_timestamp(ts) == make_dt("2025-01-15", "09:35")
+
+
+class TestDataBentoFeedIngestion:
+    def test_live_and_preload_use_identical_1m_ingestion(self):
+        minutes = range(30, 45)  # interval-start stamped 09:30-09:44 bars
+
+        def collect(source: str) -> list[tuple]:
+            feed = DataBentoFeed(symbols=["NQ.FUT"])
+            emitted = []
+            for minute in minutes:
+                bar = feed._ingest_1m_bar(
+                    symbol="NQ.FUT",
+                    ts_event=make_dt("2025-01-15", f"09:{minute:02d}"),
+                    o=100.0,
+                    h=105.0,
+                    l=99.0,
+                    c=103.0,
+                    v=10,
+                    source=source,
+                )
+                if bar is not None:
+                    emitted.append((bar.timestamp, bar.open, bar.high, bar.low, bar.close, bar.volume))
+            return emitted
+
+        assert collect("live") == collect("preload")
+
+    def test_es_asia_signal_bucket_does_not_emit_early(self):
+        feed = DataBentoFeed(symbols=["ES.FUT"])
+
+        partial = []
+        for minute in range(15, 19):
+            bar = feed._ingest_1m_bar(
+                symbol="ES.FUT",
+                ts_event=make_dt("2025-01-15", f"20:{minute:02d}"),
+                o=6770.0,
+                h=6775.0,
+                l=6768.0,
+                c=6772.0,
+                v=10,
+                source="live",
+            )
+            partial.append(bar)
+
+        assert partial == [None, None, None, None]
+
+        completed = feed._ingest_1m_bar(
+            symbol="ES.FUT",
+            ts_event=make_dt("2025-01-15", "20:19"),
+            o=6772.0,
+            h=6778.0,
+            l=6771.0,
+            c=6776.0,
+            v=10,
+            source="live",
+        )
+        assert completed is not None
+        assert completed.timestamp == make_dt("2025-01-15", "20:15")
 
 
 # =============================================================================

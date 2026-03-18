@@ -328,3 +328,88 @@ def test_results_to_dict_applies_excluded_days_filter():
     assert result["trades"][0]["date"] == "2026-03-06"
     assert result["summary"]["total_signals"] == 1
     assert result["summary"]["total_trades"] == 1
+
+
+def test_news_straddle_endpoint_accepts_fomc_event_type(client, monkeypatch):
+    import orb_backtest.api as api
+
+    captured = {}
+
+    def fake_run_news_straddle(config, start=None, end=None):
+        captured["config"] = config
+        captured["start"] = start
+        captured["end"] = end
+        return {
+            "config": {
+                "buffer_points": config.buffer_points,
+                "target_points": config.target_points,
+                "event_types": list(config.event_types),
+                "observation_window_seconds": config.observation_window_seconds,
+                "instrument": config.instrument,
+                "stop_loss_points": config.stop_loss_points,
+            },
+            "summary": {},
+            "events": [],
+        }
+
+    monkeypatch.setattr(api, "run_news_straddle", fake_run_news_straddle)
+    monkeypatch.setattr(api, "log_news_straddle_run", lambda *_args, **_kwargs: 1)
+
+    res = client.post(
+        "/api/news-straddle",
+        json={
+            "buffer_points": 5,
+            "target_points": 25,
+            "event_types": ["FOMC"],
+            "observation_window_seconds": 120,
+            "instrument": "NQ",
+            "start": "2024-01-01",
+            "end": "2024-12-31",
+        },
+    )
+
+    assert res.status_code == 200
+    assert captured["config"].event_types == ("FOMC",)
+    assert captured["start"] == "2024-01-01"
+    assert captured["end"] == "2024-12-31"
+    assert res.json()["result"]["config"]["event_types"] == ["FOMC"]
+
+
+def test_news_candles_uses_fomc_release_time(client, monkeypatch):
+    import orb_backtest.engine.news_straddle as news_straddle
+
+    def fake_load_1s_data(*_args, **_kwargs):
+        idx = pd.DatetimeIndex(
+            [
+                "2025-03-19 13:59:59",
+                "2025-03-19 14:00:00",
+            ]
+        )
+        return pd.DataFrame(
+            {
+                "open": [20000.0, 20005.0],
+                "high": [20006.0, 20012.0],
+                "low": [19998.0, 20003.0],
+                "close": [20005.0, 20010.0],
+            },
+            index=idx,
+        )
+
+    monkeypatch.setattr(news_straddle, "_load_1s_data", fake_load_1s_data)
+
+    res = client.get(
+        "/api/news-candles",
+        params={
+            "instrument": "NQ",
+            "date": "2025-03-19",
+            "seconds_before": 1,
+            "seconds_after": 0,
+            "event_type": "FOMC",
+        },
+    )
+
+    assert res.status_code == 200
+    payload = res.json()
+    assert len(payload) == 2
+    assert payload[0]["time"].startswith("2025-03-19T13:59:59")
+    assert payload[1]["time"].startswith("2025-03-19T14:00:00")

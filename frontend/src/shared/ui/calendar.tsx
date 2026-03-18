@@ -19,9 +19,12 @@ function Calendar({
         months: "flex flex-col sm:flex-row gap-2",
         month: "flex flex-col gap-4",
         month_caption: "flex justify-center pt-1 relative items-center w-full",
-        caption_label: "text-sm font-medium",
+        caption_label: cn(
+          "text-sm font-medium",
+          props.captionLayout === "dropdown" && "sr-only",
+        ),
         dropdowns: "flex items-center gap-2",
-        dropdown: "rounded-md border border-border bg-bg-secondary px-1.5 py-0.5 text-xs text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent",
+        dropdown: "rounded-md border border-border bg-bg-secondary px-2 py-1 text-xs text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent appearance-none cursor-pointer",
         nav: "flex items-center gap-1",
         button_previous: cn(
           buttonVariants({ variant: "outline" }),

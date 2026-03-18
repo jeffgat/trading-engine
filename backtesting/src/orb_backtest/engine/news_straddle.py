@@ -1,8 +1,8 @@
 """News straddle backtest engine.
 
 Simulates placing stop-buy above and stop-sell below price 1 second before
-a scheduled news event (NFP/CPI at 08:30 ET), then tracking the outcome
-over a configurable observation window.
+a scheduled event, then tracking the outcome over a configurable
+observation window.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import hashlib
 import pandas as pd
 
 from ..data.loader import DATA_DIR, _load_ohlcv
-from ..data.news_dates import NFP_SET, CPI_SET, NFP_DATES, CPI_DATES
+from ..data.news_dates import FOMC_DATES, NFP_DATES, CPI_DATES, PPI_DATES
 
 
 @dataclass
@@ -55,6 +55,24 @@ class NewsStraddleEvent:
     exit_type: str  # "target", "stop_loss", "eow" (end of window), "no_fill"
 
 
+def get_event_release_time(event_type: str) -> tuple[int, int]:
+    """Return the ET release time for an event type as (hour, minute)."""
+    upper = event_type.upper()
+    if upper == "NY_OPEN":
+        return 9, 30
+    if upper == "FOMC":
+        return 14, 0
+    return 8, 30
+
+
+def get_event_reference_time(event_type: str) -> tuple[int, int, int]:
+    """Return the ET reference timestamp 1 second before the event release."""
+    hour, minute = get_event_release_time(event_type)
+    if minute > 0:
+        return hour, minute - 1, 59
+    return hour - 1, 59, 59
+
+
 def _get_event_dates(
     event_types: tuple[str, ...],
     df_1s: pd.DataFrame | None = None,
@@ -70,6 +88,10 @@ def _get_event_dates(
             dates.extend((d, "NFP") for d in NFP_DATES)
         elif upper == "CPI":
             dates.extend((d, "CPI") for d in CPI_DATES)
+        elif upper == "PPI":
+            dates.extend((d, "PPI") for d in PPI_DATES)
+        elif upper == "FOMC":
+            dates.extend((d, "FOMC") for d in FOMC_DATES)
         elif upper == "NY_OPEN":
             if df_1s is not None and not df_1s.empty:
                 # Derive every trading day from 1s data that has a 09:29:59 bar
@@ -101,18 +123,18 @@ def simulate_single_event(
     """Simulate a news straddle for a single event."""
     year, month, day = int(date_str[:4]), int(date_str[4:6]), int(date_str[6:8])
 
-    # NY_OPEN uses 09:30 ET; NFP/CPI use 08:30 ET
-    if event_type == "NY_OPEN":
-        ref_time = datetime(year, month, day, 9, 29, 59)
-        release_time = datetime(year, month, day, 9, 30, 0)
-    else:
-        ref_time = datetime(year, month, day, 8, 29, 59)
-        release_time = datetime(year, month, day, 8, 30, 0)
+    ref_hour, ref_minute, ref_second = get_event_reference_time(event_type)
+    release_hour, release_minute = get_event_release_time(event_type)
+    ref_time = datetime(year, month, day, ref_hour, ref_minute, ref_second)
+    release_time = datetime(year, month, day, release_hour, release_minute, 0)
 
-    if ref_time not in df_1s.index:
+    # Use nearest-match with 2s tolerance for ref_time (1s data may have gaps)
+    ref_ts = pd.Timestamp(ref_time)
+    idx = df_1s.index.get_indexer([ref_ts], method="nearest", tolerance=pd.Timedelta("2s"))
+    if idx[0] == -1:
         return None
 
-    reference_price = float(df_1s.loc[ref_time, "close"])
+    reference_price = float(df_1s.iloc[idx[0]]["close"])
     stop_buy = reference_price + config.buffer_points
     stop_sell = reference_price - config.buffer_points
 
@@ -226,9 +248,9 @@ def simulate_single_event(
             elif not is_long and high >= opposite_level:
                 whipsaw = True
 
-        # --- Fill bar (j == 0): special handling (NFP/CPI only) ---
-        # NY_OPEN fills on normal 1s bars — skip the wick-and-reverse heuristic
-        # and let the standard target/stop logic handle it.
+        # --- Fill bar (j == 0): special handling for scheduled news releases ---
+        # NY_OPEN fills on a normal opening bar, so skip the wick-and-reverse
+        # heuristic and let the standard target/stop logic handle it.
         if j == 0 and event_type != "NY_OPEN":
             # Assume price reaches the candle extreme; check target first
             if favorable >= config.target_points:

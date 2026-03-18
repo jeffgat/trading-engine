@@ -178,6 +178,7 @@ def serialize_orb_engine(engine: Any) -> dict:
         "fill_bar_idx": engine._fill_bar_idx,
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "fill_via_tick": engine._fill_via_tick,
+        "armed_at": engine._armed_at.isoformat() if engine._armed_at else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
         "paused": engine.paused,
         "exit_type": engine._exit_type,
@@ -226,8 +227,13 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     fill_ts = data.get("fill_timestamp")
     engine._fill_timestamp = datetime.fromisoformat(fill_ts) if fill_ts else None
     engine._fill_via_tick = data.get("fill_via_tick", False)
+    armed_at = data.get("armed_at")
+    engine._armed_at = datetime.fromisoformat(armed_at) if armed_at else None
 
     engine._bars = [_deserialize_bar(b) for b in data.get("bars", [])]
+    if engine._armed_at is None and target_state == State.ARMED_LIMIT and engine._bars:
+        # Backward-compat for older checkpoints written before armed_at existed.
+        engine._armed_at = engine._bars[-1].timestamp + timedelta(minutes=5)
     engine.paused = data.get("paused", False)
     engine._exit_type = data.get("exit_type")
     engine._r_result = data.get("r_result")

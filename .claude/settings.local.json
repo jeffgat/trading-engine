@@ -185,7 +185,12 @@
       "Bash(ssh root@143.110.148.234 \"journalctl -u orb-trader -n 15 --no-pager && echo ''---'' && ss -tlnp | grep 8000\")",
       "Bash(python3 -c \":*)",
       "Bash(.venv/bin/python3 --version)",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "WebFetch(domain:fred.stlouisfed.org)",
+      "WebFetch(domain:www.investing.com)",
+      "WebFetch(domain:www.fxstreet.com)",
+      "WebFetch(domain:tradingeconomics.com)",
+      "Bash(grep '\"\"react-day-picker\"\"' package.json)"
     ]
   }
 }

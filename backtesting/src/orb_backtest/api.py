@@ -1201,16 +1201,19 @@ def get_news_candles(
     date: str = Query(..., description="Event date YYYY-MM-DD"),
     seconds_before: int = Query(1, description="Seconds before release to include"),
     seconds_after: int = Query(300, description="Seconds after release to include"),
-    event_type: str = Query("NFP", description="Event type (NFP, CPI, NY_OPEN)"),
+    event_type: str = Query("NFP", description="Event type (NFP, CPI, PPI, FOMC, NY_OPEN)"),
 ):
     """Return 1s OHLCV bars around a news event.
 
     The window is [release - seconds_before, release + seconds_after] ET.
-    Release time is 09:30 for NY_OPEN, 08:30 for NFP/CPI.
+    Release time is event-specific:
+    - 08:30 for NFP/CPI/PPI
+    - 14:00 for FOMC
+    - 09:30 for NY_OPEN
     Used by the NewsTradeChartModal to render a candlestick chart for a
     specific news straddle event.
     """
-    from .engine.news_straddle import _load_1s_data
+    from .engine.news_straddle import _load_1s_data, get_event_release_time
 
     try:
         trade_date = datetime.strptime(date, "%Y-%m-%d").date()
@@ -1226,10 +1229,10 @@ def get_news_candles(
     except FileNotFoundError as e:
         raise data_not_found(str(e))
 
-    # NY_OPEN releases at 09:30 ET; NFP/CPI at 08:30 ET
-    release_hour = 9 if event_type.upper() == "NY_OPEN" else 8
+    release_hour, release_minute = get_event_release_time(event_type)
     release = pd.Timestamp(datetime.combine(
-        trade_date, datetime.min.time().replace(hour=release_hour, minute=30)
+        trade_date,
+        datetime.min.time().replace(hour=release_hour, minute=release_minute),
     ))
     ws = release - pd.Timedelta(seconds=seconds_before)
     we = release + pd.Timedelta(seconds=seconds_after)

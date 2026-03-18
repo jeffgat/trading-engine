@@ -487,10 +487,23 @@ class TestTickPath:
     async def test_tick_fill_in_armed(self, engine, broker):
         await advance_to_armed(engine, orb_high=19530.0)
         entry_price = engine._levels.entry
-        tick = make_bar("2025-01-15 10:00", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        tick = make_bar("2025-01-15 10:05", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
         await engine.on_tick(tick, 300.0)
         assert engine._state == State.MANAGING
         assert engine._fill_timestamp is not None
+
+    async def test_tick_before_signal_bar_close_does_not_fill(self, engine, broker):
+        await advance_to_armed(engine, orb_high=19530.0)
+        entry_price = engine._levels.entry
+        stale_tick = make_bar("2025-01-15 10:04", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        await engine.on_tick(stale_tick, 300.0)
+        assert engine._state == State.ARMED_LIMIT
+        assert engine._fill_timestamp is None
+
+        live_tick = make_bar("2025-01-15 10:05", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        await engine.on_tick(live_tick, 300.0)
+        assert engine._state == State.MANAGING
+        assert engine._fill_timestamp == live_tick.timestamp
 
     async def test_tick_fill_same_timestamp_guard(self, engine, broker):
         """Two ticks with same timestamp: second should NOT trigger exits."""
@@ -498,11 +511,11 @@ class TestTickPath:
         entry_price = engine._levels.entry
         stop = engine._levels.stop
         # Fill on tick 1
-        tick1 = make_bar("2025-01-15 10:00", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        tick1 = make_bar("2025-01-15 10:05", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
         await engine.on_tick(tick1, 300.0)
         assert engine._state == State.MANAGING
         # Send another tick with same timestamp that goes below stop
-        tick2 = make_bar("2025-01-15 10:00", stop + 5, stop + 8, stop - 10, stop + 3)
+        tick2 = make_bar("2025-01-15 10:05", stop + 5, stop + 8, stop - 10, stop + 3)
         await engine.on_tick(tick2, 300.0)
         # Guard: same timestamp → SL should NOT fire
         broker.send_flatten.assert_not_called()
@@ -514,13 +527,13 @@ class TestTickPath:
         tp1 = engine._levels.tp1
         be = engine._levels.be
 
-        fill_tick = make_bar("2025-01-15 10:00", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
+        fill_tick = make_bar("2025-01-15 10:05", entry_price + 2, entry_price + 5, entry_price - 1, entry_price + 3)
         await engine.on_tick(fill_tick, 300.0)
         assert engine._state == State.MANAGING
         assert engine._fill_via_tick is True
 
         # A 5m bar can contain stale pre-fill excursion, so it must not manage exits.
-        stale_bar = make_bar("2025-01-15 10:05", entry_price, tp1 + 5, be - 5, entry_price)
+        stale_bar = make_bar("2025-01-15 10:10", entry_price, tp1 + 5, be - 5, entry_price)
         await engine.on_bar(stale_bar, 300.0)
 
         broker.send_tp1_multi.assert_not_called()

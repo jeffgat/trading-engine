@@ -6,9 +6,10 @@ Sources:
 - FOMC: Federal Reserve official calendars (federalreserve.gov/monetarypolicy/fomccalendars.htm)
 - NFP: Bureau of Labor Statistics release schedule
 - CPI: Bureau of Labor Statistics release schedule
+- PPI: Bureau of Labor Statistics release schedule (FRED release #46)
 
 Usage:
-    from orb_backtest.data.news_dates import FOMC_DATES, NFP_DATES, CPI_DATES, ALL_EVENT_DATES
+    from orb_backtest.data.news_dates import FOMC_DATES, NFP_DATES, CPI_DATES, PPI_DATES, ALL_EVENT_DATES
 """
 
 FOMC_DATES = (
@@ -106,11 +107,47 @@ CPI_DATES = (
     "20260113", "20260213",
 )
 
+PPI_DATES = (
+    # 2016
+    "20160115", "20160219", "20160311", "20160413", "20160512", "20160614",
+    "20160714", "20160811", "20160914", "20161018", "20161115", "20161213",
+    # 2017
+    "20170112", "20170214", "20170314", "20170413", "20170511", "20170613",
+    "20170713", "20170810", "20170913", "20171012", "20171114", "20171212",
+    # 2018
+    "20180111", "20180214", "20180314", "20180410", "20180509", "20180612",
+    "20180711", "20180809", "20180912", "20181010", "20181113", "20181211",
+    # 2019
+    "20190115", "20190213", "20190312", "20190410", "20190509", "20190611",
+    "20190711", "20190809", "20190911", "20191008", "20191113", "20191211",
+    # 2020
+    "20200114", "20200213", "20200311", "20200409", "20200512", "20200610",
+    "20200714", "20200811", "20200910", "20201014", "20201110", "20201210",
+    # 2021
+    "20210114", "20210218", "20210312", "20210409", "20210513", "20210615",
+    "20210714", "20210812", "20210910", "20211014", "20211109", "20211214",
+    # 2022
+    "20220113", "20220215", "20220315", "20220413", "20220512", "20220614",
+    "20220714", "20220811", "20220914", "20221012", "20221115", "20221209",
+    # 2023
+    "20230118", "20230216", "20230315", "20230413", "20230511", "20230614",
+    "20230713", "20230811", "20230914", "20231011", "20231115", "20231213",
+    # 2024
+    "20240112", "20240216", "20240314", "20240411", "20240514", "20240613",
+    "20240712", "20240813", "20240912", "20241011", "20241114", "20241212",
+    # 2025 (from FRED release calendar)
+    "20250114", "20250213", "20250313", "20250411", "20250515", "20250612",
+    "20250716", "20250814", "20250910", "20251125",
+    # 2026 (from FRED release calendar)
+    "20260114", "20260227", "20260318",
+)
+
 # Combined set — all high-impact news days
-ALL_EVENT_DATES = tuple(sorted(set(FOMC_DATES + NFP_DATES + CPI_DATES)))
+ALL_EVENT_DATES = tuple(sorted(set(FOMC_DATES + NFP_DATES + CPI_DATES + PPI_DATES)))
 
 # Convenience sets for fast membership testing
 FOMC_SET = frozenset(FOMC_DATES)
 NFP_SET = frozenset(NFP_DATES)
 CPI_SET = frozenset(CPI_DATES)
+PPI_SET = frozenset(PPI_DATES)
 ALL_EVENT_SET = frozenset(ALL_EVENT_DATES)

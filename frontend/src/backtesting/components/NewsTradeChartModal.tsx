@@ -26,6 +26,22 @@ const EXIT_LABELS: Record<string, string> = {
   no_fill: "No Fill",
 };
 
+const EVENT_LABELS: Record<string, string> = {
+  NFP: "NFP",
+  CPI: "CPI",
+  PPI: "PPI",
+  FOMC: "FOMC",
+  NY_OPEN: "NY Open",
+};
+
+const EVENT_BADGE_CLASSES: Record<string, string> = {
+  NFP: "bg-info/20 text-info",
+  CPI: "bg-accent/20 text-accent",
+  PPI: "bg-warning/20 text-warning",
+  FOMC: "bg-loss/20 text-loss",
+  NY_OPEN: "bg-profit/20 text-profit",
+};
+
 interface NewsTradeChartModalProps {
   event: NewsStraddleEvent | null;
   instrument: string;
@@ -88,7 +104,7 @@ export function NewsTradeChartModal({
       .then((data) => setCandles(data))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [event?.date, instrument, observationWindowSeconds, open]);
+  }, [event?.date, event?.event_type, instrument, observationWindowSeconds, open]);
 
   // Create chart when candles arrive
   useEffect(() => {
@@ -108,6 +124,10 @@ export function NewsTradeChartModal({
       chartRef.current = null;
     };
   }, [candles, event]);
+
+  const formatEventTypeLabel = (eventType: string) => EVENT_LABELS[eventType] ?? eventType;
+  const eventBadgeClass = (eventType: string) =>
+    EVENT_BADGE_CLASSES[eventType] ?? "bg-accent/20 text-accent";
 
   function buildChart(container: HTMLDivElement, event: NewsStraddleEvent, candles: CandleBar[]) {
     container.innerHTML = "";
@@ -282,8 +302,9 @@ export function NewsTradeChartModal({
     // Build release time as fake-UTC seconds directly (Eastern wall-clock)
     const releaseDateStr = event.date; // YYYY-MM-DD
     const [ry, rm, rd] = releaseDateStr.split("-").map(Number);
-    const releaseHour = event.event_type === "NY_OPEN" ? 9 : 8;
-    const releaseSeconds = Date.UTC(ry, rm - 1, rd, releaseHour, 30, 0) / 1000;
+    const releaseHour = event.event_type === "NY_OPEN" ? 9 : event.event_type === "FOMC" ? 14 : 8;
+    const releaseMinute = event.event_type === "FOMC" ? 0 : 30;
+    const releaseSeconds = Date.UTC(ry, rm - 1, rd, releaseHour, releaseMinute, 0) / 1000;
     const releaseCandle = chartData.find((c) =>
       Math.abs((c.time as number) - releaseSeconds) < 2
     );
@@ -293,7 +314,12 @@ export function NewsTradeChartModal({
         position: "aboveBar",
         color: "#F8C159",
         shape: "arrowDown",
-        text: event.event_type === "NY_OPEN" ? "OPEN" : "NEWS",
+        text:
+          event.event_type === "NY_OPEN"
+            ? "OPEN"
+            : event.event_type === "FOMC"
+              ? "FOMC"
+              : "NEWS",
       });
     }
 
@@ -335,7 +361,6 @@ export function NewsTradeChartModal({
 
   if (!event) return null;
 
-  const isWin = event.final_points > 0;
   const exitLabel = EXIT_LABELS[event.exit_type] ?? event.exit_type;
 
   return (
@@ -352,15 +377,11 @@ export function NewsTradeChartModal({
                   {event.date}
                 </span>
                 <span
-                  className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
-                    event.event_type === "NFP"
-                      ? "bg-info/20 text-info"
-                      : event.event_type === "NY_OPEN"
-                        ? "bg-profit/20 text-profit"
-                        : "bg-accent/20 text-accent"
-                  }`}
+                  className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${eventBadgeClass(
+                    event.event_type
+                  )}`}
                 >
-                  {event.event_type === "NY_OPEN" ? "NY Open" : event.event_type}
+                  {formatEventTypeLabel(event.event_type)}
                 </span>
                 {event.direction_filled && (
                   <span

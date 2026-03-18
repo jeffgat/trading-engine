@@ -72,8 +72,8 @@ SESSION_CONFIGS = {
     # --- NQ NY R11 (ATR-based stop, Friday exclusion) ---
     "NQ_NY": {
         "orb_start": "09:30",
-        "orb_end": "09:50",
-        "entry_start": "09:50",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
         "entry_end": "12:00",
         "flat_start": "15:30",
         "flat_end": "16:00",

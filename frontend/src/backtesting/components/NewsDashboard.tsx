@@ -1,7 +1,6 @@
 import { NewsRegimeReport } from "@/backtesting/components/NewsRegimeReport";
 import { NewsTradeChartModal } from "@/backtesting/components/NewsTradeChartModal";
 import { StatCard } from "@/backtesting/components/StatCard";
-import { DatePicker } from "@/shared/ui/date-picker";
 import { useNewsStraddle } from "@/backtesting/hooks/useNewsStraddle";
 import { useNewsStraddleHistory } from "@/backtesting/hooks/useNewsStraddleHistory";
 import type {
@@ -39,6 +38,30 @@ const HEAT_METRIC_LABELS: Record<HeatMetric, string> = {
   pct_profitable: "% Profitable",
 };
 
+const EVENT_LABELS: Record<string, string> = {
+  NFP: "NFP",
+  CPI: "CPI",
+  PPI: "PPI",
+  FOMC: "FOMC",
+  NY_OPEN: "NY Open",
+};
+
+const EVENT_BADGE_CLASSES: Record<string, string> = {
+  NFP: "bg-info/20 text-info",
+  CPI: "bg-accent/20 text-accent",
+  PPI: "bg-warning/20 text-warning",
+  FOMC: "bg-loss/20 text-loss",
+  NY_OPEN: "bg-profit/20 text-profit",
+};
+
+function formatEventTypeLabel(eventType: string): string {
+  return EVENT_LABELS[eventType] ?? eventType;
+}
+
+function eventBadgeClass(eventType: string): string {
+  return EVENT_BADGE_CLASSES[eventType] ?? "bg-accent/20 text-accent";
+}
+
 export function NewsDashboard() {
   const { singleData, setSingleData, sweepData, loading, error, runSingle, runSweep } =
     useNewsStraddle();
@@ -67,6 +90,8 @@ export function NewsDashboard() {
   const [targetPoints, setTargetPoints] = useState("25");
   const [nfpChecked, setNfpChecked] = useState(true);
   const [cpiChecked, setCpiChecked] = useState(true);
+  const [ppiChecked, setPpiChecked] = useState(false);
+  const [fomcChecked, setFomcChecked] = useState(false);
   const [nyOpenChecked, setNyOpenChecked] = useState(false);
   const [obsWindow, setObsWindow] = useState("120");
   const [stopLossPoints, setStopLossPoints] = useState("10");
@@ -98,6 +123,8 @@ export function NewsDashboard() {
   const eventTypes = [
     ...(nfpChecked ? ["NFP"] : []),
     ...(cpiChecked ? ["CPI"] : []),
+    ...(ppiChecked ? ["PPI"] : []),
+    ...(fomcChecked ? ["FOMC"] : []),
     ...(nyOpenChecked ? ["NY_OPEN"] : []),
   ];
 
@@ -214,8 +241,8 @@ export function NewsDashboard() {
           News Straddle Backtest
         </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Stop-buy above / stop-sell below price 1s before NFP/CPI release or
-          NY open. Find optimal buffer and target.
+          Stop-buy above / stop-sell below price 1s before NFP/CPI/PPI or
+          FOMC statement release, or NY open. Find optimal buffer and target.
         </p>
       </div>
 
@@ -236,6 +263,8 @@ export function NewsDashboard() {
             const types: string[] = JSON.parse(item.event_types);
             setNfpChecked(types.includes("NFP"));
             setCpiChecked(types.includes("CPI"));
+            setPpiChecked(types.includes("PPI"));
+            setFomcChecked(types.includes("FOMC"));
             setNyOpenChecked(types.includes("NY_OPEN"));
             setStopLossPoints(item.stop_loss_points != null ? String(item.stop_loss_points) : "");
             if (item.date_start) setStart(item.date_start);
@@ -380,6 +409,24 @@ export function NewsDashboard() {
               <label className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <input
                   type="checkbox"
+                  checked={ppiChecked}
+                  onChange={(e) => setPpiChecked(e.target.checked)}
+                  className="accent-accent"
+                />
+                PPI
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={fomcChecked}
+                  onChange={(e) => setFomcChecked(e.target.checked)}
+                  className="accent-accent"
+                />
+                FOMC
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
                   checked={nyOpenChecked}
                   onChange={(e) => setNyOpenChecked(e.target.checked)}
                   className="accent-accent"
@@ -390,11 +437,21 @@ export function NewsDashboard() {
           </div>
           <div>
             <label className="mb-1 block text-xs text-text-muted">Start</label>
-            <DatePicker value={start} onChange={setStart} placeholder="Start date" />
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+            />
           </div>
           <div>
             <label className="mb-1 block text-xs text-text-muted">End</label>
-            <DatePicker value={end} onChange={setEnd} placeholder="End date" />
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="w-full rounded border border-border bg-bg-primary px-2 py-1 text-xs text-text-primary"
+            />
           </div>
         </div>
 
@@ -538,12 +595,12 @@ export function NewsDashboard() {
               <div className="grid grid-cols-2 gap-4">
                 {Object.entries(singleData.summary.by_event_type).map(
                   ([type, stats]) => (
-                    <div
+                      <div
                       key={type}
                       className="rounded border border-border bg-bg-primary p-3"
                     >
                       <div className="mb-2 text-sm font-semibold text-accent">
-                        {type}
+                        {formatEventTypeLabel(type)}
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-xs">
                         <div>
@@ -673,7 +730,7 @@ export function NewsDashboard() {
                       color: "#e0e0e6",
                     }}
                     labelStyle={{ color: "#a0a0ab" }}
-                    formatter={(value: number) => formatNumber(value)}
+                    formatter={(value) => formatNumber(Number(value ?? 0))}
                   />
                   <Scatter data={scatterData}>
                     {scatterData.map((entry, i) => (
@@ -728,8 +785,8 @@ export function NewsDashboard() {
                       borderRadius: 6,
                       fontSize: 12,
                     }}
-                    formatter={(v: number) => [`${formatNumber(v)} pts`, "Final"]}
-                    labelFormatter={(d: string) => d}
+                    formatter={(value) => [`${formatNumber(Number(value ?? 0))} pts`, "Final"]}
+                    labelFormatter={(label) => String(label ?? "")}
                   />
                   <ReferenceLine y={0} stroke="#62626b" />
                   <Bar dataKey="points" radius={[2, 2, 0, 0]}>
@@ -802,15 +859,11 @@ export function NewsDashboard() {
                       </td>
                       <td className="px-3 py-2">
                         <span
-                          className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${
-                            e.event_type === "NFP"
-                              ? "bg-info/20 text-info"
-                              : e.event_type === "NY_OPEN"
-                                ? "bg-profit/20 text-profit"
-                                : "bg-accent/20 text-accent"
-                          }`}
+                          className={`inline-block rounded px-1.5 py-0.5 text-xs font-medium ${eventBadgeClass(
+                            e.event_type
+                          )}`}
                         >
-                          {e.event_type === "NY_OPEN" ? "NY Open" : e.event_type}
+                          {formatEventTypeLabel(e.event_type)}
                         </span>
                       </td>
                       <td className="px-3 py-2">
@@ -1158,7 +1211,7 @@ function NewsStraddleHistoryPanel({
                     {item.observation_window_seconds}s
                   </td>
                   <td className="px-3 py-1.5 text-text-secondary">
-                    {events.join(", ")}
+                    {events.map(formatEventTypeLabel).join(", ")}
                   </td>
                   <td className="px-3 py-1.5">
                     <FilterBadges item={item} />

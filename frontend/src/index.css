@@ -134,6 +134,11 @@
   }
 }
 
+/* ── Native date input icon ── */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
 /* ── Scrollbar styling ── */
 ::-webkit-scrollbar {
   width: 6px;

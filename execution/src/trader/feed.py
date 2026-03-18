@@ -23,15 +23,33 @@ logger = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
 
+# TEMPORARY: keep these narrow diagnostics until live validation confirms the
+# minute-stamp model matches the observed NQ_NY / ES_Asia timing behavior.
+TEMPORARY_1M_DIAGNOSTIC_WINDOWS: dict[str, tuple[tuple[time, time, str], ...]] = {
+    "NQ.FUT": ((time(9, 25), time(9, 50), "NQ_NY"),),
+    "ES.FUT": ((time(20, 5), time(20, 25), "ES_Asia"),),
+}
+
 
 def _normalize_1m_timestamp(ts: datetime) -> datetime:
-    """Convert a close-stamped 1m timestamp into its bar-open timestamp.
+    """Normalize a 1m bar to TradingView-style minute labels.
 
-    DataBento's ``ohlcv-1m`` bars are consumed here as completed minute bars.
-    Normalizing to the minute's open keeps 5m bucket boundaries aligned with
-    the ORB engine's session logic, which expects bar-open timestamps.
+    TradingView labels 1m/5m bars by interval start. DataBento's completed
+    1m bars are treated here as already representing that minute, so we keep
+    the minute label and only strip sub-minute fields. This makes ORB/session
+    windows line up with the prices shown on TradingView across all sessions.
     """
-    return ts - timedelta(minutes=1)
+    return ts.replace(second=0, microsecond=0)
+
+
+def _diagnostic_session(symbol: str, ts: datetime) -> str | None:
+    """Return the temporary diagnostic session tag for a timestamp, if any."""
+    windows = TEMPORARY_1M_DIAGNOSTIC_WINDOWS.get(symbol, ())
+    current = ts.timetz().replace(tzinfo=None)
+    for start, end, session in windows:
+        if start <= current < end:
+            return session
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +360,50 @@ class DataBentoFeed:
         self._id_volumes: dict[int, int] = {}  # instrument_id → cumulative volume
         self._front_month: dict[str, int] = {}  # parent symbol → instrument_id
 
+    def _ingest_1m_bar(
+        self,
+        *,
+        symbol: str,
+        ts_event: datetime,
+        o: float,
+        h: float,
+        l: float,
+        c: float,
+        v: int,
+        source: str,
+    ) -> Bar | None:
+        """Normalize and aggregate a completed 1m bar for live or preload."""
+        ts_bar_open = _normalize_1m_timestamp(ts_event)
+        bucket_start = BarAggregator._bucket_for(ts_bar_open)
+        diag_session = _diagnostic_session(symbol, ts_bar_open)
+        if diag_session is not None:
+            logger.info(
+                "TEMP_1M_TRACE | source=%s session=%s symbol=%s ts_event=%s normalized=%s bucket=%s",
+                source,
+                diag_session,
+                symbol,
+                ts_event.isoformat(),
+                ts_bar_open.isoformat(),
+                bucket_start.isoformat(),
+            )
+
+        bar_5m = self._aggregators[symbol].add_1m_bar(ts_bar_open, o, h, l, c, v)
+        if bar_5m is not None and diag_session is not None:
+            logger.info(
+                "TEMP_5M_EMIT | source=%s session=%s symbol=%s bucket=%s emitted=%s o=%.2f h=%.2f l=%.2f c=%.2f v=%d",
+                source,
+                diag_session,
+                symbol,
+                bucket_start.isoformat(),
+                bar_5m.timestamp.isoformat(),
+                bar_5m.open,
+                bar_5m.high,
+                bar_5m.low,
+                bar_5m.close,
+                bar_5m.volume,
+            )
+        return bar_5m
+
     def warm_up(self, lookback_days: int = 30) -> None:
         """Seed ATR calculators with historical daily bars from DataBento.
 
@@ -551,14 +613,15 @@ class DataBentoFeed:
             for _, row in df.iterrows():
                 symbol = str(row["parent_symbol"])
                 ts_et = row["ts_event"].tz_convert(ET).to_pydatetime()
-                ts_bar_open = _normalize_1m_timestamp(ts_et)
-                bar_5m = self._aggregators[symbol].add_1m_bar(
-                    ts=ts_bar_open,
+                bar_5m = self._ingest_1m_bar(
+                    symbol=symbol,
+                    ts_event=ts_et,
                     o=float(row["open"]),
                     h=float(row["high"]),
                     l=float(row["low"]),
                     c=float(row["close"]),
                     v=int(row.get("volume", 0)),
+                    source="preload",
                 )
                 if bar_5m is not None:
                     bars_by_symbol[symbol].append(bar_5m)
@@ -694,15 +757,20 @@ class DataBentoFeed:
         l = record.low / 1e9
         c = record.close / 1e9
 
-        # Convert timestamp to Eastern and normalize the completed 1m bar to
-        # its bar-open timestamp before 5m aggregation.
+        # Convert timestamp to Eastern and aggregate through the canonical
+        # 1m->5m path shared with preload recovery.
         ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
-        ts_bar_open = _normalize_1m_timestamp(ts_dt)
-
-        aggregator = self._aggregators[symbol]
+        bar_5m = self._ingest_1m_bar(
+            symbol=symbol,
+            ts_event=ts_dt,
+            o=o,
+            h=h,
+            l=l,
+            c=c,
+            v=v,
+            source="live",
+        )
         atr_calcs = self._atrs[symbol]
-
-        bar_5m = aggregator.add_1m_bar(ts_bar_open, o, h, l, c, v)
 
         if bar_5m is not None:
             # update daily ATR for each configured length on this symbol

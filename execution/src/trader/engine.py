@@ -15,7 +15,7 @@ from __future__ import annotations
 import enum
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Callable
 
 from .position_limits import ContractCapManager, resize_trade_levels
@@ -246,6 +246,7 @@ class ORBEngine:
     _fill_bar_idx: int = field(default=-1, init=False)
     _fill_timestamp: datetime | None = field(default=None, init=False)
     _fill_via_tick: bool = field(default=False, init=False)
+    _armed_at: datetime | None = field(default=None, init=False)
     _bar_count: int = field(default=0, init=False)
     _long_fvg_found: bool = field(default=False, init=False)
     _short_fvg_found: bool = field(default=False, init=False)
@@ -532,6 +533,7 @@ class ORBEngine:
         self._fill_bar_idx = -1
         self._fill_timestamp = None
         self._fill_via_tick = False
+        self._armed_at = None
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
@@ -649,6 +651,12 @@ class ORBEngine:
         if self._orb_high != self._orb_high or self._orb_low != self._orb_low:
             return 0.0  # NaN check
         return self._orb_high - self._orb_low
+
+    def _arm_order(self, signal_bar: Bar) -> None:
+        """Activate a setup only after the signal bar has fully closed."""
+        self._state = State.ARMED_LIMIT
+        self._armed_at = signal_bar.timestamp + timedelta(minutes=5)
+        self._request_checkpoint()
 
     # ------------------------------------------------------------------
     # FVG detection (inline, 3-bar check)
@@ -919,8 +927,7 @@ class ORBEngine:
                         levels = self._apply_position_cap(levels)
                     if levels is not None:
                         self._levels = levels
-                        self._state = State.ARMED_LIMIT
-                        self._request_checkpoint()
+                        self._arm_order(bar)
                         self._log_trade(
                             "LONG_SETUP",
                             (
@@ -997,8 +1004,7 @@ class ORBEngine:
                     self._levels = levels
                     # Re-use ARMED_LIMIT state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
-                    self._state = State.ARMED_LIMIT
-                    self._request_checkpoint()
+                    self._arm_order(bar)
                     self._log_trade(
                         "SHORT_SETUP",
                         (
@@ -1064,6 +1070,7 @@ class ORBEngine:
             self._fill_bar_idx = self._bar_count
             self._fill_timestamp = bar.timestamp
             self._fill_via_tick = False
+            self._armed_at = None
             self._log_trade(
                 "FILLED",
                 "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f bar_time=%s resolution=5m"
@@ -1298,6 +1305,11 @@ class ORBEngine:
             self._notify_state_change()
             return
 
+        # A setup confirmed on a 5m close cannot fill from ticks that
+        # chronologically belong to that same still-forming signal candle.
+        if self._armed_at is not None and tick.timestamp < self._armed_at:
+            return
+
         # Check fill
         is_long = levels.direction == 1
         filled = False
@@ -1310,6 +1322,7 @@ class ORBEngine:
             self._fill_timestamp = tick.timestamp
             self._fill_bar_idx = self._bar_count
             self._fill_via_tick = True
+            self._armed_at = None
             self._state = State.MANAGING
             self._request_checkpoint()
             self._log_trade(

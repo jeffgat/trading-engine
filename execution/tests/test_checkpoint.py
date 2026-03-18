@@ -244,6 +244,7 @@ class TestORBEngineCheckpoint:
         data = serialize_orb_engine(engine)
         assert data["engine_type"] == "orb"
         assert data["state"] == "armed_limit"
+        assert data["armed_at"] is not None
         assert data["levels"] is not None
         assert data["levels"]["direction"] == 1
 
@@ -266,6 +267,21 @@ class TestORBEngineCheckpoint:
         assert new_engine._levels.entry == original_entry
         assert new_engine._orb_high == engine._orb_high
         assert new_engine._orb_low == engine._orb_low
+        assert new_engine._armed_at == engine._armed_at
+
+    async def test_restore_armed_legacy_checkpoint_infers_armed_at(self):
+        broker = _mock_broker()
+        engine = _make_orb_engine(broker)
+        await advance_to_armed(engine)
+
+        data = serialize_orb_engine(engine)
+        data.pop("armed_at", None)
+
+        new_engine = _make_orb_engine(_mock_broker())
+        result = restore_orb_engine(new_engine, data)
+        assert result is True
+        assert new_engine._state == State.ARMED_LIMIT
+        assert new_engine._armed_at == engine._bars[-1].timestamp + timedelta(minutes=5)
 
     async def test_restore_managing(self):
         broker = _mock_broker()
@@ -395,12 +411,12 @@ class TestLSIEngineCheckpoint:
         assert new_engine._levels.entry == 19540.0
         assert new_engine._fill_bar_count == 15
 
-    def test_waiting_for_sweep_not_restored_outside_entry(self):
-        """WAITING_FOR_SWEEP is downgraded to FLAT when entry window is closed."""
+    def test_scanning_not_restored_outside_entry(self):
+        """SCANNING is downgraded to FLAT when entry window is closed."""
         from unittest.mock import patch
         broker = _mock_broker()
         engine = _make_lsi_engine(broker)
-        engine._state = LSIState.WAITING_FOR_SWEEP
+        engine._state = LSIState.SCANNING
 
         data = serialize_lsi_engine(engine)
         new_engine = _make_lsi_engine(_mock_broker())
