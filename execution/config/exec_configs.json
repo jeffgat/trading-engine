@@ -91,6 +91,8 @@
         "atr_length": 5,
         "rr": 1.75,
         "tp1_ratio": 0.3,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
         "risk_usd": 200,
         "excluded_dates": ["20241218"],
         "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"]
