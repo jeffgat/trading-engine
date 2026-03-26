@@ -75,6 +75,13 @@ class StrategyConfig:
     qty_step: float = 1.0
     # ATR
     atr_length: int = 14
+    # Optional local-context VWAP gate for continuation/reversal strategies.
+    # If > 0, require the signal-bar close to be at least this % of daily ATR
+    # beyond session VWAP in the trade direction.
+    min_vwap_distance_atr_pct: float = 0.0
+    # Optional session VWAP slope confirmation lookback in bars.
+    # 0 disables the slope check.
+    vwap_slope_lookback: int = 0
 
     # Session configs
     sessions: tuple[SessionConfig, ...] = field(default_factory=tuple)

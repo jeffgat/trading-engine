@@ -27,6 +27,7 @@ from ..signals.daily_atr import compute_daily_atr
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
 from ..signals.swing import detect_swing_highs, detect_swing_lows
+from ..signals.vwap import compute_session_vwap
 
 
 # ---------------------------------------------------------------------------
@@ -1517,6 +1518,59 @@ def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.nda
     return indices[first_idx]
 
 
+def _compute_vwap_gate_masks(
+    close: np.ndarray,
+    vwap: np.ndarray,
+    daily_atr: np.ndarray,
+    session_day_id: np.ndarray,
+    min_vwap_distance_atr_pct: float,
+    vwap_slope_lookback: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return per-bar VWAP gate masks for long and short continuation entries.
+
+    Rules:
+    - Same-side acceptance is always required when either VWAP gate is enabled.
+    - Distance gate uses signal close distance from VWAP as % of daily ATR.
+    - Slope gate compares current session VWAP to VWAP `lookback` bars ago,
+      but only within the same session day.
+    """
+    n = len(close)
+    long_ok = np.ones(n, dtype=bool)
+    short_ok = np.ones(n, dtype=bool)
+
+    same_side_enabled = (min_vwap_distance_atr_pct > 0.0) or (vwap_slope_lookback > 0)
+    if same_side_enabled:
+        long_ok &= close > vwap
+        short_ok &= close < vwap
+
+    if min_vwap_distance_atr_pct > 0.0:
+        threshold = (min_vwap_distance_atr_pct / 100.0) * np.where(
+            np.isnan(daily_atr), np.inf, daily_atr
+        )
+        diff = close - vwap
+        long_ok &= diff >= threshold
+        short_ok &= (-diff) >= threshold
+
+    if vwap_slope_lookback > 0:
+        lb = int(vwap_slope_lookback)
+        slope_long = np.zeros(n, dtype=bool)
+        slope_short = np.zeros(n, dtype=bool)
+        if lb < n:
+            same_day = session_day_id[lb:] == session_day_id[:-lb]
+            curr = vwap[lb:]
+            prev = vwap[:-lb]
+            valid = same_day & ~np.isnan(curr) & ~np.isnan(prev)
+            slope_long[lb:] = valid & (curr > prev)
+            slope_short[lb:] = valid & (curr < prev)
+        long_ok &= slope_long
+        short_ok &= slope_short
+
+    valid_vwap = ~np.isnan(vwap)
+    long_ok &= valid_vwap
+    short_ok &= valid_vwap
+    return long_ok, short_ok
+
+
 def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
@@ -1548,6 +1602,7 @@ def _extract_setup_candidates(
         orb_low     = sc["orb_low"]
         orb_ready   = sc["orb_ready"]
         date_strs   = sc["date_strs"]
+        vwap        = sc["vwap"]
         daily_atr   = _signal_cache["atr"][config.atr_length]
         fvg         = _signal_cache["fvg"][fkey]
     else:
@@ -1564,6 +1619,13 @@ def _extract_setup_candidates(
         # ORB levels — use session day boundaries so ORB isn't reset at midnight
         orb_high, orb_low, orb_ready = compute_orb_levels(
             df, masks["in_orb"], masks["in_rth"], new_session_day
+        )
+        vwap = compute_session_vwap(
+            df["high"].values,
+            df["low"].values,
+            df["close"].values,
+            df["volume"].values,
+            session_day_id,
         )
 
         # FVG detection
@@ -1599,6 +1661,21 @@ def _extract_setup_candidates(
         & masks["in_rth"]
         & orb_ready
     )
+
+    if config.strategy in {"continuation", "reversal"} and (
+        config.min_vwap_distance_atr_pct > 0.0 or config.vwap_slope_lookback > 0
+    ):
+        close_arr = df["close"].values
+        vwap_long_ok, vwap_short_ok = _compute_vwap_gate_masks(
+            close_arr,
+            vwap,
+            daily_atr,
+            session_day_id,
+            config.min_vwap_distance_atr_pct,
+            config.vwap_slope_lookback,
+        )
+        valid_long &= vwap_long_ok
+        valid_short &= vwap_short_ok
 
     # Exclude specific dates (vectorized via numpy isin)
     if excluded:
@@ -2652,6 +2729,13 @@ def build_signal_cache(
         orb_high, orb_low, orb_ready = compute_orb_levels(
             df, masks["in_orb"], masks["in_rth"], new_session_day
         )
+        vwap = compute_session_vwap(
+            df["high"].values,
+            df["low"].values,
+            df["close"].values,
+            df["volume"].values,
+            session_day_id,
+        )
         # Pre-compute day boundaries with empty half_day_set (default case).
         # This avoids re-running the Python loop over all bars on every config
         # in a sweep when half_days is empty (the common case).
@@ -2665,6 +2749,7 @@ def build_signal_cache(
             "orb_high": orb_high,
             "orb_low": orb_low,
             "orb_ready": orb_ready,
+            "vwap": vwap,
             "date_strs": date_strs,
             "day_bounds_default": day_bounds_default,
         }

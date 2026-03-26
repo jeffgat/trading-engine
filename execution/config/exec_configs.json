@@ -142,5 +142,24 @@
         "excluded_dow": [2, 3]
       }
     }
+  },
+  "FAST_NQNY_VWAP15_RESEARCH": {
+    "enabled": false,
+    "webhooks": [],
+    "sessions": {
+      "NQ_NY": {
+        "risk_usd": 200,
+        "min_vwap_distance_atr_pct": 15.0
+      },
+      "NQ_Asia": { "risk_usd": 150 },
+      "GC_NY": { "risk_usd": 250 },
+      "ES_NY": { "risk_usd": 250 },
+      "ES_Asia": { "risk_usd": 100 },
+      "NQ_LDN": { "risk_usd": 150 }
+    },
+    "lsi_sessions": {
+      "NQ_Asia_LSI": { "risk_usd": 250 },
+      "NQ_NY_LSI": { "risk_usd": 250 }
+    }
   }
 }
