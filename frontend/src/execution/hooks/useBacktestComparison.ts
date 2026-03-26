@@ -4,7 +4,9 @@ import type { EquityCurvePoint } from "@/backtesting/lib/types";
 
 const STORAGE_KEY = "exec_backtest_mappings";
 
-const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {};
+const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {
+  FAST_V2: { backtestId: "bt-exec-fast-v2-2024-2026-live-comparison-918820", deployDate: "2026-03-09" },
+};
 
 interface BacktestCurveData {
   curve: { date: string; r: number }[];
