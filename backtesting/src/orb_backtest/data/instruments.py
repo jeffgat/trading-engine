@@ -18,7 +18,7 @@ MNQ = Instrument(
     point_value=2.0,
     min_tick=0.25,
     commission=0.05,
-    data_file="MNQ_5m.csv",
+    data_file="NQ_5m.csv",  # micro uses same price data as full-size
     exchange_tz="America/New_York",
 )
 

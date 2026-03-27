@@ -146,7 +146,8 @@ class TradersPostClient:
     async def send_tp1_multi(
         self,
         direction: str,
-        half_qty: float,
+        total_qty: float,
+        exit_qty: float,
         be_price: float,
         tp2: float,
         ticker: str | None = None,
@@ -155,13 +156,15 @@ class TradersPostClient:
 
         Args:
             direction: "long" or "short"
-            half_qty: Quantity to exit at TP1 (also quantity for runner)
+            total_qty: Total open quantity before the TP1 partial exit.
+            exit_qty: Quantity to exit at TP1.
             be_price: Breakeven stop price for runner
             tp2: Full target price for runner
             ticker: Execution ticker override (e.g. "MNQ"). Falls back to default.
         """
         t = self._resolve_ticker(ticker)
         close_action = "sell" if direction == "long" else "buy"
+        runner_qty = max(0.0, total_qty - exit_qty)
         results = []
 
         # Step 1: partially exit half the position.
@@ -172,33 +175,34 @@ class TradersPostClient:
         results.append(await self._post({
             "ticker": t,
             "action": "exit",
-            "quantity": half_qty,
+            "quantity": exit_qty,
         }))
 
-        # Step 2: BE stop for runner — cancel=true (default) clears old bracket
-        # (Pine: lines 767, 775)
-        results.append(await self._post({
-            "ticker": t,
-            "action": close_action,
-            "orderType": "stop",
-            "stopPrice": be_price,
-            "quantity": half_qty,
-            "sentiment": "flat",
-            "delay": 3,
-        }))
+        if runner_qty > 0:
+            # Step 2: BE stop for runner — cancel=true (default) clears old bracket
+            # (Pine: lines 767, 775)
+            results.append(await self._post({
+                "ticker": t,
+                "action": close_action,
+                "orderType": "stop",
+                "stopPrice": be_price,
+                "quantity": runner_qty,
+                "sentiment": "flat",
+                "delay": 3,
+            }))
 
-        # Step 3: TP2 limit for runner — cancel=false preserves BE stop
-        # (Pine: lines 769, 777)
-        results.append(await self._post({
-            "ticker": t,
-            "action": close_action,
-            "orderType": "limit",
-            "limitPrice": tp2,
-            "quantity": half_qty,
-            "sentiment": "flat",
-            "cancel": False,
-            "delay": 5,
-        }))
+            # Step 3: TP2 limit for runner — cancel=false preserves BE stop
+            # (Pine: lines 769, 777)
+            results.append(await self._post({
+                "ticker": t,
+                "action": close_action,
+                "orderType": "limit",
+                "limitPrice": tp2,
+                "quantity": runner_qty,
+                "sentiment": "flat",
+                "cancel": False,
+                "delay": 5,
+            }))
 
         return results
 
@@ -272,14 +276,17 @@ class MultiBroker:
         results = await asyncio.gather(*[_send_entry(b) for b in active], return_exceptions=True)
         return results[0] if results else []
 
-    async def send_tp1_multi(self, direction, half_qty, be_price, tp2, ticker=None):
+    async def send_tp1_multi(self, direction, total_qty, exit_qty, be_price, tp2, ticker=None):
         active = [b for b in self._brokers if not b.paused]
         if not active:
             return []
 
         async def _send_tp1_multi(b: TradersPostClient):
-            scaled_half = max(1, round(half_qty * b.multiplier))
-            return await b.send_tp1_multi(direction, scaled_half, be_price, tp2, ticker=ticker)
+            scaled_total = max(1, round(total_qty * b.multiplier))
+            scaled_exit = max(1, round(exit_qty * b.multiplier))
+            if scaled_exit >= scaled_total:
+                scaled_exit = max(1, scaled_total - 1)
+            return await b.send_tp1_multi(direction, scaled_total, scaled_exit, be_price, tp2, ticker=ticker)
 
         results = await asyncio.gather(*[_send_tp1_multi(b) for b in active], return_exceptions=True)
         return results[0] if results else []

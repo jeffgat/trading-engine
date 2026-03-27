@@ -107,20 +107,20 @@ class TestSendEntryShort:
 class TestSendTp1MultiLong:
     async def test_sends_three_webhooks(self, client_and_captured):
         client, captured = client_and_captured
-        results = await client.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        results = await client.send_tp1_multi("long", 2.0, 1.0, 19500.0, 19700.0)
         assert len(results) == 3
         assert len(captured) == 3
 
     async def test_first_webhook_market_exit_half(self, client_and_captured):
         client, captured = client_and_captured
-        await client.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        await client.send_tp1_multi("long", 2.0, 1.0, 19500.0, 19700.0)
         assert captured[0]["ticker"] == "MNQ"
         assert captured[0]["action"] == "exit"
         assert captured[0]["quantity"] == 1.0
 
     async def test_be_stop_fields(self, client_and_captured):
         client, captured = client_and_captured
-        await client.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        await client.send_tp1_multi("long", 2.0, 1.0, 19500.0, 19700.0)
         be = captured[1]
         assert be["ticker"] == "MNQ"
         assert be["action"] == "sell"
@@ -134,7 +134,7 @@ class TestSendTp1MultiLong:
 
     async def test_tp2_limit_fields(self, client_and_captured):
         client, captured = client_and_captured
-        await client.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        await client.send_tp1_multi("long", 2.0, 1.0, 19500.0, 19700.0)
         tp2 = captured[2]
         assert tp2["ticker"] == "MNQ"
         assert tp2["action"] == "sell"
@@ -151,10 +151,17 @@ class TestSendTp1MultiLong:
         the BE stop), leaving the runner completely unprotected.
         """
         client, captured = client_and_captured
-        await client.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        await client.send_tp1_multi("long", 2.0, 1.0, 19500.0, 19700.0)
         tp2 = captured[2]
         assert "cancel" in tp2, "cancel key must be explicitly present in TP2 payload"
         assert tp2["cancel"] is False, "cancel must be exactly False (not just falsy)"
+
+    async def test_odd_total_qty_keeps_full_runner_protected(self, client_and_captured):
+        client, captured = client_and_captured
+        await client.send_tp1_multi("long", 13.0, 6.0, 19500.0, 19700.0)
+        assert captured[0]["quantity"] == 6.0
+        assert captured[1]["quantity"] == 7.0
+        assert captured[2]["quantity"] == 7.0
 
 
 # =============================================================================
@@ -165,13 +172,13 @@ class TestSendTp1MultiShort:
     async def test_short_close_action_is_buy(self, client_and_captured):
         """Critical: closing a short requires action='buy'. Hardcoded 'sell' opens new position."""
         client, captured = client_and_captured
-        await client.send_tp1_multi("short", 1.0, 19500.0, 19300.0)
+        await client.send_tp1_multi("short", 2.0, 1.0, 19500.0, 19300.0)
         assert captured[1]["action"] == "buy"
         assert captured[2]["action"] == "buy"
 
     async def test_short_tp2_cancel_false(self, client_and_captured):
         client, captured = client_and_captured
-        await client.send_tp1_multi("short", 1.0, 19500.0, 19300.0)
+        await client.send_tp1_multi("short", 2.0, 1.0, 19500.0, 19300.0)
         assert captured[2]["cancel"] is False
 
 
@@ -365,13 +372,15 @@ class TestMultiBroker:
         called_qty = call_kwargs.args[1] if call_kwargs.args else call_kwargs.kwargs.get("qty")
         assert called_qty == 6
 
-    async def test_tp1_multi_multiplier_scales_half_qty(self):
+    async def test_tp1_multi_multiplier_scales_total_and_exit_qty(self):
         b1 = self._make_mock_client(multiplier=2.0)
         multi = MultiBroker([b1])
-        await multi.send_tp1_multi("long", 1.0, 19500.0, 19700.0)
+        await multi.send_tp1_multi("long", 3.0, 1.0, 19500.0, 19700.0)
         call_kwargs = b1.send_tp1_multi.call_args
-        called_half_qty = call_kwargs.args[1] if call_kwargs.args else call_kwargs.kwargs.get("half_qty")
-        assert called_half_qty == 2
+        called_total = call_kwargs.args[1] if call_kwargs.args else call_kwargs.kwargs.get("total_qty")
+        called_exit = call_kwargs.args[2] if call_kwargs.args else call_kwargs.kwargs.get("exit_qty")
+        assert called_total == 6
+        assert called_exit == 2
 
     async def test_all_paused_returns_empty(self):
         b1 = self._make_mock_client(paused=True)

@@ -6,6 +6,7 @@ and the 1s tick path. All tests are async (pytest-asyncio auto mode).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call
 from zoneinfo import ZoneInfo
@@ -23,6 +24,10 @@ from tests.conftest import (
 )
 
 ET = ZoneInfo("America/New_York")
+
+
+async def _flush_cleanup_tasks() -> None:
+    await asyncio.sleep(0)
 
 
 # =============================================================================
@@ -281,6 +286,8 @@ class TestManagingExits5m:
         # Feed bar with low ≤ stop
         bar = make_bar("2025-01-15 10:05", stop + 10, stop + 15, stop - 5, stop + 8)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called_once()
         broker.send_flatten.assert_called_once()
         assert eng._state == State.FLAT
 
@@ -306,6 +313,9 @@ class TestManagingExits5m:
         bar = make_bar("2025-01-15 10:05", tp1 - 5, tp1 + 10, tp1 - 10, tp1 + 5)
         await eng.on_bar(bar, 100.0)
         broker.send_tp1_multi.assert_called_once()
+        call_kwargs = broker.send_tp1_multi.call_args.kwargs
+        assert call_kwargs["total_qty"] == pytest.approx(eng._levels.qty)
+        assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
         broker.send_tp1_single.assert_not_called()
         assert eng._tp1_hit is True
         assert eng._state == State.MANAGING  # still open, runner active
@@ -331,6 +341,8 @@ class TestManagingExits5m:
         tp2 = eng._levels.tp2
         bar = make_bar("2025-01-15 10:10", tp2 - 5, tp2 + 10, tp2 - 10, tp2 + 5)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == State.FLAT
 
@@ -354,6 +366,8 @@ class TestManagingExits5m:
         # Long: BE hit when low ≤ be
         bar = make_bar("2025-01-15 10:10", be + 5, be + 10, be - 5, be + 8)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == State.FLAT
 
@@ -429,6 +443,8 @@ class TestManagingExits5m:
         # Bar crosses BOTH stop and TP1
         bar = make_bar("2025-01-15 10:05", entry_price, tp1 + 5, stop - 5, entry_price)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called_once()
         broker.send_flatten.assert_called_once()
         broker.send_tp1_multi.assert_not_called()
         broker.send_tp1_single.assert_not_called()
@@ -552,6 +568,8 @@ class TestTickPath:
             open=stop + 5, high=stop + 8, low=stop - 5, close=stop + 3, volume=10
         )
         await eng.on_tick(tick, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called_once()
         broker.send_flatten.assert_called_once()
         assert eng._state == State.FLAT
 
@@ -566,6 +584,9 @@ class TestTickPath:
         tick = Bar(timestamp=tick_ts, open=tp1 - 5, high=tp1 + 5, low=tp1 - 8, close=tp1 + 2, volume=10)
         await eng.on_tick(tick, 100.0)
         broker.send_tp1_multi.assert_called_once()
+        call_kwargs = broker.send_tp1_multi.call_args.kwargs
+        assert call_kwargs["total_qty"] == pytest.approx(eng._levels.qty)
+        assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
 
     async def test_tick_sl_wins_over_tp1(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
@@ -576,6 +597,8 @@ class TestTickPath:
         # Tick crosses both stop and TP1
         tick = Bar(timestamp=tick_ts, open=entry_price, high=tp1 + 5, low=stop - 5, close=entry_price, volume=10)
         await eng.on_tick(tick, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called_once()
         broker.send_flatten.assert_called_once()
         broker.send_tp1_multi.assert_not_called()
 

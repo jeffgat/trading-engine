@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from .sizing import TradeLevels, _floor_to_step
+
+
+@dataclass
+class Allocation:
+    owner_id: str
+    qty: float
 
 
 class ContractCapManager:
@@ -12,49 +18,72 @@ class ContractCapManager:
 
     def __init__(self, max_open_contracts: float = 0.0) -> None:
         self.max_open_contracts = max_open_contracts
-        self._allocations: dict[str, float] = {}
+        self._allocations: dict[str, Allocation] = {}
 
     @property
     def enabled(self) -> bool:
         return self.max_open_contracts > 0
 
     def total_allocated(self) -> float:
-        return sum(self._allocations.values())
+        return sum(allocation.qty for allocation in self._allocations.values())
 
     def allocation_for(self, key: str) -> float:
-        return self._allocations.get(key, 0.0)
+        allocation = self._allocations.get(key)
+        return allocation.qty if allocation is not None else 0.0
 
-    def available_for(self, key: str) -> float:
+    def available_for(self, key: str, *, owner_id: str | None = None) -> float:
         if not self.enabled:
             return float("inf")
-        current = self._allocations.get(key, 0.0)
+        allocation = self._allocations.get(key)
+        current = allocation.qty if allocation is not None and (owner_id is None or allocation.owner_id == owner_id) else 0.0
         other_allocations = self.total_allocated() - current
         return max(0.0, self.max_open_contracts - other_allocations)
 
-    def reserve(self, key: str, requested_qty: float, *, qty_step: float, min_qty: float) -> float:
+    def reserve(
+        self,
+        key: str,
+        requested_qty: float,
+        *,
+        qty_step: float,
+        min_qty: float,
+        owner_id: str = "",
+        exclusive_key: bool = False,
+    ) -> float:
         """Reserve contracts for an engine entry/order."""
         if requested_qty <= 0:
-            self.release(key)
+            self.release(key, owner_id=owner_id)
             return 0.0
         if not self.enabled:
-            self._allocations[key] = requested_qty
+            self._allocations[key] = Allocation(owner_id=owner_id, qty=requested_qty)
             return requested_qty
 
-        approved = _floor_to_step(min(requested_qty, self.available_for(key)), qty_step)
-        if approved < min_qty:
-            self.release(key)
+        allocation = self._allocations.get(key)
+        if exclusive_key and allocation is not None and allocation.qty > 0 and allocation.owner_id != owner_id:
             return 0.0
-        self._allocations[key] = approved
+
+        approved = _floor_to_step(
+            min(requested_qty, self.available_for(key, owner_id=owner_id)),
+            qty_step,
+        )
+        if approved < min_qty:
+            self.release(key, owner_id=owner_id)
+            return 0.0
+        self._allocations[key] = Allocation(owner_id=owner_id, qty=approved)
         return approved
 
-    def adjust(self, key: str, current_qty: float) -> None:
+    def adjust(self, key: str, current_qty: float, *, owner_id: str = "") -> None:
         """Update the current reserved/open quantity for an engine."""
         if current_qty <= 0:
-            self.release(key)
+            self.release(key, owner_id=owner_id)
             return
-        self._allocations[key] = current_qty
+        self._allocations[key] = Allocation(owner_id=owner_id, qty=current_qty)
 
-    def release(self, key: str) -> None:
+    def release(self, key: str, *, owner_id: str = "") -> None:
+        allocation = self._allocations.get(key)
+        if allocation is None:
+            return
+        if owner_id and allocation.owner_id != owner_id:
+            return
         self._allocations.pop(key, None)
 
 

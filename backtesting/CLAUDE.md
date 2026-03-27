@@ -248,6 +248,8 @@ The primary deployment model: start a fresh funded account every 2 weeks, each r
 ### Results & Metrics
 All CLI output and reporting uses **R (risk units)** — never raw USD PnL. Metrics include: win rate, profit factor, Sharpe, Sortino, Calmar, Net R, Max DD (R), avg R, streaks, exit type breakdown, R by year/month/weekday. Results persisted to SQLite (`experiments.db`) with config, summary, equity curve, and trade list.
 
+**IMPORTANT: Every backtest run must be saved to the remote DB** using `results_to_dict()` + `save_backtest_result()` (which dual-writes to local SQLite and the remote API). The frontend dashboard reads from the remote DB, so results that aren't saved there are invisible. Always include `include_trades=True` and `include_equity_curve=True` when saving.
+
 ### API Server
 FastAPI on port 8000. Endpoints for running backtests, listing/loading/deleting results, running optimizations, and per-instrument testing coverage with a manual testing plan checklist. CORS enabled for frontend at localhost:3000.
 

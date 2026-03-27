@@ -12,6 +12,7 @@ State machine:
 
 from __future__ import annotations
 
+import asyncio
 import enum
 import logging
 from dataclasses import dataclass, field
@@ -234,6 +235,8 @@ class ORBEngine:
     # Optional per-config position cap manager
     position_manager: ContractCapManager | None = None
     position_limit_key: str = ""
+    post_exit_cleanup_delay_s: float = 6.0
+    post_exit_cancel_settle_delay_s: float = 0.25
 
     # Internal state (reset daily)
     _state: State = field(default=State.IDLE, init=False)
@@ -255,6 +258,7 @@ class ORBEngine:
     _asset_tag: str = field(default="", init=False)
     _exit_type: str | None = field(default=None, init=False)
     _r_result: float | None = field(default=None, init=False)
+    _cleanup_task: asyncio.Task | None = field(default=None, init=False, repr=False)
 
     # Parsed times (computed on first bar)
     _orb_start_t: time | None = field(default=None, init=False, repr=False)
@@ -302,6 +306,9 @@ class ORBEngine:
     def _position_cap_key(self) -> str:
         return self.position_limit_key or f"{self.config_name or 'DEFAULT'}:{self.name}"
 
+    def _position_cap_owner(self) -> str:
+        return self.name
+
     def _apply_position_cap(self, levels: TradeLevels) -> TradeLevels | None:
         """Resize or block a setup based on remaining config-level contract capacity."""
         if self.position_manager is None or not self.position_manager.enabled:
@@ -313,6 +320,8 @@ class ORBEngine:
             requested_qty,
             qty_step=self.qty_step,
             min_qty=self.min_qty,
+            owner_id=self._position_cap_owner(),
+            exclusive_key=True,
         )
         if approved_qty <= 0:
             self._log_trade(
@@ -355,12 +364,57 @@ class ORBEngine:
     def _sync_position_cap(self) -> None:
         if self.position_manager is None or not self.position_manager.enabled:
             return
-        self.position_manager.adjust(self._position_cap_key(), self._remaining_position_qty())
+        self.position_manager.adjust(
+            self._position_cap_key(),
+            self._remaining_position_qty(),
+            owner_id=self._position_cap_owner(),
+        )
 
     def _release_position_cap(self) -> None:
         if self.position_manager is None or not self.position_manager.enabled:
             return
-        self.position_manager.release(self._position_cap_key())
+        self.position_manager.release(
+            self._position_cap_key(),
+            owner_id=self._position_cap_owner(),
+        )
+
+    def _schedule_post_exit_cleanup(self, *, reason: str, delay_s: float | None = None) -> None:
+        """Cancel stale orders and flatten residual position after a resting exit should have filled.
+
+        This is used for exits where a live broker-side stop/limit is already expected
+        to do the real work (initial stop, BE stop, or TP2 limit). We wait a short
+        grace period so that resting order can complete, then send a cleanup
+        cancel+flatten sequence as a belt-and-suspenders sweep.
+        """
+        if not self._should_send:
+            self._release_position_cap()
+            return
+
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            return
+
+        cleanup_delay = self.post_exit_cleanup_delay_s if delay_s is None else delay_s
+
+        async def _runner() -> None:
+            try:
+                if cleanup_delay > 0:
+                    await asyncio.sleep(cleanup_delay)
+                await self.broker.send_cancel(ticker=self.exec_ticker)
+                if self.post_exit_cancel_settle_delay_s > 0:
+                    await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
+                await self.broker.send_flatten(ticker=self.exec_ticker)
+            except Exception:
+                logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
+            finally:
+                self._release_position_cap()
+                self._cleanup_task = None
+                self._request_checkpoint()
+                self._notify_state_change()
+
+        self._cleanup_task = asyncio.create_task(_runner())
+
+    def _broker_exit_cleanup_delay(self, default_delay_s: float) -> float:
+        return 0.0 if self.post_exit_cleanup_delay_s <= 0 else default_delay_s
 
     def _log_trade(self, event: str, details: str = "") -> None:
         """emit trade log with config + asset + session tags."""
@@ -1138,9 +1192,10 @@ class ORBEngine:
                 "dir=%s stop=%.2f bar_time=%s resolution=5m"
                 % (direction_str, levels.stop, bar.timestamp),
             )
-            self._release_position_cap()
-            if self._should_send:
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+            self._schedule_post_exit_cleanup(
+                reason="sl_hit_5m",
+                delay_s=self._broker_exit_cleanup_delay(1.0),
+            )
             self._emit_trade_record("sl")
             self._state = State.FLAT
             self._request_checkpoint()
@@ -1189,7 +1244,8 @@ class ORBEngine:
                 if self._should_send:
                     await self.broker.send_tp1_multi(
                         direction=direction_str,
-                        half_qty=levels.half_qty,
+                        total_qty=levels.qty,
+                        exit_qty=levels.half_qty,
                         be_price=levels.be,
                         tp2=levels.tp2,
                         ticker=self.exec_ticker,
@@ -1212,9 +1268,7 @@ class ORBEngine:
                     "dir=%s be=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.be, bar.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(reason="be_hit_5m")
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1233,9 +1287,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(reason="tp2_hit_5m")
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1255,9 +1307,10 @@ class ORBEngine:
                     "dir=%s tp2=%.2f bar_time=%s resolution=5m"
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(
+                    reason="tp2_direct_5m",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1382,9 +1435,10 @@ class ORBEngine:
                     "dir=%s stop=%.2f (1s ambiguous, pessimistic) tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(
+                    reason="sl_hit_1s_ambiguous",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1397,9 +1451,10 @@ class ORBEngine:
                     "dir=%s stop=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.stop, tick.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(
+                    reason="sl_hit_1s",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("sl")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1440,7 +1495,8 @@ class ORBEngine:
                     if self._should_send:
                         await self.broker.send_tp1_multi(
                             direction=direction_str,
-                            half_qty=levels.half_qty,
+                            total_qty=levels.qty,
+                            exit_qty=levels.half_qty,
                             be_price=levels.be,
                             tp2=levels.tp2,
                             ticker=self.exec_ticker,
@@ -1457,9 +1513,10 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(
+                    reason="tp2_direct_1s",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("tp2_direct")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1479,9 +1536,7 @@ class ORBEngine:
                     "dir=%s be=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.be, tick.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(reason="be_hit_1s")
                 self._emit_trade_record("tp1_be")
                 self._state = State.FLAT
                 self._request_checkpoint()
@@ -1494,9 +1549,7 @@ class ORBEngine:
                     "dir=%s tp2=%.2f tick_time=%s resolution=1s"
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
                 self._emit_trade_record("tp1_tp2")
                 self._state = State.FLAT
                 self._request_checkpoint()

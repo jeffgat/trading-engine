@@ -464,17 +464,16 @@ def run_portfolio(config_name, exec_cfg, data_cache, start, end, risk_override=N
         for yr, r in summary["r_by_year"].items():
             print(f"    {yr}: {r:>+8.1f}R")
 
-    # Equity curve — store cumulative R (not USD) so the frontend can
-    # chart it directly.  We set config.risk_usd=1 so the hook's
-    # `pnl_cumulative / riskUsd` gives the correct R value.
+    # Equity curve — store actual USD PnL so the frontend can display
+    # both dollar equity and R (by dividing by risk_usd).
     equity_curve = []
-    cum_r = 0.0
+    cum_pnl = 0.0
     for t in combined_filled:
-        cum_r += t["r_multiple"]
+        cum_pnl += t["pnl_usd"]
         equity_curve.append({
             "date": t["date"],
-            "pnl_cumulative": round(cum_r, 3),
-            "pnl_per_trade": round(t["r_multiple"], 3),
+            "pnl_cumulative": round(cum_pnl, 2),
+            "pnl_per_trade": round(t["pnl_usd"], 2),
         })
 
     # Build notes
@@ -493,7 +492,7 @@ def run_portfolio(config_name, exec_cfg, data_cache, start, end, risk_override=N
             "legs": [ls["name"] for ls in leg_summaries],
             "strategy": "continuation+lsi",
             "direction_filter": "long",
-            "risk_usd": 1,  # equity curve stores R directly
+            "risk_usd": risk_override or config_name,
             "instrument": "MULTI",
         },
         "summary": summary,

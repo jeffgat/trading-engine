@@ -192,7 +192,14 @@ export function BacktestDashboard() {
             {/* Header */}
             <div className="mb-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
+                    <div>
+                        <h1 className="text-xl font-semibold text-text-primary">Backtests</h1>
+                        {data?.id && !loading && (
+                            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-text-muted font-mono">
+                                {data.id}
+                            </div>
+                        )}
+                    </div>
                     <div className="flex items-center gap-1.5">
                         {/* Row actions */}
                         <button

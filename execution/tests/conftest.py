@@ -67,6 +67,8 @@ def _make_orb_engine(broker, **overrides) -> ORBEngine:
         be_offset_ticks=4,
         min_tick=0.25,
         long_only=True,
+        post_exit_cleanup_delay_s=0.0,
+        post_exit_cancel_settle_delay_s=0.0,
     )
     defaults.update(overrides)
     return ORBEngine(**defaults)

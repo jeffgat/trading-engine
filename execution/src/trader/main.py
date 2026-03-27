@@ -556,7 +556,7 @@ def build_engines(
             half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
             half_day_flat_end=merged.get("half_day_flat_end", config.get("dates", {}).get("half_day_flat_end", "13:00")),
             position_manager=position_manager,
-            position_limit_key=f"{config_name or 'DEFAULT'}:{sess_name}",
+            position_limit_key=f"{config_name or 'DEFAULT'}:{db_symbol}",
         )
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
@@ -653,7 +653,7 @@ def build_lsi_engines(
             lsi_n_right=merged.get("lsi_n_right", 3),
         )
         engine.position_manager = position_manager
-        engine.position_limit_key = f"{config_name or 'DEFAULT'}:{sess_name}"
+        engine.position_limit_key = f"{config_name or 'DEFAULT'}:{db_symbol}"
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
@@ -946,9 +946,17 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             if state_value not in {"armed_limit", "managing"}:
                 continue
             if getattr(engine, "_tp1_hit", False) and not levels.is_single_contract:
-                position_manager.adjust(engine.position_limit_key, max(0.0, levels.qty - levels.half_qty))
+                position_manager.adjust(
+                    engine.position_limit_key,
+                    max(0.0, levels.qty - levels.half_qty),
+                    owner_id=engine.name,
+                )
             else:
-                position_manager.adjust(engine.position_limit_key, levels.qty)
+                position_manager.adjust(
+                    engine.position_limit_key,
+                    levels.qty,
+                    owner_id=engine.name,
+                )
 
     logger.info(
         "Starting ORB Trader — configs=%s feeds=%s total_engines=%d api=:%d",

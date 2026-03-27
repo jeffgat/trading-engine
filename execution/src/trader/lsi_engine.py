@@ -19,6 +19,7 @@ Implements the same on_bar() / on_tick() interface as ORBEngine.
 
 from __future__ import annotations
 
+import asyncio
 import enum
 import logging
 import math
@@ -106,12 +107,16 @@ class LSIEngine:
         lsi_n_right: int = 3,
         # Execution config name
         config_name: str = "",
+        post_exit_cleanup_delay_s: float = 6.0,
+        post_exit_cancel_settle_delay_s: float = 0.25,
     ) -> None:
         self.name = name
         self.broker = broker
         self.exec_ticker = exec_ticker
         self.config_name = config_name
         self.paused: bool = False
+        self.post_exit_cleanup_delay_s = post_exit_cleanup_delay_s
+        self.post_exit_cancel_settle_delay_s = post_exit_cancel_settle_delay_s
 
         # Time windows
         self.entry_start = entry_start
@@ -208,6 +213,7 @@ class LSIEngine:
         self.trade_overlap_check: Callable[[int], bool] | None = None
         self._trade_overlap: bool = False
         self._trade_overlap_direction: int = 0
+        self._cleanup_task: asyncio.Task | None = None
 
     def _clear_dashboard_overlay(self) -> None:
         """Clear the current LSI setup overlay shown on the dashboard."""
@@ -240,6 +246,9 @@ class LSIEngine:
     def _position_cap_key(self) -> str:
         return self.position_limit_key or f"{self.config_name or 'DEFAULT'}:{self.name}"
 
+    def _position_cap_owner(self) -> str:
+        return self.name
+
     def _apply_position_cap(self, levels: TradeLevels) -> TradeLevels | None:
         if self.position_manager is None or not self.position_manager.enabled:
             return levels
@@ -250,6 +259,8 @@ class LSIEngine:
             requested_qty,
             qty_step=self.qty_step,
             min_qty=self.min_qty,
+            owner_id=self._position_cap_owner(),
+            exclusive_key=True,
         )
         if approved_qty <= 0:
             self._log_trade(
@@ -292,12 +303,51 @@ class LSIEngine:
     def _sync_position_cap(self) -> None:
         if self.position_manager is None or not self.position_manager.enabled:
             return
-        self.position_manager.adjust(self._position_cap_key(), self._remaining_position_qty())
+        self.position_manager.adjust(
+            self._position_cap_key(),
+            self._remaining_position_qty(),
+            owner_id=self._position_cap_owner(),
+        )
 
     def _release_position_cap(self) -> None:
         if self.position_manager is None or not self.position_manager.enabled:
             return
-        self.position_manager.release(self._position_cap_key())
+        self.position_manager.release(
+            self._position_cap_key(),
+            owner_id=self._position_cap_owner(),
+        )
+
+    def _schedule_post_exit_cleanup(self, *, reason: str, delay_s: float | None = None) -> None:
+        """Cancel stale orders and flatten residual position after a resting exit should have filled."""
+        if not self._should_send:
+            self._release_position_cap()
+            return
+
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            return
+
+        cleanup_delay = self.post_exit_cleanup_delay_s if delay_s is None else delay_s
+
+        async def _runner() -> None:
+            try:
+                if cleanup_delay > 0:
+                    await asyncio.sleep(cleanup_delay)
+                await self.broker.send_cancel(ticker=self.exec_ticker)
+                if self.post_exit_cancel_settle_delay_s > 0:
+                    await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
+                await self.broker.send_flatten(ticker=self.exec_ticker)
+            except Exception:
+                logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
+            finally:
+                self._release_position_cap()
+                self._cleanup_task = None
+                self._request_checkpoint()
+                self._notify_state_change()
+
+        self._cleanup_task = asyncio.create_task(_runner())
+
+    def _broker_exit_cleanup_delay(self, default_delay_s: float) -> float:
+        return 0.0 if self.post_exit_cleanup_delay_s <= 0 else default_delay_s
 
     def _display_state(self) -> str:
         if self._trade_overlap and self._state in {LSIState.WAITING_FOR_INVERSION, LSIState.ARMED_LIMIT}:
@@ -1085,7 +1135,7 @@ class LSIEngine:
                                     % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
                     if self._should_send:
                         await self.broker.send_tp1_multi(
-                            direction=dir_str, half_qty=levels.half_qty, be_price=levels.be,
+                            direction=dir_str, total_qty=levels.qty, exit_qty=levels.half_qty, be_price=levels.be,
                             tp2=levels.tp2, ticker=self.exec_ticker)
                 self._notify_state_change()
                 return
@@ -1113,10 +1163,17 @@ class LSIEngine:
         levels = self._levels
         dir_str = "long" if (levels and levels.direction == 1) else "short"
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
-        self._release_position_cap()
         self._set_trade_overlap(False, notify=False)
-        if self._should_send:
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+        if exit_type in {"eod", "tp1_eod"}:
+            self._release_position_cap()
+            if self._should_send:
+                await self.broker.send_flatten(ticker=self.exec_ticker)
+        else:
+            cleanup_delay = self._broker_exit_cleanup_delay(1.0) if exit_type in {"sl", "tp2_direct"} else None
+            self._schedule_post_exit_cleanup(
+                reason=f"{exit_type}_hit_5m",
+                delay_s=cleanup_delay,
+            )
         exit_price = bar.close if exit_type in {"eod", "tp1_eod"} else None
         self._emit_trade_record(exit_type, exit_price=exit_price)
         self._state = LSIState.FLAT
@@ -1160,6 +1217,7 @@ class LSIEngine:
         # EOD flat
         if self._in_flat(tick):
             self._log_trade("EOD_FLAT", "dir=%s tick_time=%s resolution=1s" % (dir_str, tick.timestamp))
+            self._set_trade_overlap(False, notify=False)
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
@@ -1180,9 +1238,11 @@ class LSIEngine:
 
             if sl_hit and tp1_touched:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f (1s ambiguous) resolution=1s" % (dir_str, levels.stop))
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._set_trade_overlap(False, notify=False)
+                self._schedule_post_exit_cleanup(
+                    reason="sl_hit_1s_ambiguous",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -1191,9 +1251,11 @@ class LSIEngine:
 
             if sl_hit:
                 self._log_trade("SL_HIT", "dir=%s stop=%.2f resolution=1s" % (dir_str, levels.stop))
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._set_trade_overlap(False, notify=False)
+                self._schedule_post_exit_cleanup(
+                    reason="sl_hit_1s",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("sl")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -1213,7 +1275,14 @@ class LSIEngine:
                     self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f resolution=1s"
                                     % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
                     if self._should_send:
-                        await self.broker.send_tp1_multi(direction=dir_str, half_qty=levels.half_qty, be_price=levels.be, tp2=levels.tp2, ticker=self.exec_ticker)
+                        await self.broker.send_tp1_multi(
+                            direction=dir_str,
+                            total_qty=levels.qty,
+                            exit_qty=levels.half_qty,
+                            be_price=levels.be,
+                            tp2=levels.tp2,
+                            ticker=self.exec_ticker,
+                        )
                 self._notify_state_change()
                 return
 
@@ -1221,9 +1290,11 @@ class LSIEngine:
             tp2_hit = (is_long and tick.high >= levels.tp2) or (not is_long and tick.low <= levels.tp2)
             if tp2_hit:
                 self._log_trade("TP2_DIRECT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._set_trade_overlap(False, notify=False)
+                self._schedule_post_exit_cleanup(
+                    reason="tp2_direct_1s",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
                 self._emit_trade_record("tp2_direct")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -1237,9 +1308,8 @@ class LSIEngine:
 
             if be_hit:
                 self._log_trade("BE_HIT", "dir=%s be=%.2f resolution=1s" % (dir_str, levels.be))
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._set_trade_overlap(False, notify=False)
+                self._schedule_post_exit_cleanup(reason="be_hit_1s")
                 self._emit_trade_record("tp1_be")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
@@ -1248,9 +1318,8 @@ class LSIEngine:
 
             if tp2_hit:
                 self._log_trade("TP2_HIT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
-                self._release_position_cap()
-                if self._should_send:
-                    await self.broker.send_flatten(ticker=self.exec_ticker)
+                self._set_trade_overlap(False, notify=False)
+                self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
                 self._emit_trade_record("tp1_tp2")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()

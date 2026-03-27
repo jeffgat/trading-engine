@@ -52,7 +52,7 @@ export function TradeChartModal({
   const [candles, setCandles] = useState<CandleBar[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeframe, setTimeframe] = useState<"1m" | "5m">("1m");
+  const [timeframe, setTimeframe] = useState<"1m" | "5m">("5m");
 
   // Fetch candles when the dialog opens with a trade
   useEffect(() => {
@@ -393,7 +393,7 @@ export function TradeChartModal({
   const rMultiple = trade.pnl_usd / riskUsd;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) setTimeframe("1m"); onOpenChange(o); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) setTimeframe("5m"); onOpenChange(o); }}>
       <DialogContent
         className="max-h-[85vh] overflow-hidden"
         style={{ maxWidth: "80vw", width: "80vw" }}

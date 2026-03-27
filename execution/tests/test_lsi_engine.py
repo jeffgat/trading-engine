@@ -9,6 +9,7 @@ Stop is absolute-range high/low from FVG bar through inversion bar (stop_mode="a
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -24,6 +25,10 @@ ET = ZoneInfo("America/New_York")
 # Backward-compat for renamed state in the live engine.
 if not hasattr(LSIState, "WAITING_FOR_SWEEP"):
     LSIState.WAITING_FOR_SWEEP = LSIState.SCANNING  # type: ignore[attr-defined]
+
+
+async def _flush_cleanup_tasks() -> None:
+    await asyncio.sleep(0)
 
 
 # =============================================================================
@@ -80,6 +85,8 @@ def make_lsi_engine(broker=None, **overrides) -> LSIEngine:
         fvg_window_left=10,
         lsi_n_left=3,
         lsi_n_right=3,
+        post_exit_cleanup_delay_s=0.0,
+        post_exit_cancel_settle_delay_s=0.0,
     )
     defaults.update(overrides)
     return LSIEngine(**defaults)
@@ -510,6 +517,8 @@ class TestManagingExits:
         stop = eng._levels.stop
         bar = make_bar("2025-01-15 10:05", stop + 5, stop + 10, stop - 5, stop + 3)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == LSIState.FLAT
 
@@ -525,6 +534,9 @@ class TestManagingExits:
         bar = make_bar("2025-01-15 10:05", tp1 - 5, tp1 + 10, tp1 - 10, tp1 + 5)
         await eng.on_bar(bar, 300.0)
         broker.send_tp1_multi.assert_called_once()
+        call_kwargs = broker.send_tp1_multi.call_args.kwargs
+        assert call_kwargs["total_qty"] == pytest.approx(eng._levels.qty)
+        assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
         assert eng._tp1_hit is True
 
     async def test_tp2_hit_after_tp1(self):
@@ -539,6 +551,8 @@ class TestManagingExits:
         tp2 = eng._levels.tp2
         bar = make_bar("2025-01-15 10:10", tp2 - 5, tp2 + 10, tp2 - 10, tp2 + 5)
         await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == LSIState.FLAT
         if records:
@@ -782,6 +796,8 @@ class TestTickPath:
         tick_ts = fill_ts + timedelta(seconds=2)
         tick = Bar(timestamp=tick_ts, open=stop + 5, high=stop + 8, low=stop - 5, close=stop + 3, volume=10)
         await eng.on_tick(tick, 300.0)
+        await _flush_cleanup_tasks()
+        broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == LSIState.FLAT
 
@@ -799,6 +815,9 @@ class TestTickPath:
         tick = Bar(timestamp=tick_ts, open=tp1 - 5, high=tp1 + 5, low=tp1 - 8, close=tp1 + 2, volume=10)
         await eng.on_tick(tick, 300.0)
         broker.send_tp1_multi.assert_called_once()
+        call_kwargs = broker.send_tp1_multi.call_args.kwargs
+        assert call_kwargs["total_qty"] == pytest.approx(eng._levels.qty)
+        assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
 
     async def test_tick_eod(self):
         eng = make_lsi_engine()

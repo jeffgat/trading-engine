@@ -34,7 +34,7 @@ async def test_contract_cap_resizes_entry_qty_before_order_send():
         broker,
         risk_usd=2000.0,
         position_manager=manager,
-        position_limit_key="FAST_V2:NQ_NY",
+        position_limit_key="FAST_V2:NQ",
     )
 
     await advance_to_armed(engine)
@@ -57,14 +57,14 @@ async def test_second_entry_is_blocked_when_contract_cap_is_fully_used():
         name="ES_Asia",
         risk_usd=2000.0,
         position_manager=manager,
-        position_limit_key="FAST_V2:ES_Asia",
+        position_limit_key="FAST_V2:ES",
     )
     second = _make_orb_engine(
         second_broker,
         name="NQ_NY",
         risk_usd=2000.0,
         position_manager=manager,
-        position_limit_key="FAST_V2:NQ_NY",
+        position_limit_key="FAST_V2:NQ",
     )
 
     await advance_to_armed(first)
@@ -90,7 +90,7 @@ async def test_tp1_partial_releases_capacity_for_later_entry():
             name="ES_Asia",
             risk_usd=2000.0,
             position_manager=manager,
-            position_limit_key="FAST_V2:ES_Asia",
+            position_limit_key="FAST_V2:ES",
         )
     )
     assert first._levels is not None
@@ -117,7 +117,7 @@ async def test_tp1_partial_releases_capacity_for_later_entry():
         name="NQ_NY",
         risk_usd=2000.0,
         position_manager=manager,
-        position_limit_key="FAST_V2:NQ_NY",
+        position_limit_key="FAST_V2:NQ",
     )
     await advance_to_armed(second)
 
@@ -125,3 +125,37 @@ async def test_tp1_partial_releases_capacity_for_later_entry():
     assert second._levels.qty == 10.0
     assert second_broker.send_entry.call_args.kwargs["qty"] == 10.0
     assert manager.total_allocated() == 20.0
+
+
+@pytest.mark.asyncio
+async def test_second_same_asset_entry_is_blocked_even_with_remaining_contract_headroom():
+    manager = ContractCapManager(max_open_contracts=40)
+    first_broker = _mock_broker()
+    second_broker = _mock_broker()
+
+    first = _make_orb_engine(
+        first_broker,
+        name="ES_Asia",
+        risk_usd=2000.0,
+        position_manager=manager,
+        position_limit_key="FAST_V2:ES",
+    )
+    second = _make_orb_engine(
+        second_broker,
+        name="ES_NY",
+        risk_usd=2000.0,
+        position_manager=manager,
+        position_limit_key="FAST_V2:ES",
+    )
+
+    await advance_to_armed(first)
+    assert first._state == State.ARMED_LIMIT
+    assert first._levels is not None
+    assert manager.total_allocated() == first._levels.qty
+
+    await advance_to_armed(second)
+
+    assert second._state == State.WAITING_FOR_GAP
+    assert second._levels is None
+    second_broker.send_entry.assert_not_called()
+    assert manager.total_allocated() == first._levels.qty
