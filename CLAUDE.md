@@ -18,9 +18,10 @@ This repository contains a Python backtesting engine for Opening Range Breakout 
 - Bearish FVG: `low[2] > high AND low[2] > low[1] AND high[2] > high`
 
 ### Entry/Exit Structure
-- Entry: Limit order at FVG retest level (top for longs, bottom for shorts)
-- Stop: Low/high of the "before" candle (bar [2])
-- TP1: 50% at halfway point (configurable via `tp1Ratio`)
+- Entry (continuation/reversal): Limit order at FVG retest level (top for longs, bottom for shorts)
+- Entry (inversion/cisd/lsi): Market-at-close on the signal/displacement bar
+- Stop: ATR-percentage-based distance from entry (configurable via `stop_atr_pct` per session)
+- TP1: 50% at halfway to full R:R target (configurable via `tp1_ratio`)
 - TP2: Remaining at full R:R target
 - Breakeven: Stop moves to entry after TP1 hit
 
@@ -30,9 +31,10 @@ The `StrategyConfig.strategy` field controls signal generation mode:
 
 - `"continuation"` — Bullish/bearish FVG in the direction of ORB breakout; entry at FVG retest
 - `"reversal"` — FVG forms against the ORB direction; entry at FVG retest (fade the breakout)
-- `"inversion"` — FVG forms, price trades through it (invalidation), then retests from the other side
-- `"cisd"` — Change in State of Delivery: FVG inverted, entry at the inversion bar close
+- `"inversion"` — FVG forms, price trades through it (invalidation), then retests from the other side; entry at close of inversion bar
+- `"cisd"` — Change in State of Delivery: ORB liquidity sweep + displacement candle reversal; does NOT require FVG detection — pure price-action signal; entry at displacement candle close
 - `"lsi"` — Liquidity Sweep Inversion: swing level swept → FVG forms within N bars → FVG inverted → entry at inversion bar close
+- `"ib"` — Initial Balance mean-reversion: 9:30–10:30 range defines the IB; entry at midpoint based on which extreme (high/low) formed first; no FVG required
 
 ### Liquidity Sweep Signal
 
@@ -51,7 +53,7 @@ A **liquidity sweep** occurs when:
 - `signals/liquidity_sweep.py` — sweep pipeline (wraps `swing.py`):
   - `detect_swing_pivots(high, low, n_bars)` → pivot bool + level arrays (confirmation delayed by `n_bars`)
   - `track_latest_swing(...)` → forward-filled most recent pivot levels
-  - `detect_liquidity_sweeps(high, low, latest_swing_high, latest_swing_low)` → `{high_swept, low_swept, swept_high_level, swept_low_level}`
+  - `detect_liquidity_sweeps(high, low, latest_swing_high, latest_swing_low)` → `{high_swept, low_swept, swept_high_level, swept_low_level}` (internally shifts swing levels by 1 bar — pass raw output from `track_latest_swing`, do not pre-shift)
 
 **Sweep detection uses strict `>` / `<`** so tick-perfect touches do not count as sweeps.
 
@@ -59,9 +61,9 @@ A **liquidity sweep** occurs when:
 
 **When to use this**: Any agent asked to test "reversals off liquidity sweeps", "fade the sweep", or "sweep-and-reverse" must use this module. The ATR-based `qualifying_move_atr_pct` gate in `SessionConfig` is a separate, older concept that measures extension from ORB levels — it can be used alongside sweep detection but is not a substitute for it.
 
-### Session Times
-- US: ORB 09:30-09:45 NY, entries until 12:00, flat by 15:50
-- Asia: ORB 09:00-09:30 JST, entries until 12:30, flat by 14:50
+### Session Times (all times Eastern)
+- US: ORB 09:30-09:45, entries until 13:00, flat by 15:50
+- Asia: ORB 20:00-20:15, entries until 23:15, flat by 06:45 (next day)
 
 ## Backtest Naming Convention
 
@@ -112,36 +114,7 @@ Maintain a living document for each asset in `backtesting/learnings/`. These fil
 3. **Include the evidence** — record key metrics (trades, WR, Net R, Sharpe, DD) and the DB experiment name so results are traceable.
 4. **Create new files as needed** — when testing a new asset for the first time, create its learnings file following the GC.md template.
 
-## Backtesting Engine
-
-### Architecture (Hybrid Vectorized + Numba)
-- **Signal generation** (vectorized): Session masks, ORB levels, FVG detection via NumPy/Pandas
-- **Trade simulation** (Numba-compiled): `_simulate_single_trade()` handles fill scanning, partial TP, breakeven stops
-- **One trade per session-day**: When both long and short setups exist, the first-to-fill wins
-
-### Key Modules (under `backtesting/src/orb_backtest/`)
-- `engine/simulator.py` — Core backtest loop, `run_backtest()` entry point, `TradeResult` schema
-- `signals/` — `fvg.py` (FVG detection), `orb.py` (ORB levels), `session.py` (time windows), `daily_atr.py`
-- `results/metrics.py` — Sharpe, Sortino, drawdown, profit factor, win rate, exit breakdown
-- `optimize/grid.py` — Parameter grid generation for sweep optimization
-- `optimize/parallel.py` — Parallel execution of grid sweeps
-- `config.py` — `StrategyConfig` and `SessionConfig` dataclasses
-- `data/loader.py` — OHLCV data loading, `instruments.py` — instrument definitions
-- `api.py` — FastAPI endpoints for running backtests
-- `experiments.py` — Experiment tracking and comparison (dual-write: local + remote)
-- `experiments_remote.py` — Remote API client for experiment DB
-
-### Experiment Storage (Dual-Write)
-
-Results are **always saved to local SQLite** (`data/results/experiments.db`). When `EXPERIMENTS_DB_URL` is set, results are **also sent to the remote API** — remote failures are logged as warnings but never block the caller.
-
-- `run_server.py` sets `EXPERIMENTS_DB_URL=http://143.110.148.234:8100` by default, so the API server always dual-writes
-- Without `EXPERIMENTS_DB_URL`: local-only mode (CLI scripts, tests)
-- Read/query operations route to the remote API when the env var is set
-
-The three dual-write functions: `log_run()`, `log_optimization()`, `log_sweep_runs()`. All other functions (list, query, delete, rename, etc.) use whichever backend is active.
-
-### Backtesting Best Practices
+## Backtesting Best Practices
 
 When building or modifying the backtesting engine, guard against these biases:
 

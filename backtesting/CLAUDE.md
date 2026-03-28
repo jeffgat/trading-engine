@@ -33,41 +33,68 @@ uv run python scripts/sync_data.py upload|download|watch
 
 ```
 backtesting/
-├── src/
-│   ├── core/                      # Shared engine (all strategies use this)
-│   │   ├── config.py              # Frozen dataclass configs (Instrument, SessionConfig, StrategyConfig)
-│   │   ├── data/
-│   │   │   ├── instruments.py     # Instrument definitions (NQ, ES, YM, GC, CL, etc.)
-│   │   │   └── loader.py          # CSV → Parquet loading with hash-based caching
-│   │   ├── engine/
-│   │   │   └── simulator.py       # Core trade simulator (Numba-compiled)
-│   │   ├── signals/
-│   │   │   ├── fvg.py             # FVG detection (vectorized)
-│   │   │   ├── orb.py             # ORB level computation (Numba)
-│   │   │   ├── session.py         # Session time windows + cross-midnight handling
-│   │   │   └── daily_atr.py       # Daily ATR, SMA, EMA, ROC, ADX, Donchian
-│   │   ├── optimize/
-│   │   │   ├── grid.py            # Parameter grid generation
-│   │   │   └── parallel.py        # Multiprocessing sweep executor
-│   │   ├── analysis/
-│   │   │   └── pre_trade_gates.py # Gate simulation (trend, streak, volatility, etc.)
-│   │   ├── results/
-│   │   │   ├── metrics.py         # Performance metrics (Sharpe, Sortino, drawdown, etc.)
-│   │   │   └── export.py          # Result serialization + DB persistence
-│   │   └── viz/
-│   │       └── equity.py          # Equity curve + monthly returns plots
-│   ├── orb_continuation/          # Continuation strategy (bullish FVG → long)
-│   │   ├── config.py              # Session defaults + production_config()
-│   │   └── api.py                 # FastAPI server for frontend
-│   └── orb_reversal/              # Reversal strategy (bullish FVG → short)
-│       └── config.py              # Session defaults (strategy="reversal")
+├── src/orb_backtest/              # Single package (all strategies)
+│   ├── config.py                  # Frozen dataclass configs (Instrument, SessionConfig, StrategyConfig)
+│   ├── gapfill_config.py          # GapFill strategy config
+│   ├── vwap_config.py             # VWAP strategy config
+│   ├── api.py                     # FastAPI server for frontend
+│   ├── experiments.py             # Experiment tracking (dual-write: local + remote)
+│   ├── experiments_remote.py      # Remote API client
+│   ├── errors.py                  # Custom exception types
+│   ├── data/
+│   │   ├── instruments.py         # Instrument definitions (NQ, ES, YM, GC, CL, etc.)
+│   │   ├── loader.py              # CSV → Parquet loading with hash-based caching
+│   │   ├── bar_mapping.py         # Multi-timeframe bar index mapping
+│   │   └── news_dates.py          # FOMC, NFP, CPI, PPI date lookups
+│   ├── engine/
+│   │   ├── simulator.py           # Core ORB+FVG trade simulator (Numba-compiled)
+│   │   ├── qualifying_move.py     # QM engine: run_backtest_qm(), run_backtest_no_orb()
+│   │   ├── vwap_simulator.py      # VWAP strategy engine
+│   │   ├── gapfill_simulator.py   # Gap-fill strategy engine
+│   │   └── news_straddle.py       # News event straddle strategy
+│   ├── signals/
+│   │   ├── fvg.py                 # FVG detection (vectorized)
+│   │   ├── orb.py                 # ORB level computation (Numba)
+│   │   ├── session.py             # Session time windows + cross-midnight handling
+│   │   ├── daily_atr.py           # Daily ATR, SMA, EMA, ROC, ADX, Donchian
+│   │   ├── swing.py               # Swing high/low pivot detection
+│   │   ├── liquidity_sweep.py     # Liquidity sweep pipeline
+│   │   ├── vwap.py                # Session VWAP + std bands + deviation/rejection
+│   │   ├── ib.py                  # Initial Balance level computation
+│   │   └── structure_15m.py       # 15m market structure (HH/HL patterns, regime)
+│   ├── optimize/
+│   │   ├── grid.py                # Parameter grid generation
+│   │   ├── parallel.py            # Multiprocessing sweep executor
+│   │   ├── walkforward.py         # Rolling walk-forward optimization
+│   │   ├── bayesian.py            # Optuna-based Bayesian optimization
+│   │   ├── objectives.py          # Optimization objective functions
+│   │   ├── stability.py           # Parameter stability analysis
+│   │   ├── prop_constraints.py    # Prop firm constraint simulation
+│   │   └── parallel_{qm,vwap,gapfill}.py, walkforward_{qm,vwap,gapfill}.py
+│   ├── analysis/
+│   │   ├── gates.py               # Post-trade filter gates (SMA, ATR, DOW, sweep, etc.)
+│   │   ├── holdout_log.py         # OOS holdout period tracking
+│   │   ├── regime_change.py       # Regime detection (Kolmogorov-Smirnov)
+│   │   ├── regime_reports.py      # Regime reporting utilities
+│   │   ├── news_regime.py         # News regime reporting
+│   │   ├── autocorrelation.py     # Autocorrelation + MC assumption checks
+│   │   ├── conditional_stats.py   # Streak and conditional win-rate analysis
+│   │   └── prop_regime_specialist.py  # Prop firm account simulation by regime
+│   ├── simulate/
+│   │   └── monte_carlo.py         # Monte Carlo bootstrap simulation
+│   ├── results/
+│   │   ├── metrics.py             # Performance metrics (Sharpe, Sortino, drawdown, etc.)
+│   │   └── export.py              # Result serialization
+│   └── viz/
+│       └── equity.py              # Equity curve + monthly returns plots
 ├── scripts/
 │   ├── run_backtest.py            # CLI: single backtest with param overrides
 │   ├── run_optimize.py            # CLI: grid search parameter sweep
 │   ├── run_server.py              # FastAPI launcher (port 8000)
 │   ├── download_data.py           # Databento data fetcher
 │   ├── compare_tv.py              # Compare Python vs TradingView results
-│   └── sync_data.py               # Cloudflare R2 data sync
+│   ├── sync_data.py               # Cloudflare R2 data sync
+│   └── run_{asset}_{session}_*.py # Per-asset optimization/sweep/pipeline scripts
 └── data/                          # git-ignored
     ├── raw/                       # 5m + 1m OHLCV CSVs ({SYMBOL}_5m.csv, {SYMBOL}_1m.csv)
     ├── cache/                     # Parquet caches (keyed by file hash)
@@ -118,55 +145,7 @@ Frozen dataclasses (hashable for caching):
 
 ### Production Strategy
 
-The **production strategy** is the current best no-gate NY+Asia combined config, defined as the single source of truth in `config.py`. All scripts that need the production baseline import from here — never hardcode these params locally.
-
-**Defined in:** `src/orb_continuation/config.py` → `production_config()`, `PROD_NY_SESSION`, `PROD_ASIA_SESSION`, `PROD_NY_GLOBALS`, `PROD_ASIA_GLOBALS`
-
-**Parameters** (from 2024-2025 NQ grid sweep + Bayesian refinement):
-
-| Param | NY | Asia |
-|-------|-----|------|
-| stop_atr_pct | 6.75 | 4.75 |
-| min_gap_atr_pct | 2.5 | 3.0 |
-| max_gap_atr_pct | 25.0 | 8.0 |
-| rr | 3.25 | 2.0 |
-| tp1_ratio | 0.55 | 0.4 |
-
-
-**Baseline performance** (NQ, Jan 2016 — Dec 2025):
-
-| Metric | Value |
-|--------|-------|
-| Trades | 2362 |
-| Win Rate | 47.1% |
-| Total R | 304.9 |
-| Sharpe | 1.593 |
-| Calmar | 10.62 |
-| Max DD | $-144K |
-| PF | 1.25 |
-
-**Usage** — when testing variants (gates, filters, new params), always compare against the production baseline:
-
-```python
-from orb_continuation.config import production_config
-
-# Returns list of per-session StrategyConfigs [ny_cfg, asia_cfg]
-configs = production_config()  # or production_config(instrument)
-
-# Run and merge
-all_trades = []
-for cfg in configs:
-    all_trades.extend(run_backtest(df, cfg, start_date=start))
-all_trades.sort(key=lambda t: t.date)
-
-# For metadata dicts, import the constants directly:
-from orb_continuation.config import (
-    PROD_NY_SESSION, PROD_ASIA_SESSION,
-    PROD_NY_GLOBALS, PROD_ASIA_GLOBALS,
-)
-```
-
-**When updating production params**: change only `config.py` — all scripts will pick up the new values automatically.
+> **Note:** The `orb_continuation/` package and `production_config()` function have been removed. Production configs are now defined per-asset in individual run/save scripts rather than a centralized location. When comparing against a baseline, use the config from the relevant save script (e.g., `scripts/save_nq_ny_r20_final.py`) or query the experiment DB for the saved baseline run.
 
 ### Instruments
 NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Primary: NQ ($20/pt, 0.25 tick).

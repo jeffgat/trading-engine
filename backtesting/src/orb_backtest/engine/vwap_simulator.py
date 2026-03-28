@@ -109,6 +109,7 @@ def _compute_vwap_session_days(
         def __init__(self, vwap_session: VWAPSessionConfig) -> None:
             # session_days needs orb_start (session open) and flat_end
             self.orb_start = vwap_session.session_open or vwap_session.entry_start
+            self.rth_start = self.orb_start
             self.flat_end = vwap_session.flat_end
 
     shim = _Shim(session)
