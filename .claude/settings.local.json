@@ -191,7 +191,8 @@
       "WebFetch(domain:www.fxstreet.com)",
       "WebFetch(domain:tradingeconomics.com)",
       "Bash(grep '\"\"react-day-picker\"\"' package.json)",
-      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution -type f \\\\\\(-name *.log -o -name *state* -o -name *.json -o -name *.csv \\\\\\))"
+      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution -type f \\\\\\(-name *.log -o -name *state* -o -name *.json -o -name *.csv \\\\\\))",
+      "Bash(uv run python -c \":*)"
     ]
   }
 }

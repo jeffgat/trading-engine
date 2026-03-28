@@ -1559,3 +1559,71 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
   - N=1,2,3 introduce 2018 negative year. N=5,7,10 avoid neg years but still sharply lower Calmar
   - Mechanism: the pre-FVG swing highs being swept are on trades that would otherwise hit TP2, not SL. Triggering BE on those trades converts winners to 0R.
   - Script: `run_nq_ny_lsi_fvgl_v2_be_swing_sweep.py`
+
+---
+
+## Context Filter Research: 30m Structure + VWAP Gate
+
+### Summary
+
+Tested multi-timeframe structure gates (15m, 30m, 1h) combined with session VWAP for NQ NY continuation. **30m HH/HL-2 + VWAP side is the best structural context filter found for NQ NY ORB.**
+
+### How it works
+
+Resample 5m bars into session-aligned 30m bars (09:30-10:00, 10:00-10:30, ...). At the FVG signal bar, check the two most recent **completed** 30m bars:
+
+- **Longs**: latest 30m high > prior 30m high AND latest 30m low > prior 30m low AND signal close > session VWAP
+- **Shorts**: mirrored (LH + LL + close < VWAP)
+
+Only completed 30m bars are used (no lookahead). The 6th 5m bar of each 30m group is the earliest bar that can see that 30m bar's data.
+
+### Timeframe comparison (FAST_V2 NQ_NY, 2021-2026)
+
+| TF | Trades | Keep% | Net R | Sharpe | Calmar | Max DD |
+|----|--------|-------|-------|--------|--------|--------|
+| Baseline | 695 | — | 21.2 | 0.61 | 0.97 | -21.8R |
+| **30m** | **385** | **55%** | **30.9** | **1.57** | **2.31** | **-13.4R** |
+| 15m | 498 | 72% | 16.8 | 0.69 | 0.63 | -26.8R |
+| 1h | 301 | 43% | 12.6 | 0.84 | 1.22 | -10.3R |
+
+- **15m** is too noisy — keeps 72% but actually increases DD
+- **30m** is the sweet spot — halves DD, adds +9.7R, 2.5x Sharpe
+- **1h** cuts DD further (-10.3R) but kills too much R (-8.6) especially in 2024-2025
+
+### Tested across configs
+
+**FAST_V2 NQ_NY** (rr=2.5, stop=8%, both dirs):
+- Baseline: 695 tr, 21.2R, Sharpe 0.61, Calmar 0.97, DD -21.8R
+- 30m gate: 385 tr (55%), 30.9R, Sharpe 1.57, Calmar 2.31, DD -13.4R
+- DB: `bt-nq-ny-fast-v2-30m-hh-hl-2-vwap-2021-2026-942da0`
+
+**Exec config** (rr=2.0, stop=15%, both dirs):
+- Baseline: 729 tr, -6.3R, Sharpe -0.13, Calmar -0.15, DD -41.3R
+- 30m gate: 405 tr (56%), +29.8R, Sharpe 1.12, Calmar 1.31, DD -22.8R
+- Flips a negative-R config to positive. 2023 goes from -15.4R to +0.2R.
+
+### Comparison to VWAP-only gates
+
+VWAP distance alone (no structure) also helps but less dramatically:
+
+| Gate | Keep% | Net R delta | Calmar improvement |
+|------|-------|-------------|-------------------|
+| VWAP side only | 99% | +0.9R | negligible |
+| VWAP 10% ATR | 94% | +14.6R | 1.8x |
+| VWAP 15% ATR | 83% | +20.8R | 2.2x |
+| **30m HH/HL + VWAP** | **55%** | **+9.7R** | **2.4x** |
+
+VWAP distance is the high-retention option (83-94% kept). The 30m structure gate concentrates edge more sharply but at lower retention. Both are useful depending on whether trade frequency or edge quality matters more.
+
+### Key findings
+
+1. **Structure for trend, VWAP for acceptance** — the original hypothesis is confirmed. Neither alone is as effective as the combination.
+2. **30m > 15m for NQ NY** — 15m structure is too noisy for this session. 30m captures meaningful intraday trend shifts.
+3. **The gate's value is regime-dependent** — biggest improvements in choppy years (2021, 2023). In strongly trending years (2024-2025) it can trim winners slightly.
+4. **Works across configs** — not overfit to one parameter set. Consistent improvement on both FAST_V2 and the wider-stop exec config.
+
+### Implementation
+
+- Signal module: `backtesting/src/orb_backtest/signals/structure_15m.py` (supports any bar size via `resample_session_15m` with `bars_per_group` parameter)
+- Not yet integrated as an engine-level pre-trade gate. Currently applied as post-trade filter.
+- Scripts: `run_nq_ny_15m_structure_sweep.py`, `run_nq_ny_15m_structure_sweep_v2.py`, `run_nq_ny_fast_15m_sweep.py`

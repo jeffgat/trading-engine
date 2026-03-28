@@ -1,0 +1,65 @@
+Best Approach
+The clean version of your idea is:
+
+Define regimes first, independently of strategy PnL.
+Build specialist strategies for each regime.
+Only deploy a strategy when its regime is active.
+Evaluate the portfolio EV of accounts, not the beauty of each backtest.
+So for example:
+
+Bull regime: trend-continuation, breakout, ORB continuation
+Bear regime: fast downside continuation, failed auction, rejection / breakdown
+Sideways regime: mean reversion, fade extremes, lower RR / shorter holding
+
+Practical Framework
+I’d structure it like this:
+
+Layer 1: Regime classifier
+bull / bear / sideways
+based on simple observable features:
+higher timeframe trend
+realized volatility
+range expansion / contraction
+breadth / index behavior if you use it
+Layer 2: Specialist strategy
+each strategy is built only for one regime
+Layer 3: Account portfolio
+multiple accounts running different specialists or different activation rules
+Layer 4: Kill switch
+if live stats deviate too far from expected behavior, disable quickly
+
+For your use case, even simpler is better:
+
+trend state
+volatility state
+intraday participation state
+That gives you a regime grid like:
+
+trending + high vol
+trending + low vol
+non-trending + low vol
+non-trending + high vol
+
+How to evaluate it
+This is the most important part.
+
+If the real business model is prop-firm payout extraction, your main metric should not be just Sharpe or full-history Calmar. It should be something like:
+
+expected payout per account attempt
+first payout probability
+average number of resets before payout
+average payout multiple vs account cost
+time to payout
+correlation of failure across accounts
+live decay rate after deployment
+A strategy that is “fragile but explosive” may be perfectly acceptable if:
+
+challenge cost is cheap
+payout is large
+you can run enough independent attempts
+losers are not too correlated
+
+Layer 1: Regime classifier
+Layer 2: Specialist strategy
+Layer 3: Account portfolio
+Layer 4: Kill switch
