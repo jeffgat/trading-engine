@@ -1615,15 +1615,183 @@ VWAP distance alone (no structure) also helps but less dramatically:
 
 VWAP distance is the high-retention option (83-94% kept). The 30m structure gate concentrates edge more sharply but at lower retention. Both are useful depending on whether trade frequency or edge quality matters more.
 
+### Entry window investigation: can we trade earlier?
+
+Because HH/HL-2 on session-aligned 15m bars (09:30 start) requires two completed bars, the gate cannot fire until ~10:00. This means the 09:45-10:00 entry window is dead. Tested whether using true 30m bars with earlier alignment could recover those early trades.
+
+**Variants tested (FAST_V2 NQ_NY, 2021-2026):**
+
+| Variant | 30m alignment | Earliest gate | Trades | Keep% | Net R | Sharpe | Calmar | Max DD |
+|---------|--------------|---------------|--------|-------|-------|--------|--------|--------|
+| Baseline (no gate) | — | — | 695 | — | 21.2 | 0.61 | 0.97 | -21.8R |
+| **A: 15m HH/HL-2 (current)** | **session 09:30** | **~10:00** | **250** | **36%** | **30.3** | **2.58** | **2.13** | **-14.2R** |
+| B: 30m from 08:30 | clock 08:30 | 09:50 | 138 | 20% | 10.9 | 1.45 | 0.62 | -17.7R |
+| C: 30m from 09:00 | clock 09:00 | 10:00 | 148 | 21% | 9.3 | 1.20 | 0.62 | -14.8R |
+
+- DB: `bt-nq-ny-fast-v2-15m-hh-hl-2-vwap-baseline-657478` (A), `bt-nq-ny-fast-v2-30m-hh-hl-2-vwap-pre-sessi-5deee8` (B), `bt-nq-ny-fast-v2-30m-hh-hl-2-vwap-09-00-eff-471468` (C)
+
+**Conclusion: the current 15m setup is the best version.** True 30m bars (B and C) are significantly worse — both produce Calmar 0.62, below even the ungated baseline. Pre-market 30m bars (08:30-09:00, 09:00-09:30) carry overnight structure that doesn't predict NY ORB continuation direction. The 15m HH/HL-2 captures finer-grained intra-session trend shifts and retains 36% of trades vs ~20% for 30m. The cost of losing the 09:45-10:00 window is worth the gate's filtering quality.
+
 ### Key findings
 
 1. **Structure for trend, VWAP for acceptance** — the original hypothesis is confirmed. Neither alone is as effective as the combination.
-2. **30m > 15m for NQ NY** — 15m structure is too noisy for this session. 30m captures meaningful intraday trend shifts.
+2. **15m HH/HL-2 is the right granularity** — the label "30m gate" was misleading; the implementation uses 15m bars with a 2-bar HH/HL pattern. True 30m bars over-filter and lose edge. Pre-session 30m bars carry no useful signal.
 3. **The gate's value is regime-dependent** — biggest improvements in choppy years (2021, 2023). In strongly trending years (2024-2025) it can trim winners slightly.
 4. **Works across configs** — not overfit to one parameter set. Consistent improvement on both FAST_V2 and the wider-stop exec config.
+5. **Earliest effective entry is ~10:00** — losing the 09:45-10:00 window is an acceptable cost. Attempts to recover it via pre-session bars degrade performance.
 
 ### Implementation
 
-- Signal module: `backtesting/src/orb_backtest/signals/structure_15m.py` (supports any bar size via `resample_session_15m` with `bars_per_group` parameter)
+- Signal module: `backtesting/src/orb_backtest/signals/structure_15m.py` — resamples 5m to session-aligned 15m bars, computes HH/HL patterns. The "30m" label refers to the 2-bar lookback spanning 30 minutes of 15m data, not actual 30m bars.
 - Not yet integrated as an engine-level pre-trade gate. Currently applied as post-trade filter.
-- Scripts: `run_nq_ny_15m_structure_sweep.py`, `run_nq_ny_15m_structure_sweep_v2.py`, `run_nq_ny_fast_15m_sweep.py`
+- Scripts: `run_nq_ny_15m_structure_sweep.py`, `run_nq_ny_15m_structure_sweep_v2.py`, `run_nq_ny_fast_15m_sweep.py`, `run_nq_ny_30m_entry_window_compare.py`
+
+---
+
+## NQ Generalist Payout Portfolio — Current 4-Leg Package
+
+**Status**: ACTIVE PAPER-TRADE PACKAGE. This is the current NQ funded-account route when the goal is faster challenge resolution than the standalone bull specialist, without expanding to the 5-leg max-speed stack.
+
+**Important classification**: this is **not** a regime-specialist portfolio. Only `bull_specialist` is regime-specialized. The full 4-leg package is a mixed-regime, long-biased payout engine and should be treated as a **generalist payout portfolio**.
+
+**Selected combo**:
+- `bull_specialist`
+- `nq_asia`
+- `nq_asia_lsi_end2300`
+- `nq_ny_lsi_gap3.75`
+
+**How each leg was chosen**:
+- `bull_specialist`: regime-specialist winner, then fast-payout re-ranked for the funded-account model.
+- `nq_asia`: combo-context sweep did **not** beat the existing Asia continuation anchor, so the original combo leg stays.
+- `nq_asia_lsi_end2300`: combo-context winner over the base Asia LSI anchor; quality improvement came from tightening `entry_end` from `23:30` to `23:00`.
+- `nq_ny_lsi_gap3.75`: combo-context winner over the base NY LSI anchor; best version relaxed `min_gap_atr_pct` from `5.0` to `3.75`.
+
+**Funded-account model used in combo research**:
+- Challenge cost: `$150`
+- Starting balance: `$50,000`
+- Trailing drawdown: `$2,000`, EOD realized, capped so breach never rises above `$50,000`
+- First withdrawable payout: everything above `$52,000`
+- Risk per trade: `$500` pre-payout, `$250` post-payout
+
+**Full-history combo package** (2016-01-01 to latest available data in the run):
+- Payout rate `71.71%` | breach rate `27.94%` | open rate `0.35%`
+- Average days to payout `20.45` | median `17`
+- Average trades to payout `10.62`
+- Average first payout `$508.16`
+- EV/start `$214.39`
+- Holdout 2025-2026: payout `91.64%` | breach `5.48%` | average payout day `17.83` | EV/start `$378.03`
+
+**Why this generalist package is the current working route**:
+- The standalone bull specialist was high quality but too slow by itself.
+- The 4-leg combo resolves much faster while preserving a strong payout-over-breach profile.
+- The optimized combo is slightly weaker than the earlier balanced combo on full-history payout and EV, but materially better on holdout quality. Current preference is to keep the optimized route as the working package and watch live paper-trade behavior rather than overreact to the full-history tradeoff.
+
+**Overlap / concentration read**:
+- Overlap exists, but it is not extreme enough to force hard de-duplication.
+- Baseline optimized combo remains the default route.
+- If live paper trading shows stacked-loss discomfort, the first throttle to test is `first_full_half_extra`: keep the first fill full size and halve extra same-day legs.
+- That throttle improves full-history payout/breach to `73.45% / 26.20%`, but it slows resolution and does not improve the already-strong holdout profile, so it is a risk-control toggle, not the base package.
+
+**5-year operating snapshot** (`2021-03-29` start request; filled-trade coverage `2021-04-08` to `2026-03-23`):
+- 918 filled combo trades
+- Payout rate `80.61%` | breach rate `18.67%` | open rate `0.72%`
+- Average days to payout `20.72` | median `18`
+- Average trades to payout `10.27`
+- Average first payout `$569.55`
+- EV/start `$309.13`
+- By day 20: payout `46.48%` | breach `10.31%` | resolved `56.79%`
+- By day 30: payout `64.30%` | breach `16.06%` | resolved `80.35%`
+- By day 45: payout `75.26%` | breach `17.95%` | resolved `93.21%`
+
+**5-year leg mix**:
+- `bull_specialist`: 45 trades | avg R `0.5484`
+- `nq_asia`: 335 trades | avg R `0.3602`
+- `nq_asia_lsi_end2300`: 188 trades | avg R `0.3009`
+- `nq_ny_lsi_gap3.75`: 350 trades | avg R `0.1763`
+
+**Regime audit conclusion**:
+- The package does **not** behave like a pure bull-regime stack.
+- 2022 remained profitable mainly because `nq_asia` and `nq_ny_lsi` made money on bear-regime days, while `bull_specialist` itself was slightly negative that year.
+- Bear-regime contribution is too large for this to be labeled a true regime-specialist portfolio.
+
+## NQ Bull-Biased Portfolio Buildout — Post-Generalist Seed Sweep
+
+**Goal**: use the former generalist package only as a seed source, then rebuild around the `bull_specialist_v1_winner` without drifting back into a mixed-regime payout engine.
+
+**First add-on sweep result**:
+- `nq_asia_cont` was rejected as the next bull-portfolio leg even though it is strong in the generalist package.
+- Reason: inside `bull_specialist + add-on` tests, it carried too much `2022-2023` performance and behaved too much like a generalist engine.
+- The cleanest add-on family was `nq_asia_lsi`.
+
+**Constrained bull-biased combo sweep**:
+- Search space:
+  - fixed core: `bull_specialist_v1_winner`
+  - Asia candidates: selected `nq_asia_lsi` neighborhood
+  - NY candidates: selected `nq_ny_lsi` variants only
+  - explicit exclusion: `nq_asia_cont`
+- Best overall portfolio: `bull_specialist_v1_winner + nq_asia_lsi_rr1.75`
+- Portfolio type: `2-leg`
+
+**Best current bull-biased portfolio candidate**:
+- `bull_specialist_v1_winner + nq_asia_lsi_rr1.75`
+- Acceptance `2024+` net R: `48.335`
+- Rejection `2022-2023` net R: `11.7583`
+- Rejection share of acceptance: `24.33%`
+- Holdout payout/breach: `75.78% / 0.00%`
+- Holdout average days to payout: `61.94`
+- Regime contribution: bull `64.2906R`, bear `10.6621R`, sideways `22.9053R`
+
+**Important comparison**:
+- The best 3-leg candidate was `bull_specialist_v1_winner + nq_asia_lsi_end2300 + nq_ny_lsi_propfirm_2x_profile`.
+- It was faster and bigger on raw acceptance net R, but rejection `2022-2023` also rose to `26.6883R`.
+- That means the third leg improved payout behavior, but it pushed the stack back toward the same mixed-regime behavior we were trying to reduce.
+
+**Current interpretation**:
+- Best next step for a bull-biased portfolio is a **2-leg** stack, not a 3-leg stack.
+- `nq_asia_lsi` is the right family to pair with the bull specialist first.
+- `nq_ny_lsi` should be treated as optional and only revisited if a later pass can improve speed without materially increasing `2022-2023` contribution.
+
+**Packaged bull-biased route**:
+- Saved package: `bull_specialist_v1_winner + nq_asia_lsi_rr1.75`
+- Full-history funded scorecard from `2020+`: payout `61.05%`, breach `34.38%`, open `4.58%`
+- Average days to payout: `57.67`
+- Holdout payout/breach: `75.78% / 0.00%`
+- Average first payout: `$325.84`
+- EV/start: `$48.91`
+
+**Operational note**:
+- This route is cleaner than the generalist 4-leg package, but materially slower and weaker on full-history funded-account resolution.
+- It should be treated as a **bull-biased specialist candidate**, not as a replacement for the faster generalist payout portfolio.
+
+## NQ Bear Specialist V1 — First Pass
+
+**Window assumptions used**:
+- `2021`: diagnostic only
+- `2022-2023`: acceptance era
+- `2023`: funded-account holdout inside the acceptance era
+- `2024+`: rejection era
+
+**Result**:
+- No candidate cleared the bear-specialist bar in the first V1 pass.
+- Best candidate: `NQ Bear V1 rr2.00_tp1 0.30_stoporb15.0_gaporb0.0_end1100_regime_2of3_vwap`
+- Acceptance `2022-2023` net R: `6.5794` on `22` trades
+- Rejection `2024+` net R: `2.9137`
+- Rejection share of acceptance: `44.29%`
+- 2023 holdout payout/breach: `16.06% / 0.00%`
+- 2023 holdout average days to payout: `244.35`
+
+**What failed**:
+- Trade count was too low for a deployable specialist.
+- Rejection-era performance remained too positive, so the short family still looks too generalist.
+- None of the tested short variants survived the original round-1 specialist readout either.
+
+**Current read**:
+- `regime_2of3_vwap` improved the bear-window profile the most in this first pass.
+- Ungated short variants still carried too much `2024+` performance.
+- The next bear pass should focus less on micro-parameter tuning and more on a different short family or stronger downside-context gates.
+- Use `generalist payout portfolio` as the correct label going forward.
+
+**Takeaway**:
+- This is now the current NQ generalist payout portfolio to carry forward.
+- It is fast enough to be operationally useful, especially as one lane inside a broader multi-leg book.
+- Next research should split true regime specialists into a separate portfolio track instead of continuing to treat this mixed long stack as regime-specialized.

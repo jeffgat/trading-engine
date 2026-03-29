@@ -113,8 +113,8 @@ def _signal_cache_path(df: pd.DataFrame, configs: list[StrategyConfig]) -> Path:
     # Store in data/cache/ — go up from optimize/ -> orb_backtest/ -> src/ -> python/ -> data/cache/
     cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    safe_data_key = str(data_key)[:20].replace(" ", "_").replace(":", "-")
-    return cache_dir / f"sigcache_{safe_data_key}_{param_key}.pkl"
+    data_hash = hashlib.md5(str(data_key).encode()).hexdigest()[:12]
+    return cache_dir / f"sigcache_{data_hash}_{param_key}.pkl"
 
 
 def _load_or_build_signal_cache(

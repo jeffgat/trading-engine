@@ -45,6 +45,19 @@ class PropFirmProfile:
 
 
 @dataclass(frozen=True)
+class FundedFirstPayoutProfile:
+    """Funded-account model for optimizing time to the first withdrawable payout."""
+
+    challenge_fee: float = 150.0
+    starting_balance_usd: float = 50_000.0
+    trailing_drawdown_usd: float = 2_000.0
+    max_trailing_breach_usd: float = 50_000.0
+    first_payout_floor_usd: float = 52_000.0
+    risk_pre_payout_usd: float = 500.0
+    risk_post_payout_usd: float = 250.0
+
+
+@dataclass(frozen=True)
 class AccountAttemptOutcome:
     """Result of replaying one account start through a dated trade stream."""
 
@@ -60,6 +73,23 @@ class AccountAttemptOutcome:
     trough_r: float
     net_payout: float
     breach_reason: str
+
+
+@dataclass(frozen=True)
+class FundedFirstPayoutOutcome:
+    """Outcome of one funded account start under the trailing EOD drawdown rules."""
+
+    specialist_name: str
+    account_start: str
+    outcome: str
+    outcome_date: str
+    calendar_days_to_outcome: int
+    trades_to_outcome: int
+    ending_balance_usd: float
+    breach_balance_usd: float
+    highest_eod_balance_usd: float
+    first_payout_amount_usd: float
+    net_payout_after_fee_usd: float
 
 
 def build_nq_ny_regime_calendar(
@@ -134,6 +164,22 @@ def build_regime_confusion_log(regime_calendar: pd.DataFrame) -> pd.DataFrame:
     return regime_calendar.loc[regime_calendar["low_confidence"], cols].reset_index(drop=True)
 
 
+def filter_trades_by_low_confidence(
+    trades: list[TradeResult],
+    regime_calendar: pd.DataFrame,
+    include_low_confidence: bool = True,
+) -> list[TradeResult]:
+    """Optionally remove trades that occur on low-confidence regime days."""
+
+    if include_low_confidence:
+        return list(trades)
+
+    cal = regime_calendar.copy()
+    cal["date_str"] = pd.to_datetime(cal["date"]).dt.strftime("%Y-%m-%d")
+    low_conf_lookup = dict(zip(cal["date_str"], cal["low_confidence"].astype(bool)))
+    return [t for t in trades if not low_conf_lookup.get(t.date, False)]
+
+
 def build_yearly_regime_summary(regime_calendar: pd.DataFrame) -> pd.DataFrame:
     """Summarize regime counts by year for quick sanity checks."""
 
@@ -197,6 +243,80 @@ def apply_bull_hh_hl_vwap_gate(
         if keep:
             kept.append(t)
 
+    return kept
+
+
+def build_structure_vwap_signals(
+    df: pd.DataFrame,
+    session: SessionConfig,
+    atr_length: int,
+) -> dict[str, np.ndarray]:
+    """Build reusable 15m structure + VWAP signal arrays on the 5m index."""
+
+    ts = df.index
+    masks = compute_session_masks(ts, session)
+    new_day, session_day_id = compute_session_days(ts, session)
+    vwap = compute_session_vwap(
+        df["high"].values.astype(np.float64),
+        df["low"].values.astype(np.float64),
+        df["close"].values.astype(np.float64),
+        df["volume"].values.astype(np.float64),
+        session_day_id,
+    )
+    daily_atr = compute_daily_atr(df, length=atr_length)
+    orb_high, orb_low, orb_ready = compute_orb_levels(df, masks["in_orb"], masks["in_rth"], new_day)
+    return compute_all_15m_signals(
+        df,
+        session,
+        vwap,
+        daily_atr,
+        orb_high,
+        orb_low,
+        orb_ready,
+        session_day_id,
+    )
+
+
+def trade_passes_structure_vwap_gate(
+    gate_name: str,
+    trade: TradeResult,
+    signals: dict[str, np.ndarray],
+) -> bool:
+    """Return whether one filled trade passes a structure + VWAP context gate."""
+
+    close = signals["close"]
+    vwap = signals["vwap"]
+    atr = signals["daily_atr"]
+    n = len(close)
+    s = trade.signal_bar
+    if s < 0 or s >= n:
+        return False
+
+    c = float(close[s])
+    v = float(vwap[s])
+    a = float(atr[s])
+    if np.isnan(v) or np.isnan(a) or a <= 0:
+        return False
+
+    d = int(trade.direction)
+    dist = (c - v) * d
+    dist_pct = dist / a
+    return _eval_structure_vwap_gate(gate_name, s, d, c, v, dist_pct, signals)
+
+
+def apply_structure_vwap_gate(
+    trades: list[TradeResult],
+    signals: dict[str, np.ndarray],
+    gate_name: str,
+) -> list[TradeResult]:
+    """Filter filled trades using a named 15m structure + VWAP gate."""
+
+    kept: list[TradeResult] = []
+    for trade in trades:
+        if trade.exit_type == EXIT_NO_FILL:
+            continue
+        if trade_passes_structure_vwap_gate(gate_name, trade, signals):
+            kept.append(trade)
     return kept
 
 
@@ -403,6 +523,116 @@ def simulate_account_attempts(
     return pd.DataFrame(asdict(row) for row in outcomes)
 
 
+def simulate_funded_first_payouts(
+    specialist_name: str,
+    trades: list[TradeResult],
+    trading_dates: Sequence[str | date | pd.Timestamp],
+    profile: FundedFirstPayoutProfile,
+) -> pd.DataFrame:
+    """Replay starts for a funded account with trailing EOD drawdown until first payout."""
+
+    filled = sorted(
+        _filled_trades(trades),
+        key=lambda t: (t.date, t.fill_time or "", t.fill_bar, t.exit_time or ""),
+    )
+    all_dates = _normalize_dates(trading_dates)
+    if not all_dates:
+        return pd.DataFrame(columns=list(asdict(FundedFirstPayoutOutcome(
+            specialist_name="",
+            account_start="",
+            outcome="",
+            outcome_date="",
+            calendar_days_to_outcome=0,
+            trades_to_outcome=0,
+            ending_balance_usd=0.0,
+            breach_balance_usd=0.0,
+            highest_eod_balance_usd=0.0,
+            first_payout_amount_usd=0.0,
+            net_payout_after_fee_usd=0.0,
+        )).keys()))
+
+    day_to_rs: dict[pd.Timestamp, list[float]] = {}
+    if filled:
+        trade_rows = pd.DataFrame(
+            {
+                "date": [pd.Timestamp(t.date).normalize() for t in filled],
+                "r_multiple": [float(t.r_multiple) for t in filled],
+            }
+        )
+        for day, group in trade_rows.groupby("date"):
+            day_to_rs[pd.Timestamp(day)] = [float(v) for v in group["r_multiple"].tolist()]
+
+    outcomes: list[FundedFirstPayoutOutcome] = []
+    starting_breach = min(
+        profile.starting_balance_usd - profile.trailing_drawdown_usd,
+        profile.max_trailing_breach_usd,
+    )
+
+    for start_day in all_dates:
+        start_ts = pd.Timestamp(start_day).normalize()
+        balance_usd = float(profile.starting_balance_usd)
+        highest_eod_balance_usd = float(profile.starting_balance_usd)
+        breach_balance_usd = float(starting_breach)
+        risk_usd = float(profile.risk_pre_payout_usd)
+        trades_taken = 0
+        outcome = "open"
+        outcome_day = start_ts
+        first_payout_amount_usd = 0.0
+
+        for cur_day in all_dates:
+            cur_ts = pd.Timestamp(cur_day).normalize()
+            if cur_ts < start_ts:
+                continue
+
+            for r_multiple in day_to_rs.get(cur_ts, []):
+                balance_usd += r_multiple * risk_usd
+                trades_taken += 1
+                if balance_usd <= breach_balance_usd:
+                    outcome = "breach"
+                    outcome_day = cur_ts
+                    break
+
+            if outcome == "breach":
+                break
+
+            if balance_usd >= profile.first_payout_floor_usd:
+                outcome = "payout"
+                outcome_day = cur_ts
+                first_payout_amount_usd = max(0.0, balance_usd - profile.first_payout_floor_usd)
+                risk_usd = float(profile.risk_post_payout_usd)
+                break
+
+            highest_eod_balance_usd = max(highest_eod_balance_usd, balance_usd)
+            breach_balance_usd = min(
+                highest_eod_balance_usd - profile.trailing_drawdown_usd,
+                profile.max_trailing_breach_usd,
+            )
+            outcome_day = cur_ts
+
+        if outcome == "payout":
+            net_after_fee = first_payout_amount_usd - profile.challenge_fee
+        else:
+            net_after_fee = -profile.challenge_fee
+
+        outcomes.append(
+            FundedFirstPayoutOutcome(
+                specialist_name=specialist_name,
+                account_start=start_ts.strftime("%Y-%m-%d"),
+                outcome=outcome,
+                outcome_date=outcome_day.strftime("%Y-%m-%d"),
+                calendar_days_to_outcome=(outcome_day.date() - start_ts.date()).days + 1,
+                trades_to_outcome=trades_taken,
+                ending_balance_usd=round(balance_usd, 2),
+                breach_balance_usd=round(breach_balance_usd, 2),
+                highest_eod_balance_usd=round(highest_eod_balance_usd, 2),
+                first_payout_amount_usd=round(first_payout_amount_usd, 2),
+                net_payout_after_fee_usd=round(net_after_fee, 2),
+            )
+        )
+
+    return pd.DataFrame(asdict(row) for row in outcomes)
+
+
 def build_prop_scorecard(
     outcomes: pd.DataFrame,
     profile: PropFirmProfile,
@@ -463,6 +693,125 @@ def build_prop_scorecard(
         "worst_monthly_cluster_net": round(float(monthly_net.min()), 2) if not monthly_net.empty else 0.0,
         "worst_monthly_cluster_breaches": int(monthly_breaches.max()) if not monthly_breaches.empty else 0,
         "bootstrap": bootstrap,
+    }
+
+
+def build_funded_first_payout_scorecard(
+    outcomes: pd.DataFrame,
+    profile: FundedFirstPayoutProfile,
+) -> dict:
+    """Summarize first-payout funded-account outcomes."""
+
+    if outcomes.empty:
+        return {
+            "profile": asdict(profile),
+            "total_starts": 0,
+            "payout_rate": 0.0,
+            "breach_rate": 0.0,
+            "open_rate": 0.0,
+            "average_days_to_payout": None,
+            "median_days_to_payout": None,
+            "average_trades_to_payout": None,
+            "average_first_payout_amount_usd": None,
+            "average_net_after_fee_usd": 0.0,
+            "ev_per_start_usd": 0.0,
+        }
+
+    payouts = outcomes[outcomes["outcome"] == "payout"].copy()
+    breaches = outcomes[outcomes["outcome"] == "breach"].copy()
+    opens = outcomes[outcomes["outcome"] == "open"].copy()
+    total = int(len(outcomes))
+
+    return {
+        "profile": asdict(profile),
+        "total_starts": total,
+        "payout_rate": round(len(payouts) / total, 4) if total else 0.0,
+        "breach_rate": round(len(breaches) / total, 4) if total else 0.0,
+        "open_rate": round(len(opens) / total, 4) if total else 0.0,
+        "average_days_to_payout": (
+            round(float(payouts["calendar_days_to_outcome"].mean()), 2)
+            if not payouts.empty else None
+        ),
+        "median_days_to_payout": (
+            round(float(payouts["calendar_days_to_outcome"].median()), 2)
+            if not payouts.empty else None
+        ),
+        "average_trades_to_payout": (
+            round(float(payouts["trades_to_outcome"].mean()), 2)
+            if not payouts.empty else None
+        ),
+        "average_first_payout_amount_usd": (
+            round(float(payouts["first_payout_amount_usd"].mean()), 2)
+            if not payouts.empty else None
+        ),
+        "average_net_after_fee_usd": (
+            round(float(payouts["net_payout_after_fee_usd"].mean()), 2)
+            if not payouts.empty else None
+        ),
+        "ev_per_start_usd": round(float(outcomes["net_payout_after_fee_usd"].mean()), 2),
+    }
+
+
+def build_funded_first_payout_forecast(
+    outcomes: pd.DataFrame,
+    horizons_days: Sequence[int] = (10, 15, 20, 30, 45, 60, 90),
+) -> dict:
+    """Summarize the timing distribution of payout, breach, and resolution."""
+
+    horizons = tuple(sorted({int(day) for day in horizons_days if int(day) > 0}))
+    if outcomes.empty:
+        return {
+            "total_starts": 0,
+            "horizons_days": list(horizons),
+            "payout_days_quantiles": {},
+            "breach_days_quantiles": {},
+            "resolution_days_quantiles": {},
+            "timeline": [],
+        }
+
+    payouts = outcomes[outcomes["outcome"] == "payout"].copy()
+    breaches = outcomes[outcomes["outcome"] == "breach"].copy()
+    resolved = outcomes[outcomes["outcome"].isin(["payout", "breach"])].copy()
+    total = int(len(outcomes))
+
+    def _quantiles(frame: pd.DataFrame) -> dict[str, float | None]:
+        if frame.empty:
+            return {}
+        values = frame["calendar_days_to_outcome"].astype(float)
+        return {
+            "p10": round(float(np.percentile(values, 10)), 2),
+            "p25": round(float(np.percentile(values, 25)), 2),
+            "p50": round(float(np.percentile(values, 50)), 2),
+            "p75": round(float(np.percentile(values, 75)), 2),
+            "p90": round(float(np.percentile(values, 90)), 2),
+        }
+
+    timeline = []
+    for horizon in horizons:
+        resolved_by_h = resolved[resolved["calendar_days_to_outcome"] <= horizon]
+        payouts_by_h = payouts[payouts["calendar_days_to_outcome"] <= horizon]
+        breaches_by_h = breaches[breaches["calendar_days_to_outcome"] <= horizon]
+        resolved_count = int(len(resolved_by_h))
+        timeline.append(
+            {
+                "horizon_days": horizon,
+                "payout_rate_by_horizon": round(len(payouts_by_h) / total, 4),
+                "breach_rate_by_horizon": round(len(breaches_by_h) / total, 4),
+                "resolved_rate_by_horizon": round(resolved_count / total, 4),
+                "payout_share_of_resolved_by_horizon": (
+                    round(len(payouts_by_h) / resolved_count, 4) if resolved_count else None
+                ),
+                "open_rate_after_horizon": round(1.0 - (resolved_count / total), 4),
+            }
+        )
+
+    return {
+        "total_starts": total,
+        "horizons_days": list(horizons),
+        "payout_days_quantiles": _quantiles(payouts),
+        "breach_days_quantiles": _quantiles(breaches),
+        "resolution_days_quantiles": _quantiles(resolved),
+        "timeline": timeline,
     }
 
 
@@ -550,11 +899,285 @@ def build_regime_strategy_mapping() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def trading_dates_from_calendar(regime_calendar: pd.DataFrame) -> list[str]:
-    """Return non-warmup trading dates as YYYY-MM-DD strings."""
+def trading_dates_from_calendar(
+    regime_calendar: pd.DataFrame,
+    include_low_confidence: bool = True,
+) -> list[str]:
+    """Return eligible trading dates as YYYY-MM-DD strings."""
 
     cal = regime_calendar[regime_calendar["regime"] != "warmup"].copy()
+    if not include_low_confidence:
+        cal = cal[~cal["low_confidence"]].copy()
     return [pd.Timestamp(d).strftime("%Y-%m-%d") for d in cal["date"].tolist()]
+
+
+def evaluate_bull_market_windows(
+    specialist_name: str,
+    trades: list[TradeResult],
+    trading_dates: Sequence[str | date | pd.Timestamp],
+    funded_profile: FundedFirstPayoutProfile,
+    *,
+    diagnostic_start: str = "2021-01-01",
+    diagnostic_end: str = "2021-12-31",
+    rejection_start: str = "2022-01-01",
+    rejection_end: str = "2023-12-31",
+    acceptance_start: str = "2024-01-01",
+    holdout_start: str = DEFAULT_HOLDOUT_START,
+    min_acceptance_trades: int = 40,
+) -> dict:
+    """Score a bull specialist against fixed calendar windows.
+
+    2021 is logged for diagnostics only and excluded from pass/fail.
+    """
+
+    diagnostic_trades = _filter_between(trades, diagnostic_start, diagnostic_end)
+    rejection_trades = _filter_between(trades, rejection_start, rejection_end)
+    acceptance_trades = _filter_between(trades, acceptance_start, None)
+    holdout_trades = _filter_between(trades, holdout_start, None)
+
+    acceptance_dates = [d for d in _normalize_dates(trading_dates) if pd.Timestamp(d) >= pd.Timestamp(acceptance_start)]
+    holdout_dates = [d for d in _normalize_dates(trading_dates) if pd.Timestamp(d) >= pd.Timestamp(holdout_start)]
+
+    acceptance_metrics = compute_metrics(acceptance_trades)
+    rejection_metrics = compute_metrics(rejection_trades)
+    diagnostic_metrics = compute_metrics(diagnostic_trades)
+    holdout_outcomes = simulate_funded_first_payouts(
+        specialist_name=specialist_name,
+        trades=holdout_trades,
+        trading_dates=holdout_dates,
+        profile=funded_profile,
+    )
+    holdout_scorecard = build_funded_first_payout_scorecard(holdout_outcomes, funded_profile)
+
+    acceptance_net_r = float(acceptance_metrics.get("total_r", 0.0))
+    rejection_net_r = float(rejection_metrics.get("total_r", 0.0))
+    rejection_share = (
+        rejection_net_r / acceptance_net_r
+        if acceptance_net_r > 0.0 and rejection_net_r > 0.0
+        else 0.0
+    )
+    separation = acceptance_net_r - max(rejection_net_r, 0.0)
+
+    passes = {
+        "acceptance_positive_net_r": acceptance_net_r > 0.0,
+        "holdout_payout_gt_breach": float(holdout_scorecard.get("payout_rate") or 0.0)
+        > float(holdout_scorecard.get("breach_rate") or 0.0),
+        "rejection_window_capped": rejection_net_r <= 0.0 or rejection_share <= 0.25,
+        "acceptance_min_trades": int(acceptance_metrics.get("total_trades", 0)) >= min_acceptance_trades,
+    }
+
+    return {
+        "specialist_name": specialist_name,
+        "diagnostic_2021": _metrics_snapshot(diagnostic_metrics),
+        "rejection_2022_2023": _metrics_snapshot(rejection_metrics),
+        "acceptance_2024_latest": _metrics_snapshot(acceptance_metrics),
+        "holdout_2025_latest": holdout_scorecard,
+        "acceptance_net_r": round(acceptance_net_r, 4),
+        "rejection_net_r": round(rejection_net_r, 4),
+        "rejection_share_of_acceptance": round(rejection_share, 4),
+        "acceptance_rejection_separation": round(separation, 4),
+        "passes_bull_v1": passes,
+        "survives_bull_v1": all(passes.values()),
+        "acceptance_trading_dates": len(acceptance_dates),
+        "holdout_trading_dates": len(holdout_dates),
+    }
+
+
+def bull_market_rank_key(record: dict) -> tuple:
+    """Stable ranking key for bull-specialist V1 candidates."""
+
+    holdout = record["holdout_2025_latest"]
+    avg_days = holdout.get("average_days_to_payout")
+    avg_days_key = -float(avg_days) if avg_days is not None else float("-inf")
+    return (
+        bool(record["survives_bull_v1"]),
+        float(holdout.get("payout_rate") or 0.0) - float(holdout.get("breach_rate") or 0.0),
+        float(record.get("acceptance_net_r") or 0.0),
+        float(record.get("acceptance_rejection_separation") or 0.0),
+        avg_days_key,
+    )
+
+
+def evaluate_bear_market_windows(
+    specialist_name: str,
+    trades: list[TradeResult],
+    trading_dates: Sequence[str | date | pd.Timestamp],
+    funded_profile: FundedFirstPayoutProfile,
+    *,
+    diagnostic_start: str = "2021-01-01",
+    diagnostic_end: str = "2021-12-31",
+    acceptance_start: str = "2022-01-01",
+    acceptance_end: str = "2023-12-31",
+    holdout_start: str = "2023-01-01",
+    holdout_end: str = "2023-12-31",
+    rejection_start: str = "2024-01-01",
+    rejection_end: str | None = None,
+    min_acceptance_trades: int = 40,
+) -> dict:
+    """Score a bear specialist against fixed calendar windows.
+
+    2021 is diagnostic only. The acceptance era is the 2022-2023 bear market
+    window, with 2023 used as a funded-account quality holdout inside that era.
+    2024+ is treated as the rejection era.
+    """
+
+    diagnostic_trades = _filter_between(trades, diagnostic_start, diagnostic_end)
+    acceptance_trades = _filter_between(trades, acceptance_start, acceptance_end)
+    holdout_trades = _filter_between(trades, holdout_start, holdout_end)
+    rejection_trades = _filter_between(trades, rejection_start, rejection_end)
+
+    normalized_dates = _normalize_dates(trading_dates)
+    acceptance_dates = [
+        d for d in normalized_dates
+        if pd.Timestamp(acceptance_start) <= pd.Timestamp(d) <= pd.Timestamp(acceptance_end)
+    ]
+    holdout_dates = [
+        d for d in normalized_dates
+        if pd.Timestamp(holdout_start) <= pd.Timestamp(d) <= pd.Timestamp(holdout_end)
+    ]
+    rejection_dates = [
+        d for d in normalized_dates
+        if pd.Timestamp(d) >= pd.Timestamp(rejection_start)
+        and (rejection_end is None or pd.Timestamp(d) <= pd.Timestamp(rejection_end))
+    ]
+
+    diagnostic_metrics = compute_metrics(diagnostic_trades)
+    acceptance_metrics = compute_metrics(acceptance_trades)
+    rejection_metrics = compute_metrics(rejection_trades)
+    holdout_outcomes = simulate_funded_first_payouts(
+        specialist_name=specialist_name,
+        trades=holdout_trades,
+        trading_dates=holdout_dates,
+        profile=funded_profile,
+    )
+    holdout_scorecard = build_funded_first_payout_scorecard(holdout_outcomes, funded_profile)
+
+    acceptance_net_r = float(acceptance_metrics.get("total_r", 0.0))
+    rejection_net_r = float(rejection_metrics.get("total_r", 0.0))
+    rejection_share = (
+        rejection_net_r / acceptance_net_r
+        if acceptance_net_r > 0.0 and rejection_net_r > 0.0
+        else 0.0
+    )
+    separation = acceptance_net_r - max(rejection_net_r, 0.0)
+
+    passes = {
+        "acceptance_positive_net_r": acceptance_net_r > 0.0,
+        "holdout_payout_gt_breach": float(holdout_scorecard.get("payout_rate") or 0.0)
+        > float(holdout_scorecard.get("breach_rate") or 0.0),
+        "rejection_window_capped": rejection_net_r <= 0.0 or rejection_share <= 0.25,
+        "acceptance_min_trades": int(acceptance_metrics.get("total_trades", 0)) >= min_acceptance_trades,
+    }
+
+    return {
+        "specialist_name": specialist_name,
+        "diagnostic_2021": _metrics_snapshot(diagnostic_metrics),
+        "acceptance_2022_2023": _metrics_snapshot(acceptance_metrics),
+        "holdout_2023": holdout_scorecard,
+        "rejection_2024_latest": _metrics_snapshot(rejection_metrics),
+        "acceptance_net_r": round(acceptance_net_r, 4),
+        "rejection_net_r": round(rejection_net_r, 4),
+        "rejection_share_of_acceptance": round(rejection_share, 4),
+        "acceptance_rejection_separation": round(separation, 4),
+        "passes_bear_v1": passes,
+        "survives_bear_v1": all(passes.values()),
+        "acceptance_trading_dates": len(acceptance_dates),
+        "holdout_trading_dates": len(holdout_dates),
+        "rejection_trading_dates": len(rejection_dates),
+    }
+
+
+def bear_market_rank_key(record: dict) -> tuple:
+    """Stable ranking key for bear-specialist V1 candidates."""
+
+    holdout = record["holdout_2023"]
+    avg_days = holdout.get("average_days_to_payout")
+    avg_days_key = -float(avg_days) if avg_days is not None else float("-inf")
+    return (
+        bool(record["survives_bear_v1"]),
+        float(holdout.get("payout_rate") or 0.0) - float(holdout.get("breach_rate") or 0.0),
+        float(record.get("acceptance_net_r") or 0.0),
+        float(record.get("acceptance_rejection_separation") or 0.0),
+        avg_days_key,
+    )
+
+
+def _eval_structure_vwap_gate(
+    gate_name: str,
+    signal_bar: int,
+    direction: int,
+    close_value: float,
+    vwap_value: float,
+    dist_pct: float,
+    signals: dict[str, np.ndarray],
+) -> bool:
+    """Evaluate a named 15m structure + VWAP gate at one signal index."""
+
+    s = signal_bar
+    d = direction
+
+    if gate_name == "hh_hl_2_vwap":
+        if d == 1:
+            return bool(signals["hh_hl_2_bull"][s]) and close_value > vwap_value
+        return bool(signals["hh_hl_2_bear"][s]) and close_value < vwap_value
+
+    if gate_name == "hh_hl_3_vwap":
+        if d == 1:
+            return bool(signals["hh_hl_3_bull"][s]) and close_value > vwap_value
+        return bool(signals["hh_hl_3_bear"][s]) and close_value < vwap_value
+
+    if gate_name == "any2of3_vwap_d5":
+        if d == 1:
+            return bool(signals["hh_hl_any2of3_bull"][s]) and dist_pct >= 0.05
+        return bool(signals["hh_hl_any2of3_bear"][s]) and dist_pct >= 0.05
+
+    if gate_name == "score_gte_2":
+        if d == 1:
+            return int(signals["bull_score"][s]) >= 2
+        return int(signals["bear_score"][s]) >= 2
+
+    if gate_name == "score_eq_3":
+        if d == 1:
+            return int(signals["bull_score"][s]) == 3
+        return int(signals["bear_score"][s]) == 3
+
+    if gate_name == "regime_2d_vwap":
+        if d == 1:
+            return bool(signals["regime_2d_bull"][s]) and close_value > vwap_value
+        return bool(signals["regime_2d_bear"][s]) and close_value < vwap_value
+
+    if gate_name == "regime_2of3_vwap":
+        if d == 1:
+            return bool(signals["regime_2of3_bull"][s]) and close_value > vwap_value
+        return bool(signals["regime_2of3_bear"][s]) and close_value < vwap_value
+
+    if gate_name == "pullback_holds_vwap":
+        if d == 1:
+            return (
+                bool(signals["hh_hl_2_bull"][s])
+                and close_value > vwap_value
+                and bool(signals["holds_vwap_bull"][s])
+            )
+        return (
+            bool(signals["hh_hl_2_bear"][s])
+            and close_value < vwap_value
+            and bool(signals["holds_vwap_bear"][s])
+        )
+
+    if gate_name == "pullback_holds_vwap_orb":
+        if d == 1:
+            return (
+                bool(signals["hh_hl_2_bull"][s])
+                and close_value > vwap_value
+                and bool(signals["holds_vwap_orb_bull"][s])
+            )
+        return (
+            bool(signals["hh_hl_2_bear"][s])
+            and close_value < vwap_value
+            and bool(signals["holds_vwap_orb_bear"][s])
+        )
+
+    raise ValueError(f"Unknown structure/VWAP gate: {gate_name}")
 
 
 def _filled_trades(trades: Iterable[TradeResult]) -> list[TradeResult]:
@@ -563,6 +1186,19 @@ def _filled_trades(trades: Iterable[TradeResult]) -> list[TradeResult]:
 
 def _filter_by_start(trades: list[TradeResult], start_date: str) -> list[TradeResult]:
     return [t for t in trades if t.date >= start_date]
+
+
+def _filter_between(
+    trades: list[TradeResult],
+    start_date: str | None,
+    end_date: str | None,
+) -> list[TradeResult]:
+    filtered = trades
+    if start_date is not None:
+        filtered = [t for t in filtered if t.date >= start_date]
+    if end_date is not None:
+        filtered = [t for t in filtered if t.date <= end_date]
+    return filtered
 
 
 def _regime_lookup(regime_calendar: pd.DataFrame) -> dict[str, str]:

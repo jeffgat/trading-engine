@@ -67,3 +67,48 @@ Layer 1: Regime classifier
 Layer 2: Specialist strategy
 Layer 3: Account portfolio
 Layer 4: Kill switch
+
+
+# GENERALIST
+
+# REGIME SPECIFIC
+
+# NQ Bull-Biased 2-Leg Paper-Trade Package
+
+## Selected Route
+
+- `bull_specialist_v1_winner`
+- `nq_asia_lsi_rr1.75`
+
+## Funded-Account Model
+
+- Challenge fee: `$150.0`.
+- Starting balance: `$50000.0`.
+- Trailing drawdown: `$2000.0`.
+- First payout floor: `$52000.0`.
+- Risk pre-payout: `$500.0`.
+- Risk post-payout: `$250.0`.
+
+## Full History
+
+- Filled trades: `454`.
+- Payout / breach / open: `0.6105` / `0.3438` / `0.0458`.
+- Average days to payout: `57.67`.
+- Median days to payout: `47.0`.
+- Average trades to payout: `9.84`.
+- Average first payout amount: `$325.84`.
+- EV per start: `$48.91`.
+
+## Forecast
+
+- By day 20: payout `0.1163` | breach `0.0216` | resolved `0.1379`.
+- By day 30: payout `0.2026` | breach `0.0536` | resolved `0.2562`.
+- By day 45: payout `0.298` | breach `0.1052` | resolved `0.4033`.
+
+## Holdout
+
+- Holdout payout / breach / open: `0.7578` / `0.0` / `0.2422`.
+- Holdout average days to payout: `61.94`.
+- Holdout EV per start: `$81.0`.
+- Holdout by day 20: payout `0.0761` | breach `0.0` | resolved `0.0761`.
+- Holdout by day 30: payout `0.1557` | breach `0.0` | resolved `0.1557`.

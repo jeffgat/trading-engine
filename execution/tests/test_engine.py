@@ -133,6 +133,15 @@ class TestORBBuilding:
         await advance_to_scanning(eng)
         assert eng._state == State.WAITING_FOR_GAP
 
+    async def test_regime_gate_blocks_scanning(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            regime_gate="bull_no_low_confidence",
+            regime_gate_check=lambda date: False,
+        )
+        await advance_to_scanning(eng)
+        assert eng._state == State.FLAT
+
 
 # =============================================================================
 # WAITING_FOR_GAP → ARMED_LIMIT
@@ -240,6 +249,24 @@ class TestScanningToArmed:
         # With ICF, bar1.close > orb_high → valid
         if eng._state == State.ARMED_LIMIT:
             broker.send_entry.assert_called_once()
+
+    async def test_structure_gate_blocks_setup_arming_when_false(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            structure_gate="hh_hl_2_vwap",
+            structure_gate_check=lambda engine, bar: False,
+        )
+        await advance_to_scanning(eng)
+        for bar in build_bullish_fvg_bars("2025-01-15", orb_high=eng._orb_high, gap=10.0):
+            await eng.on_bar(bar, 300.0)
+        assert eng._state == State.WAITING_FOR_GAP
+        broker.send_entry.assert_not_called()
+
+    async def test_ungated_session_behavior_is_unchanged(self, broker):
+        eng = _make_orb_engine(broker)
+        await advance_to_armed(eng, orb_high=19530.0)
+        assert eng._state == State.ARMED_LIMIT
+        broker.send_entry.assert_called_once()
 
 
 # =============================================================================

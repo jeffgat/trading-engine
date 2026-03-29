@@ -3,7 +3,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from trader.api import DashboardState, _build_exec_config_meta
-from trader.main import apply_atr_values, build_engines, build_lsi_engines
+from trader.gates import build_regime_gate
+from trader.main import apply_atr_values, build_engines, build_lsi_engines, load_exec_configs
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -229,3 +230,69 @@ def test_apply_atr_values_uses_engine_specific_length():
     apply_atr_values(sym_map, {"NQ.FUT": {12: 123.0, 40: 456.0}})
     assert cont_engines[0]._daily_atr == 123.0
     assert lsi_engines[0]._daily_atr == 456.0
+
+
+def test_general_v1_exec_config_loads_from_disk():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    assert "general_v1" in configs
+    general = configs["general_v1"]
+    assert general.enabled is True
+    assert general.webhook_url == ""
+    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+
+
+def test_general_v1_builds_exactly_four_engines():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+    general = {cfg.name: cfg for cfg in load_exec_configs()}["general_v1"]
+
+    cont, sym_map, atr_lens = build_engines(
+        config,
+        broker,
+        config_name="general_v1",
+        session_list=list(general.session_overrides),
+        exec_overrides=general.session_overrides,
+    )
+    lsi = build_lsi_engines(
+        config,
+        broker,
+        sym_map,
+        atr_lens,
+        config_name="general_v1",
+        lsi_list=list(general.lsi_session_overrides),
+        lsi_overrides=general.lsi_session_overrides,
+    )
+
+    assert len(cont) + len(lsi) == 4
+    assert {engine.name for engine in cont} == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert {engine.name for engine in lsi} == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    bull = next(engine for engine in cont if engine.name == "NQ_NY_BULL_SPECIALIST")
+    assert bull.regime_gate == "bull_no_low_confidence"
+    assert bull.structure_gate == "hh_hl_2_vwap"
+
+
+def test_bull_regime_gate_blocks_non_bull_and_low_confidence(monkeypatch):
+    monkeypatch.setattr(
+        "trader.gates._get_nq_regime_lookup",
+        lambda: {
+            "20250115": {"regime": "bear", "low_confidence": False},
+            "20250116": {"regime": "bull", "low_confidence": True},
+            "20250117": {"regime": "bull", "low_confidence": False},
+        },
+    )
+    gate = build_regime_gate("bull_no_low_confidence")
+
+    assert gate("20250115") is False
+    assert gate("20250116") is False
+    assert gate("20250117") is True

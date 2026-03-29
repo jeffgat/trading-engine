@@ -95,6 +95,34 @@ SESSION_CONFIGS = {
         "risk_usd": 200,
         "max_single_risk_usd": 300,
     },
+    # --- NQ NY Bull Specialist (bull regime + HH/HL-2 VWAP gated) ---
+    "NQ_NY_BULL_SPECIALIST": {
+        "orb_start": "09:30",
+        "orb_end": "09:50",
+        "entry_start": "09:50",
+        "entry_end": "12:00",
+        "flat_start": "15:30",
+        "flat_end": "16:00",
+        "stop_atr_pct": 6.0,
+        "stop_basis": "atr",
+        "min_gap_atr_pct": 2.5,
+        "max_gap_atr_pct": 0,
+        "gap_filter_basis": "atr",
+        "rr": 3.0,
+        "tp1_ratio": 0.6,
+        "instrument": "NQ",
+        "atr_length": 12,
+        "long_only": True,
+        "icf_enabled": False,
+        "excluded_dow": [4],
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+        "risk_usd": 500,
+        "max_single_risk_usd": 500,
+        "regime_gate": "bull_no_low_confidence",
+        "structure_gate": "hh_hl_2_vwap",
+    },
     # --- NQ Asia R9 (ORB-based stop, Tuesday exclusion) ---
     "NQ_Asia": {
         "orb_start": "20:00",
@@ -459,6 +487,7 @@ def build_engines(
         - atr_lengths maps DataBento symbol to ATR periods needed by that feed.
     """
     from .engine import ORBEngine
+    from .gates import build_regime_gate, build_structure_gate
     from .overrides import load_overrides
 
     general = config.get("general", {})
@@ -551,6 +580,10 @@ def build_engines(
             icf_enabled=merged.get("icf_enabled", False),
             excluded_dow=merged.get("excluded_dow"),
             fomc_exclusion=merged.get("fomc_exclusion", False),
+            regime_gate=merged.get("regime_gate"),
+            regime_gate_check=build_regime_gate(merged.get("regime_gate")),
+            structure_gate=merged.get("structure_gate"),
+            structure_gate_check=build_structure_gate(merged.get("structure_gate")),
             excluded_dates=excluded_dates,
             half_days=half_days,
             half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
@@ -561,9 +594,11 @@ def build_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s)",
+            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s, regime_gate=%s, structure_gate=%s)",
             config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
             merged.get("stop_basis", "atr"), sess_atr_length, merged.get("risk_usd", "?"),
+            merged.get("regime_gate") or "-",
+            merged.get("structure_gate") or "-",
         )
 
     return engines, symbol_map, atr_lengths

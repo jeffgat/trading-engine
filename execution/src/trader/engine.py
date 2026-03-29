@@ -230,6 +230,10 @@ class ORBEngine:
     on_trade_exit: Callable[[TradeRecord], None] | None = None
     # G5 gate: callback returns True if session should be skipped for a date
     g5_gate_check: Callable[[str], bool] | None = None
+    regime_gate: str | None = None
+    regime_gate_check: Callable[[str], bool] | None = None
+    structure_gate: str | None = None
+    structure_gate_check: Callable[["ORBEngine", Bar], bool] | None = None
     # Optional callback to request a state checkpoint to disk (crash recovery)
     on_checkpoint: Callable[[], None] | None = None
     # Optional per-config position cap manager
@@ -243,6 +247,7 @@ class ORBEngine:
     _orb_high: float = field(default=float("nan"), init=False)
     _orb_low: float = field(default=float("nan"), init=False)
     _bars: list[Bar] = field(default_factory=list, init=False)  # rolling window
+    _session_bars: list[Bar] = field(default_factory=list, init=False)
     _levels: TradeLevels | None = field(default=None, init=False)
     _tp1_hit: bool = field(default=False, init=False)
     _tp1_bar_count: int = field(default=-1, init=False)  # _bar_count when TP1 hit (1s)
@@ -581,6 +586,7 @@ class ORBEngine:
         self._orb_high = float("nan")
         self._orb_low = float("nan")
         self._bars.clear()
+        self._session_bars.clear()
         self._levels = None
         self._tp1_hit = False
         self._tp1_bar_count = -1
@@ -652,6 +658,7 @@ class ORBEngine:
 
         self._orb_high = max(b.high for b in orb_bars)
         self._orb_low = min(b.low for b in orb_bars)
+        self._session_bars = list(session_bars)
         self._bars = session_bars[-10:]
         self._bar_count = len(session_bars)
 
@@ -849,6 +856,7 @@ class ORBEngine:
             return
 
         # Add bar to rolling window (keep last 10 for safety)
+        self._session_bars.append(bar)
         self._bars.append(bar)
         if len(self._bars) > 10:
             self._bars.pop(0)
@@ -906,9 +914,18 @@ class ORBEngine:
                 self._orb_high, self._orb_low,
             )
         else:
-            # ORB window closed — check G5 gate before scanning
+            # ORB window closed — check gates before scanning
             if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
                 self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
+                self._state = State.FLAT
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+            if self.regime_gate_check is not None and not self.regime_gate_check(self._current_date):
+                self._log_trade(
+                    "REGIME_GATE_BLOCKED",
+                    "gate=%s date=%s" % (self.regime_gate or "custom", self._current_date),
+                )
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -955,6 +972,15 @@ class ORBEngine:
                         self._daily_atr, self._orb_range,
                     )
                 else:
+                    if self.structure_gate_check is not None and not self.structure_gate_check(self, bar):
+                        self._log_trade(
+                            "STRUCTURE_GATE_BLOCKED",
+                            "gate=%s bar_time=%s" % (
+                                self.structure_gate or "custom",
+                                bar.timestamp.isoformat(),
+                            ),
+                        )
+                        return
                     self._long_fvg_found = True
                     levels = compute_trade_levels(
                         entry=entry,

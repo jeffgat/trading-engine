@@ -267,3 +267,5 @@ Only after those 3 are clearly defined should the framework expand.
 - Assume specialists decay and need replacement.
 - Treat the business as a portfolio of specialist bets, not one forever system.
 
+Current implementation note:
+- The deployed NQ 4-leg package is a **generalist payout portfolio**, not the finished multi-specialist end state. It contains one true bull specialist plus three general long-biased payout legs, so it does not yet satisfy the intended regime-specialist portfolio architecture.

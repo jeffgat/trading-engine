@@ -194,7 +194,8 @@
       "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution -type f \\\\\\(-name *.log -o -name *state* -o -name *.json -o -name *.csv \\\\\\))",
       "Bash(uv run python -c \":*)",
       "Bash(sw_vers)",
-      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting -maxdepth 2 -type f \\\\\\(-name package.json -o -name pyproject.toml -o -name setup.py -o -name requirements.txt -o -name *.sh \\\\\\))"
+      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting -maxdepth 2 -type f \\\\\\(-name package.json -o -name pyproject.toml -o -name setup.py -o -name requirements.txt -o -name *.sh \\\\\\))",
+      "Bash(npm run:*)"
     ]
   }
 }

@@ -10,6 +10,9 @@ dependencies = [
     "tomli>=2.0; python_version < '3.11'",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "pyarrow>=14.0",
 ]
 
 [project.scripts]
