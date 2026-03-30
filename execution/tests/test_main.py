@@ -240,23 +240,24 @@ def test_apply_atr_values_uses_engine_specific_length():
     assert lsi_engines[0]._daily_atr == 456.0
 
 
-def test_phase_1_v1_exec_config_loads_as_dry_run_fixed_risk_profile():
+def test_general_v1_exec_config_loads_as_dry_run_fixed_risk_profile():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
-    assert "phase_1_v1" in configs
-    phase = configs["phase_1_v1"]
-    assert phase.enabled is True
-    assert phase.webhook_url == ""
-    assert set(phase.session_overrides) == {"NQ_Asia", "ES_Asia"}
-    assert set(phase.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
-    assert phase.session_overrides["NQ_Asia"]["risk_usd"] == 400
-    assert phase.session_overrides["ES_Asia"]["risk_usd"] == 400
-    assert phase.lsi_session_overrides["NQ_Asia_LSI"]["risk_usd"] == 400
-    assert phase.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
-    assert phase.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
+    assert "GENERAL_V1" in configs
+    general = configs["GENERAL_V1"]
+    assert general.enabled is True
+    assert general.webhook_url == ""
+    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert general.session_overrides["NQ_Asia"]["risk_usd"] == 400
+    assert general.session_overrides["NQ_NY_BULL_SPECIALIST"]["risk_usd"] == 400
+    assert general.lsi_session_overrides["NQ_Asia_LSI"]["risk_usd"] == 400
+    assert general.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
+    assert general.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
+    assert general.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
 
 
-def test_phase_1_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
+def test_general_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
     broker = MagicMock()
     config = {
         "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
@@ -268,32 +269,87 @@ def test_phase_1_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
         },
         "sessions": {},
     }
-    phase = {cfg.name: cfg for cfg in load_exec_configs()}["phase_1_v1"]
+    general = {cfg.name: cfg for cfg in load_exec_configs()}["GENERAL_V1"]
 
     cont, sym_map, atr_lens = build_engines(
         config,
         broker,
-        config_name="phase_1_v1",
-        session_list=list(phase.session_overrides),
-        exec_overrides=phase.session_overrides,
+        config_name="GENERAL_V1",
+        session_list=list(general.session_overrides),
+        exec_overrides=general.session_overrides,
     )
     lsi = build_lsi_engines(
         config,
         broker,
         sym_map,
         atr_lens,
-        config_name="phase_1_v1",
-        lsi_list=list(phase.lsi_session_overrides),
-        lsi_overrides=phase.lsi_session_overrides,
+        config_name="GENERAL_V1",
+        lsi_list=list(general.lsi_session_overrides),
+        lsi_overrides=general.lsi_session_overrides,
     )
 
     assert len(cont) + len(lsi) == 4
-    assert {engine.name for engine in cont} == {"NQ_Asia", "ES_Asia"}
+    assert {engine.name for engine in cont} == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
     assert {engine.name for engine in lsi} == {"NQ_Asia_LSI", "NQ_NY_LSI"}
     assert all(engine.risk_usd == 400 for engine in cont)
     assert all(engine.risk_usd == 400 for engine in lsi)
     ny_lsi = next(engine for engine in lsi if engine.name == "NQ_NY_LSI")
     assert ny_lsi.qty_multiplier == 1.0
+
+
+def test_fast_and_fast_v2_exec_configs_only_load_viable_sessions():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    fast = configs["FAST"]
+    fast_v2 = configs["FAST_V2"]
+
+    assert set(fast.session_overrides) == {
+        "NQ_NY",
+        "NQ_NY_BULL_SPECIALIST",
+        "NQ_Asia",
+        "ES_NY",
+        "ES_Asia",
+    }
+    assert set(fast.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert all(override["risk_usd"] == 400 for override in fast.session_overrides.values())
+    assert all(override["risk_usd"] == 400 for override in fast.lsi_session_overrides.values())
+    assert fast.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
+    assert fast.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
+
+    assert set(fast_v2.session_overrides) == {"NQ_Asia"}
+    assert set(fast_v2.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert fast_v2.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.4
+
+
+def test_recommended_exec_configs_match_phase_one_subset_portfolios():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    fast = configs["FAST_RECOMMENDED"]
+    fast_v2 = configs["FAST_V2_RECOMMENDED"]
+    general = configs["GENERAL_V1_RECOMMENDED"]
+
+    assert set(fast.session_overrides) == {
+        "NQ_NY_BULL_SPECIALIST",
+        "NQ_Asia",
+        "ES_NY",
+        "ES_Asia",
+    }
+    assert set(fast.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert all(override["risk_usd"] == 400 for override in fast.session_overrides.values())
+    assert all(override["risk_usd"] == 400 for override in fast.lsi_session_overrides.values())
+    assert fast.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
+
+    assert set(fast_v2.session_overrides) == {"NQ_Asia"}
+    assert set(fast_v2.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert all(override["risk_usd"] == 400 for override in fast_v2.session_overrides.values())
+    assert all(override["risk_usd"] == 400 for override in fast_v2.lsi_session_overrides.values())
+    assert fast_v2.webhook_url == ""
+
+    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert all(override["risk_usd"] == 400 for override in general.session_overrides.values())
+    assert all(override["risk_usd"] == 400 for override in general.lsi_session_overrides.values())
+    assert general.webhook_url == ""
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():
