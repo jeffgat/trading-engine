@@ -52,7 +52,7 @@ Unless the user specifies otherwise, use the same default phase-one funded-accou
 |---------|------|---------|
 | Existing regime specialist skill | `.agents/skills/regime-spec-pipeline/SKILL.md` | Causal-label and gate-discipline baseline |
 | Existing regime rules | `.agents/skills/regime-spec-pipeline/references/regime-rules.md` | Label integrity and same-regime testing rules |
-| Prop-firm phase-one workflow | `.agents/skills/prop-firm-phase1/SKILL.md` | Account-level payout/breach simulation patterns |
+| Prop EV simulation reference | `backtesting/scripts/run_nq_lsi_propfirm_sweep.py` | Account-level payout/breach simulation patterns |
 | Prop EV framework notes | `backtesting/learnings/prop_regime_specialist_framework.md` | EV metrics, failure clustering, and specialist business logic |
 | Phase guide | `references/phases.md` | Detailed workflow for this skill |
 

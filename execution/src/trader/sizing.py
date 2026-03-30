@@ -29,11 +29,14 @@ class TradeLevels:
     gap_size: float
 
 
-def _floor_to_step(x: float, step: float) -> float:
-    """Floor a value to the nearest step increment."""
+def _floor_to_step(x: float, step: float, round_up_threshold: float = 0.7) -> float:
+    """Round to nearest step, rounding up when fractional part >= threshold."""
     if step <= 0:
         return x
-    return math.floor(x / step) * step
+    ratio = x / step
+    if ratio - math.floor(ratio) >= round_up_threshold:
+        return math.ceil(ratio) * step
+    return math.floor(ratio) * step
 
 
 def compute_trade_levels(

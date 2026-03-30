@@ -40,7 +40,7 @@ Post-first-payout specialist pipeline that answers: **"After first payout has be
 |---------|------|---------|
 | Existing regime specialist skill | `.agents/skills/regime-spec-pipeline/SKILL.md` | Canonical specialist validation posture |
 | Existing regime rules | `.agents/skills/regime-spec-pipeline/references/regime-rules.md` | Label integrity and gate rules |
-| Existing robust validator | `.agents/skills/robust-pipeline/SKILL.md` | Conservative hold-out and Monte Carlo posture |
+| Existing discovery validator | `.agents/skills/discovery-pipeline/SKILL.md` | Conservative hold-out and Monte Carlo posture |
 | Phase guide | `references/phases.md` | Post-first-payout specialist framing |
 
 ## Pipeline Summary

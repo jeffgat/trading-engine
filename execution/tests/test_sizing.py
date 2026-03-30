@@ -276,9 +276,19 @@ class TestFloorToStep:
     def test_negative_step_returns_x(self):
         assert _floor_to_step(7.5, -1) == pytest.approx(7.5)
 
-    def test_floors_correctly(self):
-        assert _floor_to_step(7.8, 2.0) == pytest.approx(6.0)
+    def test_floors_below_threshold(self):
+        # 5.0 / 2.0 = 2.5, frac 0.5 < 0.7 → floor to 4.0
         assert _floor_to_step(5.0, 2.0) == pytest.approx(4.0)
+        # 4.3 / 1.0 = 4.3, frac 0.3 < 0.7 → floor to 4.0
+        assert _floor_to_step(4.3, 1.0) == pytest.approx(4.0)
+
+    def test_rounds_up_at_threshold(self):
+        # 7.8 / 2.0 = 3.9, frac 0.9 >= 0.7 → ceil to 8.0
+        assert _floor_to_step(7.8, 2.0) == pytest.approx(8.0)
+        # 4.7 / 1.0 = 4.7, frac 0.7 >= 0.7 → ceil to 5.0
+        assert _floor_to_step(4.7, 1.0) == pytest.approx(5.0)
+        # 1.75 / 1.0 = 1.75, frac 0.75 >= 0.7 → ceil to 2.0
+        assert _floor_to_step(1.75, 1.0) == pytest.approx(2.0)
 
     def test_exact_multiple(self):
         assert _floor_to_step(6.0, 2.0) == pytest.approx(6.0)

@@ -17,7 +17,7 @@ Post-first-payout pipeline that answers: **"Now that the account has already pai
 
 - Validating a strategy after first payout has already been secured
 - Ranking candidates by post-payout longevity and withdrawal continuity
-- Reframing a generic robust-pipeline review as a post-first-payout preservation workflow
+- Reframing a generic discovery-pipeline review as a post-first-payout preservation workflow
 - Deciding whether a candidate should be trusted on accounts that have already reached the lock-in floor
 
 ## Do NOT Use When
@@ -28,7 +28,7 @@ Post-first-payout pipeline that answers: **"Now that the account has already pai
 
 ## Required Posture
 
-- Keep the hold-out and Bailey posture from the existing `robust-pipeline`.
+- Keep the hold-out and Bailey posture from the existing `discovery-pipeline`.
 - Phase two is conservative by default: survival still matters because the account is already monetizable.
 - Reframe the goal from "never breach" to "maximize extracted post-payout withdrawals while preserving account longevity."
 - Keep monthly loss, drawdown, and Monte Carlo path-risk as meaningful controls.
@@ -38,9 +38,9 @@ Post-first-payout pipeline that answers: **"Now that the account has already pai
 
 | Resource | Path | Purpose |
 |---------|------|---------|
-| Existing robust validator | `.agents/skills/robust-pipeline/SKILL.md` | Canonical conservative validation posture |
-| Robust phase reference | `.agents/skills/robust-pipeline/references/phases.md` | Current structural/WF/hold-out flow |
-| Prop constraints reference | `.agents/skills/robust-pipeline/references/prop-constraints.md` | DD, monthly loss, and MC diagnostics |
+| Existing discovery validator | `.agents/skills/discovery-pipeline/SKILL.md` | Canonical conservative validation posture |
+| Discovery phase reference | `.agents/skills/discovery-pipeline/references/phases.md` | Current structural/WF/hold-out flow |
+| Prop constraints reference | `.agents/skills/discovery-pipeline/references/prop-constraints.md` | DD, monthly loss, and MC diagnostics |
 | Phase guide | `references/phases.md` | Post-first-payout framing for this skill |
 
 ## Pipeline Summary

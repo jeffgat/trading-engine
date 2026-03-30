@@ -14,7 +14,7 @@ Six-step end-to-end workflow that takes an instrument from baseline through vali
 
 **Steps**: (1) Baseline, (2) Variable Sweeps, (3) Grid Sweep, (4) Robust Pipeline, (5) Save Final Config, (6) Update Learnings.
 
-Orchestrates `multi-phase-backtest` sweep discipline with `robust-pipeline` validation. Calmar ratio is the primary optimization objective. DD is NOT a hard filter -- set `max_drawdown_r=999.0` everywhere.
+Orchestrates `multi-phase-backtest` sweep discipline with `discovery-pipeline` validation. Calmar ratio is the primary optimization objective. DD is NOT a hard filter -- set `max_drawdown_r=999.0` everywhere.
 
 **HARD CONSTRAINT — 10-Tick Minimum Stop**: Never test, adopt, or save a config where the median stop is less than 10 ticks. Stops below 10 ticks are unrealistic — slippage eats the edge. Compute as `median(t.risk_points / instrument.tick_size for filled trades)`. Skip and print `SKIP (median stop < 10 ticks)` for any variant that fails this check. This applies at EVERY step: baseline, sweeps, grid, pipeline, and save.
 
@@ -304,7 +304,7 @@ This skill orchestrates but does NOT replace:
 | Skill | Role | When to load |
 |-------|------|-------------|
 | `multi-phase-backtest` | Sweep discipline theory, variable sweep methodology | For sweep-and-grid loop details |
-| `robust-pipeline` | Detailed phase documentation, prop constraint thresholds | For `references/phases.md` and `references/prop-constraints.md` |
+| `discovery-pipeline` | Detailed phase documentation, prop constraint thresholds | For `references/phases.md` and `references/prop-constraints.md` |
 | `strategy-optimizer` | Individual optimization tasks, parameter guide | For `references/parameter-guide.md` |
 | Instrument-specific (e.g., `gc-optimization`) | Hardcoded constraints, known pitfalls | When that instrument is being optimized |
 

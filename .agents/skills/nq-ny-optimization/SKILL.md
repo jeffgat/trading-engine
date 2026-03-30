@@ -4,7 +4,7 @@ Use this skill when re-optimizing NQ NY continuation from scratch — fresh data
 
 **Related skills:**
 - `multi-phase-backtest` — generic 4-phase optimization workflow (referenced by this skill)
-- `robust-pipeline` — 5-phase validation once the anchor stabilizes
+- `discovery-pipeline` — pre-holdout discovery and shortlist promotion once the anchor stabilizes
 
 ---
 
@@ -202,7 +202,7 @@ Script: `run_nq_ny_variable_sweeps_{N}.py` or a dedicated grid script.
 
 ## Phase 4: Robust Pipeline
 
-Use `run_nq_ny_robust_pipeline.py`. See `robust-pipeline` skill for the generic phases.
+Use `run_nq_ny_robust_pipeline.py`. See `discovery-pipeline` for the generic pre-holdout phases.
 
 **NQ-specific pipeline settings:**
 

@@ -1,114 +1,29 @@
-`new findings`
-- HH/HL + VWAP gate vastly improves ORB results
+# New Strategy Workflow
 
+1. **Start with the thesis**
 
-Best Approach
-The clean version of your idea is:
+   Define the strategy family, instrument, session, direction bias, and read the relevant `backtesting/learnings/{ASSET}.md` first.
 
-Define regimes first, independently of strategy PnL.
-Build specialist strategies for each regime.
-Only deploy a strategy when its regime is active.
-Evaluate the portfolio EV of accounts, not the beauty of each backtest.
-So for example:
+2. **Build a baseline**
 
-Bull regime: trend-continuation, breakout, ORB continuation
-Bear regime: fast downside continuation, failed auction, rejection / breakdown
-Sideways regime: mean reversion, fade extremes, lower RR / shorter holding
+   Create a simple baseline config or script and run a full-history pre-holdout backtest just to see if the idea is structurally alive.
 
-Practical Framework
-I’d structure it like this:
+3. **Freeze the final hold-out early**
 
-Layer 1: Regime classifier
-bull / bear / sideways
-based on simple observable features:
-higher timeframe trend
-realized volatility
-range expansion / contraction
-breadth / index behavior if you use it
-Layer 2: Specialist strategy
-each strategy is built only for one regime
-Layer 3: Account portfolio
-multiple accounts running different specialists or different activation rules
-Layer 4: Kill switch
-if live stats deviate too far from expected behavior, disable quickly
+   Reserve the most recent `12-24` months and do not touch it during discovery.
 
-For your use case, even simpler is better:
+4. **Explore on pre-holdout data only**
 
-trend state
-volatility state
-intraday participation state
-That gives you a regime grid like:
+   Run coarse variable sweeps or small grid searches with `2-3` parameters at a time. Start broad, then narrow.
 
-trending + high vol
-trending + low vol
-non-trending + low vol
-non-trending + high vol
+5. **Use `discovery-pipeline`**
 
-How to evaluate it
-This is the most important part.
+   Once the anchor stabilizes, use it to rank candidates by combined OOS behavior, walk-forward retention, and local plateau stability. Promote only a tiny frozen shortlist.
 
-If the real business model is prop-firm payout extraction, your main metric should not be just Sharpe or full-history Calmar. It should be something like:
+6. **Run `phase-one-robust-pipeline`**
 
-expected payout per account attempt
-first payout probability
-average number of resets before payout
-average payout multiple vs account cost
-time to payout
-correlation of failure across accounts
-live decay rate after deployment
-A strategy that is “fragile but explosive” may be perfectly acceptable if:
+   Feed only the frozen promoted candidates into phase one and evaluate payout rate, EV per attempt, and time to payout. Do not use phase one as the main search loop.
 
-challenge cost is cheap
-payout is large
-you can run enough independent attempts
-losers are not too correlated
+7. **Save and document the winner**
 
-Layer 1: Regime classifier
-Layer 2: Specialist strategy
-Layer 3: Account portfolio
-Layer 4: Kill switch
-
-
-# GENERALIST
-
-# REGIME SPECIFIC
-
-# NQ Bull-Biased 2-Leg Paper-Trade Package
-
-## Selected Route
-
-- `bull_specialist_v1_winner`
-- `nq_asia_lsi_rr1.75`
-
-## Funded-Account Model
-
-- Challenge fee: `$150.0`.
-- Starting balance: `$50000.0`.
-- Trailing drawdown: `$2000.0`.
-- First payout floor: `$52000.0`.
-- Risk pre-payout: `$500.0`.
-- Risk post-payout: `$250.0`.
-
-## Full History
-
-- Filled trades: `454`.
-- Payout / breach / open: `0.6105` / `0.3438` / `0.0458`.
-- Average days to payout: `57.67`.
-- Median days to payout: `47.0`.
-- Average trades to payout: `9.84`.
-- Average first payout amount: `$325.84`.
-- EV per start: `$48.91`.
-
-## Forecast
-
-- By day 20: payout `0.1163` | breach `0.0216` | resolved `0.1379`.
-- By day 30: payout `0.2026` | breach `0.0536` | resolved `0.2562`.
-- By day 45: payout `0.298` | breach `0.1052` | resolved `0.4033`.
-
-## Holdout
-
-- Holdout payout / breach / open: `0.7578` / `0.0` / `0.2422`.
-- Holdout average days to payout: `61.94`.
-- Holdout EV per start: `$81.0`.
-- Holdout by day 20: payout `0.0761` | breach `0.0` | resolved `0.0761`.
-- Holdout by day 30: payout `0.1557` | breach `0.0` | resolved `0.1557`.
+   After downstream validation, save the final config and update the asset learnings file with the conclusion and DB references.

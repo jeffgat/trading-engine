@@ -162,6 +162,51 @@ NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Prima
 
 ### Optimization
 
+### From-Scratch Strategy Workflow
+
+When starting from scratch with a new strategy or strategy variant, use this workflow:
+
+1. **Start with the thesis and the asset learnings**
+   - Read the relevant `learnings/{ASSET}.md` file first.
+   - Define the strategy family clearly: continuation, inversion, LSI, VWAP, gap fill, regime specialist, etc.
+   - Decide the instrument, session, direction bias, and rough execution logic before sweeping.
+
+2. **Build a baseline, not a winner**
+   - Create a simple baseline config or baseline script with reasonable defaults.
+   - Run a full-history pre-holdout backtest to confirm the strategy is structurally alive.
+   - Reject obviously dead ideas early: too few trades, no edge, pathological DD shape, or strategy logic that only works in a tiny slice of history.
+
+3. **Freeze a final hold-out before discovery**
+   - Reserve the most recent `12-24` months as the final untouched hold-out.
+   - Do not let baseline screening, variable sweeps, discovery ranking, or structural tuning touch this hold-out.
+   - Bailey posture matters more than any single backtest metric.
+
+4. **Run exploratory sweeps on pre-holdout data only**
+   - Use `strategy-optimizer`, per-asset sweep scripts, or manual variable sweeps to explore the search space.
+   - Start coarse, then narrow.
+   - Sweep only `2-3` dimensions at a time unless the user explicitly wants a broader brute-force pass.
+   - Track how many rounds and combinations were tried.
+
+5. **Use `discovery-pipeline` to promote candidates**
+   - `discovery-pipeline` is the pre-holdout robustness workflow.
+   - Its job is not final live approval. Its job is to turn a noisy search space into a frozen shortlist.
+   - Rank candidates by combined OOS behavior, walk-forward retention, and local plateau stability.
+   - Prefer stable neighborhoods over single-point maxima.
+   - Promote a very small shortlist: ideally `1` leader plus at most `1-2` challengers.
+
+6. **Hand frozen candidates into `phase-one-robust-pipeline`**
+   - `phase-one-robust-pipeline` is downstream of discovery.
+   - It evaluates whether a promoted all-weather candidate can reach first payout fast enough and often enough to justify the funded-account model.
+   - Do not use phase one as the primary parameter search loop.
+
+7. **Save the winning config only after downstream validation**
+   - Once a candidate survives the downstream pipeline, save the final config/result.
+   - Update the relevant `learnings/{ASSET}.md` with the final conclusion, key evidence, and DB run IDs.
+
+In short:
+
+`baseline -> exploratory sweeps -> discovery-pipeline -> phase-one-robust-pipeline -> save final candidate`
+
 #### Variable Sweep Discipline — CRITICAL RULE
 **Every time the anchor config changes, all variable sweeps must be rerun from scratch.**
 
@@ -175,7 +220,8 @@ The full sweep-and-grid loop:
 5. **Fine-tune winners** — sweep the most impactful dimensions at higher resolution around their winning values
 6. **Grid sweep** — sweep all continuous params (stop × rr × min_gap × tp1) together in the winning structural config region
 7. **Anchor changed again?** → return to step 2
-8. **Robust pipeline** — only run WF + prop constraints + holdout + MC when the anchor has stabilized
+8. **Discovery pipeline** — only run the pre-holdout robustness/promotion workflow once the anchor has stabilized
+9. **Phase-one robust pipeline** — evaluate the frozen promoted shortlist on first-payout economics
 
 This applies even if sweeps previously showed a dimension was "insensitive" — that result was anchor-specific. Common examples:
 - ATR length: appeared optimal at 50 with old config, then 14 with new ORB, then possibly 12 or 16 after stop changes
@@ -219,11 +265,11 @@ The primary deployment model: start a fresh funded account every 2 weeks, each r
 - **Avg Days to Payout/Breach** — how long until resolution
 - **Open accounts avg R** — forward trajectory indicator
 
-**Optimization workflow** (see `prop-firm-phase1` skill):
-1. Take an existing backtest config as anchor
-2. Grid sweep key params (rr, tp1_ratio, gap filter, etc.)
-3. Simulate staggered accounts on every config
-4. Rank by success rate and Calmar
+**Optimization workflow after discovery** (see `phase-one-robust-pipeline` skill):
+1. Take a frozen promoted candidate from `discovery-pipeline`
+2. Convert combined OOS behavior into funded-account first-payout outcomes
+3. Simulate staggered accounts on the candidate or very small frozen shortlist
+4. Rank by payout rate, EV per attempt, and time to payout
 5. Report detailed account-by-account breakdowns
 
 **Reference script:** `scripts/run_nq_lsi_propfirm_sweep.py` — complete working example with `simulate_staggered_accounts()` function.

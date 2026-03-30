@@ -9,7 +9,7 @@ Use different logic for optimization and validation:
 - **During optimization**: Calmar is often the best ranking metric and DD can be a soft input.
 - **During validation**: use the real prop-firm DD threshold. Do not hide drawdown with a dummy value like `999R`.
 
-This distinction matters because Phase 3 and Phase 5 are pass/fail validation stages, not search stages.
+This distinction matters because downstream validation stages are pass/fail, not search stages.
 
 ## Optimization Priority Order
 

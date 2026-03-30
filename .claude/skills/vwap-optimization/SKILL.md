@@ -542,7 +542,7 @@ This skill is the VWAP counterpart to `orb-optimization`. It shares the same wor
 | Skill | Role | When to load |
 |-------|------|-------------|
 | `orb-optimization` | ORB-specific optimization workflow | Reference for workflow structure only |
-| `robust-pipeline` | Detailed phase documentation, prop constraint thresholds | For prop constraint reference |
+| `discovery-pipeline` | Detailed phase documentation, prop constraint thresholds | For prop constraint reference |
 | Instrument-specific (e.g., `gc-optimization`) | Hardcoded constraints, known pitfalls | When that instrument is being optimized |
 
 All existing skills remain independently usable. This skill provides the sequencing and decision logic for VWAP strategy optimization.

@@ -18,7 +18,7 @@ Payout-sprint pipeline that answers: **"Can this all-weather strategy reach firs
 
 - Evaluating a strategy for the sprint from funded-account start to first payout
 - Comparing candidates by first payout rate, EV per attempt, and time to payout
-- Reworking a current robust-pipeline idea so it is judged as an account-farming business, not a breach-avoidance exercise
+- Reworking a current discovery-pipeline idea so it is judged as an account-farming business, not a breach-avoidance exercise
 - Converting walk-forward OOS trades into funded-account outcomes
 
 ## Do NOT Use When
@@ -45,7 +45,8 @@ Use this default when the user does not specify a different prop setup:
 ## Required Posture
 
 - Reserve the hold-out period before Phase 1 and do not let screening touch it.
-- Keep Bailey-style multiple-testing discipline from the existing `robust-pipeline`.
+- Keep Bailey-style multiple-testing discipline from the existing `discovery-pipeline`.
+- Prefer passing in a frozen shortlist from `discovery-pipeline` rather than using this skill as the primary parameter discovery loop.
 - Reuse structural and walk-forward rigor from the existing robust pipeline.
 - Do **not** treat worst month, annual R, or pure survival as the primary objective in phase one.
 - Judge phase one with a scorecard first: payout rate, EV per attempt, time to payout, open-account trajectory, and failure clustering.
@@ -55,8 +56,8 @@ Use this default when the user does not specify a different prop setup:
 
 | Resource | Path | Purpose |
 |---------|------|---------|
-| Existing conservative validator | `.agents/skills/robust-pipeline/SKILL.md` | Hold-out, walk-forward, and Bailey posture to preserve |
-| Prop-firm phase-one workflow | `.agents/skills/prop-firm-phase1/SKILL.md` | Account-level payout/breach simulation patterns |
+| Existing discovery validator | `.agents/skills/discovery-pipeline/SKILL.md` | Hold-out, walk-forward, and Bailey posture to preserve |
+| Prop EV simulation reference | `backtesting/scripts/run_nq_lsi_propfirm_sweep.py` | Account-level payout/breach simulation patterns |
 | Prop EV framework notes | `backtesting/learnings/prop_regime_specialist_framework.md` | EV vocabulary, payout metrics, and clustering questions |
 | Phase guide | `references/phases.md` | Detailed execution flow for this skill |
 
