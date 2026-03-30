@@ -701,6 +701,37 @@ def build_lsi_engines(
 
 
 # ---------------------------------------------------------------------------
+# Shutdown helpers
+# ---------------------------------------------------------------------------
+
+def _checkpoint_shutdown_flat(engine) -> None:
+    """Persist shutdown-driven cancel/flatten as FLAT for restart safety.
+
+    During graceful shutdown we intentionally cancel pending entries and flatten
+    open positions before writing the final checkpoint. If we keep the old
+    in-memory state (`armed_limit` / `managing`), a restart will restore stale
+    exposure and can emit duplicate exit orders later in the session.
+    """
+    state = getattr(engine, "_state", None)
+    flat_state = getattr(getattr(state, "__class__", None), "FLAT", None)
+    if flat_state is not None:
+        engine._state = flat_state
+
+    cleanup_task = getattr(engine, "_cleanup_task", None)
+    if cleanup_task is not None and not cleanup_task.done():
+        cleanup_task.cancel()
+        engine._cleanup_task = None
+
+    release_position_cap = getattr(engine, "_release_position_cap", None)
+    if callable(release_position_cap):
+        release_position_cap()
+
+    notify_state_change = getattr(engine, "_notify_state_change", None)
+    if callable(notify_state_change):
+        notify_state_change()
+
+
+# ---------------------------------------------------------------------------
 # Main async loop
 # ---------------------------------------------------------------------------
 
@@ -1019,9 +1050,11 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
                 if state_val == "armed_limit":
                     logger.info("[%s] Shutdown: cancelling pending order", engine.name)
                     await engine.broker.send_cancel(ticker=engine.exec_ticker)
+                    _checkpoint_shutdown_flat(engine)
                 elif state_val == "managing":
                     logger.info("[%s] Shutdown: flattening open position", engine.name)
                     await engine.broker.send_flatten(ticker=engine.exec_ticker)
+                    _checkpoint_shutdown_flat(engine)
             except Exception:
                 logger.exception("[%s] Error during shutdown cleanup", engine.name)
 

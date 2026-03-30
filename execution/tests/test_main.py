@@ -3,8 +3,16 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from trader.api import DashboardState, _build_exec_config_meta
+from trader.engine import State
 from trader.gates import build_regime_gate
-from trader.main import apply_atr_values, build_engines, build_lsi_engines, load_exec_configs
+from trader.lsi_engine import LSIState
+from trader.main import (
+    _checkpoint_shutdown_flat,
+    apply_atr_values,
+    build_engines,
+    build_lsi_engines,
+    load_exec_configs,
+)
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -286,6 +294,37 @@ def test_phase_1_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
     assert all(engine.risk_usd == 400 for engine in lsi)
     ny_lsi = next(engine for engine in lsi if engine.name == "NQ_NY_LSI")
     assert ny_lsi.qty_multiplier == 1.0
+
+
+def test_checkpoint_shutdown_flat_marks_orb_engine_flat():
+    cleanup_task = MagicMock()
+    cleanup_task.done.return_value = False
+    engine = MagicMock()
+    engine._state = State.MANAGING
+    engine._cleanup_task = cleanup_task
+
+    _checkpoint_shutdown_flat(engine)
+
+    assert engine._state == State.FLAT
+    cleanup_task.cancel.assert_called_once()
+    assert engine._cleanup_task is None
+    engine._release_position_cap.assert_called_once()
+    engine._notify_state_change.assert_called_once()
+
+
+def test_checkpoint_shutdown_flat_marks_lsi_engine_flat():
+    cleanup_task = MagicMock()
+    cleanup_task.done.return_value = True
+    engine = MagicMock()
+    engine._state = LSIState.ARMED_LIMIT
+    engine._cleanup_task = cleanup_task
+
+    _checkpoint_shutdown_flat(engine)
+
+    assert engine._state == LSIState.FLAT
+    cleanup_task.cancel.assert_not_called()
+    engine._release_position_cap.assert_called_once()
+    engine._notify_state_change.assert_called_once()
 
 
 def test_bull_regime_gate_blocks_non_bull_and_low_confidence(monkeypatch):
