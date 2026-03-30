@@ -23,11 +23,10 @@ interface EquityCurveComparisonProps {
 
 const CONFIG_LINE_COLORS: Record<string, string> = {
   FAST: "#3b82f6",    // blue-500
-  FAST_RECOMMENDED: "#60a5fa", // blue-400
+  "FAST_V1.1": "#60a5fa", // blue-400
   FAST_V2: "#d946ef", // fuchsia-500
-  FAST_V2_RECOMMENDED: "#e879f9", // fuchsia-400
+  "FAST_V2.1": "#e879f9", // fuchsia-400
   GENERAL_V1: "#f97316", // orange-500
-  GENERAL_V1_RECOMMENDED: "#fb923c", // orange-400
   SLOW: "#10b981",    // emerald-500
 };
 

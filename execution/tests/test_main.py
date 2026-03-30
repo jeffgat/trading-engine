@@ -324,9 +324,9 @@ def test_fast_and_fast_v2_exec_configs_only_load_viable_sessions():
 def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
-    fast = configs["FAST_RECOMMENDED"]
-    fast_v2 = configs["FAST_V2_RECOMMENDED"]
-    general = configs["GENERAL_V1_RECOMMENDED"]
+    fast = configs["FAST_V1.1"]
+    fast_v2 = configs["FAST_V2.1"]
+    general = configs["GENERAL_V1"]
 
     assert set(fast.session_overrides) == {
         "NQ_NY_BULL_SPECIALIST",
