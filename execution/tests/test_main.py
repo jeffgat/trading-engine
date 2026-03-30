@@ -232,18 +232,23 @@ def test_apply_atr_values_uses_engine_specific_length():
     assert lsi_engines[0]._daily_atr == 456.0
 
 
-def test_general_v1_exec_config_loads_from_disk():
+def test_phase_1_v1_exec_config_loads_as_dry_run_fixed_risk_profile():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
-    assert "general_v1" in configs
-    general = configs["general_v1"]
-    assert general.enabled is True
-    assert general.webhook_url == ""
-    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
-    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert "phase_1_v1" in configs
+    phase = configs["phase_1_v1"]
+    assert phase.enabled is True
+    assert phase.webhook_url == ""
+    assert set(phase.session_overrides) == {"NQ_Asia", "ES_Asia"}
+    assert set(phase.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert phase.session_overrides["NQ_Asia"]["risk_usd"] == 400
+    assert phase.session_overrides["ES_Asia"]["risk_usd"] == 400
+    assert phase.lsi_session_overrides["NQ_Asia_LSI"]["risk_usd"] == 400
+    assert phase.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
+    assert phase.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
 
 
-def test_general_v1_builds_exactly_four_engines():
+def test_phase_1_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
     broker = MagicMock()
     config = {
         "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
@@ -255,31 +260,32 @@ def test_general_v1_builds_exactly_four_engines():
         },
         "sessions": {},
     }
-    general = {cfg.name: cfg for cfg in load_exec_configs()}["general_v1"]
+    phase = {cfg.name: cfg for cfg in load_exec_configs()}["phase_1_v1"]
 
     cont, sym_map, atr_lens = build_engines(
         config,
         broker,
-        config_name="general_v1",
-        session_list=list(general.session_overrides),
-        exec_overrides=general.session_overrides,
+        config_name="phase_1_v1",
+        session_list=list(phase.session_overrides),
+        exec_overrides=phase.session_overrides,
     )
     lsi = build_lsi_engines(
         config,
         broker,
         sym_map,
         atr_lens,
-        config_name="general_v1",
-        lsi_list=list(general.lsi_session_overrides),
-        lsi_overrides=general.lsi_session_overrides,
+        config_name="phase_1_v1",
+        lsi_list=list(phase.lsi_session_overrides),
+        lsi_overrides=phase.lsi_session_overrides,
     )
 
     assert len(cont) + len(lsi) == 4
-    assert {engine.name for engine in cont} == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert {engine.name for engine in cont} == {"NQ_Asia", "ES_Asia"}
     assert {engine.name for engine in lsi} == {"NQ_Asia_LSI", "NQ_NY_LSI"}
-    bull = next(engine for engine in cont if engine.name == "NQ_NY_BULL_SPECIALIST")
-    assert bull.regime_gate == "bull_no_low_confidence"
-    assert bull.structure_gate == "hh_hl_2_vwap"
+    assert all(engine.risk_usd == 400 for engine in cont)
+    assert all(engine.risk_usd == 400 for engine in lsi)
+    ny_lsi = next(engine for engine in lsi if engine.name == "NQ_NY_LSI")
+    assert ny_lsi.qty_multiplier == 1.0
 
 
 def test_bull_regime_gate_blocks_non_bull_and_low_confidence(monkeypatch):

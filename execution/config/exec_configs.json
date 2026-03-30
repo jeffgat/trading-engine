@@ -143,49 +143,28 @@
       }
     }
   },
-  "general_v1": {
+  "phase_1_v1": {
     "enabled": true,
     "max_open_contracts": 20,
     "webhooks": [],
     "sessions": {
       "NQ_Asia": {
-        "risk_usd": 500,
+        "risk_usd": 400,
         "max_single_risk_usd": 500
       },
-      "NQ_NY_BULL_SPECIALIST": {
-        "risk_usd": 500,
+      "ES_Asia": {
+        "risk_usd": 400,
         "max_single_risk_usd": 500
       }
     },
     "lsi_sessions": {
       "NQ_Asia_LSI": {
-        "entry_end": "23:00",
-        "risk_usd": 500,
+        "risk_usd": 400,
         "max_single_risk_usd": 500,
         "qty_multiplier": 1.0
       },
       "NQ_NY_LSI": {
-        "min_gap_atr_pct": 3.75,
-        "risk_usd": 500,
-        "max_single_risk_usd": 500,
-        "qty_multiplier": 1.0
-      }
-    }
-  },
-  "bull_biased_v1": {
-    "enabled": true,
-    "max_open_contracts": 10,
-    "webhooks": [],
-    "sessions": {
-      "NQ_NY_BULL_SPECIALIST": {
-        "risk_usd": 500,
-        "max_single_risk_usd": 500
-      }
-    },
-    "lsi_sessions": {
-      "NQ_Asia_LSI": {
-        "rr": 1.75,
-        "risk_usd": 500,
+        "risk_usd": 400,
         "max_single_risk_usd": 500,
         "qty_multiplier": 1.0
       }
