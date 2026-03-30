@@ -505,6 +505,8 @@ def run_backtest_qm(
             direction = cand.direction
 
             stop_dist = (session.stop_atr_pct / 100.0) * atr
+            # Hard rule: stop must be at least 5% of daily ATR
+            stop_dist = max(stop_dist, 0.05 * atr)
             if direction == 1:
                 stop = entry - stop_dist
                 risk_pts = entry - stop
@@ -527,13 +529,17 @@ def run_backtest_qm(
                 half_qty = math.floor((qty / 2) / config.qty_step) * config.qty_step
                 half_qty = max(half_qty, config.min_qty)
 
+            tp1_dist = config.rr * risk_pts * config.tp1_ratio
+            # Hard rule: TP1 must be at least as far as stop
+            tp1_dist = max(tp1_dist, risk_pts)
+            tp2_dist = config.rr * risk_pts
             if direction == 1:
-                tp1 = entry + config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry + config.rr * risk_pts
+                tp1 = entry + tp1_dist
+                tp2 = entry + tp2_dist
                 be = entry
             else:
-                tp1 = entry - config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry - config.rr * risk_pts
+                tp1 = entry - tp1_dist
+                tp2 = entry - tp2_dist
                 be = entry
 
             sd = session_day_id[cand.signal_bar]
@@ -991,6 +997,8 @@ def run_backtest_no_orb(
             direction = cand.direction
 
             stop_dist = (session.stop_atr_pct / 100.0) * atr
+            # Hard rule: stop must be at least 5% of daily ATR
+            stop_dist = max(stop_dist, 0.05 * atr)
             if direction == 1:
                 stop = entry - stop_dist
                 risk_pts = entry - stop
@@ -1013,13 +1021,17 @@ def run_backtest_no_orb(
                 half_qty = math.floor((qty / 2) / config.qty_step) * config.qty_step
                 half_qty = max(half_qty, config.min_qty)
 
+            tp1_dist = config.rr * risk_pts * config.tp1_ratio
+            # Hard rule: TP1 must be at least as far as stop
+            tp1_dist = max(tp1_dist, risk_pts)
+            tp2_dist = config.rr * risk_pts
             if direction == 1:
-                tp1 = entry + config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry + config.rr * risk_pts
+                tp1 = entry + tp1_dist
+                tp2 = entry + tp2_dist
                 be = entry
             else:
-                tp1 = entry - config.rr * risk_pts * config.tp1_ratio
-                tp2 = entry - config.rr * risk_pts
+                tp1 = entry - tp1_dist
+                tp2 = entry - tp2_dist
                 be = entry
 
             sd = session_day_id[cand.signal_bar]

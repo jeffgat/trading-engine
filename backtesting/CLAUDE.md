@@ -143,6 +143,16 @@ Frozen dataclasses (hashable for caching):
 
 `with_overrides()` supports session-prefixed params: `ny_stop_atr_pct=12`, `asia_min_gap_atr_pct=1.5`
 
+#### Hard Trade Constraints (NEVER override)
+
+These are enforced at both config creation and trade execution. Any attempt to create a config or run a backtest that violates them will raise an error or be clamped by the engine:
+
+1. **`rr >= 1.0`** — Minimum 1:1 reward-to-risk. Validated in `StrategyConfig.__post_init__()`.
+2. **`tp1_ratio * rr >= 1.0`** — TP1 distance from entry must be >= stop distance. Validated in `__post_init__()` and clamped in the simulator (`tp1_dist = max(tp1_dist, risk_pts)`).
+3. **Stop >= 5% of daily ATR** — Applied in the simulator after computing stop_dist from any source (ATR, ORB, structural). `stop_dist = max(stop_dist, 0.05 * atr)`.
+
+These apply to all engine variants: ORB+FVG (`simulator.py`), qualifying move (`qualifying_move.py`). Do not add param ranges or grid values that violate constraints 1-2 — they will raise `ValueError` at config creation time.
+
 ### Production Strategy
 
 > **Note:** The `orb_continuation/` package and `production_config()` function have been removed. Production configs are now defined per-asset in individual run/save scripts rather than a centralized location. When comparing against a baseline, use the config from the relevant save script (e.g., `scripts/save_nq_ny_r20_final.py`) or query the experiment DB for the saved baseline run.

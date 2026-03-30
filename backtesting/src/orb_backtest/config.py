@@ -140,6 +140,20 @@ class StrategyConfig:
     name: str = ""
     notes: str = ""
 
+    def __post_init__(self):
+        # Hard rules — no backtest can violate these constraints.
+        if self.rr < 1.0:
+            raise ValueError(
+                f"rr must be >= 1.0 (got {self.rr}). "
+                f"Minimum 1:1 reward-to-risk ratio is a hard rule."
+            )
+        if self.rr > 0 and self.tp1_ratio * self.rr < 1.0:
+            raise ValueError(
+                f"tp1_ratio * rr must be >= 1.0 (got {self.tp1_ratio} * {self.rr} = "
+                f"{self.tp1_ratio * self.rr:.3f}). TP1 distance from entry must be "
+                f"at least as far as the stop loss distance."
+            )
+
     @property
     def point_value(self) -> float:
         if self.instrument is None:

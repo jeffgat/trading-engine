@@ -3053,7 +3053,10 @@ def run_backtest(
                 stop_dist = (session.stop_orb_pct / 100.0) * cand.orb_range
             else:
                 stop_dist = (session.stop_atr_pct / 100.0) * atr
-            # Apply minimum stop floor
+            # Hard rule: stop must be at least 5% of daily ATR regardless of source
+            min_atr_stop = 0.05 * atr
+            stop_dist = max(stop_dist, min_atr_stop)
+            # Apply minimum stop floor (points)
             if session.min_stop_points > 0:
                 stop_dist = max(stop_dist, session.min_stop_points)
             if direction == 1:
@@ -3080,7 +3083,9 @@ def run_backtest(
                 half_qty = max(half_qty, config.min_qty)
 
             tp1_dist = config.rr * risk_pts * config.tp1_ratio
-            # Apply minimum TP1 distance floor
+            # Hard rule: TP1 must be at least as far as stop (tp1_dist >= risk_pts)
+            tp1_dist = max(tp1_dist, risk_pts)
+            # Apply minimum TP1 distance floor (points)
             if session.min_tp1_points > 0:
                 tp1_dist = max(tp1_dist, session.min_tp1_points)
             tp2_dist = config.rr * risk_pts

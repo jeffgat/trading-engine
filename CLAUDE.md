@@ -25,6 +25,16 @@ This repository contains a Python backtesting engine for Opening Range Breakout 
 - TP2: Remaining at full R:R target
 - Breakeven: Stop moves to entry after TP1 hit
 
+### Hard Trade Constraints (enforced in engine — cannot be overridden)
+
+These rules are enforced at both config validation and trade execution level. No backtest or optimization can violate them.
+
+1. **Minimum stop distance**: Stop must be at least **5% of daily ATR**, regardless of stop source (ATR-based, ORB-based, or structural). Enforced in the simulator after computing stop_dist from any source.
+2. **Minimum TP1 distance**: TP1 must be at least as far from entry as the stop loss (`tp1_ratio * rr >= 1.0`). Enforced both in `StrategyConfig.__post_init__()` (rejects invalid configs) and in the simulator (clamps `tp1_dist` to `max(tp1_dist, risk_pts)`).
+3. **Minimum R:R ratio**: `rr` must be >= 1.0. Enforced in `StrategyConfig.__post_init__()`.
+
+These constraints exist because sub-1R TP1 distances produce scalp-like behavior that doesn't survive transaction costs and slippage in live execution, and tiny ATR stops get stopped out by normal price noise.
+
 ### Strategy Types
 
 The `StrategyConfig.strategy` field controls signal generation mode:
