@@ -132,6 +132,7 @@ def run_walkforward(
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
     max_dd_r: float | None = None,
+    config_filter: Callable[[list[StrategyConfig]], list[StrategyConfig]] | None = None,
 ) -> WalkForwardResult:
     """Run walk-forward optimization.
 
@@ -169,6 +170,9 @@ def run_walkforward(
             Configs with max_drawdown_r worse (more negative) than this threshold
             are rejected before comparing objectives. E.g., -10.0 rejects any
             IS config with drawdown exceeding 10R.
+        config_filter: Optional filter applied to generated configs before sweeping.
+            Use to remove invalid parameter combinations (e.g., tp1_ratio * rr < 1.0).
+            Signature: (configs: list[StrategyConfig]) -> list[StrategyConfig].
 
     Returns:
         WalkForwardResult with per-fold and combined OOS metrics.
@@ -189,6 +193,8 @@ def run_walkforward(
         )
 
     configs = generate_param_grid(base_config, param_ranges)
+    if config_filter is not None:
+        configs = config_filter(configs)
     folds: list[WalkForwardFold] = []
     all_oos_trades: list[TradeResult] = []
 

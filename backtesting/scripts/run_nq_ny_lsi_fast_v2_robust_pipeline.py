@@ -88,14 +88,17 @@ CANDIDATE = StrategyConfig(
 
 # ── Walk-forward param ranges (100 combos/fold) ──────────────────────────
 PARAM_RANGES = {
-    "rr": [2.0, 2.25, 2.5, 2.75, 3.0],
-    "tp1_ratio": [0.15, 0.2, 0.25, 0.3],
+    "rr": [2.0, 2.5, 3.0, 3.5, 4.0],
+    "tp1_ratio": [0.3, 0.35, 0.4, 0.5],
     "ny_min_gap_atr_pct": [3.0, 3.5, 3.75, 4.0, 4.5],
 }
 
-GRID_SIZE = 1
-for v in PARAM_RANGES.values():
-    GRID_SIZE *= len(v)
+def tp1_filter(configs):
+    """Remove configs where TP1 distance < stop distance (tp1_ratio * rr < 1.0)."""
+    return [c for c in configs if c.tp1_ratio * c.rr >= 1.0]
+
+_rr_tp1_valid = sum(1 for r in PARAM_RANGES["rr"] for t in PARAM_RANGES["tp1_ratio"] if t * r >= 1.0)
+GRID_SIZE = _rr_tp1_valid * len(PARAM_RANGES["ny_min_gap_atr_pct"])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -207,6 +210,7 @@ def phase_2(df, df_1m):
         progress_fn=wf_progress,
         df_1m=df_wf_1m,
         gate_fn=dow_gate,
+        config_filter=tp1_filter,
     )
     elapsed = time.time() - t0
     print(f"\n  Walk-forward completed in {elapsed:.0f}s ({len(wf_result.folds)} folds)")
