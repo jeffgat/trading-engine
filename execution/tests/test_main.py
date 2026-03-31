@@ -297,7 +297,7 @@ def test_general_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
     assert ny_lsi.qty_multiplier == 1.0
 
 
-def test_fast_and_fast_v2_exec_configs_only_load_viable_sessions():
+def test_fast_and_fast_v2_exec_configs_load_original_baseline_portfolios():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
     fast = configs["FAST"]
@@ -305,10 +305,11 @@ def test_fast_and_fast_v2_exec_configs_only_load_viable_sessions():
 
     assert set(fast.session_overrides) == {
         "NQ_NY",
-        "NQ_NY_BULL_SPECIALIST",
         "NQ_Asia",
+        "GC_NY",
         "ES_NY",
         "ES_Asia",
+        "NQ_LDN",
     }
     assert set(fast.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
     assert all(override["risk_usd"] == 400 for override in fast.session_overrides.values())
@@ -316,8 +317,10 @@ def test_fast_and_fast_v2_exec_configs_only_load_viable_sessions():
     assert fast.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
     assert fast.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
 
-    assert set(fast_v2.session_overrides) == {"NQ_Asia"}
+    assert set(fast_v2.session_overrides) == {"NQ_NY", "NQ_Asia", "ES_Asia"}
     assert set(fast_v2.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
+    assert fast_v2.session_overrides["NQ_NY"]["tp1_ratio"] == 0.4
+    assert fast_v2.session_overrides["ES_Asia"]["tp1_ratio"] == 0.58
     assert fast_v2.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.4
 
 

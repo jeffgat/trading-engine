@@ -7,28 +7,11 @@
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
-      "NQ_NY_BULL_SPECIALIST": {
-        "orb_start": "09:30",
-        "orb_end": "09:50",
-        "entry_start": "09:50",
-        "entry_end": "12:00",
-        "flat_start": "15:30",
-        "flat_end": "16:00",
-        "stop_basis": "atr",
-        "gap_filter_basis": "atr",
-        "stop_atr_pct": 6.0,
-        "min_gap_atr_pct": 2.5,
-        "atr_length": 12,
-        "rr": 3.0,
-        "tp1_ratio": 0.6,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "long_only": true,
-        "excluded_dow": [4],
-        "regime_gate": "bull_no_low_confidence",
-        "structure_gate": "hh_hl_2_vwap"
-      },
       "NQ_Asia": {
+        "risk_usd": 400,
+        "max_single_risk_usd": 500
+      },
+      "GC_NY": {
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
@@ -37,6 +20,10 @@
         "max_single_risk_usd": 500
       },
       "ES_Asia": {
+        "risk_usd": 400,
+        "max_single_risk_usd": 500
+      },
+      "NQ_LDN": {
         "risk_usd": 400,
         "max_single_risk_usd": 500
       }
@@ -78,6 +65,26 @@
       }
     ],
     "sessions": {
+      "NQ_NY": {
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "13:00",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "stop_basis": "atr",
+        "gap_filter_basis": "atr",
+        "stop_atr_pct": 8.0,
+        "min_gap_atr_pct": 2.25,
+        "atr_length": 14,
+        "rr": 2.5,
+        "tp1_ratio": 0.4,
+        "risk_usd": 400,
+        "max_single_risk_usd": 500,
+        "long_only": false,
+        "excluded_dates": ["20241218"],
+        "excluded_dow": [4]
+      },
       "NQ_Asia": {
         "orb_start": "20:00",
         "orb_end": "20:15",
@@ -99,6 +106,25 @@
         "excluded_dates": ["20241218"],
         "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"],
         "excluded_dow": [1]
+      },
+      "ES_Asia": {
+        "orb_start": "20:00",
+        "orb_end": "20:10",
+        "entry_start": "20:10",
+        "entry_end": "03:00",
+        "flat_start": "06:45",
+        "flat_end": "06:55",
+        "stop_basis": "atr",
+        "gap_filter_basis": "atr",
+        "stop_atr_pct": 2.5,
+        "min_gap_atr_pct": 1.0,
+        "atr_length": 5,
+        "rr": 1.75,
+        "tp1_ratio": 0.58,
+        "risk_usd": 400,
+        "max_single_risk_usd": 500,
+        "long_only": false,
+        "excluded_dates": ["20241218"]
       }
     },
     "lsi_sessions": {
