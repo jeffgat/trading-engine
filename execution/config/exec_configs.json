@@ -192,27 +192,6 @@
         "max_single_risk_usd": 500,
         "long_only": true,
         "excluded_dow": [1]
-      },
-      "NQ_NY_BULL_SPECIALIST": {
-        "orb_start": "09:30",
-        "orb_end": "09:50",
-        "entry_start": "09:50",
-        "entry_end": "12:00",
-        "flat_start": "15:30",
-        "flat_end": "16:00",
-        "stop_basis": "atr",
-        "gap_filter_basis": "atr",
-        "stop_atr_pct": 6.0,
-        "min_gap_atr_pct": 2.5,
-        "atr_length": 12,
-        "rr": 3.0,
-        "tp1_ratio": 0.6,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "long_only": true,
-        "excluded_dow": [4],
-        "regime_gate": "bull_no_low_confidence",
-        "structure_gate": "hh_hl_2_vwap"
       }
     },
     "lsi_sessions": {
@@ -261,27 +240,6 @@
     "enabled": true,
     "webhooks": [],
     "sessions": {
-      "NQ_NY_BULL_SPECIALIST": {
-        "orb_start": "09:30",
-        "orb_end": "09:50",
-        "entry_start": "09:50",
-        "entry_end": "12:00",
-        "flat_start": "15:30",
-        "flat_end": "16:00",
-        "stop_basis": "atr",
-        "gap_filter_basis": "atr",
-        "stop_atr_pct": 6.0,
-        "min_gap_atr_pct": 2.5,
-        "atr_length": 12,
-        "rr": 3.0,
-        "tp1_ratio": 0.6,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "long_only": true,
-        "excluded_dow": [4],
-        "regime_gate": "bull_no_low_confidence",
-        "structure_gate": "hh_hl_2_vwap"
-      },
       "NQ_Asia": {
         "risk_usd": 400,
         "max_single_risk_usd": 500

@@ -285,6 +285,15 @@ All CLI output and reporting uses **R (risk units)** — never raw USD PnL. Metr
 
 **IMPORTANT: Every backtest run must be saved to the remote DB** using `results_to_dict()` + `save_backtest_result()` (which dual-writes to local SQLite and the remote API). The frontend dashboard reads from the remote DB, so results that aren't saved there are invisible. Always include `include_trades=True` and `include_equity_curve=True` when saving.
 
+**Execution-profile exception:** if the user wants a historical run of a profile from `execution/config/exec_configs.json`, do **not** manually recreate that profile in the research backtester and save it through `results_to_dict()` / `save_backtest_result()`. Use the exact execution replay path instead:
+
+- [historical_backtest.py](/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/src/trader/historical_backtest.py)
+- [save_exact_exec_backtests.py](/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/scripts/save_exact_exec_backtests.py)
+
+That path runs the live execution engines on local `5m` + `1s` parquet and saves the frontend-visible result directly to the shared DB. This is now the required path for execution-profile history because the older translated approximation layer was not guaranteed to stay 1:1 with execution logic.
+
+For these exact execution-profile backtests, save a top-level `config.risk_usd = 5000` for dashboard/backtest R reporting. Keep the live execution sizing in the exported per-session `*_risk_usd` fields rather than using the live `$400` execution risk as the portfolio reporting R.
+
 ### API Server
 FastAPI on port 8000. Endpoints for running backtests, listing/loading/deleting results, running optimizations, and per-instrument testing coverage with a manual testing plan checklist. CORS enabled for frontend at localhost:3000.
 

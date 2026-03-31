@@ -64,7 +64,7 @@ interface BayesianScatterProps {
 export function BayesianScatter({ data }: BayesianScatterProps) {
   const [metric, setMetric] = useState<MetricKey>("sharpe_ratio");
   const paramKeys = Object.keys(data.swept_params);
-  const riskUsd = data.all_results[0]?.config.risk_usd ?? 50000;
+  const riskUsd = data.all_results[0]?.config.risk_usd ?? 5000;
 
   // Build scatter points
   const { points, minMetric, maxMetric } = useMemo(() => {

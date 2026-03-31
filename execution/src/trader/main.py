@@ -95,34 +95,6 @@ SESSION_CONFIGS = {
         "risk_usd": 200,
         "max_single_risk_usd": 300,
     },
-    # --- NQ NY Bull Specialist (bull regime + HH/HL-2 VWAP gated) ---
-    "NQ_NY_BULL_SPECIALIST": {
-        "orb_start": "09:30",
-        "orb_end": "09:50",
-        "entry_start": "09:50",
-        "entry_end": "12:00",
-        "flat_start": "15:30",
-        "flat_end": "16:00",
-        "stop_atr_pct": 6.0,
-        "stop_basis": "atr",
-        "min_gap_atr_pct": 2.5,
-        "max_gap_atr_pct": 0,
-        "gap_filter_basis": "atr",
-        "rr": 3.0,
-        "tp1_ratio": 0.6,
-        "instrument": "NQ",
-        "atr_length": 12,
-        "long_only": True,
-        "icf_enabled": False,
-        "excluded_dow": [4],
-        "fomc_exclusion": False,
-        "min_stop_pts": 0.0,
-        "min_tp1_pts": 0.0,
-        "risk_usd": 500,
-        "max_single_risk_usd": 500,
-        "regime_gate": "bull_no_low_confidence",
-        "structure_gate": "hh_hl_2_vwap",
-    },
     # --- NQ Asia R9 (ORB-based stop, Tuesday exclusion) ---
     "NQ_Asia": {
         "orb_start": "20:00",
@@ -742,6 +714,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     from .api import DashboardState, LogTailer, create_app
     from .broker import TradersPostClient
     from .feed import ET, DataBentoFeed
+    from .gates import set_daily_history_provider
     from .position_limits import ContractCapManager
 
     general = config.get("general", {})
@@ -930,14 +903,20 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
             daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
-            await engine.on_bar(bar, daily_atr)
+            try:
+                await engine.on_bar(bar, daily_atr)
+            except Exception:
+                logger.exception("[%s] on_bar failed — engine isolated", getattr(engine, "name", "?"))
 
     # Tick callback — route 1s bars to engines for fill/exit management
     async def on_tick(symbol: str, tick, daily_atrs: dict[int, float]):
         target_engines = global_symbol_map.get(symbol, [])
         for engine in target_engines:
             daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
-            await engine.on_tick(tick, daily_atr)
+            try:
+                await engine.on_tick(tick, daily_atr)
+            except Exception:
+                logger.exception("[%s] on_tick failed — engine isolated", getattr(engine, "name", "?"))
 
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key")
@@ -951,6 +930,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         on_tick=on_tick,
         atr_lengths_by_symbol=global_atr_lengths,
     )
+    set_daily_history_provider(feed.get_daily_history_for_symbol)
 
     # Refresh ATR from historical daily bars (prior completed day)
     atr_refresh_days = 60

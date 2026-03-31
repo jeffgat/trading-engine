@@ -88,7 +88,7 @@ interface OptimizationTableProps {
 }
 
 export function OptimizationTable({ results, sweptParams }: OptimizationTableProps) {
-  const riskUsd = results[0]?.config.risk_usd ?? 50000;
+  const riskUsd = results[0]?.config.risk_usd ?? 5000;
   const [sortKey, setSortKey] = useState<SortKey>("total_pnl_usd");
   const [sortAsc, setSortAsc] = useState(false);
 

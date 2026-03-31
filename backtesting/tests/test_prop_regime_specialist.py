@@ -20,8 +20,11 @@ from orb_backtest.analysis.prop_regime_specialist import (
     trade_passes_structure_vwap_gate,
     trading_dates_from_calendar,
 )
+from orb_backtest.config import SessionConfig
 from orb_backtest.data.instruments import NQ
 from orb_backtest.engine.simulator import EXIT_TP1_TP2, TradeResult
+from orb_backtest.signals.structure_15m import compute_hh_hl_patterns, resample_session_15m
+from orb_backtest.signals.session import compute_session_days
 from orb_backtest.engine.vwap_simulator import build_vwap_signal_cache
 from orb_backtest.vwap_config import default_vwap_config
 
@@ -247,6 +250,51 @@ def test_trade_passes_structure_vwap_gate_for_both_directions() -> None:
     signals["vwap"][0] = 100.0
 
     assert trade_passes_structure_vwap_gate("pullback_holds_vwap_orb", short_trade, signals) is True
+
+
+def test_hh_hl_pattern_resets_at_session_day_boundary() -> None:
+    idx = pd.DatetimeIndex(
+        [
+            "2025-01-02 09:30",
+            "2025-01-02 09:35",
+            "2025-01-02 09:40",
+            "2025-01-02 09:45",
+            "2025-01-02 09:50",
+            "2025-01-02 09:55",
+            "2025-01-03 09:30",
+            "2025-01-03 09:35",
+            "2025-01-03 09:40",
+        ],
+        tz="America/New_York",
+    )
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 100.2, 100.4, 101.0, 101.2, 101.4, 102.0, 102.2, 102.4],
+            "high": [100.6, 100.8, 101.0, 101.6, 101.8, 102.0, 102.6, 102.8, 103.0],
+            "low": [99.4, 99.6, 99.8, 100.4, 100.6, 100.8, 101.4, 101.6, 101.8],
+            "close": [100.5, 100.7, 100.9, 101.5, 101.7, 101.9, 102.5, 102.7, 102.9],
+            "volume": [1000] * len(idx),
+        },
+        index=idx,
+    )
+    session = SessionConfig(
+        name="NY",
+        orb_start="09:30",
+        orb_end="09:50",
+        entry_start="09:50",
+        entry_end="12:00",
+        flat_start="15:55",
+        flat_end="16:00",
+    )
+
+    df_15m, map_5m_to_15m, session_day_id_15m = resample_session_15m(df, session)
+    patterns = compute_hh_hl_patterns(df_15m, map_5m_to_15m, session_day_id_15m, n_bars=2)
+    _, session_day_id_5m = compute_session_days(df.index, session)
+
+    day_two_mask = session_day_id_5m == session_day_id_5m[-1]
+
+    assert len(df_15m) == 3
+    assert patterns["bullish"][day_two_mask].tolist() == [False, False, False]
 
 
 def test_simulate_funded_first_payouts_tracks_fee_and_payout_amount() -> None:

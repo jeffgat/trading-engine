@@ -7,16 +7,17 @@ These gates intentionally mirror the backtesting research logic closely:
 
 from __future__ import annotations
 
-from functools import lru_cache
-from pathlib import Path
+import logging
+from datetime import date, datetime, timedelta
 from typing import Callable
 
 import numpy as np
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 
-ROOT = Path(__file__).resolve().parents[3]
-RAW_NQ_5M = ROOT / "backtesting" / "data" / "raw" / "NQ_5m.parquet"
+DailyHistoryProvider = Callable[[str], list[tuple[date, float, float, float, float]]]
+_daily_history_provider: DailyHistoryProvider | None = None
 
 
 def _bars_to_frame(bars) -> pd.DataFrame:
@@ -32,14 +33,48 @@ def _bars_to_frame(bars) -> pd.DataFrame:
     )
 
 
-def _build_nq_ny_regime_calendar(df: pd.DataFrame) -> pd.DataFrame:
-    daily = (
-        df.resample("1D")
-        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
-        .dropna(subset=["close"])
-        .copy()
+def _daily_bars_to_frame(
+    daily_bars: list[tuple[date, float, float, float, float]],
+) -> pd.DataFrame:
+    if not daily_bars:
+        return pd.DataFrame(columns=["open", "high", "low", "close"])
+
+    df = pd.DataFrame(
+        daily_bars,
+        columns=["date", "open", "high", "low", "close"],
     )
-    daily = daily[daily["volume"] > 0].copy()
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date").sort_index()
+
+
+def _append_placeholder_day_if_needed(df: pd.DataFrame, date_key: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    requested = pd.Timestamp(datetime.strptime(date_key, "%Y%m%d").date())
+    if requested in df.index:
+        return df
+
+    last_date = df.index[-1]
+    if requested != last_date + timedelta(days=1):
+        return df
+
+    last_row = df.iloc[-1]
+    placeholder = pd.DataFrame(
+        {
+            "open": [last_row["close"]],
+            "high": [last_row["close"]],
+            "low": [last_row["close"]],
+            "close": [last_row["close"]],
+        },
+        index=pd.DatetimeIndex([requested]),
+    )
+    return pd.concat([df, placeholder])
+
+
+def _build_nq_ny_regime_calendar(daily: pd.DataFrame) -> pd.DataFrame:
+    if daily.empty:
+        return pd.DataFrame(columns=["date", "low_confidence", "regime"])
 
     close = daily["close"]
     log_returns = np.log(close / close.shift(1))
@@ -109,18 +144,9 @@ def _hh_hl_2_bull(session_bars) -> bool:
     )
 
 
-@lru_cache(maxsize=1)
-def _get_nq_regime_lookup() -> dict[str, dict[str, object]]:
-    df = pd.read_parquet(RAW_NQ_5M)
-    calendar = _build_nq_ny_regime_calendar(df)
-    calendar["date_key"] = pd.to_datetime(calendar["date"]).dt.strftime("%Y%m%d")
-    return {
-        str(row["date_key"]): {
-            "regime": str(row["regime"]),
-            "low_confidence": bool(row["low_confidence"]),
-        }
-        for _, row in calendar.iterrows()
-    }
+def set_daily_history_provider(provider: DailyHistoryProvider | None) -> None:
+    global _daily_history_provider
+    _daily_history_provider = provider
 
 
 def build_regime_gate(name: str | None) -> Callable[[str], bool] | None:
@@ -130,10 +156,48 @@ def build_regime_gate(name: str | None) -> Callable[[str], bool] | None:
         raise ValueError(f"Unknown regime gate: {name}")
 
     def _gate(date_key: str) -> bool:
-        row = _get_nq_regime_lookup().get(date_key)
+        if _daily_history_provider is None:
+            logger.warning(
+                "Regime gate '%s' has no daily history provider — blocking date=%s",
+                name,
+                date_key,
+            )
+            return False
+
+        daily_bars = _daily_history_provider("NQ.FUT")
+        if not daily_bars:
+            logger.warning(
+                "Regime gate '%s' has no NQ daily history — blocking date=%s",
+                name,
+                date_key,
+            )
+            return False
+
+        daily = _daily_bars_to_frame(daily_bars)
+        daily = _append_placeholder_day_if_needed(daily, date_key)
+        calendar = _build_nq_ny_regime_calendar(daily)
+        if calendar.empty:
+            logger.warning(
+                "Regime gate '%s' could not build a calendar from NQ daily history — blocking date=%s",
+                name,
+                date_key,
+            )
+            return False
+
+        row_df = calendar.loc[pd.to_datetime(calendar["date"]).dt.strftime("%Y%m%d") == date_key]
+        if row_df.empty:
+            logger.warning(
+                "Regime gate '%s' has no calendar row for date=%s (history_end=%s) — blocking",
+                name,
+                date_key,
+                daily.index[-1].strftime("%Y%m%d") if not daily.empty else "-",
+            )
+            return False
+
+        row = row_df.iloc[-1]
         if row is None:
             return False
-        return row["regime"] == "bull" and not row["low_confidence"]
+        return str(row["regime"]) == "bull" and not bool(row["low_confidence"])
 
     return _gate
 

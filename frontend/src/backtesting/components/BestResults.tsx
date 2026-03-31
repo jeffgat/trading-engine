@@ -20,7 +20,7 @@ function formatR(r: number): string {
 }
 
 function getRiskUsd(entry: BestEntry): number {
-  return entry.config.risk_usd ?? 50000;
+  return entry.config.risk_usd ?? 5000;
 }
 
 function getSweptValues(config: BacktestConfig, params: string[]): string {
@@ -83,7 +83,7 @@ function BestCard({
 }
 
 export function BestResults({ bestBySharpe, bestByPnl, bestByPf, bestByCalmar, sweptParams }: BestResultsProps) {
-  const pnlRiskUsd = bestByPnl ? getRiskUsd(bestByPnl) : 50000;
+  const pnlRiskUsd = bestByPnl ? getRiskUsd(bestByPnl) : 5000;
   const pnlNetR = (bestByPnl?.summary.total_pnl_usd ?? 0) / pnlRiskUsd;
 
   return (

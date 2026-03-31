@@ -80,6 +80,16 @@ Classify the request:
 3. Execute via CLI script: `cd python && uv run python scripts/run_backtest.py` or `run_optimize.py`
 4. Results auto-save to `python/data/results/` and log to `experiments.db`
 
+**For historical execution-profile replays (profiles from `execution/config/exec_configs.json`):**
+
+1. Do **not** reconstruct the profile by hand inside the research backtester.
+2. Use the exact replay path from `execution/`:
+   `cd execution && PYTHONUNBUFFERED=1 .venv/bin/python scripts/save_exact_exec_backtests.py --profiles ... --years N`
+3. Treat `execution/src/trader/historical_backtest.py` as the source of truth for these runs.
+4. Use `orb-trader --replay ...` only for narrow single-symbol engine debugging, not for saved portfolio backtests.
+5. Save a top-level `config.risk_usd = 5000` for backtesting/dashboard R reporting; preserve the live per-session execution sizing in the exported `*_risk_usd` fields.
+6. Verify the resulting backtest IDs from the shared API so the frontend can review them.
+
 **For modifying the engine:**
 
 1. Read the relevant source file(s) before making changes
@@ -153,6 +163,8 @@ After completing the task, determine if any new insight was discovered. If so, u
 | Instruments | `python/src/orb_backtest/data/instruments.py` |
 | Data loader | `python/src/orb_backtest/data/loader.py` |
 | Equity plots | `python/src/orb_backtest/viz/equity.py` |
+| Exact execution replay | `execution/src/trader/historical_backtest.py` |
+| Exact execution replay CLI | `execution/scripts/save_exact_exec_backtests.py` |
 
 ## References
 

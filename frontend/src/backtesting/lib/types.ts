@@ -29,8 +29,10 @@ export interface BacktestSummary {
   avg_r: number;
   avg_win_r: number;
   avg_loss_r: number;
+  total_r: number;
   max_drawdown_usd: number;
   max_drawdown_pct: number;
+  max_drawdown_r: number;
   sharpe_ratio: number;
   sortino_ratio: number;
   calmar_ratio: number;
@@ -166,9 +168,11 @@ export interface BacktestHistoryItem {
   lsi_cancel_on_swing?: number;
   // Metrics (dedicated columns)
   total_pnl_usd: number;
+  total_r: number;
   win_rate: number;
   sharpe_ratio: number;
   max_drawdown_usd: number;
+  max_drawdown_r: number;
   profit_factor: number;
   sortino_ratio: number;
   calmar_ratio: number;

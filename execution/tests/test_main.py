@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 from trader.api import DashboardState, _build_exec_config_meta
 from trader.engine import State
-from trader.gates import build_regime_gate
+from trader.gates import build_regime_gate, set_daily_history_provider
 from trader.lsi_engine import LSIState
 from trader.main import (
     _checkpoint_shutdown_flat,
@@ -13,6 +14,13 @@ from trader.main import (
     build_lsi_engines,
     load_exec_configs,
 )
+
+
+def _make_daily_history(closes: list[float], *, start: date = date(2025, 1, 1)) -> list[tuple]:
+    return [
+        (start + timedelta(days=i), close, close + 2.0, close - 2.0, close)
+        for i, close in enumerate(closes)
+    ]
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -247,10 +255,9 @@ def test_general_v1_exec_config_loads_as_dry_run_fixed_risk_profile():
     general = configs["GENERAL_V1"]
     assert general.enabled is True
     assert general.webhook_url == ""
-    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert set(general.session_overrides) == {"NQ_Asia"}
     assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
     assert general.session_overrides["NQ_Asia"]["risk_usd"] == 400
-    assert general.session_overrides["NQ_NY_BULL_SPECIALIST"]["risk_usd"] == 400
     assert general.lsi_session_overrides["NQ_Asia_LSI"]["risk_usd"] == 400
     assert general.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
     assert general.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
@@ -288,8 +295,8 @@ def test_general_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
         lsi_overrides=general.lsi_session_overrides,
     )
 
-    assert len(cont) + len(lsi) == 4
-    assert {engine.name for engine in cont} == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert len(cont) + len(lsi) == 3
+    assert {engine.name for engine in cont} == {"NQ_Asia"}
     assert {engine.name for engine in lsi} == {"NQ_Asia_LSI", "NQ_NY_LSI"}
     assert all(engine.risk_usd == 400 for engine in cont)
     assert all(engine.risk_usd == 400 for engine in lsi)
@@ -332,7 +339,6 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     general = configs["GENERAL_V1"]
 
     assert set(fast.session_overrides) == {
-        "NQ_NY_BULL_SPECIALIST",
         "NQ_Asia",
         "ES_NY",
         "ES_Asia",
@@ -348,7 +354,7 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     assert all(override["risk_usd"] == 400 for override in fast_v2.lsi_session_overrides.values())
     assert fast_v2.webhook_url == ""
 
-    assert set(general.session_overrides) == {"NQ_Asia", "NQ_NY_BULL_SPECIALIST"}
+    assert set(general.session_overrides) == {"NQ_Asia"}
     assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
     assert all(override["risk_usd"] == 400 for override in general.session_overrides.values())
     assert all(override["risk_usd"] == 400 for override in general.lsi_session_overrides.values())
@@ -386,17 +392,24 @@ def test_checkpoint_shutdown_flat_marks_lsi_engine_flat():
     engine._notify_state_change.assert_called_once()
 
 
-def test_bull_regime_gate_blocks_non_bull_and_low_confidence(monkeypatch):
-    monkeypatch.setattr(
-        "trader.gates._get_nq_regime_lookup",
-        lambda: {
-            "20250115": {"regime": "bear", "low_confidence": False},
-            "20250116": {"regime": "bull", "low_confidence": True},
-            "20250117": {"regime": "bull", "low_confidence": False},
-        },
-    )
+def test_bull_regime_gate_uses_live_daily_history():
     gate = build_regime_gate("bull_no_low_confidence")
 
-    assert gate("20250115") is False
-    assert gate("20250116") is False
-    assert gate("20250117") is True
+    try:
+        set_daily_history_provider(lambda _symbol: _make_daily_history([130.0 - i for i in range(30)]))
+        assert gate("20250131") is False
+
+        set_daily_history_provider(lambda _symbol: _make_daily_history([100.0 for _ in range(30)]))
+        assert gate("20250131") is False
+
+        set_daily_history_provider(lambda _symbol: _make_daily_history([100.0 + i for i in range(30)]))
+        assert gate("20250131") is True
+    finally:
+        set_daily_history_provider(None)
+
+
+def test_bull_regime_gate_blocks_without_daily_history_provider():
+    set_daily_history_provider(None)
+    gate = build_regime_gate("bull_no_low_confidence")
+
+    assert gate("20250131") is False

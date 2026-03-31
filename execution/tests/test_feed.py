@@ -452,3 +452,35 @@ class TestATRRefresh:
         assert set(atrs) == {3, 5}
         assert atrs[3] > 0
         assert atrs[5] > 0
+
+    def test_daily_history_is_retained_independently_of_short_atr_lengths(self):
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            atr_lengths_by_symbol={"NQ.FUT": {3, 20}},
+        )
+        bars = [
+            (date(2025, 1, 1) + timedelta(days=i), 100.0 + i, 105.0 + i, 95.0 + i, 102.0 + i)
+            for i in range(40)
+        ]
+
+        feed._refresh_atr_from_daily_bars("NQ.FUT", bars)
+
+        history = feed.get_daily_history_for_symbol("NQ.FUT", include_current=False)
+        assert len(history) == 40
+        assert history[0][0] == date(2025, 1, 1)
+        assert history[-1][0] == date(2025, 2, 9)
+
+        live_bar = Bar(
+            timestamp=make_dt("2025-02-10", "09:30"),
+            open=140.0,
+            high=142.0,
+            low=139.0,
+            close=141.0,
+            volume=100,
+        )
+        feed._daily_history["NQ.FUT"].on_5m_bar(live_bar)
+
+        history_with_current = feed.get_daily_history_for_symbol("NQ.FUT")
+        assert len(history_with_current) == 41
+        assert history_with_current[-1][0] == date(2025, 2, 10)
+        assert history_with_current[-1][-1] == pytest.approx(141.0)

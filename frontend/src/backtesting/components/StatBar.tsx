@@ -16,7 +16,7 @@ function computeStreakR(trades: Trade[], riskUsd: number) {
   let curLossR = 0;
 
   for (const t of filled) {
-    const r = t.pnl_usd / riskUsd;
+    const r = Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd;
     if (t.pnl_usd > 0) {
       curWinR += r;
       curLossR = 0;
@@ -43,9 +43,9 @@ interface StatBarProps {
 export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
   const ddColor = "var(--color-loss)";
 
-  const netR = summary.total_pnl_usd / riskUsd;
-  const ddR = summary.max_drawdown_usd / riskUsd;
-  const avgR = summary.avg_pnl_usd / riskUsd;
+  const netR = Number.isFinite(summary.total_r) ? summary.total_r : summary.total_pnl_usd / riskUsd;
+  const ddR = Number.isFinite(summary.max_drawdown_r) ? summary.max_drawdown_r : summary.max_drawdown_usd / riskUsd;
+  const avgR = Number.isFinite(summary.avg_r) ? summary.avg_r : summary.avg_pnl_usd / riskUsd;
 
   const { maxWinStreakR, maxLossStreakR } = useMemo(() => computeStreakR(trades, riskUsd), [trades, riskUsd]);
 

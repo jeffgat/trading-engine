@@ -21,8 +21,7 @@ type SortKey =
     | 'r_per_year'
     | 'timestamp';
 
-function formatR(pnl: number, risk: number): string {
-    const r = pnl / (risk || 50000);
+function formatRValue(r: number): string {
     const sign = r >= 0 ? '+' : '';
     return `${sign}${r.toFixed(2)}R`;
 }
@@ -37,7 +36,7 @@ function getSessionParam(item: BacktestHistoryItem, suffix: 'stop_atr_pct' | 'mi
 }
 
 function calcRPerYear(item: BacktestHistoryItem): number {
-    const netR = (item.total_pnl_usd ?? 0) / (item.risk_usd || 50000);
+    const netR = Number.isFinite(item.total_r) ? item.total_r : (item.total_pnl_usd ?? 0) / (item.risk_usd || 5000);
     if (!item.date_start || !item.date_end) return 0;
     const ms = new Date(item.date_end).getTime() - new Date(item.date_start).getTime();
     const years = ms / (365.25 * 24 * 60 * 60 * 1000);
@@ -450,9 +449,13 @@ export function BacktestHistoryPanel({
                         {sorted.map((item) => {
                             const isActive = item.id === activeId;
                             const isSelected = selectedIds.has(item.id);
-                            const netR = (Number(item.total_pnl_usd) || 0) / (Number(item.risk_usd) || 50000);
+                            const netR = Number.isFinite(item.total_r)
+                                ? Number(item.total_r)
+                                : (Number(item.total_pnl_usd) || 0) / (Number(item.risk_usd) || 5000);
                             const rPerYear = calcRPerYear(item);
-                            const ddR = (Number(item.max_drawdown_usd) || 0) / (Number(item.risk_usd) || 50000);
+                            const ddR = Number.isFinite(item.max_drawdown_r)
+                                ? Number(item.max_drawdown_r)
+                                : (Number(item.max_drawdown_usd) || 0) / (Number(item.risk_usd) || 5000);
                             const sharpe = Number(item.sharpe_ratio) || 0;
                             const calmar = Number(item.calmar_ratio) || 0;
                             const pf = Number(item.profit_factor) || 0;
@@ -575,7 +578,7 @@ export function BacktestHistoryPanel({
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-semibold"
                                         style={{ color: pnlPositive ? 'var(--color-profit)' : 'var(--color-loss)' }}>
-                                        {formatR(item.total_pnl_usd, item.risk_usd)}
+                                        {formatRValue(netR)}
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-text-secondary"
                                         style={{ color: rPerYear >= 0 ? 'var(--color-profit)' : 'var(--color-loss)' }}>

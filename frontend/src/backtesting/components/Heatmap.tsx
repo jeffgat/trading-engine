@@ -62,7 +62,7 @@ const ZOOM_LEVELS = [
 const DEFAULT_ZOOM = 0;
 
 export function Heatmap({ results, sweptParams }: HeatmapProps) {
-  const riskUsd = results[0]?.config.risk_usd ?? 50000;
+  const riskUsd = results[0]?.config.risk_usd ?? 5000;
   const [metric, setMetric] = useState<MetricKey>("sharpe_ratio");
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [tooltip, setTooltip] = useState<{

@@ -27,7 +27,7 @@ from .session import compute_session_masks, compute_session_days
 def resample_session_15m(
     df: pd.DataFrame,
     session: SessionConfig,
-) -> tuple[pd.DataFrame, np.ndarray]:
+) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     """Resample 5m bars to session-aligned 15m bars within RTH.
 
     15m boundaries align to the session start (e.g. 09:30, 09:45, 10:00 ...
@@ -43,6 +43,7 @@ def resample_session_15m(
             the *positional* index into ``df_15m`` of the most recent
             **completed** 15m bar.  -1 before the first completed 15m bar
             of each session day.
+        complete_session_day_id: Session-day id aligned to ``df_15m`` rows.
     """
     timestamps = df.index
     masks = compute_session_masks(timestamps, session)
@@ -86,7 +87,7 @@ def resample_session_15m(
             columns=["open", "high", "low", "close", "volume"],
             dtype=np.float64,
         )
-        return empty_15m, np.full(len(df), -1, dtype=np.int64)
+        return empty_15m, np.full(len(df), -1, dtype=np.int64), np.empty(0, dtype=np.int64)
 
     # Aggregate: group by global_15m_id
     gids = global_15m_id[rth_indices]
@@ -111,6 +112,7 @@ def resample_session_15m(
     bars_15m_vol = np.zeros(n_15m)
     bars_15m_time = [None] * n_15m
     bars_15m_count = np.zeros(n_15m, dtype=np.int64)
+    bars_15m_session_day = np.full(n_15m, -1, dtype=np.int64)
 
     for raw_i in rth_indices:
         gid = int(global_15m_id[raw_i])
@@ -119,6 +121,7 @@ def resample_session_15m(
         if p == 0:
             bars_15m_open[pos] = open_vals[raw_i]
             bars_15m_time[pos] = df.index[raw_i]
+            bars_15m_session_day[pos] = int(session_day_id[raw_i])
         if high_vals[raw_i] > bars_15m_high[pos]:
             bars_15m_high[pos] = high_vals[raw_i]
         if low_vals[raw_i] < bars_15m_low[pos]:
@@ -136,7 +139,7 @@ def resample_session_15m(
             columns=["open", "high", "low", "close", "volume"],
             dtype=np.float64,
         )
-        return empty_15m, np.full(len(df), -1, dtype=np.int64)
+        return empty_15m, np.full(len(df), -1, dtype=np.int64), np.empty(0, dtype=np.int64)
 
     df_15m = pd.DataFrame(
         {
@@ -153,6 +156,7 @@ def resample_session_15m(
     old_to_new = np.full(n_15m, -1, dtype=np.int64)
     for new_idx, old_idx in enumerate(complete_indices):
         old_to_new[old_idx] = new_idx
+    complete_session_day_id = bars_15m_session_day[complete_indices]
 
     # Map each 5m bar to its most recent completed 15m bar index
     map_5m_to_15m = np.full(len(df), -1, dtype=np.int64)
@@ -190,7 +194,7 @@ def resample_session_15m(
             elif raw_i > 0:
                 map_5m_to_15m[raw_i] = map_5m_to_15m[raw_i - 1]
 
-    return df_15m, map_5m_to_15m
+    return df_15m, map_5m_to_15m, complete_session_day_id
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +204,7 @@ def resample_session_15m(
 def compute_hh_hl_patterns(
     df_15m: pd.DataFrame,
     map_5m_to_15m: np.ndarray,
+    session_day_id_15m: np.ndarray,
     n_bars: int = 2,
 ) -> dict[str, np.ndarray]:
     """Detect HH/HL (bullish) and LH/LL (bearish) patterns on completed 15m bars.
@@ -235,6 +240,10 @@ def compute_hh_hl_patterns(
         bull = True
         bear = True
         for j in range(1, n_bars + 1):
+            if session_day_id_15m[k - j + 1] != session_day_id_15m[k - j]:
+                bull = False
+                bear = False
+                break
             if high_15m[k - j + 1] <= high_15m[k - j]:
                 bull = False
             if low_15m[k - j + 1] <= low_15m[k - j]:
@@ -671,11 +680,11 @@ def compute_all_15m_signals(
     high_5m = df["high"].values.astype(np.float64)
 
     # 15m resampling
-    df_15m, map_5m = resample_session_15m(df, session)
+    df_15m, map_5m, session_day_id_15m = resample_session_15m(df, session)
 
     # HH/HL patterns
-    pat2 = compute_hh_hl_patterns(df_15m, map_5m, n_bars=2)
-    pat3 = compute_hh_hl_patterns(df_15m, map_5m, n_bars=3)
+    pat2 = compute_hh_hl_patterns(df_15m, map_5m, session_day_id_15m, n_bars=2)
+    pat3 = compute_hh_hl_patterns(df_15m, map_5m, session_day_id_15m, n_bars=3)
 
     # Relaxed patterns
     relaxed = compute_relaxed_patterns(df_15m, map_5m)

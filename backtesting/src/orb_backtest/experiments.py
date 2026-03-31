@@ -18,6 +18,7 @@ import os as _os
 # so every collaborator's backtests appear in the dashboard.
 # Override with EXPERIMENTS_DB_URL="" to disable.
 _os.environ.setdefault("EXPERIMENTS_DB_URL", "http://143.110.148.234:8100")
+DEFAULT_BACKTEST_RISK_USD = 5000.0
 
 DB_PATH = Path(
     _os.environ.get("EXPERIMENTS_DB_PATH")
@@ -826,13 +827,13 @@ def list_optimization_history(limit: int = 100) -> list[dict]:
 
         best_sharpe = 0.0
         best_pnl_usd = 0.0
-        risk_usd = 50000
+        risk_usd = DEFAULT_BACKTEST_RISK_USD
 
         if row["best_by_sharpe_json"]:
             best = json.loads(row["best_by_sharpe_json"])
             if best:
                 best_sharpe = best.get("summary", {}).get("sharpe_ratio", 0)
-                risk_usd = best.get("config", {}).get("risk_usd", 50000)
+                risk_usd = best.get("config", {}).get("risk_usd", DEFAULT_BACKTEST_RISK_USD)
 
         if row["best_by_pnl_json"]:
             best = json.loads(row["best_by_pnl_json"])

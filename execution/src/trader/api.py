@@ -1190,4 +1190,6 @@ def _session_info(engine) -> dict:
         "min_stop_pts": engine.min_stop_pts,
         "min_tp1_pts": engine.min_tp1_pts,
         "exec_ticker": engine.exec_ticker,
+        "regime_gate": getattr(engine, "regime_gate", None),
+        "structure_gate": getattr(engine, "structure_gate", None),
     }

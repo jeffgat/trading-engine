@@ -175,7 +175,7 @@ export function OptimizationHistoryPanel({
           <tbody>
             {sorted.map((item) => {
               const isActive = item.id === activeId;
-              const bestR = (item.best_pnl_usd ?? 0) / (item.risk_usd || 50000);
+              const bestR = (item.best_pnl_usd ?? 0) / (item.risk_usd || 5000);
 
               return (
                 <tr

@@ -11,7 +11,7 @@ DataBento (1m+1s bars)  →  Feed (aggregates to 5m)  →  ORBEngine / LSIEngine
 
 ### Core Modules (`src/trader/`)
 
-- **`feed.py`**: DataBento live connection, 1m→5m aggregation per symbol, 1s tick forwarding, daily ATR (multiple lengths per symbol), front-month contract election by volume, `preload_intraday_5m()` for mid-session restart recovery, `ReplayFeed` for historical CSV replay
+- **`feed.py`**: DataBento live connection, 1m→5m aggregation per symbol, 1s tick forwarding, daily ATR (multiple lengths per symbol), front-month contract election by volume, `preload_intraday_5m()` for mid-session restart recovery, `ReplayFeed` for single-symbol CSV debugging
 - **`engine.py`**: ORB+FVG per-session state machine (`ORBEngine`):
   `IDLE → ORB_BUILDING → WAITING_FOR_GAP → ARMED_LIMIT → FILLED → MANAGING → FLAT → IDLE`
 - **`lsi_engine.py`**: LSI reversal per-session state machine (`LSIEngine`):
@@ -21,6 +21,7 @@ DataBento (1m+1s bars)  →  Feed (aggregates to 5m)  →  ORBEngine / LSIEngine
 - **`sizing.py`**: `TradeLevels` computation — entry, stop, tp1, tp2, breakeven, position size
 - **`api.py`**: FastAPI dashboard with REST endpoints + WebSocket streaming
 - **`main.py`**: CLI entry point, config loading, portfolio definition (continuation + LSI sessions)
+- **`historical_backtest.py`**: Exact historical replay of execution profiles using the live ORB/LSI engines plus local `5m` and `1s` parquet data; writes frontend-compatible runs to the shared DB
 - **`checkpoint.py`**: Trade state persistence to JSON (`config/checkpoint.json`, `config/trade_history.json`) for crash recovery
 - **`overrides.py`**: Runtime config override system persisted to `config/overrides.json`; defines `EDITABLE_FIELDS` and `LSI_EDITABLE_FIELDS`
 - **`position_limits.py`**: `ContractCapManager` — shared per-config contract cap across engines; `resize_trade_levels()` helper
@@ -102,6 +103,32 @@ uv run orb-trader --replay /path/to/NQ_5m.csv --start 2025-01-01
 # Custom config
 uv run orb-trader --config config/live.toml
 ```
+
+## Exact Historical Execution Backtests
+
+When the task is "backtest an execution profile historically" or "save `FAST_V1.1` / `FAST_V2.1` / `GENERAL_V1` to the frontend DB", use the exact execution replay path, not a hand-translated approximation of `exec_configs.json`.
+
+Use:
+
+```bash
+cd execution
+PYTHONUNBUFFERED=1 .venv/bin/python scripts/save_exact_exec_backtests.py \
+  --profiles FAST_V1.1 FAST_V2.1 GENERAL_V1 \
+  --years 5
+```
+
+Why:
+
+- builds the profile from `config/exec_configs.json` and `src/trader/main.py`
+- runs the actual `ORBEngine` and `LSIEngine`
+- uses local `5m` parquet for signal bars and local `1s` parquet for fills/exits
+- preserves execution-only behavior like cross-midnight handling, G5/regime/structure gates, overlap checks, and TP1/BE/TP2 state transitions
+- saves a top-level `config.risk_usd = 5000` for backtesting/dashboard R reporting while preserving per-session execution `*_risk_usd` overrides
+- posts the run directly to the shared experiments API so the frontend can review it
+
+Use [historical_backtest.py](/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/src/trader/historical_backtest.py) as the source of truth for execution-profile history, and [save_exact_exec_backtests.py](/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution/scripts/save_exact_exec_backtests.py) as the CLI wrapper.
+
+Use `uv run orb-trader --replay ...` only for narrow single-symbol engine debugging, not for saved portfolio backtests of execution configs.
 
 ## Frontend
 

@@ -76,6 +76,47 @@ class DailyBar:
         self.close = bar.close
 
 
+class DailyHistoryTracker:
+    """Tracks completed daily bars plus the current partial day."""
+
+    def __init__(self, max_days: int = 90) -> None:
+        self.max_days = max_days
+        self._completed_days: deque[DailyBar] = deque(maxlen=max_days)
+        self._current_day: DailyBar | None = None
+
+    def seed_daily(self, daily_bars: list[tuple[date, float, float, float, float]]) -> None:
+        self._completed_days = deque(
+            (DailyBar(date=d, open=o, high=h, low=l, close=c) for d, o, h, l, c in daily_bars),
+            maxlen=self.max_days,
+        )
+        self._current_day = None
+
+    def on_5m_bar(self, bar: Bar) -> None:
+        bar_date = bar.timestamp.date()
+        if self._current_day is None or bar_date != self._current_day.date:
+            if self._current_day is not None:
+                self._completed_days.append(self._current_day)
+            self._current_day = DailyBar(date=bar_date)
+        self._current_day.update(bar)
+
+    def snapshot(self, include_current: bool = True) -> list[tuple[date, float, float, float, float]]:
+        bars = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close)
+            for bar in self._completed_days
+        ]
+        if include_current and self._current_day is not None and not math.isnan(self._current_day.close):
+            bars.append(
+                (
+                    self._current_day.date,
+                    self._current_day.open,
+                    self._current_day.high,
+                    self._current_day.low,
+                    self._current_day.close,
+                )
+            )
+        return bars
+
+
 # ---------------------------------------------------------------------------
 # ATR calculator (Wilder's smoothing, matches core/signals/daily_atr.py)
 # ---------------------------------------------------------------------------
@@ -341,6 +382,7 @@ class DataBentoFeed:
         self._aggregators: dict[str, BarAggregator] = {}
         self._atr_lengths_by_symbol: dict[str, list[int]] = {}
         self._atrs: dict[str, dict[int, ATRCalculator]] = {}
+        self._daily_history: dict[str, DailyHistoryTracker] = {}
         for sym in self.symbols:
             self._aggregators[sym] = BarAggregator()
             raw_lengths = None if atr_lengths_by_symbol is None else atr_lengths_by_symbol.get(sym)
@@ -349,6 +391,7 @@ class DataBentoFeed:
             self._atrs[sym] = {
                 length: ATRCalculator(length=length) for length in lengths
             }
+            self._daily_history[sym] = DailyHistoryTracker()
 
         self._running = False
         # Populated after connection — maps instrument_id to parent symbol
@@ -437,6 +480,7 @@ class DataBentoFeed:
             refreshed_calcs[length] = calc
             refreshed_values[length] = calc.value
         self._atrs[sym] = refreshed_calcs
+        self._daily_history[sym].seed_daily(bars)
         last_date = bars[-1][0]
         return ATRRefreshInfo(
             symbol=sym,
@@ -528,6 +572,17 @@ class DataBentoFeed:
             primary_length = self._atr_lengths_by_symbol[sym][0]
             result[sym] = self._atrs[sym][primary_length].value
         return result
+
+    def get_daily_history_for_symbol(
+        self,
+        symbol: str,
+        *,
+        include_current: bool = True,
+    ) -> list[tuple[date, float, float, float, float]]:
+        tracker = self._daily_history.get(symbol)
+        if tracker is None:
+            return []
+        return tracker.snapshot(include_current=include_current)
 
     def preload_intraday_5m(self, lookback_hours: int = 18) -> dict[str, list[Bar]]:
         """load recent 1m history and build 5m bars for restart recovery."""
@@ -773,6 +828,7 @@ class DataBentoFeed:
         atr_calcs = self._atrs[symbol]
 
         if bar_5m is not None:
+            self._daily_history[symbol].on_5m_bar(bar_5m)
             # update daily ATR for each configured length on this symbol
             for atr_calc in atr_calcs.values():
                 atr_calc.on_5m_bar(bar_5m)

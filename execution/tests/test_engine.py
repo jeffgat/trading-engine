@@ -697,6 +697,27 @@ class TestDailyReset:
         broker.send_flatten.assert_called_once()
         assert eng._state == State.FLAT
 
+    def test_recovery_reapplies_regime_gate_before_waiting_for_gap(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            regime_gate="bull_no_low_confidence",
+            regime_gate_check=lambda _date: False,
+        )
+        bars = [
+            make_bar("2025-01-15 09:30", 19500, 19530, 19480, 19510),
+            make_bar("2025-01-15 09:35", 19510, 19540, 19500, 19520),
+            make_bar("2025-01-15 09:40", 19520, 19545, 19510, 19530),
+            make_bar("2025-01-15 09:45", 19530, 19550, 19520, 19540),
+        ]
+
+        recovered = eng.recover_opening_range(
+            bars,
+            make_bar("2025-01-15 10:00", 0.0, 0.0, 0.0, 0.0).timestamp,
+        )
+
+        assert recovered is True
+        assert eng._state == State.FLAT
+
 
 # =============================================================================
 # Callbacks
@@ -736,3 +757,22 @@ class TestCallbacks:
         await eng.on_bar(bar, 300.0)
         assert records[0].tp1_hit is True
         assert records[0].exit_type == "tp1_tp2"
+
+    async def test_trade_record_uses_historical_fill_and_exit_timestamps(self, engine):
+        records = []
+        engine.on_trade_exit = records.append
+        eng, _entry_price = await advance_to_managing(engine, orb_high=19530.0)
+        assert eng._levels is not None
+
+        bar = Bar(
+            timestamp=datetime(2025, 1, 15, 15, 55, tzinfo=ET),
+            open=eng._levels.entry,
+            high=eng._levels.entry + 1.0,
+            low=eng._levels.entry - 1.0,
+            close=eng._levels.entry,
+            volume=1,
+        )
+        await eng.on_bar(bar, 300.0)
+
+        assert records[0].entry_timestamp == "2025-01-15T10:05:00-05:00"
+        assert records[0].timestamp == "2025-01-15T15:55:00-05:00"

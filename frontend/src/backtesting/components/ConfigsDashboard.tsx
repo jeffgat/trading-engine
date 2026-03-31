@@ -132,7 +132,7 @@ export function ConfigsDashboard() {
       }
       const json = await res.json();
       const result = json.result ?? json;
-      const riskUsd = result.config?.risk_usd ?? active.config.risk_usd ?? 50000;
+      const riskUsd = result.config?.risk_usd ?? active.config.risk_usd ?? 5000;
       setBtResult({
         id: result.id,
         trades: result.summary?.total_trades ?? 0,

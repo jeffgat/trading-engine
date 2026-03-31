@@ -454,7 +454,6 @@ function SessionConfigCard({
         risk_usd: cfg.risk_usd,
         min_qty: cfg.min_qty,
         max_single_risk_usd: cfg.max_single_risk_usd,
-        be_offset_ticks: cfg.be_offset_ticks,
       });
     } else {
       setDraft({
@@ -475,7 +474,6 @@ function SessionConfigCard({
         risk_usd: cfg.risk_usd,
         min_qty: cfg.min_qty,
         max_single_risk_usd: cfg.max_single_risk_usd,
-        be_offset_ticks: cfg.be_offset_ticks,
       });
     }
     setCardError(null);
@@ -497,12 +495,12 @@ function SessionConfigCard({
     ? [
         "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_points",
         "max_bars_after_sweep", "fvg_window_left", "qty_multiplier",
-        "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
+        "risk_usd", "min_qty", "max_single_risk_usd",
       ]
     : [
         "rr", "tp1_ratio", "stop_atr_pct", "stop_orb_pct",
         "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
-        "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
+        "risk_usd", "min_qty", "max_single_risk_usd",
       ];
   const timeFields = isLsi
     ? ["entry_start", "entry_end", "flat_start", "flat_end"]
@@ -770,13 +768,6 @@ function SessionConfigCard({
                 overridden={isOverridden("qty_multiplier")}
               />
             )}
-            <EditableField
-              label="BE Offset (ticks)"
-              value={String(draft.be_offset_ticks ?? "")}
-              onChange={(v) => setField("be_offset_ticks", v)}
-              type="number"
-              overridden={isOverridden("be_offset_ticks")}
-            />
             <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
             <ConfigItem label="Exec Contract" value={cfg.exec_ticker} />
           </div>
@@ -889,6 +880,13 @@ function SessionConfigCard({
         <div className="space-y-1 border-t border-border pt-2">
           <SectionLabel>Strategy</SectionLabel>
           <ConfigItem label="R:R" value={cfg.rr.toString()} overridden={isOverridden("rr")} />
+          <ConfigItem label="Direction" value={cfg.long_only ? "Long" : "Both"} />
+          {cfg.regime_gate && (
+            <ConfigItem label="Regime Gate" value={cfg.regime_gate} />
+          )}
+          {cfg.structure_gate && (
+            <ConfigItem label="Structure Gate" value={cfg.structure_gate} />
+          )}
           <ConfigItem
             label="TP1 Ratio"
             value={cfg.tp1_ratio.toString()}
@@ -987,11 +985,6 @@ function SessionConfigCard({
             />
           )}
           <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
-          <ConfigItem
-            label="BE Offset"
-            value={`${cfg.be_offset_ticks} ticks`}
-            overridden={isOverridden("be_offset_ticks")}
-          />
           <ConfigItem label="Exec Contract" value={cfg.exec_ticker} />
           {(hasAnyRiskOverride || hasOverrides) && (
             <p className="text-[10px] text-amber-400/70 pt-0.5">

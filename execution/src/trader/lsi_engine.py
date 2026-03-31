@@ -550,7 +550,13 @@ class LSIEngine:
         if self.on_state_change:
             self.on_state_change(self.status_dict())
 
-    def _emit_trade_record(self, exit_type: str, exit_price: float | None = None) -> None:
+    def _emit_trade_record(
+        self,
+        exit_type: str,
+        exit_price: float | None = None,
+        *,
+        exit_timestamp: datetime | None = None,
+    ) -> None:
         self._exit_type = exit_type
         self._r_result = self._compute_r_result(exit_type, exit_price=exit_price)
         if self.on_trade_exit is None:
@@ -566,9 +572,10 @@ class LSIEngine:
             tp2_price=levels.tp2 if levels else 0.0,
             exit_type=exit_type,
             tp1_hit=self._tp1_hit,
-            timestamp=datetime.now().isoformat(),
+            timestamp=(exit_timestamp or datetime.now()).isoformat(),
             config_name=self.config_name,
             r_result=self._r_result,
+            entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
         )
         self.on_trade_exit(record)
 
@@ -1175,7 +1182,11 @@ class LSIEngine:
                 delay_s=cleanup_delay,
             )
         exit_price = bar.close if exit_type in {"eod", "tp1_eod"} else None
-        self._emit_trade_record(exit_type, exit_price=exit_price)
+        self._emit_trade_record(
+            exit_type,
+            exit_price=exit_price,
+            exit_timestamp=bar.timestamp,
+        )
         self._state = LSIState.FLAT
         self._request_checkpoint()
         self._notify_state_change()
@@ -1221,7 +1232,11 @@ class LSIEngine:
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod", exit_price=tick.close)
+            self._emit_trade_record(
+                "tp1_eod" if self._tp1_hit else "eod",
+                exit_price=tick.close,
+                exit_timestamp=tick.timestamp,
+            )
             self._state = LSIState.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1243,7 +1258,7 @@ class LSIEngine:
                     reason="sl_hit_1s_ambiguous",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("sl")
+                self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1256,7 +1271,7 @@ class LSIEngine:
                     reason="sl_hit_1s",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("sl")
+                self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1295,7 +1310,7 @@ class LSIEngine:
                     reason="tp2_direct_1s",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("tp2_direct")
+                self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1310,7 +1325,7 @@ class LSIEngine:
                 self._log_trade("BE_HIT", "dir=%s be=%.2f resolution=1s" % (dir_str, levels.be))
                 self._set_trade_overlap(False, notify=False)
                 self._schedule_post_exit_cleanup(reason="be_hit_1s")
-                self._emit_trade_record("tp1_be")
+                self._emit_trade_record("tp1_be", exit_timestamp=tick.timestamp)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1320,7 +1335,7 @@ class LSIEngine:
                 self._log_trade("TP2_HIT", "dir=%s tp2=%.2f resolution=1s" % (dir_str, levels.tp2))
                 self._set_trade_overlap(False, notify=False)
                 self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
-                self._emit_trade_record("tp1_tp2")
+                self._emit_trade_record("tp1_tp2", exit_timestamp=tick.timestamp)
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()

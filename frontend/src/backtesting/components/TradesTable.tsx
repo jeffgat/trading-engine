@@ -176,7 +176,7 @@ export function TradesTable({ trades, riskUsd, instrument }: TradesTableProps) {
     (t: Trade, key: string): number => {
       switch (key) {
         case "r":
-          return t.pnl_usd / riskUsd;
+          return Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd;
         case "pnl":
           return t.pnl_usd;
         case "risk_pts":
@@ -476,7 +476,7 @@ export function TradesTable({ trades, riskUsd, instrument }: TradesTableProps) {
                       className="whitespace-nowrap px-4 py-1.5 text-right font-mono"
                       style={{ color: pnlColor }}
                     >
-                      {formatR(t.pnl_usd / riskUsd)}
+                      {formatR(Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd)}
                     </td>
                   </tr>
                 );

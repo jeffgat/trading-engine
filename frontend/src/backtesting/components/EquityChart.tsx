@@ -11,11 +11,12 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from "recharts";
-import type { EquityCurvePoint } from "@/backtesting/lib/types";
+import type { EquityCurvePoint, Trade } from "@/backtesting/lib/types";
 
 interface EquityChartProps {
   data: EquityCurvePoint[];
   riskUsd: number;
+  trades?: Trade[];
 }
 
 interface RPoint {
@@ -55,15 +56,40 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
-export function EquityChart({ data, riskUsd }: EquityChartProps) {
+export function EquityChart({ data, riskUsd, trades = [] }: EquityChartProps) {
   const rData: RPoint[] = useMemo(
-    () =>
-      data.map((d) => ({
+    () => {
+      const filledTrades = trades.filter((t) => t.exit_type !== "no_fill");
+      if (filledTrades.length > 0 && filledTrades.every((t) => Number.isFinite(t.r_multiple))) {
+        let cumulative = 0;
+        const tradeSeries = filledTrades.map((t) => {
+          cumulative += t.r_multiple;
+          return {
+            date: t.exit_time?.slice(0, 10) || t.entry_time?.slice(0, 10) || t.date,
+            r_cumulative: cumulative,
+            r_per_trade: t.r_multiple,
+          };
+        });
+        if (data.length > 0) {
+          const lastCurveDate = data[data.length - 1].date;
+          const lastTradeDate = tradeSeries[tradeSeries.length - 1]?.date;
+          if (lastCurveDate && lastCurveDate !== lastTradeDate) {
+            tradeSeries.push({
+              date: lastCurveDate,
+              r_cumulative: cumulative,
+              r_per_trade: 0,
+            });
+          }
+        }
+        return tradeSeries;
+      }
+      return data.map((d) => ({
         date: d.date,
         r_cumulative: d.pnl_cumulative / riskUsd,
         r_per_trade: d.pnl_per_trade / riskUsd,
-      })),
-    [data, riskUsd],
+      }));
+    },
+    [data, riskUsd, trades],
   );
 
   if (!data.length) {

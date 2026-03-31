@@ -59,6 +59,7 @@ class TradeRecord:
     timestamp: str        # ISO format exit timestamp
     config_name: str = "" # execution config (e.g. "FAST", "SLOW")
     r_result: float | None = None
+    entry_timestamp: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +442,13 @@ class ORBEngine:
         if self.on_state_change is not None:
             self.on_state_change(self.status_dict())
 
-    def _emit_trade_record(self, exit_type: str, exit_price: float | None = None) -> None:
+    def _emit_trade_record(
+        self,
+        exit_type: str,
+        exit_price: float | None = None,
+        *,
+        exit_timestamp: datetime | None = None,
+    ) -> None:
         """Record a completed trade for cross-session history (G5 gate etc.)."""
         self._exit_type = exit_type
         self._r_result = self._compute_r_result(exit_type, exit_price=exit_price)
@@ -458,9 +465,10 @@ class ORBEngine:
             tp2_price=levels.tp2 if levels else 0.0,
             exit_type=exit_type,
             tp1_hit=self._tp1_hit,
-            timestamp=datetime.now().isoformat(),
+            timestamp=(exit_timestamp or datetime.now()).isoformat(),
             config_name=self.config_name,
             r_result=self._r_result,
+            entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
         )
         self.on_trade_exit(record)
 
@@ -680,7 +688,12 @@ class ORBEngine:
                 self.name, len(orb_bars), expected_orb_bars,
             )
         elif self._in_entry(now_t):
-            self._state = State.WAITING_FOR_GAP
+            if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
+                self._state = State.FLAT
+            elif self.regime_gate_check is not None and not self.regime_gate_check(self._current_date):
+                self._state = State.FLAT
+            else:
+                self._state = State.WAITING_FOR_GAP
         elif self._in_flat(now_bar):
             self._state = State.FLAT
         elif self._in_rth(now_t):
@@ -1180,7 +1193,11 @@ class ORBEngine:
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod", exit_price=bar.close)
+            self._emit_trade_record(
+                "tp1_eod" if self._tp1_hit else "eod",
+                exit_price=bar.close,
+                exit_timestamp=bar.timestamp,
+            )
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1222,7 +1239,7 @@ class ORBEngine:
                 reason="sl_hit_5m",
                 delay_s=self._broker_exit_cleanup_delay(1.0),
             )
-            self._emit_trade_record("sl")
+            self._emit_trade_record("sl", exit_timestamp=bar.timestamp)
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1295,7 +1312,7 @@ class ORBEngine:
                     % (direction_str, levels.be, bar.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_5m")
-                self._emit_trade_record("tp1_be")
+                self._emit_trade_record("tp1_be", exit_timestamp=bar.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1314,7 +1331,7 @@ class ORBEngine:
                     % (direction_str, levels.tp2, bar.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="tp2_hit_5m")
-                self._emit_trade_record("tp1_tp2")
+                self._emit_trade_record("tp1_tp2", exit_timestamp=bar.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1337,7 +1354,7 @@ class ORBEngine:
                     reason="tp2_direct_5m",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("tp2_direct")
+                self._emit_trade_record("tp2_direct", exit_timestamp=bar.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1435,7 +1452,11 @@ class ORBEngine:
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record("tp1_eod" if self._tp1_hit else "eod", exit_price=tick.close)
+            self._emit_trade_record(
+                "tp1_eod" if self._tp1_hit else "eod",
+                exit_price=tick.close,
+                exit_timestamp=tick.timestamp,
+            )
             self._state = State.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1465,7 +1486,7 @@ class ORBEngine:
                     reason="sl_hit_1s_ambiguous",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("sl")
+                self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1481,7 +1502,7 @@ class ORBEngine:
                     reason="sl_hit_1s",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("sl")
+                self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1543,7 +1564,7 @@ class ORBEngine:
                     reason="tp2_direct_1s",
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
-                self._emit_trade_record("tp2_direct")
+                self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1563,7 +1584,7 @@ class ORBEngine:
                     % (direction_str, levels.be, tick.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_1s")
-                self._emit_trade_record("tp1_be")
+                self._emit_trade_record("tp1_be", exit_timestamp=tick.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1576,7 +1597,7 @@ class ORBEngine:
                     % (direction_str, levels.tp2, tick.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
-                self._emit_trade_record("tp1_tp2")
+                self._emit_trade_record("tp1_tp2", exit_timestamp=tick.timestamp)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()

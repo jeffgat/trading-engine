@@ -390,7 +390,7 @@ export function TradeChartModal({
 
   if (!trade) return null;
 
-  const rMultiple = trade.pnl_usd / riskUsd;
+  const rMultiple = Number.isFinite(trade.r_multiple) ? trade.r_multiple : trade.pnl_usd / riskUsd;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) setTimeframe("5m"); onOpenChange(o); }}>

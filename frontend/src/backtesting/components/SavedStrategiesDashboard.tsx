@@ -358,8 +358,8 @@ export function SavedStrategiesDashboard() {
                     />
                     <VariablesTested config={data.config} />
                     <ConfigBar config={data.config} />
-                    {displaySummary && <StatBar summary={displaySummary} trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} />}
-                    <EquityChart data={displayEquity} riskUsd={data.config.risk_usd ?? 50000} />
+                    {displaySummary && <StatBar summary={displaySummary} trades={displayTrades} riskUsd={data.config.risk_usd ?? 5000} />}
+                    <EquityChart data={displayEquity} trades={displayTrades} riskUsd={data.config.risk_usd ?? 5000} />
                     <MonteCarloSection
                         mcResult={mcResult}
                         mcLoading={mcLoading}
@@ -372,7 +372,7 @@ export function SavedStrategiesDashboard() {
                         onSimsChange={setMcSims}
                         onRun={runMonteCarlo}
                     />
-                    <TradesTable trades={displayTrades} riskUsd={data.config.risk_usd ?? 50000} instrument={data.config.instrument ?? "NQ"} />
+                    <TradesTable trades={displayTrades} riskUsd={data.config.risk_usd ?? 5000} instrument={data.config.instrument ?? "NQ"} />
                 </div>
             )}
 
