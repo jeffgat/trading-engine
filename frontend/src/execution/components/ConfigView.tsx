@@ -11,7 +11,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/dialog";
-import { useCallback, useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { useCallback, useEffect, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -428,6 +430,13 @@ function SessionConfigCard({
   const hasOverrides = Object.keys(overrides).length > 0;
   const isLsi = cfg.type !== "continuation";
 
+  // Derive short name and config prefix for display
+  const shortName = name.includes(":") ? name.split(":")[1] : name;
+  const configPrefix = name.includes(":") ? name.split(":")[0] : null;
+  const configColorClasses = configPrefix
+    ? CONFIG_COLORS[configPrefix] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
+    : null;
+
   const stopIsOrb = cfg.stop_basis === "orb";
   const gapIsOrb = cfg.gap_filter_basis === "orb";
 
@@ -558,9 +567,25 @@ function SessionConfigCard({
       <Card className="border-border bg-bg-card">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
-              {name}
-            </CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
+                {shortName}
+              </CardTitle>
+              <span
+                className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                  isLsi
+                    ? "text-violet-400 bg-violet-400/10"
+                    : "text-emerald-400 bg-emerald-400/10"
+                }`}
+              >
+                {isLsi ? "LSI" : "ORB"}
+              </span>
+              {configPrefix && configColorClasses && (
+                <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${configColorClasses}`}>
+                  {configPrefix}
+                </span>
+              )}
+            </div>
             <div className="flex gap-1.5">
               <button
                 onClick={cancelEditing}
@@ -821,7 +846,7 @@ function SessionConfigCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
-              {name}
+              {shortName}
             </CardTitle>
             <span
               className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
@@ -832,6 +857,11 @@ function SessionConfigCard({
             >
               {isLsi ? "LSI" : "ORB"}
             </span>
+            {configPrefix && configColorClasses && (
+              <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${configColorClasses}`}>
+                {configPrefix}
+              </span>
+            )}
             {hasOverrides && (
               <span className="text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
                 overridden
@@ -881,7 +911,10 @@ function SessionConfigCard({
           <SectionLabel>Strategy</SectionLabel>
           <ConfigItem label="R:R" value={cfg.rr.toString()} overridden={isOverridden("rr")} />
           <ConfigItem label="Direction" value={cfg.long_only ? "Long" : "Both"} />
-          {cfg.regime_gate && (
+          {!!cfg.regime_gates?.length && (
+            <ConfigItem label="Regime Gates" value={cfg.regime_gates.join(", ")} />
+          )}
+          {!cfg.regime_gates?.length && cfg.regime_gate && (
             <ConfigItem label="Regime Gate" value={cfg.regime_gate} />
           )}
           {cfg.structure_gate && (
@@ -1034,8 +1067,13 @@ function SessionConfigCard({
 }
 
 // ---------------------------------------------------------------------------
-// SessionConfigsSection (tabbed view by speed prefix)
+// SessionConfigsSection (dropdown filter by exec config)
 // ---------------------------------------------------------------------------
+
+/** Check if an exec config is live (has webhooks) */
+function isExecConfigLive(meta: ExecConfigMeta): boolean {
+  return meta.webhooks.length > 0;
+}
 
 function SessionConfigsSection({
   sessions,
@@ -1045,6 +1083,7 @@ function SessionConfigsSection({
   saving,
   onUpdateSession,
   onResetSession,
+  execConfigs,
 }: {
   sessions: Record<string, SessionConfig>;
   overrides: Record<string, Partial<SessionConfig>>;
@@ -1053,46 +1092,77 @@ function SessionConfigsSection({
   saving: boolean;
   onUpdateSession: (name: string, overrides: Partial<SessionConfig>) => Promise<void>;
   onResetSession: (name: string) => Promise<void>;
+  execConfigs: Record<string, ExecConfigMeta>;
 }) {
-  const allPrefixes = Array.from(
-    new Set(
-      Object.keys(sessions).map((n) => {
-        const parts = n.split(":");
-        return parts.length > 1 ? parts[0] : "OTHER";
-      })
-    )
-  ).sort();
+  // Sort configs: live first, then dry-run, alphabetical within each group
+  const configNames = Object.keys(execConfigs);
+  const liveConfigs = configNames.filter((n) => isExecConfigLive(execConfigs[n])).sort();
+  const dryRunConfigs = configNames.filter((n) => !isExecConfigLive(execConfigs[n])).sort();
+  const sortedConfigs = [...liveConfigs, ...dryRunConfigs];
 
-  const tabs = ["All", ...allPrefixes];
-  const [activeTab, setActiveTab] = useState(tabs[0]);
+  const defaultConfig = liveConfigs[0] ?? sortedConfigs[0] ?? "";
+  const [activeConfig, setActiveConfig] = useState(defaultConfig);
 
+  // Sync when config metadata changes
+  useEffect(() => {
+    if (!activeConfig || !execConfigs[activeConfig]) {
+      setActiveConfig(defaultConfig);
+    }
+  }, [defaultConfig, activeConfig, execConfigs]);
+
+  const validConfig = execConfigs[activeConfig] ? activeConfig : defaultConfig;
+
+  const activeMeta = execConfigs[validConfig];
+
+  // Filter sessions by prefix matching: "FAST_V1.1:NQ_Asia" matches config "FAST_V1.1"
   const filteredEntries = Object.entries(sessions).filter(([name]) => {
-    if (activeTab === "All") return true;
-    const parts = name.split(":");
-    const prefix = parts.length > 1 ? parts[0] : "OTHER";
-    return prefix === activeTab;
+    if (!name.includes(":")) return false;
+    const prefix = name.split(":")[0];
+    return prefix === validConfig;
   });
+
+  const selectedIsLive = activeMeta ? isExecConfigLive(activeMeta) : false;
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-3">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-secondary">
           Strategy Configurations
         </h3>
-        <div className="flex items-center gap-1">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${
-                activeTab === tab
-                  ? "bg-accent/20 text-accent border border-accent/30"
-                  : "text-text-muted hover:text-text-secondary hover:bg-bg-secondary border border-transparent"
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
+            selectedIsLive
+              ? "text-profit bg-profit/10"
+              : "text-amber-400 bg-amber-400/10"
+          }`}>
+            {selectedIsLive ? "Live" : "Dry Run"}
+          </span>
+          <span className="text-xs text-text-muted">
+            {filteredEntries.length} strateg{filteredEntries.length !== 1 ? "ies" : "y"}
+          </span>
+          <Select value={validConfig} onValueChange={setActiveConfig}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedConfigs.map((name) => {
+                const meta = execConfigs[name];
+                const live = meta ? isExecConfigLive(meta) : false;
+                const count = (meta?.sessions?.length ?? 0) + (meta?.lsi_sessions?.length ?? 0);
+                return (
+                  <SelectItem key={name} value={name}>
+                    <span className="flex items-center gap-2">
+                      {name}
+                      <span className={`text-[9px] uppercase ${live ? "text-profit" : "text-amber-400"}`}>
+                        {live ? "Live" : "Dry"}
+                      </span>
+                      <span className="text-text-muted">({count})</span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1164,143 +1234,149 @@ export function ConfigView({
         </div>
       )}
 
-      {/* Execution Configs Summary */}
-      {Object.keys(execConfigs).length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-text-secondary mb-3">
-            Execution Configs
-          </h3>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {Object.entries(execConfigs).map(([name, meta]) => {
-              const colorClasses = CONFIG_COLORS[name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
-              return (
-                <Card key={name} className="border-border bg-bg-card">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorClasses}`}>
-                          {name}
-                        </span>
-                        {(() => {
-                          const mode = getConfigMode(meta);
-                          return (
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${MODE_STYLES[mode]}`}>
-                              {MODE_LABELS[mode]}
+      <Tabs defaultValue="strategy" className="space-y-4">
+        <TabsList className="bg-bg-card border border-border">
+          <TabsTrigger value="strategy">Strategy Configurations</TabsTrigger>
+          <TabsTrigger value="execution">Execution Configs</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="strategy" className="space-y-6">
+          <SessionConfigsSection
+            sessions={config.sessions}
+            overrides={config.overrides ?? {}}
+            defaults={config.defaults ?? {}}
+            globalRisk={globalRisk}
+            saving={saving}
+            onUpdateSession={onUpdateSession}
+            onResetSession={onResetSession}
+            execConfigs={execConfigs}
+          />
+        </TabsContent>
+
+        <TabsContent value="execution" className="space-y-6">
+          {Object.keys(execConfigs).length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-text-secondary mb-3">
+                Execution Configs
+              </h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Object.entries(execConfigs).map(([name, meta]) => {
+                  const colorClasses = CONFIG_COLORS[name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
+                  return (
+                    <Card key={name} className="border-border bg-bg-card">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorClasses}`}>
+                              {name}
                             </span>
-                          );
-                        })()}
-                      </div>
-                      {/* Toggle dry-run ↔ disabled (only when no webhooks) */}
-                      {meta.webhooks.length === 0 && onToggleEnabled && (
-                        <button
-                          onClick={() => onToggleEnabled(name, !meta.enabled)}
-                          className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
-                        >
-                          {meta.enabled ? "Disable" : "Enable"}
-                        </button>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="space-y-1">
-                      <WebhookManager
-                        configName={name}
-                        webhooks={meta.webhooks ?? []}
-                        onSave={onUpdateWebhooks}
-                      />
-                      {((meta.sessions?.length ?? 0) > 0 || (meta.lsi_sessions?.length ?? 0) > 0) && (() => {
-                        // Build a lookup: short name → session type from config.sessions
-                        const typeByShort: Record<string, "continuation" | "lsi"> = {};
-                        Object.entries(config.sessions ?? {}).forEach(([fullName, cfg]) => {
-                          const short = fullName.includes(":") ? fullName.split(":")[1] : fullName;
-                          typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
-                        });
-                        const allSessions = [
-                          ...(meta.sessions ?? []).map((s) => ({ name: s, isLsi: typeByShort[s] !== "continuation" })),
-                          ...(meta.lsi_sessions ?? []).map((s) => ({ name: s, isLsi: true })),
-                        ];
-                        return (
-                          <div className="flex justify-between pb-1 pt-8 gap-2">
-                            <span className="text-text-muted text-xs shrink-0">Strategies</span>
-                            <div className="flex flex-wrap gap-1 justify-end">
-                              {allSessions.map(({ name: s, isLsi }) => (
-                                <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
-                                  {s}
-                                  <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
-                                    isLsi
-                                      ? "text-violet-400 bg-violet-400/10"
-                                      : "text-emerald-400 bg-emerald-400/10"
-                                  }`}>
-                                    {isLsi ? "LSI" : "ORB"}
-                                  </span>
+                            {(() => {
+                              const mode = getConfigMode(meta);
+                              return (
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${MODE_STYLES[mode]}`}>
+                                  {MODE_LABELS[mode]}
                                 </span>
-                              ))}
-                            </div>
+                              );
+                            })()}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                          {meta.webhooks.length === 0 && onToggleEnabled && (
+                            <button
+                              onClick={() => onToggleEnabled(name, !meta.enabled)}
+                              className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
+                            >
+                              {meta.enabled ? "Disable" : "Enable"}
+                            </button>
+                          )}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="space-y-1">
+                          <WebhookManager
+                            configName={name}
+                            webhooks={meta.webhooks ?? []}
+                            onSave={onUpdateWebhooks}
+                          />
+                          {((meta.sessions?.length ?? 0) > 0 || (meta.lsi_sessions?.length ?? 0) > 0) && (() => {
+                            const typeByShort: Record<string, "continuation" | "lsi"> = {};
+                            Object.entries(config.sessions ?? {}).forEach(([fullName, cfg]) => {
+                              const short = fullName.includes(":") ? fullName.split(":")[1] : fullName;
+                              typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
+                            });
+                            const allSessions = [
+                              ...(meta.sessions ?? []).map((s) => ({ name: s, isLsi: typeByShort[s] !== "continuation" })),
+                              ...(meta.lsi_sessions ?? []).map((s) => ({ name: s, isLsi: true })),
+                            ];
+                            return (
+                              <div className="flex justify-between pb-1 pt-8 gap-2">
+                                <span className="text-text-muted text-xs shrink-0">Strategies</span>
+                                <div className="flex flex-wrap gap-1 justify-end">
+                                  {allSessions.map(({ name: s, isLsi }) => (
+                                    <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
+                                      {s}
+                                      <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                                        isLsi
+                                          ? "text-violet-400 bg-violet-400/10"
+                                          : "text-emerald-400 bg-emerald-400/10"
+                                      }`}>
+                                        {isLsi ? "LSI" : "ORB"}
+                                      </span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Card className="border-border bg-bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">General</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {Object.entries(general).map(([key, value]) => (
+                  <ConfigItem key={key} label={key} value={String(value)} />
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="border-border bg-bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Default Risk</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {Object.entries(risk).map(([key, value]) => (
+                  <ConfigItem key={key} label={key} value={String(value)} />
+                ))}
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      )}
 
-      {/* General + Risk */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card className="border-border bg-bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">General</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {Object.entries(general).map(([key, value]) => (
-              <ConfigItem key={key} label={key} value={String(value)} />
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Default Risk</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {Object.entries(risk).map(([key, value]) => (
-              <ConfigItem key={key} label={key} value={String(value)} />
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Strategy configs */}
-      <SessionConfigsSection
-        sessions={config.sessions}
-        overrides={config.overrides ?? {}}
-        defaults={config.defaults ?? {}}
-        globalRisk={globalRisk}
-        saving={saving}
-        onUpdateSession={onUpdateSession}
-        onResetSession={onResetSession}
-      />
-
-      {/* Date config */}
-      {Object.keys(dates).length > 0 && (
-        <Card className="border-border bg-bg-card">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Dates</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            {Object.entries(dates).map(([key, value]) => (
-              <ConfigItem
-                key={key}
-                label={key}
-                value={Array.isArray(value) ? value.join(", ") : String(value)}
-              />
-            ))}
-          </CardContent>
-        </Card>
-      )}
+          {Object.keys(dates).length > 0 && (
+            <Card className="border-border bg-bg-card">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Dates</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {Object.entries(dates).map(([key, value]) => (
+                  <ConfigItem
+                    key={key}
+                    label={key}
+                    value={Array.isArray(value) ? value.join(", ") : String(value)}
+                  />
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -183,7 +183,47 @@ Tested whether wider pivots (requiring more significant swing levels) improve th
 - **VWAP Reversion** — Shorts marginal (Calmar 0.37, PF 1.18, concentrated in 2 years). Longs definitively bad (all configs negative). Flat optimization surface — no lever moves Calmar above 0.37. Not viable for prop firm.
 - **Reversal with sweep gate** — NO-GO. 27 configs (stop=[7,10,15]% × rr=[2.0,3.5,5.0] × dir=[both,long,short]) all catastrophically negative. Baseline: -470R to -1560R, WR 10-29%, PF 0.16-0.54. Sweep gate (N=[6,12,24,48]) filters to 3-8 trades in 10 years (0.2-0.5% pass rate) — statistically meaningless. "Positive" gated results are noise on 6-trade samples. Script: `run_cl_ny_reversal_sweep_test.py`.
 - **LSI (Liquidity Sweep Inversion)** — DEFINITIVE NO-GO. Baseline (n_left=3, n_right=3): PF 0.88, Net R -120R, 9/10 neg years. Wide pivot sweep (64 combos, n_left/n_right up to 288 bars): every combo negative, best PF=0.94, best Calmar=-0.78. Signal structurally broken on CL regardless of pivot width. Scripts: `run_cl_ny_lsi_baseline.py`, `run_cl_ny_lsi_variable_sweeps_1.py`.
-- **Asia / LDN sessions** — Not yet tested.
+- **Asia / LDN sessions** — Tested in 3-session discovery (see Strategy 5 below). LDN longs are viable. Asia longs marginal.
+
+### 5. 3-Session ORB Continuation Discovery (NY + Asia + LDN) — CONDITIONAL GO (LDN longs)
+- **Status**: **CONDITIONAL GO** — LDN longs survive holdout with 49-55% holdout PR; DSR marginal (0.19-0.29)
+- **Scripts**: `run_cl_orb_discovery.py`, `run_cl_orb_discovery_pipeline.py`, `run_cl_orb_phase_one.py`
+- **Sweep**: 1,296 configs per session, 3,888 total. Pre-holdout <2025-01. 1m magnifier. ATR stops at 5% hit 10-tick floor (noted in output).
+
+**Discovery sweep results:**
+- **LDN**: Outstanding longs — Calmar 8.9-9.3, 0 neg years, scores 2.9-5.7. 30m ORB ATR 8% and 10m ORB 25% both strong.
+- **Asia**: Strong longs — Calmar 4.3-6.4, 1 neg year, scores 0.1-2.6. 5m ORB dominates.
+- **NY**: Moderate — 2-3 neg years, scores <0.6.
+
+**Discovery pipeline (WF 12m IS / 3m OOS / 3m step, Calmar objective):**
+| Candidate | OOS R | Calmar | Sharpe | DD | WFE | Stability | Verdict |
+|-----------|-------|--------|--------|------|-----|-----------|---------|
+| LDN-4 (10m ORB 25%, RR 3.5, TP1 0.6, long) | +152.5 | 7.62 | 1.21 | -20.0 | 0.416 | 0.875 | PROMOTE |
+| LDN-1 (30m ATR 8%, RR 3.5, TP1 0.6, long) | +103.4 | 5.32 | 1.15 | -19.4 | 0.463 | 0.903 | PROMOTE |
+| Asia-2 (5m ORB 75%, RR 2.5, TP1 0.4, long) | +97.2 | 3.65 | 1.36 | -26.6 | 0.469 | 0.833 | PROMOTE |
+
+**Phase-One Results:**
+| Candidate | Pre R | HO R | Pre PR | HO PR | EV | PSR | DSR | Verdict |
+|-----------|-------|------|--------|-------|------|-----|-----|---------|
+| LDN-1 | +123.1 | **+12.8** | 58.6% | **54.1%** | $11,639 | 0.995 | 0.186 | CONDITIONAL |
+| LDN-2 | +129.1 | **+7.3** | 58.0% | **55.0%** | $11,522 | 0.998 | **0.294** | CONDITIONAL |
+| LDN-3 | +122.6 | **+8.6** | 57.1% | **48.9%** | $11,348 | 0.997 | 0.243 | CONDITIONAL |
+| LDN-4 | +133.3 | -11.1 | 55.6% | 28.2% | $11,058 | 0.993 | 0.166 | CONDITIONAL |
+| Asia-2 | +68.3 | -5.0 | 61.9% | 30.9% | $12,304 | 0.980 | 0.094 | CONDITIONAL |
+| Asia-1 | +71.0 | -14.0 | 55.9% | 9.4% | $11,110 | 0.975 | 0.076 | CONDITIONAL |
+
+**Key findings:**
+- **LDN 30m ORB ATR 8% longs** are the winning family — LDN-1/LDN-2/LDN-3 all survived holdout (+7 to +13R) with holdout PR 49-55%
+- **LDN-4 (10m ORB 25%)** had the best WF Calmar (7.62) but failed holdout (-11.1R) — 2025 was -13.3R
+- **Both Asia configs failed holdout** — not recommended
+- **All PSR >= 0.975** — Sharpe ratios are statistically real
+- **DSR 0.19-0.29** — marginal, below the 0.50 threshold for surviving deflation. Edge is real but selection-bias-sensitive.
+- **2023 concentration**: LDN-1/2/3 all have +34-44R in 2023, which is ~30% of total R from one year
+- **This completely overturns the prior CL NO-GO** — the issue was NY session + sub-tick ATR stops, not the instrument itself. LDN longs with realistic stops (ATR 8%) produce a genuine edge.
+
+**Recommended configs for further optimization:**
+- **LDN-2** (best holdout PR 55.0%, highest DSR 0.294): 30m ORB, ATR 8%, RR 3.0, TP1 0.6, long
+- **LDN-1** (best holdout R +12.8): 30m ORB, ATR 8%, RR 3.5, TP1 0.6, long
 
 ## Parameter Sensitivity
 
@@ -200,3 +240,20 @@ CL continuation has no viable edge at realistic stop distances. Not deployable.
 - Continuation long-only vs short-only at realistic stops
 - Reversal / inversion strategies — sweep-gated reversal confirmed NO-GO, LSI DEFINITIVE NO-GO (baseline + 64-combo wide pivot sweep, see above). CISD variant not tested.
 - Asia / LDN sessions on CL
+
+---
+
+## Regime-Gate Transfer Update (2026-04-01)
+
+Cross-asset regime-gate transfer testing does **not** justify a deeper CL gating branch:
+
+| Candidate | Ungated Holdout | Gated Holdout | Verdict |
+|-----------|-----------------|---------------|---------|
+| LDN-1 | +24.32R, Cal 1.054, DD -23.1R, PR 52.0% | +14.45R, Cal 0.626, DD -23.1R, PR 40.6% | REJECTS GATE |
+| LDN-2 | +9.68R, Cal 0.385, DD -25.1R, PR 48.5% | +3.70R, Cal 0.157, DD -23.5R, PR 37.4% | MIXED |
+
+### Updated Interpretation
+
+1. **CL LDN-1 should remain ungated.** The gate removes too much holdout edge without improving drawdown.
+2. **CL LDN-2 is too weak to promote.** The small drawdown improvement is not enough to offset the loss in net R, Calmar, and payout rate.
+3. **Second-round decision**: de-prioritize CL for regime-gate work. If CL gets more attention, it should come from fresh continuation refinement rather than the NQ medium-vol gate.

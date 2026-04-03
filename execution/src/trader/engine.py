@@ -232,7 +232,9 @@ class ORBEngine:
     # G5 gate: callback returns True if session should be skipped for a date
     g5_gate_check: Callable[[str], bool] | None = None
     regime_gate: str | None = None
+    regime_gates: tuple[str, ...] = ()
     regime_gate_check: Callable[[str], bool] | None = None
+    regime_gate_checks: tuple[tuple[str, Callable[[str], bool]], ...] = ()
     structure_gate: str | None = None
     structure_gate_check: Callable[["ORBEngine", Bar], bool] | None = None
     # Optional callback to request a state checkpoint to disk (crash recovery)
@@ -282,6 +284,18 @@ class ORBEngine:
         self._flat_start_t = _parse_time(self.flat_start)
         self._flat_end_t = _parse_time(self.flat_end)
         self._asset_tag = self._resolve_asset_tag()
+        from .gates import normalize_regime_gate_fields
+        (
+            self.regime_gate,
+            self.regime_gates,
+            self.regime_gate_check,
+            self.regime_gate_checks,
+        ) = normalize_regime_gate_fields(
+            self.regime_gate,
+            self.regime_gates,
+            self.regime_gate_check,
+            self.regime_gate_checks,
+        )
 
     @property
     def _should_send(self) -> bool:
@@ -303,6 +317,10 @@ class ORBEngine:
             "MGC": "gc",
         }
         return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
+
+    def _blocking_regime_gate_name(self, date_key: str) -> str | None:
+        from .gates import blocking_regime_gate_name
+        return blocking_regime_gate_name(self.regime_gate_checks, date_key)
 
     def _request_checkpoint(self) -> None:
         """Request a state checkpoint to disk for crash recovery."""
@@ -690,10 +708,16 @@ class ORBEngine:
         elif self._in_entry(now_t):
             if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
                 self._state = State.FLAT
-            elif self.regime_gate_check is not None and not self.regime_gate_check(self._current_date):
-                self._state = State.FLAT
             else:
-                self._state = State.WAITING_FOR_GAP
+                blocking_gate = self._blocking_regime_gate_name(self._current_date)
+                if blocking_gate is not None:
+                    self._log_trade(
+                        "REGIME_GATE_BLOCKED",
+                        "gate=%s date=%s" % (blocking_gate, self._current_date),
+                    )
+                    self._state = State.FLAT
+                else:
+                    self._state = State.WAITING_FOR_GAP
         elif self._in_flat(now_bar):
             self._state = State.FLAT
         elif self._in_rth(now_t):
@@ -934,10 +958,11 @@ class ORBEngine:
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
-            if self.regime_gate_check is not None and not self.regime_gate_check(self._current_date):
+            blocking_gate = self._blocking_regime_gate_name(self._current_date)
+            if blocking_gate is not None:
                 self._log_trade(
                     "REGIME_GATE_BLOCKED",
-                    "gate=%s date=%s" % (self.regime_gate or "custom", self._current_date),
+                    "gate=%s date=%s" % (blocking_gate, self._current_date),
                 )
                 self._state = State.FLAT
                 self._request_checkpoint()

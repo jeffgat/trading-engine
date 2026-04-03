@@ -59,14 +59,43 @@
 
 ## Key Findings
 
-- **Asia session is weak for YM**: Both directions fail all pipeline phases. Continuation strategy has no edge in Asia for this instrument.
-- **NY longs are the only viable direction**: Pass WF (0.56 efficiency) with high param stability and excellent 2025 holdout (Sharpe 2.40, +21.7R). All other direction/session combos fail WF.
-- **NY shorts are a trap**: Look great in-sample (PF 1.11, +49.5R) but WFE is -0.25. Classic overfitting — edge evaporates out of sample.
-- **R/year ceiling is ~7.4R** even after full optimization (variable sweeps + grid). The edge is consistent (0 neg years, Calmar 0.74) but the absolute return is too low. YM's $5/pt value limits per-trade R generation.
-- **Tuesday exclusion is the single biggest improvement**: Calmar nearly doubled (0.35→0.65), eliminated both negative years. Persistent across all anchor configs.
-- **YM is fully explored** — all 4 direction/session combos tested, NY longs optimized through grid sweep. No further strategies to pursue unless a fundamentally different approach (reversal, multi-session combo, or different entry logic) is considered.
+- **Asia session is dead for YM**: Both in original directional tests and the 3-session discovery sweep (1,296 configs), all Asia configs have 3+ neg years with no viable edge.
+- **NY longs have a real but thin edge**: Pass WF (0.56 efficiency) with high param stability and excellent 2025 holdout (Sharpe 2.40, +21.7R). But R/year ceiling is ~7.4R even after full optimization. YM's $5/pt value limits per-trade R generation.
+- **NY shorts are a trap**: Look great in-sample (PF 1.11, +49.5R) but WFE is -0.25. Classic overfitting.
+- **LDN longs are the strongest walk-forward signal**: 30m ORB longs in London session produced WF Calmars of 4.4–5.0 with WFE 0.6–0.96 and high stability. However, 2/3 candidates failed the 2025 holdout (negative R), and all DSR < 0.05 (overfit to search space).
+- **LDN-1 (ORB 25%, RR 3.5, TP1 0.6, long)** is the only YM config to survive holdout (+18.0R, Calmar 1.50) but has PSR 0.837 (weak) and 2016 structural blowup (-30R). Not recommended.
+- **Tuesday exclusion is the single biggest improvement for NY**: Calmar nearly doubled (0.35→0.65), eliminated both negative years.
+- **YM is comprehensively explored**: 6 strategy tests covering all 3 sessions, both directions, continuation + LSI, with 3,888-config discovery sweep + full pipeline. The $5/pt point value is the structural bottleneck — insufficient R generation per trade for prop firm viability.
 
-### 5. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO
+### 5. 3-Session ORB Continuation Discovery (NY + Asia + LDN) — NO-GO
+- **Status**: **NO-GO** (DSR overfit across all candidates; holdout failed for 2/3 promoted)
+- **Scripts**: `run_ym_orb_discovery.py`, `run_ym_orb_discovery_pipeline.py`, `run_ym_orb_phase_one.py`
+- **Sweep**: 1,296 configs per session (4 ORB windows × 2 stop modes × 4 RR × 4 TP1 × 3 directions × 5 stop values), 3,888 total. Pre-holdout <2025-01. 1m magnifier.
+- **Asia**: Dead — all configs 3+ neg years, best score -1.48. No edge.
+- **NY**: Marginal — best config (15m ORB, ATR 5%, RR 3.5, TP1 0.3, long) Calmar 1.93, 1 neg year, but only ~3R/yr.
+- **LDN**: Surprise — 30m ORB longs showed structural life. 3 candidates promoted to discovery pipeline.
+
+#### Discovery Pipeline (walk-forward 12m IS / 3m OOS / 3m step, Calmar objective):
+| Candidate | OOS R | Calmar | Sharpe | DD | WFE | Stability | Verdict |
+|-----------|-------|--------|--------|------|-----|-----------|---------|
+| LDN-3 (ATR 15%, RR 2.0, TP1 0.6, long) | +56.9 | 4.98 | 1.29 | -11.4 | 0.878 | 0.823 | PROMOTE |
+| LDN-2 (ATR 15%, RR 2.5, TP1 0.5, long) | +61.1 | 4.38 | 1.37 | -13.9 | 0.960 | 0.839 | PROMOTE |
+| LDN-1 (ORB 25%, RR 3.5, TP1 0.6, long) | +81.9 | 4.37 | 1.15 | -18.7 | 0.609 | 0.871 | PROMOTE |
+| NY-1 (ATR 5%, RR 3.5, TP1 0.3, long) | +24.9 | 1.09 | 0.44 | -22.9 | 1.430 | 0.839 | CHALLENGER |
+
+#### Phase-One Results (structural + prop sim + holdout + PSR/DSR):
+| Candidate | Pre R | HO R | Pre PR | HO PR | PSR | DSR | Verdict |
+|-----------|-------|------|--------|-------|-----|-----|---------|
+| LDN-3 | +38.8 | **-2.5** | 53.9% | 8.3% | 0.928 | 0.029 | CONDITIONAL |
+| LDN-2 | +40.0 | **-1.6** | 52.1% | 9.1% | 0.931 | 0.031 | CONDITIONAL |
+| LDN-1 | +41.3 | **+18.0** | 47.7% | 26.5% | 0.837 | 0.008 | CONDITIONAL |
+
+- **LDN-3/LDN-2**: Failed holdout (negative R in 2025). Walk-forward success did not transfer.
+- **LDN-1**: Survived holdout (+18.0R, Calmar 1.50, Sharpe 1.79) but PSR weak (0.837), DSR overfit (0.008), and 2016 structural blowup (-30.0R).
+- **All DSR < 0.05**: Edge does not survive selection bias from 1,296-trial search space.
+- **Conclusion**: LDN longs are the best profile found for YM but the edge is too thin to pass the overfitting gate. Not recommended for prop firm deployment.
+
+### 6. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO
 - **Status**: **NO-GO** (definitive — losing strategy, no edge)
 - **Baseline** (2026-03-01): ORB 09:30-09:35, entry 09:35-15:30, flat 15:50, rr=2.625, tp1=0.3, gap=2.25%, n_left=3, n_right=3, fvg_window=10, absolute stop
 - **Both**: 2408 trades, 53.4% WR, **PF 0.90**, -102.5R net, Sharpe -0.74, DD -118.7R, **7/10 neg years**

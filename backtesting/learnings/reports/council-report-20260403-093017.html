@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council Report #2 — Full Research Candidate Re-Evaluation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; color: #1a1a1a; line-height: 1.6; max-width: 920px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.4rem; }
+  h3 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; }
+  p, li { font-size: 0.95rem; }
+  ul, ol { margin-left: 1.5rem; margin-bottom: 0.75rem; }
+  li { margin-bottom: 0.3rem; }
+  .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 2rem; }
+  .verdict-box { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .verdict-box h2 { border: none; margin-top: 0; color: #15803d; }
+  .warning-box { background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .warning-box h3 { color: #92400e; margin-top: 0; }
+  .first-action { background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .first-action h2 { border: none; margin-top: 0; color: #1d4ed8; }
+  .tier-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; margin: 0.75rem 0; }
+  .tier-box h4 { font-size: 0.9rem; color: #374151; margin-bottom: 0.5rem; }
+  .leg-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.85rem; }
+  .leg-table th, .leg-table td { padding: 0.4rem 0.6rem; border: 1px solid #e5e7eb; text-align: left; }
+  .leg-table th { background: #f9fafb; font-weight: 600; }
+  .leg-table tr.tier1 { background: #f0fdf4; }
+  .leg-table tr.tier2 { background: #fffbeb; }
+  .leg-table tr.skip { background: #fef2f2; color: #991b1b; }
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .tag-t1 { background: #dcfce7; color: #166534; }
+  .tag-t2 { background: #fef3c7; color: #92400e; }
+  .tag-skip { background: #fee2e2; color: #991b1b; }
+  .tag-wait { background: #e0e7ff; color: #3730a3; }
+  details { margin: 0.75rem 0; border: 1px solid #e5e7eb; border-radius: 6px; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.95rem; background: #f9fafb; border-radius: 6px; }
+  summary:hover { background: #f3f4f6; }
+  .advisor-content { padding: 1rem; font-size: 0.9rem; }
+  .advisor-label { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.5rem; }
+  .c-contrarian { background: #ef4444; }
+  .c-firstprinciples { background: #8b5cf6; }
+  .c-expansionist { background: #22c55e; }
+  .c-outsider { background: #f59e0b; }
+  .c-executor { background: #3b82f6; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.8rem; }
+  .q-answer { background: #f9fafb; border-left: 4px solid #6366f1; padding: 1rem; margin: 1rem 0; border-radius: 0 6px 6px 0; }
+  .q-answer h4 { color: #4338ca; margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+
+<h1>LLM Council Report #2</h1>
+<p class="subtitle">Full Research Candidate Re-Evaluation &mdash; 16 Legs Across 6 Instruments &mdash; April 3, 2026</p>
+
+<div class="first-action">
+<h2>The One Thing to Do First</h2>
+<p><strong>Pull the OOS-only trade log for NQ NY LSI RR2 Gated and verify 30+ holdout trades with metrics matching the full-backtest summary.</strong></p>
+<p style="margin-top: 0.5rem;">Every downstream decision &mdash; whether to swap variants, how many accounts to open, whether the $1.66M lifecycle is credible &mdash; depends on this verification. If OOS metrics hold (DSR &ge; 0.55, Sharpe &ge; 1.0), the swap is justified. If they degrade, stay on FAST.</p>
+</div>
+
+<div class="verdict-box">
+<h2>The Recommendation</h2>
+
+<div class="q-answer">
+<h4>Q1: Best Individual Legs (Separate Accounts)</h4>
+<table class="leg-table">
+<tr><th>Tier</th><th>Leg</th><th>Key Evidence</th><th>Lifecycle Value</th><th>Status</th></tr>
+<tr class="tier1"><td>1</td><td><strong>NQ NY LSI</strong> (FAST, pending gated verification)</td><td>DD -6.6R, 0 neg years, 92.7% payout success</td><td>$1.66M / 1,135d extraction</td><td><span class="tag tag-t1">RUN</span></td></tr>
+<tr class="tier1"><td>1</td><td><strong>GC NY R3</strong> Continuation Longs</td><td>WFE 0.956 (!), holdout +41.7R, 2025: +42.4R</td><td>Build 1s pipeline first</td><td><span class="tag tag-t1">BUILD</span></td></tr>
+<tr class="tier1"><td>1</td><td><strong>NQ Asia</strong> (FAST)</td><td>0 neg years, 67d fastest payout, holdout +30.8R</td><td>$657K / 226d extraction</td><td><span class="tag tag-t1">RUN</span></td></tr>
+<tr class="tier2"><td>2</td><td><strong>ES Asia</strong></td><td>Calmar 14.68, WFE 0.834, holdout +37.6R</td><td>$598K / 321d extraction</td><td><span class="tag tag-t2">EXPAND</span></td></tr>
+<tr class="tier2"><td>2</td><td><strong>ES NY</strong></td><td>tp1=0.2 stable 7/7 folds, MC 97.3%</td><td>$563K / 289d extraction</td><td><span class="tag tag-t2">EXPAND</span></td></tr>
+<tr class="tier2"><td>2</td><td><strong>GC NY LSI</strong></td><td>PF 2.29, Sharpe 4.79, DD -5.0R, 100% MC</td><td>Needs 30+ OOS trades</td><td><span class="tag tag-wait">WAIT</span></td></tr>
+<tr class="skip"><td>&mdash;</td><td>SI Asia-1</td><td>DSR 0.507 barely above noise</td><td>&mdash;</td><td><span class="tag tag-skip">SKIP</span></td></tr>
+<tr class="skip"><td>&mdash;</td><td>RTY NY-4</td><td>2026: -10R, regime break</td><td>&mdash;</td><td><span class="tag tag-skip">SKIP</span></td></tr>
+<tr class="skip"><td>&mdash;</td><td>CL LDN-1</td><td>2025: +0R, no recent edge</td><td>&mdash;</td><td><span class="tag tag-skip">SKIP</span></td></tr>
+</table>
+</div>
+
+<div class="q-answer">
+<h4>Q2: Best Combined Portfolio (Single Account)</h4>
+<p><strong>3-leg optimal: NQ NY LSI + GC NY R3 + ES Asia</strong></p>
+<ul>
+<li>NQ NY LSI: core R generator (NY session, LSI signal)</li>
+<li>GC NY R3: decorrelated in normal regimes, different asset class (NY session but gold vs equity)</li>
+<li>ES Asia: different session window entirely, reduces intraday concentration</li>
+</ul>
+<p style="margin-top: 0.5rem; color: #6b7280; font-size: 0.85rem;">Do NOT combine NQ NY LSI with NQ Asia on the same account &mdash; same instrument, correlated drawdowns.</p>
+</div>
+
+<div class="q-answer">
+<h4>Q3: Replace NQ NY LSI FAST with RR2 Gated?</h4>
+<p><strong>Not yet. Build the gate, shadow-run 60 days alongside FAST, then decide.</strong></p>
+<p>The gated version looks superior on every metric (WR 61.1% vs 59.2%, PF 1.70 vs 1.61, Sharpe 3.65 vs 3.22, DSR 0.709). But the regime gate is a new fitted parameter that needs live confirmation. Run FAST live + gated in shadow mode. If forced to choose now: stay on FAST.</p>
+<p style="margin-top: 0.5rem;"><strong>First Principles alternative:</strong> Run both as separate accounts with different failure modes &mdash; FAST for sprint speed, gated for extraction quality.</p>
+</div>
+
+<div class="q-answer">
+<h4>Q4: Non-NQ/ES Legs</h4>
+<p><strong>GC NY R3 is mandatory.</strong> WFE 0.956, holdout +41.7R, and 2025 live confirmation (+42.4R) make it the strongest non-equity leg. Requires 1s data pipeline build (2-3 weeks).</p>
+<p><strong>GC NY LSI is promising but needs 30+ OOS trades</strong> before funding a live account. Only 13 trades/year is below the statistical confidence threshold.</p>
+<p><strong>GC Asia-1 is a future research candidate</strong> once GC NY R3 is live. DSR 0.652 is strong.</p>
+<p><strong>Skip SI, RTY, CL.</strong> SI's DSR is noise-level. RTY has a live regime break. CL has zero recent edge.</p>
+</div>
+</div>
+
+<h2>Optimal Account Structure (Expansion Sequence)</h2>
+
+<table class="leg-table">
+<tr><th>Phase</th><th>Accounts</th><th>Legs</th><th>Notes</th></tr>
+<tr class="tier1"><td><strong>Now</strong></td><td>1</td><td>NQ NY LSI (FAST)</td><td>Already live. Flagship. $1.66M lifecycle.</td></tr>
+<tr class="tier1"><td><strong>Week 1-2</strong></td><td>2</td><td>+ NQ Asia (FAST)</td><td>Already live. Different session. Fastest payout.</td></tr>
+<tr class="tier1"><td><strong>Week 3-4</strong></td><td>3</td><td>+ GC NY R3</td><td>Build 1s pipeline + execution config. Critical path.</td></tr>
+<tr class="tier2"><td><strong>Month 2</strong></td><td>4</td><td>+ ES Asia</td><td>Session diversification. New account application.</td></tr>
+<tr class="tier2"><td><strong>Month 2-3</strong></td><td>5</td><td>+ ES NY</td><td>Most stable parameters. Last equity add.</td></tr>
+</table>
+<p style="font-size: 0.85rem; color: #6b7280; margin-top: 0.5rem;">Each leg runs on its OWN separate account. Do not combine. The separate-account finding ($1.66M vs $478K combined) is the single most important structural insight.</p>
+
+<h2>Where the Council Agrees</h2>
+<ul>
+<li><strong>NQ NY LSI is the flagship leg</strong> &mdash; no advisor argued against it</li>
+<li><strong>GC NY R3 is real</strong> &mdash; 4/5 advisors named it Tier 1 or mandatory (WFE 0.956)</li>
+<li><strong>Separate accounts dominate combined</strong> &mdash; unchallenged structural finding</li>
+<li><strong>SI is low-conviction</strong> &mdash; DSR 0.507 is barely above noise</li>
+<li><strong>Don't combine more than 3-4 legs per account</strong></li>
+</ul>
+
+<h2>Where the Council Clashes</h2>
+<ul>
+<li><strong>RR2 Gated vs FAST:</strong> Outsider + Executor say swap now. First Principles says run both. Contrarian says verify OOS first. <em>Chairman sides with verify-then-decide.</em></li>
+<li><strong>How many accounts:</strong> Executor says 2-3, Expansionist says 6-8. <em>Chairman: expand sequentially as accounts prove out.</em></li>
+<li><strong>GC NY LSI viability:</strong> 13 trades/year. Contrarian calls it noise. Outsider says quality justifies it. <em>Chairman: wait for 30+ OOS trades.</em></li>
+<li><strong>$1.66M lifecycle credibility:</strong> Contrarian flags compounded overfitting (backtest-on-backtest). No advisor rebutted this. <em>Chairman: the direction is correct even if magnitude is inflated.</em></li>
+</ul>
+
+<div class="warning-box">
+<h3>Blind Spots the Council Caught</h3>
+<ul>
+<li><strong>OOS trade counts unverified</strong> &mdash; metrics may include in-sample periods</li>
+<li><strong>Stress-period correlation unmeasured</strong> &mdash; GC/NQ can co-drawdown in risk-off (March 2020 type)</li>
+<li><strong>Capital efficiency not computed</strong> &mdash; net R per account per year per dollar deployed is the correct metric</li>
+<li><strong>Account application lead time</strong> &mdash; 2-4 weeks per account, limits expansion speed</li>
+<li><strong>Multiple comparison correction</strong> &mdash; ranking 16 candidates inflates apparent winners</li>
+</ul>
+</div>
+
+<details>
+<summary><span class="advisor-label c-contrarian"></span> The Contrarian</summary>
+<div class="advisor-content">
+<p>The $1.66M lifecycle projection is a backtest-on-backtest artifact. GC NY LSI's 13 trades/year is noise, not signal (confidence intervals span zero). SI's DSR 0.507 is barely above random. The "separate accounts" conclusion is mathematically correct but operationally dishonest &mdash; you're comparing unequal capital allocations. The actual question: what's the OOS Sharpe on a genuinely locked test set touched exactly once?</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-firstprinciples"></span> The First Principles Thinker</summary>
+<div class="advisor-content">
+<p>Tier 1: NQ NY LSI FAST (1,135d extraction), NQ Asia FAST (fastest payout), GC NY R3 (WFE 0.956). Tier 2: ES Asia, ES NY, GC NY LSI. Combined: NQ NY LSI + ES Asia + GC NY R3. Don't replace FAST with RR2 &mdash; run both as separate accounts with different failure modes. FAST for sprint speed, gated for extraction quality. Key insight: shallow DD drives extraction duration, not headline lifecycle value. The non-NQ/ES portfolio alone (3 GC accounts) is a meaningful standalone extraction engine.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-expansionist"></span> The Expansionist</summary>
+<div class="advisor-content">
+<p>NQ NY LSI gated is flagship. GC NY R3 deserves its own account immediately (WFE 0.956, gold structurally bid). Combined: gated + GC R3 + ES Asia + NQ Asia Discovery + GC NY LSI. GC is mandatory, not optional &mdash; structural hedge on equity-loss days. SI as short overlay. Run 6-8 separate accounts. The math scales linearly. $10M+ ceiling.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-outsider"></span> The Outsider</summary>
+<div class="advisor-content">
+<p>A-improved (RR2 gated) beats A-current on every metric &mdash; swap it. G (GC NY LSI) deserves own account despite 13 trades/yr &mdash; quality score of 4.786 justifies it. Include GC Asia-1 (highest anti-overfitting score), GC NY LSI, and SI (insurance). Five combined: A-improved + GC NY LSI + SI + ES NY + NQ Asia.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-executor"></span> The Executor</summary>
+<div class="advisor-content">
+<p>Monday: swap NQ_NY_LSI to RR2/TP0.5 gated (build regime gate infrastructure, ship by Wednesday). Swap NQ Asia to Discovery Asia-2 config (RR=3.5, TP1=0.6 &mdash; config change only). Start separate-account applications for NQ_NY_LSI. GC build next sprint (1s data pipeline, 2-3 weeks). Skip SI. Don't combine anything.</p>
+</div>
+</details>
+
+<details>
+<summary>Peer Review Highlights</summary>
+<div class="advisor-content">
+<p><strong>Strongest response votes:</strong> Contrarian: 2, First Principles: 2, Executor: 1</p>
+<p><strong>Key findings:</strong></p>
+<ul>
+<li>Contrarian correctly identifies compounded overfitting risk in lifecycle projections</li>
+<li>First Principles provides the most actionable allocation framework with tiered ranking</li>
+<li>Expansionist's "6-8 accounts" lacks capital sizing and max simultaneous drawdown analysis</li>
+<li>Executor skips GC despite 4/5 advisors ranking it Tier 1 &mdash; operational error</li>
+<li>ALL responses failed to apply multiple comparison correction when ranking 16 candidates</li>
+</ul>
+</div>
+</details>
+
+<div class="footer">
+<p>LLM Council Report #2 &mdash; Generated April 3, 2026 09:30 ET &mdash; 5 advisors, 5 peer reviews, chairman synthesis</p>
+<p>Full transcript: council-transcript-20260403-093017.md</p>
+</div>
+
+</body>
+</html>

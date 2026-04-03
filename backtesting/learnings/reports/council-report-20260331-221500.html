@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council Report — PBO/DSR Implementation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1a1a1a; background: #fff; padding: 2rem; max-width: 900px; margin: 0 auto; line-height: 1.6; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; padding-bottom: 0.3rem; border-bottom: 2px solid #e0e0e0; }
+  h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
+  .question { background: #f7f7f7; border-left: 4px solid #666; padding: 1rem 1.25rem; margin: 1rem 0 1.5rem; font-style: italic; }
+  .verdict { background: #f0f7f0; border: 1px solid #b8d4b8; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .verdict h2 { border-bottom-color: #7ab07a; color: #2d5a2d; }
+  .first-thing { background: #fff8e1; border: 1px solid #f0d060; border-radius: 8px; padding: 1.25rem; margin: 1.5rem 0; }
+  .first-thing h3 { color: #8a6d00; margin-top: 0; }
+  .agrees { color: #2e7d32; }
+  .clashes { color: #c62828; }
+  .blindspots { color: #e65100; }
+  details { margin: 0.75rem 0; border: 1px solid #e0e0e0; border-radius: 6px; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; background: #fafafa; border-radius: 6px; }
+  summary:hover { background: #f0f0f0; }
+  details[open] summary { border-bottom: 1px solid #e0e0e0; border-radius: 6px 6px 0 0; }
+  .advisor-content { padding: 1rem; }
+  .advisor-contrarian summary { border-left: 4px solid #c62828; }
+  .advisor-fp summary { border-left: 4px solid #1565c0; }
+  .advisor-exp summary { border-left: 4px solid #2e7d32; }
+  .advisor-out summary { border-left: 4px solid #6a1b9a; }
+  .advisor-exec summary { border-left: 4px solid #e65100; }
+  .phase { display: flex; gap: 1rem; margin: 0.75rem 0; }
+  .phase-box { flex: 1; background: #f7f7f7; border-radius: 6px; padding: 1rem; border: 1px solid #e0e0e0; }
+  .phase-box h4 { font-size: 0.85rem; color: #666; margin-bottom: 0.5rem; text-transform: uppercase; }
+  .positions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 1rem 0; }
+  .pos-card { text-align: center; padding: 0.5rem; border-radius: 6px; font-size: 0.8rem; }
+  .pos-for { background: #e8f5e9; border: 1px solid #a5d6a7; }
+  .pos-against { background: #ffebee; border: 1px solid #ef9a9a; }
+  .pos-partial { background: #fff3e0; border: 1px solid #ffcc80; }
+  ul { margin: 0.5rem 0 0.5rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  .footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; font-size: 0.8rem; color: #999; }
+  strong { font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>LLM Council Report</h1>
+<p style="color:#666; margin-bottom:1rem;">PBO/DSR Implementation — Where in the Strategy Workflow?</p>
+
+<div class="question">
+Should PBO (Probability of Backtest Overfitting) via CSCV and DSR (Deflated Sharpe Ratio) be implemented as a step in the trading strategy discovery workflow? Where should it fit in the 7-step process?
+</div>
+
+<h2>Advisor Positions</h2>
+<div class="positions">
+  <div class="pos-card pos-against"><strong>Contrarian</strong><br>PSR only.<br>Skip PBO.</div>
+  <div class="pos-card pos-against"><strong>First Principles</strong><br>Annotation only.<br>Invest in regime.</div>
+  <div class="pos-card pos-for"><strong>Expansionist</strong><br>Full PBO gate.<br>Expand search.</div>
+  <div class="pos-card pos-partial"><strong>Outsider</strong><br>End-of-pipeline gate.<br>Cost-math thresholds.</div>
+  <div class="pos-card pos-for"><strong>Executor</strong><br>3-phase build.<br>DSR now, CSCV later.</div>
+</div>
+
+<div class="verdict">
+<h2>The Recommendation</h2>
+
+<div class="phase">
+  <div class="phase-box">
+    <h4>Phase 1 — This Week</h4>
+    <p>Ship <strong>PSR + DSR</strong> as annotations on every config exiting walk-forward. Cluster configs by trade overlap for effective independent trial count. ~30 lines of numpy each.</p>
+  </div>
+  <div class="phase-box">
+    <h4>Phase 2 — Next Sprint</h4>
+    <p>Modify walk-forward to <strong>retain the full config &times; fold OOS performance matrix</strong>. Store as numpy array per pipeline run. This is the prerequisite for CSCV.</p>
+  </div>
+  <div class="phase-box">
+    <h4>Phase 3 — After Phase 2</h4>
+    <p>Build <strong>CSCV/PBO</strong>. Run at pipeline end. PBO &gt; 0.50 = warning. PBO &gt; 0.70 = blocks promotion. Dynamic split count based on min 50 trades per split.</p>
+  </div>
+</div>
+
+<p style="margin-top:1rem"><strong>Where it fits:</strong> <strong>Step 5b</strong> — a validation gate between discovery (step 5) and phase-one robust pipeline (step 6). PSR/DSR annotate individual configs. CSCV evaluates the entire search process. Neither is a "step" that produces new candidates — they're quality gates that can block or flag.</p>
+
+<p style="margin-top:0.75rem"><strong>Replace the "heuristic" caveat</strong> after Phase 1 ships. What you already compute (fold-level OOS consistency + stability score) is not heuristic — it's quantified. Add PSR/DSR values to complete the picture.</p>
+</div>
+
+<div class="first-thing">
+<h3>The One Thing to Do First</h3>
+<p>Modify the walk-forward optimizer to <strong>save the full config &times; fold OOS performance matrix</strong> instead of discarding it. Everything else — DSR, PSR, CSCV — is formula work. But without the matrix, CSCV is impossible, and you'll have to re-run every pipeline to get it. Retain the data now; do the math later.</p>
+</div>
+
+<h2 class="agrees">Where the Council Agrees</h2>
+<ul>
+  <li><strong>DSR/PSR are trivially cheap</strong> (15-30 lines) and should ship immediately</li>
+  <li><strong>CSCV is fundamentally different</strong> — evaluates the search process, not individual configs</li>
+  <li><strong>Current system already does most anti-overfitting work</strong> through 28-fold WF and stability</li>
+  <li>The "heuristic" caveat is more of a <strong>labeling problem</strong> than a capability gap</li>
+</ul>
+
+<h2 class="clashes">Where the Council Clashes</h2>
+<ul>
+  <li><strong>Where CSCV belongs:</strong> Inline gate (Expansionist) vs end-of-pipeline (Outsider) vs parallel infrastructure (Contrarian). Peer reviews resolved: runs at end, evaluates the full search.</li>
+  <li><strong>Whether to expand search:</strong> Expansionist says PBO enables wider sweeps. Three reviewers flagged this as inverted — more configs mechanically increases PBO.</li>
+  <li><strong>Regime vs overfitting:</strong> First Principles wants to skip PBO for regime detection. Two reviewers called this a false dichotomy — both matter.</li>
+</ul>
+
+<h2 class="blindspots">Blind Spots the Council Caught</h2>
+<ul>
+  <li><strong>Sample size per split:</strong> Many configs produce &lt;30 trades per combinatorial split, making CSCV noisy</li>
+  <li><strong>Config correlation:</strong> Raw trial count over-penalizes DSR. Need effective independent trial count via clustering</li>
+  <li><strong>WF config matrix discarded:</strong> The real engineering bottleneck — CSCV is impossible without retaining per-config per-fold data</li>
+  <li><strong>Compute cost unspecified:</strong> 4,000 configs &times; 28 folds &times; combinatorial splits is non-trivial</li>
+</ul>
+
+<details class="advisor-contrarian">
+<summary>The Contrarian — "PSR first. PBO is parallel infrastructure, not a step."</summary>
+<div class="advisor-content">
+<p>The fatal flaw is sequencing. CSCV evaluates the entire search process, not individual candidates. If PBO comes back at 0.6 after promoting 8 finalists, what do you do? CSCV requires re-running parameter search across combinatorial splits — parallel infrastructure, not a step. DSR has a trap: 1,000-4,000 configs are NOT independent — they're correlated parametric variations. DSR will be too conservative. Walk-forward + stability does 80% of anti-overfitting work. Remaining 20% is forward paper trading. Implement PSR first.</p>
+<p><em>Peer review consensus: Strongest on the nature of CSCV. Correct that correlated configs break naive DSR.</em></p>
+</div>
+</details>
+
+<details class="advisor-fp">
+<summary>The First Principles Thinker — "Wrong failure mode. Regime change kills accounts."</summary>
+<div class="advisor-content">
+<p>PBO assumes the problem is selecting the wrong config from a large sweep. But WF with 28 folds and stability analysis already addresses that. What actually kills accounts is regime change. Don't build PBO/DSR as a workflow step. Replace the heuristic caveat with quantified versions of what you already compute. If you must implement DSR, it's 15 lines — annotation, not gate.</p>
+<p><em>Peer review consensus: Identified as having the biggest blind spot — false dichotomy between regime change and overfitting. Both matter. Overfit strategies fail faster under regime change.</em></p>
+</div>
+</details>
+
+<details class="advisor-exp">
+<summary>The Expansionist — "Gate Step 6. Enables wider search."</summary>
+<div class="advisor-content">
+<p>Massive opportunity. Fit between Step 5 and Step 6 as a gate. Rigorous PBO scores let you widen exploration space. With PBO &lt; 0.40, sweep 10,000+ configs. DSR directly consumes trial counts. 200-400 lines of numpy.</p>
+<p><em>Peer review consensus: Flagged as having inverted logic — more configs mechanically increases PBO. Cannot use PBO as a license to search more aggressively.</em></p>
+</div>
+</details>
+
+<details class="advisor-out">
+<summary>The Outsider — "Gates, not steps. Run at the end."</summary>
+<div class="advisor-content">
+<p>These tests aren't steps — they're gates. A step produces output; a gate kills things. If you slot PBO in the middle, people optimize around it. Run after entire pipeline, as final go/no-go. Use $50-150 account cost to set thresholds mathematically. PBO of 0.15 doesn't mean strategy works — just means you probably didn't overfit.</p>
+<p><em>Peer review consensus: Strong framing on gates vs steps. Cost-math threshold approach praised.</em></p>
+</div>
+</details>
+
+<details class="advisor-exec">
+<summary>The Executor — "Ship DSR Monday. CSCV needs WF engine changes."</summary>
+<div class="advisor-content">
+<p>DSR is 20 lines of numpy. PSR is one formula. Ship both immediately. CSCV needs the per-fold, per-config performance matrix, which WF currently throws away. Three phases: (1) DSR+PSR now, (2) Modify WF to retain matrix, (3) Build CSCV on matrix. Validation gate after WF.</p>
+<p><em>Peer review consensus: Only advisor to identify the real engineering bottleneck (discarded config matrix). Phased plan praised as most pragmatic.</em></p>
+</div>
+</details>
+
+<div class="footer">
+  Council session: 2026-03-31 22:15 ET &bull; 5 advisors, 5 peer reviews, 1 chairman synthesis &bull; Generated by Claude Code LLM Council
+</div>
+
+</body>
+</html>

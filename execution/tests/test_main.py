@@ -3,9 +3,19 @@ from __future__ import annotations
 from datetime import date, timedelta
 from unittest.mock import MagicMock
 
-from trader.api import DashboardState, _build_exec_config_meta
+import pandas as pd
+
+from trader.api import DashboardState, _build_exec_config_meta, _session_info
 from trader.engine import State
-from trader.gates import build_regime_gate, set_daily_history_provider
+from trader.gates import (
+    _classify_vol,
+    blocking_regime_gate_name,
+    build_regime_gate,
+    build_regime_gates,
+    normalize_regime_gate_fields,
+    normalize_regime_gates,
+    set_daily_history_provider,
+)
 from trader.lsi_engine import LSIState
 from trader.main import (
     _checkpoint_shutdown_flat,
@@ -21,6 +31,25 @@ def _make_daily_history(closes: list[float], *, start: date = date(2025, 1, 1)) 
         (start + timedelta(days=i), close, close + 2.0, close - 2.0, close)
         for i, close in enumerate(closes)
     ]
+
+
+def test_normalize_regime_gates_accepts_legacy_and_arrays():
+    assert normalize_regime_gates("bull_no_low_confidence", None) == ("bull_no_low_confidence",)
+    assert normalize_regime_gates(
+        None,
+        ["block_bull_medium_vol", "block_sideways_medium_vol"],
+    ) == ("block_bull_medium_vol", "block_sideways_medium_vol")
+    assert normalize_regime_gates(
+        "bull_no_low_confidence",
+        ["bull_no_low_confidence", "block_full_medium_vol", "none", ""],
+    ) == ("bull_no_low_confidence", "block_full_medium_vol")
+
+
+def test_frozen_vol_threshold_edges_match_backtest_buckets():
+    assert _classify_vol(0.1252) == "low_vol"
+    assert _classify_vol(0.1252001) == "medium_vol"
+    assert _classify_vol(0.2040) == "medium_vol"
+    assert _classify_vol(0.2040001) == "high_vol"
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -192,6 +221,151 @@ def test_build_engines_respects_long_only_override():
     assert engines[0].long_only is False
 
 
+def test_build_engines_normalizes_multi_regime_gates():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+
+    engines, _, _ = build_engines(
+        config,
+        broker,
+        config_name="FAST_V2",
+        session_list=["NQ_NY"],
+        exec_overrides={
+            "NQ_NY": {
+                "regime_gate": "bull_no_low_confidence",
+                "regime_gates": ["bull_no_low_confidence", "block_full_medium_vol"],
+            }
+        },
+    )
+
+    engine = engines[0]
+    assert engine.regime_gate is None
+    assert engine.regime_gates == ("bull_no_low_confidence", "block_full_medium_vol")
+    assert [name for name, _check in engine.regime_gate_checks] == list(engine.regime_gates)
+
+
+def test_build_lsi_engines_normalizes_multi_regime_gates():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": ["20241218"],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+    }
+
+    symbol_map: dict[str, list] = {}
+    atr_lengths: dict[str, int] = {}
+    engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name="FAST_V2",
+        lsi_list=["NQ_Asia_LSI"],
+        lsi_overrides={
+            "NQ_Asia_LSI": {
+                "regime_gate": "bull_no_low_confidence",
+                "regime_gates": ["block_full_medium_vol"],
+            }
+        },
+    )
+
+    engine = engines[0]
+    assert engine.regime_gate is None
+    assert engine.regime_gates == ("bull_no_low_confidence", "block_full_medium_vol")
+    assert [name for name, _check in engine.regime_gate_checks] == list(engine.regime_gates)
+
+
+def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
+    class ContEngine:
+        pass
+
+    class LsiEngine:
+        pass
+
+    cont_engine = ContEngine()
+    cont_engine.config_name = "FAST"
+    cont_engine.orb_start = "09:30"
+    cont_engine.orb_end = "09:45"
+    cont_engine.entry_start = "09:45"
+    cont_engine.entry_end = "12:00"
+    cont_engine.flat_start = "15:50"
+    cont_engine.flat_end = "16:00"
+    cont_engine.atr_length = 14
+    cont_engine.stop_atr_pct = 8.0
+    cont_engine.stop_basis = "atr"
+    cont_engine.stop_orb_pct = 0.0
+    cont_engine.min_gap_atr_pct = 2.0
+    cont_engine.max_gap_atr_pct = 0.0
+    cont_engine.gap_filter_basis = "atr"
+    cont_engine.min_gap_orb_pct = 0.0
+    cont_engine.rr = 2.0
+    cont_engine.tp1_ratio = 0.5
+    cont_engine.risk_usd = 250.0
+    cont_engine.point_value = 2.0
+    cont_engine.min_qty = 1.0
+    cont_engine.max_single_risk_usd = 500.0
+    cont_engine.qty_step = 1.0
+    cont_engine.be_offset_ticks = 0
+    cont_engine.min_tick = 0.25
+    cont_engine.long_only = True
+    cont_engine.icf_enabled = False
+    cont_engine.excluded_dow = None
+    cont_engine.fomc_exclusion = False
+    cont_engine.min_stop_pts = 0.0
+    cont_engine.min_tp1_pts = 0.0
+    cont_engine.exec_ticker = "MNQ"
+    cont_engine.regime_gates = ("bull_no_low_confidence", "block_full_medium_vol")
+    cont_engine.structure_gate = None
+
+    lsi_engine = LsiEngine()
+    lsi_engine.config_name = "FAST"
+    lsi_engine.entry_start = "09:45"
+    lsi_engine.entry_end = "12:00"
+    lsi_engine.flat_start = "15:50"
+    lsi_engine.flat_end = "16:00"
+    lsi_engine.atr_length = 14
+    lsi_engine.rr = 2.0
+    lsi_engine.tp1_ratio = 0.5
+    lsi_engine.min_gap_atr_pct = 2.0
+    lsi_engine.min_stop_points = 0.0
+    lsi_engine.fvg_window_left = 20
+    lsi_engine.fvg_window_right = 5
+    lsi_engine.qty_multiplier = 1.0
+    lsi_engine.risk_usd = 250.0
+    lsi_engine.point_value = 2.0
+    lsi_engine.min_qty = 1.0
+    lsi_engine.max_single_risk_usd = 500.0
+    lsi_engine.qty_step = 1.0
+    lsi_engine.min_tick = 0.25
+    lsi_engine.long_only = True
+    lsi_engine.excluded_dow = None
+    lsi_engine.exec_ticker = "MNQ"
+    lsi_engine.regime_gates = ("block_full_medium_vol",)
+    lsi_engine.qty_multiplier = 1.0
+    lsi_engine.lsi_entry_mode = "close"
+
+    cont_info = _session_info(cont_engine)
+    lsi_info = _session_info(lsi_engine)
+
+    assert cont_info["regime_gate"] is None
+    assert cont_info["regime_gates"] == ["bull_no_low_confidence", "block_full_medium_vol"]
+    assert lsi_info["regime_gate"] == "block_full_medium_vol"
+    assert lsi_info["regime_gates"] == ["block_full_medium_vol"]
+
+
 def test_apply_atr_values_updates_engines():
     broker = MagicMock()
     config = {
@@ -248,62 +422,6 @@ def test_apply_atr_values_uses_engine_specific_length():
     assert lsi_engines[0]._daily_atr == 456.0
 
 
-def test_general_v1_exec_config_loads_as_dry_run_fixed_risk_profile():
-    configs = {cfg.name: cfg for cfg in load_exec_configs()}
-
-    assert "GENERAL_V1" in configs
-    general = configs["GENERAL_V1"]
-    assert general.enabled is True
-    assert general.webhook_url == ""
-    assert set(general.session_overrides) == {"NQ_Asia"}
-    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
-    assert general.session_overrides["NQ_Asia"]["risk_usd"] == 400
-    assert general.lsi_session_overrides["NQ_Asia_LSI"]["risk_usd"] == 400
-    assert general.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
-    assert general.lsi_session_overrides["NQ_NY_LSI"]["tp1_ratio"] == 0.34
-    assert general.lsi_session_overrides["NQ_NY_LSI"]["qty_multiplier"] == 1.0
-
-
-def test_general_v1_builds_exactly_four_engines_with_fixed_lsi_multiplier():
-    broker = MagicMock()
-    config = {
-        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
-        "dates": {
-            "half_days": ["20250703"],
-            "excluded": [],
-            "half_day_flat_start": "12:50",
-            "half_day_flat_end": "13:00",
-        },
-        "sessions": {},
-    }
-    general = {cfg.name: cfg for cfg in load_exec_configs()}["GENERAL_V1"]
-
-    cont, sym_map, atr_lens = build_engines(
-        config,
-        broker,
-        config_name="GENERAL_V1",
-        session_list=list(general.session_overrides),
-        exec_overrides=general.session_overrides,
-    )
-    lsi = build_lsi_engines(
-        config,
-        broker,
-        sym_map,
-        atr_lens,
-        config_name="GENERAL_V1",
-        lsi_list=list(general.lsi_session_overrides),
-        lsi_overrides=general.lsi_session_overrides,
-    )
-
-    assert len(cont) + len(lsi) == 3
-    assert {engine.name for engine in cont} == {"NQ_Asia"}
-    assert {engine.name for engine in lsi} == {"NQ_Asia_LSI", "NQ_NY_LSI"}
-    assert all(engine.risk_usd == 400 for engine in cont)
-    assert all(engine.risk_usd == 400 for engine in lsi)
-    ny_lsi = next(engine for engine in lsi if engine.name == "NQ_NY_LSI")
-    assert ny_lsi.qty_multiplier == 1.0
-
-
 def test_fast_and_fast_v2_exec_configs_load_original_baseline_portfolios():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
@@ -336,7 +454,6 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
 
     fast = configs["FAST_V1.1"]
     fast_v2 = configs["FAST_V2.1"]
-    general = configs["GENERAL_V1"]
 
     assert set(fast.session_overrides) == {
         "NQ_Asia",
@@ -353,12 +470,6 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     assert all(override["risk_usd"] == 400 for override in fast_v2.session_overrides.values())
     assert all(override["risk_usd"] == 400 for override in fast_v2.lsi_session_overrides.values())
     assert fast_v2.webhook_url == ""
-
-    assert set(general.session_overrides) == {"NQ_Asia"}
-    assert set(general.lsi_session_overrides) == {"NQ_Asia_LSI", "NQ_NY_LSI"}
-    assert all(override["risk_usd"] == 400 for override in general.session_overrides.values())
-    assert all(override["risk_usd"] == 400 for override in general.lsi_session_overrides.values())
-    assert general.webhook_url == ""
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():
@@ -413,3 +524,91 @@ def test_bull_regime_gate_blocks_without_daily_history_provider():
     gate = build_regime_gate("bull_no_low_confidence")
 
     assert gate("20250131") is False
+
+
+def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
+    gates = dict(build_regime_gates(("block_bull_medium_vol", "block_sideways_medium_vol", "block_full_medium_vol")))
+    daily = pd.DataFrame(
+        {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.0]},
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-31")]),
+    )
+
+    def _fake_daily_loader(_name: str, _date_key: str):
+        return daily
+
+    calendars = iter((
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bull_medium_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["sideways_medium_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_high_vol"]}),
+    ))
+
+    monkeypatch.setattr("trader.gates._load_nq_daily_history", _fake_daily_loader)
+    monkeypatch.setattr("trader.gates._build_nq_ny_extended_regime_calendar", lambda _daily: next(calendars))
+
+    assert gates["block_bull_medium_vol"]("20250131") is False
+    assert gates["block_sideways_medium_vol"]("20250131") is False
+    assert gates["block_full_medium_vol"]("20250131") is True
+
+
+def test_blocking_regime_gate_name_returns_first_failure():
+    checks = (
+        ("gate_a", lambda _d: True),
+        ("gate_b", lambda _d: False),
+        ("gate_c", lambda _d: False),
+    )
+    assert blocking_regime_gate_name(checks, "20250115") == "gate_b"
+
+
+def test_blocking_regime_gate_name_returns_none_when_all_pass():
+    checks = (
+        ("gate_a", lambda _d: True),
+        ("gate_b", lambda _d: True),
+    )
+    assert blocking_regime_gate_name(checks, "20250115") is None
+
+
+def test_blocking_regime_gate_name_empty_checks():
+    assert blocking_regime_gate_name((), "20250115") is None
+
+
+def test_normalize_regime_gate_fields_single_check():
+    check_fn = lambda _d: True
+    gate, gates, gc, gcs = normalize_regime_gate_fields(
+        None, (), None, (("my_gate", check_fn),),
+    )
+    assert gate == "my_gate"
+    assert gates == ("my_gate",)
+    assert gc is check_fn
+    assert len(gcs) == 1
+
+
+def test_normalize_regime_gate_fields_multi_check():
+    fn_a = lambda _d: True
+    fn_b = lambda _d: False
+    gate, gates, gc, gcs = normalize_regime_gate_fields(
+        None, (), None, (("a", fn_a), ("b", fn_b)),
+    )
+    assert gate is None
+    assert gates == ("a", "b")
+    assert len(gcs) == 2
+
+
+def test_normalize_regime_gate_fields_legacy_check_wrapped():
+    check_fn = lambda _d: True
+    gate, gates, gc, gcs = normalize_regime_gate_fields(
+        "legacy", (), check_fn, (),
+    )
+    assert gate == "legacy"
+    assert gates == ("legacy",)
+    assert gcs == (("legacy", check_fn),)
+
+
+def test_min_periods_blocks_with_short_history():
+    """With fewer than 20 daily bars, rolling windows produce NaN and the gate blocks."""
+    short_closes = [100.0 + i * 0.5 for i in range(15)]
+    try:
+        set_daily_history_provider(lambda _symbol: _make_daily_history(short_closes))
+        gate = build_regime_gate("bull_no_low_confidence")
+        assert gate("20250116") is False
+    finally:
+        set_daily_history_provider(None)

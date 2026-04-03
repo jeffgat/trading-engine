@@ -27,7 +27,7 @@ import pyarrow.parquet as pq
 from .broker import MultiBroker, TradersPostClient
 from .engine import Bar
 from .feed import ATRCalculator, DailyHistoryTracker, ET
-from .gates import set_daily_history_provider
+from .gates import normalize_regime_gates, set_daily_history_provider
 from .main import (
     SESSION_CONFIGS,
     LSI_SESSION_CONFIGS,
@@ -152,6 +152,10 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
     for session_name, overrides in exec_config.session_overrides.items():
         merged = {**SESSION_CONFIGS.get(session_name, {}), **overrides}
         prefix = session_name.lower()
+        regime_gates = normalize_regime_gates(
+            merged.get("regime_gate"),
+            merged.get("regime_gates"),
+        )
         config_dict[f"{prefix}_entry_window"] = f"{merged['entry_start']}-{merged['entry_end']}"
         config_dict[f"{prefix}_flat_window"] = f"{merged['flat_start']}-{merged['flat_end']}"
         if "orb_start" in merged and "orb_end" in merged:
@@ -168,10 +172,18 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
+        if regime_gates:
+            config_dict[f"{prefix}_regime_gates"] = list(regime_gates)
+            if len(regime_gates) == 1:
+                config_dict[f"{prefix}_regime_gate"] = regime_gates[0]
 
     for session_name, overrides in exec_config.lsi_session_overrides.items():
         merged = {**LSI_SESSION_CONFIGS.get(session_name, {}), **overrides}
         prefix = session_name.lower()
+        regime_gates = normalize_regime_gates(
+            merged.get("regime_gate"),
+            merged.get("regime_gates"),
+        )
         config_dict[f"{prefix}_entry_window"] = f"{merged['entry_start']}-{merged['entry_end']}"
         config_dict[f"{prefix}_flat_window"] = f"{merged['flat_start']}-{merged['flat_end']}"
         for key in (
@@ -188,6 +200,10 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
+        if regime_gates:
+            config_dict[f"{prefix}_regime_gates"] = list(regime_gates)
+            if len(regime_gates) == 1:
+                config_dict[f"{prefix}_regime_gate"] = regime_gates[0]
 
     return config_dict
 

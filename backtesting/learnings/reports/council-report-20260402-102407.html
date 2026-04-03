@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council Report — Regime Gate Lookahead Analysis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; color: #1a1a1a; max-width: 900px; margin: 0 auto; padding: 2rem; line-height: 1.6; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; margin-bottom: 0.75rem; color: #333; border-bottom: 2px solid #e5e5e5; padding-bottom: 0.25rem; }
+  h3 { font-size: 1rem; margin-top: 1rem; margin-bottom: 0.5rem; }
+  p, li { margin-bottom: 0.5rem; }
+  ul { padding-left: 1.5rem; }
+  .question { background: #f8f9fa; border-left: 4px solid #4a90d9; padding: 1rem 1.25rem; margin: 1rem 0 2rem; border-radius: 0 4px 4px 0; }
+  .verdict { background: #f0f7f0; border: 1px solid #b8d4b8; border-radius: 6px; padding: 1.25rem; margin: 1.5rem 0; }
+  .verdict h2 { color: #2d6a2d; border-bottom-color: #b8d4b8; }
+  .risk { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+  .risk-label { font-weight: 600; white-space: nowrap; }
+  .clash { background: #fff8f0; border: 1px solid #e5d0b0; border-radius: 6px; padding: 1.25rem; margin: 1.5rem 0; }
+  .clash h2 { color: #8a6d3b; border-bottom-color: #e5d0b0; }
+  .blindspot { background: #f5f0ff; border: 1px solid #c8b8e8; border-radius: 6px; padding: 1.25rem; margin: 1.5rem 0; }
+  .blindspot h2 { color: #5b3d8a; border-bottom-color: #c8b8e8; }
+  .first-thing { background: #e8f4f8; border: 2px solid #4a90d9; border-radius: 6px; padding: 1.25rem; margin: 1.5rem 0; }
+  .first-thing h2 { color: #2a6496; border-bottom-color: #4a90d9; }
+  details { margin: 1rem 0; border: 1px solid #e5e5e5; border-radius: 4px; }
+  summary { padding: 0.75rem 1rem; background: #fafafa; cursor: pointer; font-weight: 500; }
+  summary:hover { background: #f0f0f0; }
+  .advisor-content { padding: 1rem; }
+  .advisor-tag { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 3px; margin-right: 0.5rem; font-weight: 600; }
+  .tag-contrarian { background: #fee; color: #c33; }
+  .tag-fp { background: #eef; color: #33c; }
+  .tag-expansionist { background: #efe; color: #3a3; }
+  .tag-outsider { background: #ffe; color: #a80; }
+  .tag-executor { background: #f0e8ff; color: #63c; }
+  .agreement-grid { display: grid; grid-template-columns: 150px repeat(5, 1fr); gap: 2px; margin: 1rem 0; font-size: 0.85rem; }
+  .agreement-grid > div { padding: 6px 8px; }
+  .grid-header { font-weight: 600; background: #f5f5f5; }
+  .grid-yes { background: #e8f5e9; text-align: center; }
+  .grid-no { background: #fce4ec; text-align: center; }
+  .grid-partial { background: #fff3e0; text-align: center; }
+  .grid-label { font-weight: 500; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e5; color: #888; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>LLM Council Report</h1>
+<p style="color:#666; margin-bottom: 1.5rem;">Medium-Vol Regime Gate: Lookahead & Live Implementability — April 2, 2026</p>
+
+<div class="question">
+<strong>Question:</strong> Does the medium-vol regime avoidance gate for NQ LSI suffer from lookahead bias, and is it implementable in a live execution engine?
+</div>
+
+<h2>Advisor Position Map</h2>
+<div class="agreement-grid">
+  <div class="grid-header"></div>
+  <div class="grid-header">Contrarian</div>
+  <div class="grid-header">First Princ.</div>
+  <div class="grid-header">Expansionist</div>
+  <div class="grid-header">Outsider</div>
+  <div class="grid-header">Executor</div>
+
+  <div class="grid-label">Bar-level lookahead?</div>
+  <div class="grid-yes">No ✓</div>
+  <div class="grid-yes">No ✓</div>
+  <div class="grid-yes">No ✓</div>
+  <div class="grid-yes">No ✓</div>
+  <div class="grid-yes">No ✓</div>
+
+  <div class="grid-label">Threshold leakage?</div>
+  <div class="grid-partial">Minor</div>
+  <div class="grid-yes">No</div>
+  <div class="grid-yes">No</div>
+  <div class="grid-no">Yes ⚠</div>
+  <div class="grid-yes">No</div>
+
+  <div class="grid-label">Live implementable?</div>
+  <div class="grid-partial">With fixes</div>
+  <div class="grid-yes">Yes ✓</div>
+  <div class="grid-yes">Yes ✓</div>
+  <div class="grid-partial">If validated</div>
+  <div class="grid-yes">Yes ✓</div>
+
+  <div class="grid-label">Ship it?</div>
+  <div class="grid-no">Not yet</div>
+  <div class="grid-yes">Yes</div>
+  <div class="grid-yes">Yes</div>
+  <div class="grid-no">Validate first</div>
+  <div class="grid-yes">Yes</div>
+</div>
+
+<h2>Where the Council Agrees</h2>
+<p>All five advisors agree the <code>.shift(1)</code> construction is <strong>not lookahead</strong>. Yesterday's daily close is known before the 09:30 NY open. There is no temporal violation in the feature construction.</p>
+<p>There is also consensus that the gate is <strong>mechanically implementable</strong>: a morning batch job, 25-bar rolling close history, two frozen thresholds, and a regime lookup.</p>
+
+<div class="clash">
+<h2>Where the Council Clashes</h2>
+<p><strong>The real disagreement: are the vol thresholds a form of data leakage?</strong></p>
+<p>The Outsider (supported by 4/5 peer reviewers) says yes: thresholds frozen at 12.52%/20.40% were derived from the full pre-holdout window (2016-2024). Any backtest within that window used the full distribution to set its own cutoffs — "distributional lookahead" or "threshold snooping."</p>
+<p>First Principles, Expansionist, and Executor treat this as a non-issue: the thresholds are fixed constants, computed once, applied forward.</p>
+<p>The Contrarian's midnight-ET boundary concern is legitimate operationally (corroborated by the codebase's own MEMORY.md), but reviewers note it is engine-wide, not gate-specific.</p>
+</div>
+
+<div class="blindspot">
+<h2>Blind Spots the Council Caught</h2>
+<ul>
+<li><strong>Post-hoc vs. pre-trade filtering:</strong> The backtest filters already-simulated trades. Live execution suppresses orders before placement. Trade sequencing (daily limits, position state) differs between the two — the backtest may undercount available trades on good-regime days.</li>
+<li><strong>Holiday edge case:</strong> After a market holiday, <code>.shift(1)</code> lands on a non-trading day (NaN). The classifier's behavior on this edge case is unspecified.</li>
+<li><strong>WF threshold shortcut:</strong> Walk-forward folds use globally-frozen thresholds, not fold-by-fold recomputed thresholds. Sound for holdout confirmation but a methodological shortcut in WF.</li>
+<li><strong>Threshold drift:</strong> Frozen thresholds calibrated on 2016-2024 will drift as vol regimes change. No recalibration mechanism exists.</li>
+</ul>
+</div>
+
+<div class="verdict">
+<h2>The Recommendation</h2>
+<p><strong>The gate is NOT lookahead-contaminated in the bar-signal sense and IS mechanically implementable.</strong> However, it carries three graded risks:</p>
+<div class="risk"><span class="risk-label">Risk 1 (Medium):</span> Distributional threshold leakage — thresholds fit on pre-holdout window. Holdout OOS partially mitigates. Fold-by-fold WF recomputation is the rigorous fix.</div>
+<div class="risk"><span class="risk-label">Risk 2 (Low-Med):</span> Post-hoc filtering vs. pre-trade suppression — rearchitect to evaluate gate at order-generation time.</div>
+<div class="risk"><span class="risk-label">Risk 3 (Low):</span> Operational hygiene — handle holiday NaN gaps, maintain consistent daily close definition, monitor threshold drift.</div>
+<p style="margin-top:1rem;">The gate should not be labeled "clean and ship" nor "fatally flawed." It is a <strong>sound design with known, fixable implementation risks</strong>.</p>
+</div>
+
+<div class="first-thing">
+<h2>The One Thing to Do First</h2>
+<p><strong>Run the holdout OOS test with fold-by-fold threshold recomputation.</strong></p>
+<p>Recompute vol percentile thresholds using only each fold's training window (not global pre-holdout). Compare regime-gated P&L from fold-recomputed thresholds against globally-frozen thresholds. If the difference is small, the global shortcut is validated and the gate proceeds to live. If fold-recomputed is materially worse, the gate's edge is partially illusory.</p>
+</div>
+
+<details>
+<summary><span class="advisor-tag tag-contrarian">CONTRARIAN</span> The Contrarian — Full Response</summary>
+<div class="advisor-content">
+<p>Gate is clean on lookahead but has 3 flaws: (1) midnight-ET daily boundary bug — resample("1D") groups by midnight not CME session boundaries (6PM-5PM ET), so "yesterday's close" may differ from live; (2) ambiguous live close definition across vendors; (3) frozen vol thresholds will drift with no recalibration mechanism.</p>
+<p><strong>Verdict:</strong> Lookahead is not the problem, but boundary mismatch and threshold drift are. Live will differ from backtest.</p>
+<p><em>Peer review score: 1/5 reviewers picked as strongest. Boundary concern was contested — some said it's engine-wide and consistent, not gate-specific.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-fp">FIRST PRINCIPLES</span> The First Principles Thinker — Full Response</summary>
+<div class="advisor-content">
+<p>No lookahead, fully implementable. The .shift(1) means yesterday's close, available before 09:30. Four arithmetic operations on a rolling close series. Only caveat: ensure backtest resample("1D").last() matches live feed's close.</p>
+<p><strong>Verdict:</strong> Clean. Directly implementable.</p>
+<p><em>Peer review: Solid but missed the threshold leakage concern that D identified.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-expansionist">EXPANSIONIST</span> The Expansionist — Full Response</summary>
+<div class="advisor-content">
+<p>Clean and trivially live-implementable. The structural explanation (medium-vol = false sweeps without sharp dislocations) means this is not curve-fitting but a mechanistic edge.</p>
+<p><strong>Verdict:</strong> Ship it.</p>
+<p><em>Peer review: 4/5 reviewers flagged as having the biggest blind spot — "ship it" is dangerously underspecified with no implementation guidance.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-outsider">OUTSIDER</span> The Outsider — Full Response</summary>
+<div class="advisor-content">
+<p>Daily computation is fine but the vol tercile thresholds (12.52%/20.40%) ARE a form of lookahead — computed on the full 8-year pre-holdout period, so any backtest within that window has thresholds that "saw" the whole distribution. Needs true OOS validation before trusting.</p>
+<p><strong>Verdict:</strong> Thresholds are the risk. Validate on unseen data.</p>
+<p><em>Peer review: 4/5 reviewers picked as strongest response — correctly identified the most substantive methodological issue.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-executor">EXECUTOR</span> The Executor — Full Response</summary>
+<div class="advisor-content">
+<p>No lookahead. Morning batch job at ~09:25 ET: pull yesterday's close, compute 3 features, classify, set flag. Need 25-bar daily close history. Frozen thresholds mean no live re-estimation needed.</p>
+<p><strong>Verdict:</strong> Build it. Low complexity, clean bias argument.</p>
+<p><em>Peer review: Practical and actionable. Missed threshold leakage concern but implementation guidance was the most directly useful.</em></p>
+</div>
+</details>
+
+<details>
+<summary>Peer Review Highlights</summary>
+<div class="advisor-content">
+<ul>
+<li><strong>Strongest response:</strong> 4/5 picked the Outsider (threshold leakage)</li>
+<li><strong>Biggest blind spot:</strong> 4/5 picked the Expansionist ("ship it" without caveats)</li>
+<li><strong>What all missed:</strong> Post-hoc filtering vs. pre-trade suppression creates a trade-sequencing discrepancy between backtest and live execution</li>
+</ul>
+</div>
+</details>
+
+<footer>
+Council session: April 2, 2026, 10:24 AM ET · 5 advisors, 5 peer reviewers, 1 chairman · Generated by Claude Code LLM Council
+</footer>
+
+</body>
+</html>

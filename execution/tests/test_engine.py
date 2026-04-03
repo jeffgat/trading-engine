@@ -142,6 +142,22 @@ class TestORBBuilding:
         await advance_to_scanning(eng)
         assert eng._state == State.FLAT
 
+    async def test_multiple_regime_gates_block_on_first_failure(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            regime_gates=("bull_no_low_confidence", "block_full_medium_vol"),
+            regime_gate_checks=(
+                ("bull_no_low_confidence", lambda _date: True),
+                ("block_full_medium_vol", lambda _date: False),
+            ),
+        )
+        eng._log_trade = MagicMock()
+
+        await advance_to_scanning(eng)
+
+        assert eng._state == State.FLAT
+        eng._log_trade.assert_any_call("REGIME_GATE_BLOCKED", "gate=block_full_medium_vol date=20250115")
+
 
 # =============================================================================
 # WAITING_FOR_GAP → ARMED_LIMIT
@@ -703,6 +719,7 @@ class TestDailyReset:
             regime_gate="bull_no_low_confidence",
             regime_gate_check=lambda _date: False,
         )
+        eng._log_trade = MagicMock()
         bars = [
             make_bar("2025-01-15 09:30", 19500, 19530, 19480, 19510),
             make_bar("2025-01-15 09:35", 19510, 19540, 19500, 19520),
@@ -717,6 +734,7 @@ class TestDailyReset:
 
         assert recovered is True
         assert eng._state == State.FLAT
+        eng._log_trade.assert_called_with("REGIME_GATE_BLOCKED", "gate=bull_no_low_confidence date=20250115")
 
 
 # =============================================================================

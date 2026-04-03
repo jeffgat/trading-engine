@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { SessionCard } from "./SessionCard";
-import { CONFIG_COLORS } from "@/execution/lib/constants";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import type { ConfigResponse, SessionStatus } from "@/execution/lib/types";
 
 interface StatusPanelProps {
@@ -9,6 +9,7 @@ interface StatusPanelProps {
   uptime: number;
   loading: boolean;
   activeConfig: string;
+  setActiveConfig: (config: string) => void;
   config: ConfigResponse | null;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
@@ -34,10 +35,10 @@ function isLiveConfig(configName: string, config: ConfigResponse | null): boolea
   return meta.webhooks.length > 0;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, config, onPause, onResume }: StatusPanelProps) {
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, onPause, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
 
-  // Compute which configs are live vs dry-run for collapse default
+  // Compute which configs are live vs dry-run
   const configNames = Object.keys(configEngines);
   const liveConfigs = configNames.filter((n) => isLiveConfig(n, config));
   const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config));
@@ -45,18 +46,24 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
   // Sort: live first (alphabetical), then dry-run (alphabetical)
   const sortedConfigs = [...liveConfigs.sort(), ...dryRunConfigs.sort()];
 
-  // Collapsed state: dry-run configs start collapsed, live configs start expanded
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {};
-    for (const name of configNames) {
-      init[name] = !isLiveConfig(name, config);
-    }
-    return init;
-  });
+  // Default to first live config (or first config if none are live)
+  const defaultConfig = liveConfigs[0] ?? sortedConfigs[0] ?? "";
+  const validConfig = configEngines[activeConfig] ? activeConfig : defaultConfig;
 
-  const toggleCollapse = (name: string) => {
-    setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }));
-  };
+  // Sync the parent state when we auto-select a default, or when
+  // config metadata arrives and reveals a live config should be selected
+  useEffect(() => {
+    if (!validConfig) return;
+    // If activeConfig is unset or doesn't exist in engines, pick the default
+    if (!activeConfig || !configEngines[activeConfig]) {
+      setActiveConfig(validConfig);
+      return;
+    }
+    // If activeConfig is a dry-run but a live config exists, switch to live
+    if (liveConfigs.length > 0 && !liveConfigs.includes(activeConfig)) {
+      setActiveConfig(liveConfigs[0]);
+    }
+  }, [validConfig, activeConfig, setActiveConfig, liveConfigs, configEngines]);
 
   if (loading) {
     return (
@@ -76,80 +83,62 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
 
   const uptimeStr = formatUptime(uptime);
 
-  // When a specific config is selected, show only that config's engines (no collapse)
-  if (activeConfig !== "ALL") {
-    const selectedEngines = configEngines[activeConfig] ?? [];
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
+  const displayEngines = configEngines[validConfig] ?? [];
+  const selectedConfigMeta = {
+    isLive: isLiveConfig(validConfig, config),
+    count: displayEngines.length,
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
           <div className="text-sm text-text-muted">
             Uptime: <span className="font-mono text-text-secondary">{uptimeStr}</span>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {selectedEngines.map((engine) => (
-            <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
-          ))}
+
+        <div className="flex items-center gap-3">
+          <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
+            selectedConfigMeta.isLive
+              ? "text-profit bg-profit/10"
+              : "text-amber-400 bg-amber-400/10"
+          }`}>
+            {selectedConfigMeta.isLive ? "Live" : "Dry Run"}
+          </span>
+          <span className="text-xs text-text-muted">
+            {selectedConfigMeta.count} strateg{selectedConfigMeta.count !== 1 ? "ies" : "y"}
+          </span>
+          <Select value={validConfig} onValueChange={setActiveConfig}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sortedConfigs.map((name) => {
+                const count = (configEngines[name] ?? []).length;
+                const live = isLiveConfig(name, config);
+                return (
+                  <SelectItem key={name} value={name}>
+                    <span className="flex items-center gap-2">
+                      {name}
+                      <span className={`text-[9px] uppercase ${live ? "text-profit" : "text-amber-400"}`}>
+                        {live ? "Live" : "Dry"}
+                      </span>
+                      <span className="text-text-muted">({count})</span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         </div>
       </div>
-    );
-  }
 
-  // ALL: show sections grouped by config name, live first, with collapse
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-text-muted">
-          Uptime: <span className="font-mono text-text-secondary">{uptimeStr}</span>
-        </div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {displayEngines.map((engine) => (
+          <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
+        ))}
       </div>
-
-      {sortedConfigs.map((configName) => {
-        const groupEngines = configEngines[configName] ?? [];
-        if (groupEngines.length === 0) return null;
-        const colorClasses = CONFIG_COLORS[configName] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
-        const isLive = isLiveConfig(configName, config);
-        const isCollapsed = collapsed[configName] ?? false;
-
-        return (
-          <div key={configName} className="space-y-3">
-            <button
-              onClick={() => toggleCollapse(configName)}
-              className="flex w-full items-center gap-2 text-left group"
-            >
-              <svg
-                className={`h-3.5 w-3.5 text-text-muted transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${colorClasses}`}>
-                {configName}
-              </span>
-              <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                isLive
-                  ? "text-profit bg-profit/10"
-                  : "text-amber-400 bg-amber-400/10"
-              }`}>
-                {isLive ? "Live" : "Dry Run"}
-              </span>
-              <span className="text-xs text-text-muted">
-                {groupEngines.length} strateg{groupEngines.length !== 1 ? "ies" : "y"}
-              </span>
-            </button>
-            {!isCollapsed && (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {groupEngines.map((engine) => (
-                  <SessionCard key={`${configName}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Council Report: Regime Gate Implementation Review</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; color: #1a1a1a; line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; font-weight: 600; margin: 2rem 0 0.75rem; color: #111; border-bottom: 2px solid #e5e5e5; padding-bottom: 0.4rem; }
+  h3 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem; }
+  p, li { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  ul { padding-left: 1.5rem; }
+  .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+  .verdict-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .verdict-box h2 { border: none; margin-top: 0; padding-bottom: 0; }
+  .priority-high { border-left: 4px solid #dc3545; padding-left: 1rem; margin: 1rem 0; }
+  .priority-medium { border-left: 4px solid #fd7e14; padding-left: 1rem; margin: 1rem 0; }
+  .priority-low { border-left: 4px solid #6c757d; padding-left: 1rem; margin: 1rem 0; }
+  .first-thing { background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 1.25rem; margin: 1.5rem 0; }
+  .first-thing h3 { margin-top: 0; color: #856404; }
+  details { margin: 1rem 0; border: 1px solid #e5e5e5; border-radius: 6px; }
+  details summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.95rem; background: #fafafa; border-radius: 6px; }
+  details summary:hover { background: #f0f0f0; }
+  details[open] summary { border-bottom: 1px solid #e5e5e5; border-radius: 6px 6px 0 0; }
+  details .content { padding: 1rem; }
+  .advisor-tag { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 3px; margin-right: 0.5rem; }
+  .tag-contrarian { background: #f8d7da; color: #842029; }
+  .tag-first-principles { background: #cff4fc; color: #055160; }
+  .tag-expansionist { background: #d1e7dd; color: #0f5132; }
+  .tag-outsider { background: #e2d9f3; color: #432874; }
+  .tag-executor { background: #fff3cd; color: #664d03; }
+  .agreement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .agreement-card { padding: 1rem; border-radius: 6px; border: 1px solid #e5e5e5; }
+  .agreement-card.agree { background: #f0fdf4; }
+  .agreement-card.clash { background: #fef2f2; }
+  .agreement-label { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+  .agree .agreement-label { color: #166534; }
+  .clash .agreement-label { color: #991b1b; }
+  code { background: #f1f3f5; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85rem; font-family: 'SF Mono', 'Fira Code', monospace; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e5; color: #999; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Council Report: Regime Gate Implementation Review</h1>
+<p class="subtitle">5-advisor council review &middot; April 3, 2026</p>
+
+<div class="verdict-box">
+<h2>Chairman's Verdict</h2>
+
+<h3>Where the Council Agrees</h3>
+<ul>
+  <li><strong><code>min_periods</code> on rolling windows is a confirmed bug.</strong> Advisors B, D, and E all independently flagged that <code>rolling(20)</code> without <code>min_periods</code> produces partial computations (defaults to 1, not 20). The backtester leaves those as NaN during warmup; the live engine silently produces garbage values from day 1.</li>
+  <li><strong>The <code>.shift(1)</code> discipline is correct.</strong> B and E both defended it; no lookahead bias exists in the shift pattern.</li>
+  <li><strong>Frozen vol thresholds are acceptable.</strong> Standard practice for live deployment. Risk is regime drift over years, not a correctness bug.</li>
+</ul>
+
+<h3>Where the Council Clashes</h3>
+<p>The sharpest disagreement: <strong>Is the placeholder day a "ghost bar" that corrupts rolling calculations (Contrarian) or the correct pattern (First Principles, Executor)?</strong></p>
+<p>The Contrarian argues the fake bar contaminates log_returns and realized_vol_21d. First Principles counters that after <code>.shift(1)</code>, today's regime uses yesterday's actual data. The Chairman sides with First Principles: the placeholder's regime label is discarded. However, the placeholder's synthetic return value (0.0) does participate in realized_vol_21d's rolling window on that final row &mdash; a narrow contamination that A correctly identified for the wrong reason.</p>
+
+<h3>Blind Spots the Council Caught</h3>
+<ul>
+  <li><strong>ATR boundary mismatch</strong> (flagged by 3/5 peer reviewers): The project memory documents a 10-15% ATR discrepancy between midnight ET vs exchange session boundary daily bars. If the live provider uses exchange session boundaries, all regime vol inputs diverge from backtest.</li>
+  <li><strong>Partial current-day bar contamination</strong>: If the provider delivers an incomplete bar for today before market close, it enters the rolling window before the shift removes it from the label.</li>
+  <li><strong>Duplicate date risk in <code>_calendar_row_for_date</code></strong>: <code>.iloc[-1]</code> silently picks the last matching row with no assertion guard.</li>
+  <li><strong>Thread safety on <code>_daily_history_provider</code></strong>: Module-level global with no locking in async context.</li>
+</ul>
+</div>
+
+<div class="agreement-grid">
+  <div class="agreement-card agree">
+    <div class="agreement-label">Unanimous Agreement</div>
+    <p><code>min_periods</code> bug is real and must be fixed</p>
+  </div>
+  <div class="agreement-card agree">
+    <div class="agreement-label">Strong Agreement (4/5)</div>
+    <p><code>.shift(1)</code> is correct &mdash; no lookahead bias</p>
+  </div>
+  <div class="agreement-card clash">
+    <div class="agreement-label">Contested</div>
+    <p>Placeholder day contamination: narrow vol impact only</p>
+  </div>
+  <div class="agreement-card clash">
+    <div class="agreement-label">Contested</div>
+    <p>Frozen thresholds: acceptable vs. divergence guarantee</p>
+  </div>
+</div>
+
+<h2>The Recommendation</h2>
+
+<div class="priority-high">
+  <h3>Fix Now (High Priority)</h3>
+  <p><strong>1. Add <code>min_periods=20</code> to all rolling windows in <code>gates.py</code></strong> &mdash; confirmed bug causing live/backtest divergence from day 1.</p>
+  <p><strong>2. Audit the daily bar provider's session boundary</strong> &mdash; verify it uses midnight ET boundaries, not exchange session (6 PM ET). If mismatched, every regime classification is systematically offset from backtest.</p>
+  <p><strong>3. Assert exactly one row in <code>_calendar_row_for_date</code></strong> &mdash; replace <code>.iloc[-1]</code> with an assertion. Silent duplicate-date bugs are invisible until they cause a wrong trade.</p>
+</div>
+
+<div class="priority-medium">
+  <h3>Fix Soon (Medium Priority)</h3>
+  <p><strong>4. Extract shared gate logic</strong> &mdash; <code>_blocking_regime_gate_name()</code> and initialization normalization are copy-pasted between <code>engine.py</code> and <code>lsi_engine.py</code>. Next bug fix will hit one and miss the other.</p>
+  <p><strong>5. Dead fallback branch</strong> &mdash; the legacy path in <code>_blocking_regime_gate_name</code> is unreachable after initialization normalization. Remove to avoid false confidence.</p>
+</div>
+
+<div class="priority-low">
+  <h3>Monitor (Low Priority)</h3>
+  <p><strong>6. Frozen vol threshold drift</strong> &mdash; not a bug today, but recalibrate annually or after prolonged regime shifts.</p>
+  <p><strong>7. Module-level global provider</strong> &mdash; no immediate issue in single-threaded operation; add locking if moving to multi-worker deployment.</p>
+</div>
+
+<div class="first-thing">
+  <h3>The One Thing to Do First</h3>
+  <p>Audit the daily bar provider's session boundary definition against midnight ET. If these don't match, every regime classification produced in live trading is systematically offset from what the backtester saw, and fixing rolling windows or placeholder logic is irrelevant noise on top of a broken foundation.</p>
+</div>
+
+<h2>Advisor Positions</h2>
+
+<details>
+<summary><span class="advisor-tag tag-contrarian">Contrarian</span> 4 fatal flaws &mdash; ghost bar, index alignment, frozen thresholds, no warmup</summary>
+<div class="content">
+<p><strong>Finding 1:</strong> Placeholder day creates a ghost bar that corrupts rolling calculations &mdash; the fake bar contaminates log_returns, realized_vol_21d, and ret_5d.</p>
+<p><strong>Finding 2:</strong> The .shift(1) is applied to positional integer index after reset_index(drop=True), not dates &mdash; any gap shifts the wrong regime onto the wrong date.</p>
+<p><strong>Finding 3:</strong> Frozen vol thresholds are a category error &mdash; guarantees divergence over time.</p>
+<p><strong>Finding 4:</strong> No warmup guard &mdash; if provider returns fewer than 21 bars, warmup_ok=False silently assigns "warmup" regime.</p>
+<p><em>Peer review consensus: Strongest overall analysis. Ghost bar claim partially validated (vol contamination, not label corruption). Index alignment concern valid in principle but mitigated by contiguous daily data in practice.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-first-principles">First Principles</span> 1 real bug: min_periods mismatch</summary>
+<div class="content">
+<p><strong>The real bug:</strong> <code>min_periods</code> mismatch. Execution engine's <code>rolling(20)</code> defaults to <code>min_periods=1</code>, producing partial SMAs the backtester would have left as NaN.</p>
+<p><strong>Placeholder day is correct:</strong> After .shift(1), today's classification uses yesterday's actual data. The placeholder's own row gets shifted away.</p>
+<p><strong>Frozen vol thresholds are acceptable:</strong> Standard practice for live deployment.</p>
+<p><strong>Shift alignment is correct</strong> in both engines.</p>
+<p><em>Peer review consensus: Strongest reasoning on the placeholder day question. Correctly defended the shift(1) pattern against the Contrarian's attack.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-expansionist">Expansionist</span> Opportunities: OR logic, telemetry, cross-asset proxy</summary>
+<div class="content">
+<p>Frozen thresholds are a deployment superpower. AND logic should be flipped to select high-conviction windows. NQ-as-universal-regime-proxy should be stress-tested. OR logic is missing. Gate hit-rate telemetry should be added.</p>
+<p><em>Peer review consensus: Weakest response. Did not engage with the actual review question. Zero diagnostic value for a bug/parity review.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-outsider">Outsider</span> 6 software engineering problems</summary>
+<div class="content">
+<p><strong>1.</strong> Dead code in <code>_blocking_regime_gate_name</code> fallback branch &mdash; unreachable after normalization.</p>
+<p><strong>2.</strong> Rolling windows with no min_periods produce silent NaN propagation.</p>
+<p><strong>3.</strong> Initialization normalization is stateful mutation with silent None-setting.</p>
+<p><strong>4.</strong> Code duplication across engine.py and lsi_engine.py.</p>
+<p><strong>5.</strong> Placeholder day fails for gaps &gt; 1 day.</p>
+<p><strong>6.</strong> API serialization drops multi-gate info.</p>
+<p><em>Peer review consensus: Good breadth of engineering concerns. Dead code identification was unique and valuable. Some findings are lower-severity than presented.</em></p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-tag tag-executor">Executor</span> Ship with 2 fixes, monitor 1 risk</summary>
+<div class="content">
+<p><strong>Fix 1:</strong> Add <code>min_periods=20</code> to all rolling windows.</p>
+<p><strong>Fix 2:</strong> Extract shared normalization/blocking logic from duplicated code.</p>
+<p><strong>Monitor:</strong> Daily bar source discrepancy if provider uses exchange session vs midnight ET boundaries.</p>
+<p>The .shift(1) discipline is correct. Fail-safe blocking is the right default.</p>
+<p><em>Peer review consensus: Most actionable response. Correctly triaged fixes vs. monitoring items. The ATR boundary monitoring recommendation was prescient &mdash; elevated by 3/5 peer reviewers as the top blind spot.</em></p>
+</div>
+</details>
+
+<details>
+<summary>Peer Review Highlights</summary>
+<div class="content">
+<h3>Strongest Response</h3>
+<p>All 5 reviewers selected the Contrarian (A) as strongest for identifying the most dangerous correctness failures.</p>
+<h3>Biggest Blind Spot</h3>
+<p>All 5 reviewers selected the Expansionist (C) as having the biggest blind spot &mdash; reframing bugs as features without identifying a single concrete issue.</p>
+<h3>What All Advisors Missed</h3>
+<ul>
+  <li><strong>ATR boundary mismatch</strong> (3/5 reviewers): Documented in project memory, directly affects live/backtest vol parity.</li>
+  <li><strong>Partial current-day bar</strong> (1 reviewer): If provider delivers incomplete bar before market close, shift lands on incomplete data.</li>
+  <li><strong>Duplicate date in calendar lookup</strong> (1 reviewer): <code>.iloc[-1]</code> silently picks last match.</li>
+  <li><strong>Thread safety on global provider</strong> (1 reviewer): Module-level global with no locking in async context.</li>
+</ul>
+</div>
+</details>
+
+<div class="footer">
+  <p>Generated by LLM Council &middot; April 3, 2026 &middot; 5 advisors, 5 peer reviewers, 1 chairman synthesis</p>
+</div>
+
+</body>
+</html>

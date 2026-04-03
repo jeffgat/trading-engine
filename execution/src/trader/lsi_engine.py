@@ -98,6 +98,10 @@ class LSIEngine:
         long_only: bool = True,
         # DOW exclusion
         excluded_dow: int | list[int] | None = None,
+        regime_gate: str | None = None,
+        regime_gates: tuple[str, ...] = (),
+        regime_gate_check: Callable[[str], bool] | None = None,
+        regime_gate_checks: tuple[tuple[str, Callable[[str], bool]], ...] = (),
         excluded_dates: tuple[str, ...] = (),
         half_days: tuple[str, ...] = (),
         half_day_flat_start: str = "12:50",
@@ -150,6 +154,18 @@ class LSIEngine:
         # Direction
         self.long_only = long_only
         self.excluded_dow = excluded_dow
+        from .gates import normalize_regime_gate_fields
+        (
+            self.regime_gate,
+            self.regime_gates,
+            self.regime_gate_check,
+            self.regime_gate_checks,
+        ) = normalize_regime_gate_fields(
+            regime_gate,
+            regime_gates,
+            regime_gate_check,
+            regime_gate_checks,
+        )
         self.excluded_dates = excluded_dates
         self.half_days = half_days
         self._half_day_flat_start_t = _parse_time(half_day_flat_start)
@@ -220,6 +236,10 @@ class LSIEngine:
         self._swept_level = None
         self._fvg_top = None
         self._fvg_bottom = None
+
+    def _blocking_regime_gate_name(self, date_key: str) -> str | None:
+        from .gates import blocking_regime_gate_name
+        return blocking_regime_gate_name(self.regime_gate_checks, date_key)
 
     def _set_sweep_overlay(self, sweep: SweepEvent) -> None:
         """Persist the active swept level immediately after sweep detection."""
@@ -499,7 +519,12 @@ class LSIEngine:
 
         # Determine state based on current time
         if self._in_entry(now_t):
-            self._state = LSIState.SCANNING
+            blocking_gate = self._blocking_regime_gate_name(date_str)
+            if blocking_gate is not None:
+                self._log_trade("REGIME_GATE_BLOCKED", f"gate={blocking_gate} date={date_str}")
+                self._state = LSIState.FLAT
+            else:
+                self._state = LSIState.SCANNING
         elif self._in_flat(dummy_bar):
             self._state = LSIState.FLAT
         elif not self._crosses_midnight and now_t < self._entry_start_t:
@@ -728,6 +753,16 @@ class LSIEngine:
         # State machine
         if self._state == LSIState.IDLE:
             if self._in_entry(bar_time) and not self._is_excluded_day(bar):
+                blocking_gate = self._blocking_regime_gate_name(self._current_date)
+                if blocking_gate is not None:
+                    self._log_trade(
+                        "REGIME_GATE_BLOCKED",
+                        "gate=%s date=%s" % (blocking_gate, self._current_date),
+                    )
+                    self._state = LSIState.FLAT
+                    self._request_checkpoint()
+                    self._notify_state_change()
+                    return
                 self._state = LSIState.SCANNING
                 self._request_checkpoint()
                 self._notify_state_change()

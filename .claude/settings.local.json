@@ -196,7 +196,24 @@
       "Bash(sw_vers)",
       "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting -maxdepth 2 -type f \\\\\\(-name package.json -o -name pyproject.toml -o -name setup.py -o -name requirements.txt -o -name *.sh \\\\\\))",
       "Bash(npm run:*)",
-      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution -type f \\\\\\(-name *.json -o -name *.yaml -o -name *.yml -o -name *.py \\\\\\))"
+      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/execution -type f \\\\\\(-name *.json -o -name *.yaml -o -name *.yml -o -name *.py \\\\\\))",
+      "Bash(file backtesting/data/raw/NQ_*.parquet)",
+      "Bash(find /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/scripts -type f \\\\\\(-name *ldn* -o -name *ldn* \\\\\\))",
+      "Bash(2)",
+      "Bash(pkill -f \"run_nq_orb_discovery_3session\")",
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/council-report-20260331-221500.html)",
+      "Bash(/Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/.venv/bin/python:*)",
+      "Bash(git log:*)",
+      "Bash(nettop -p 92233 -t external -d -J bytes_in,bytes_out -l 1)",
+      "Bash(nettop -p 92233 -t external -d -J bytes_in -l 1)",
+      "Read(//private/tmp/**)",
+      "Bash(echo \"EXIT:$?\")",
+      "Read(//Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/**)",
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/council-report-20260402-102407.html)",
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/council-report-20260403-083956.html)",
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/council-report-20260403-093017.html)",
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-103125.html)",
+      "Bash(PYTHONUNBUFFERED=1 .venv/bin/pytest tests/test_main.py tests/test_engine.py tests/test_lsi_engine.py tests/test_historical_backtest.py tests/test_api.py -q)"
     ]
   }
 }

@@ -24,6 +24,7 @@ from ..engine.simulator import TradeResult, build_maps
 from .parallel import (
     _get_or_create_pool,
     _cached_pickle,
+    _dataframe_cache_fingerprint,
     _pickle_cache,
 )
 
@@ -43,7 +44,7 @@ def _run_single_gapfill(args: tuple) -> tuple[dict, list[TradeResult]]:
 
 def _gapfill_signal_cache_path(df: pd.DataFrame, configs: list[GapFillStrategyConfig]) -> Path:
     """Stable disk cache key for Gap Fill signal cache."""
-    data_key = f"{df.index[0]}_{df.index[-1]}_{len(df)}"
+    data_hash = _dataframe_cache_fingerprint(df)[:12]
     unique_keys = sorted({
         json.dumps(dataclasses.asdict(c), sort_keys=True, default=str)
         for c in configs
@@ -51,8 +52,7 @@ def _gapfill_signal_cache_path(df: pd.DataFrame, configs: list[GapFillStrategyCo
     param_key = hashlib.md5(json.dumps(unique_keys).encode()).hexdigest()[:8]
     cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    safe_data_key = str(data_key)[:20].replace(" ", "_").replace(":", "-")
-    return cache_dir / f"gapfill_sigcache_{safe_data_key}_{param_key}.pkl"
+    return cache_dir / f"gapfill_sigcache_{data_hash}_{param_key}.pkl"
 
 
 def _load_or_build_gapfill_signal_cache(
@@ -95,6 +95,9 @@ def run_gapfill_sweep(
 
     Same interface as run_sweep() but for Gap Fill configs.
     """
+    if not configs:
+        return []
+
     if n_workers is None:
         n_workers = min(cpu_count(), len(configs))
 

@@ -42,19 +42,6 @@
       }
     }
   },
-  "SLOW": {
-    "enabled": true,
-    "webhooks": [],
-    "sessions": {
-      "NQ_NY": { "risk_usd": 159 },
-      "NQ_Asia": { "risk_usd": 130 },
-      "GC_NY": { "risk_usd": 90 }
-    },
-    "lsi_sessions": {
-      "NQ_Asia_LSI": { "risk_usd": 161 },
-      "NQ_NY_LSI": { "risk_usd": 200 }
-    }
-  },
   "FAST_V2": {
     "enabled": true,
     "max_open_contracts": 20,
@@ -164,73 +151,6 @@
         "fvg_window_right": 5,
         "lsi_entry_mode": "fvg_limit",
         "lsi_n_left": 5,
-        "lsi_n_right": 60,
-        "excluded_dow": [2, 3]
-      }
-    }
-  },
-  "GENERAL_V1": {
-    "enabled": true,
-    "max_open_contracts": 20,
-    "webhooks": [],
-    "sessions": {
-      "NQ_Asia": {
-        "orb_start": "20:00",
-        "orb_end": "20:15",
-        "entry_start": "20:15",
-        "entry_end": "22:30",
-        "flat_start": "04:00",
-        "flat_end": "07:00",
-        "stop_basis": "orb",
-        "gap_filter_basis": "orb",
-        "stop_orb_pct": 100.0,
-        "min_gap_orb_pct": 10.0,
-        "atr_length": 5,
-        "rr": 6.0,
-        "tp1_ratio": 0.3,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "long_only": true,
-        "excluded_dow": [1]
-      }
-    },
-    "lsi_sessions": {
-      "NQ_Asia_LSI": {
-        "entry_start": "20:40",
-        "entry_end": "23:00",
-        "flat_start": "04:00",
-        "flat_end": "07:00",
-        "rr": 2.0,
-        "tp1_ratio": 0.7,
-        "min_gap_atr_pct": 1.75,
-        "atr_length": 40,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "qty_multiplier": 1.0,
-        "min_stop_points": 0.0,
-        "fvg_window_left": 15,
-        "fvg_window_right": 2,
-        "lsi_entry_mode": "close",
-        "lsi_n_left": 8,
-        "lsi_n_right": 2
-      },
-      "NQ_NY_LSI": {
-        "entry_start": "09:35",
-        "entry_end": "15:30",
-        "flat_start": "15:50",
-        "flat_end": "16:00",
-        "rr": 3.0,
-        "tp1_ratio": 0.34,
-        "min_gap_atr_pct": 3.75,
-        "atr_length": 10,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
-        "qty_multiplier": 1.0,
-        "min_stop_points": 0.0,
-        "fvg_window_left": 20,
-        "fvg_window_right": 5,
-        "lsi_entry_mode": "fvg_limit",
-        "lsi_n_left": 8,
         "lsi_n_right": 60,
         "excluded_dow": [2, 3]
       }

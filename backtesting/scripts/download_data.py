@@ -61,6 +61,7 @@ SYMBOL_MAP = {
     "MGC": "MGC.v.0",
     "CL": "CL.c.0",
     "MCL": "MCL.c.0",
+    "SI": "SI.v.0",
     "6B": "6B.c.0",
 }
 

@@ -193,6 +193,35 @@ class TestIdleToWaitingForSweep:
         await eng.on_bar(bar, 300.0)
         assert eng._state == LSIState.WAITING_FOR_SWEEP
 
+    async def test_regime_gate_blocks_before_waiting_for_sweep(self):
+        eng = make_lsi_engine(
+            regime_gate="bull_no_low_confidence",
+            regime_gate_check=lambda _date: False,
+        )
+        eng._log_trade = MagicMock()
+
+        bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
+        await eng.on_bar(bar, 300.0)
+
+        assert eng._state == LSIState.FLAT
+        eng._log_trade.assert_called_with("REGIME_GATE_BLOCKED", "gate=bull_no_low_confidence date=20250115")
+
+    async def test_multiple_regime_gates_block_on_first_failure(self):
+        eng = make_lsi_engine(
+            regime_gates=("bull_no_low_confidence", "block_full_medium_vol"),
+            regime_gate_checks=(
+                ("bull_no_low_confidence", lambda _date: True),
+                ("block_full_medium_vol", lambda _date: False),
+            ),
+        )
+        eng._log_trade = MagicMock()
+
+        bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
+        await eng.on_bar(bar, 300.0)
+
+        assert eng._state == LSIState.FLAT
+        eng._log_trade.assert_called_with("REGIME_GATE_BLOCKED", "gate=block_full_medium_vol date=20250115")
+
     async def test_excluded_date_does_not_start_waiting_for_sweep(self):
         eng = make_lsi_engine(excluded_dates=("20250115",))
         bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
@@ -866,6 +895,29 @@ class TestDailyReset:
         await eng.on_bar(bar2, 300.0)
         assert eng._state == LSIState.FLAT
         assert eng._current_date == "20250114"
+
+    def test_recovery_reapplies_regime_gates_before_scanning(self):
+        eng = make_lsi_engine(
+            regime_gates=("bull_no_low_confidence", "block_full_medium_vol"),
+            regime_gate_checks=(
+                ("bull_no_low_confidence", lambda _date: True),
+                ("block_full_medium_vol", lambda _date: False),
+            ),
+        )
+        eng._log_trade = MagicMock()
+        bars = [
+            make_bar("2025-01-15 09:00", 19500, 19510, 19490, 19500),
+            make_bar("2025-01-15 09:05", 19500, 19510, 19490, 19500),
+        ]
+
+        recovered = eng.recover_session_state(
+            bars,
+            make_bar("2025-01-15 09:45", 19500, 19510, 19490, 19500).timestamp,
+        )
+
+        assert recovered is True
+        assert eng._state == LSIState.FLAT
+        eng._log_trade.assert_called_with("REGIME_GATE_BLOCKED", "gate=block_full_medium_vol date=20250115")
 
 
 # =============================================================================

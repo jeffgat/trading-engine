@@ -261,6 +261,47 @@ CREATE INDEX IF NOT EXISTS idx_live_trades_session ON live_trades(session);
 CREATE INDEX IF NOT EXISTS idx_live_trades_config ON live_trades(config_name);
 """
 
+_EXECUTION_TRADE_LOGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS execution_trade_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    config TEXT,
+    asset TEXT,
+    session TEXT NOT NULL,
+    event TEXT NOT NULL,
+    details_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exec_trade_logs_ts ON execution_trade_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_exec_trade_logs_session ON execution_trade_logs(session);
+CREATE INDEX IF NOT EXISTS idx_exec_trade_logs_config ON execution_trade_logs(config);
+"""
+
+_EXECUTION_MAIN_LOGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS execution_main_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    level TEXT NOT NULL,
+    logger TEXT NOT NULL,
+    message TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_exec_main_logs_ts ON execution_main_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_exec_main_logs_level ON execution_main_logs(level);
+"""
+
+_EXECUTION_WEBHOOK_LOGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS execution_webhook_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    account TEXT NOT NULL,
+    status TEXT NOT NULL,
+    http_code TEXT,
+    latency TEXT,
+    payload TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exec_webhook_logs_ts ON execution_webhook_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_exec_webhook_logs_account ON execution_webhook_logs(account);
+"""
+
 _REGIME_REPORTS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS regime_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -302,6 +343,9 @@ def init_db() -> Path:
         conn.executescript(_SAVED_CONFIGS_SCHEMA)
         conn.executescript(_REGIME_REPORTS_SCHEMA)
         conn.executescript(_LIVE_TRADES_SCHEMA)
+        conn.executescript(_EXECUTION_TRADE_LOGS_SCHEMA)
+        conn.executescript(_EXECUTION_MAIN_LOGS_SCHEMA)
+        conn.executescript(_EXECUTION_WEBHOOK_LOGS_SCHEMA)
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
         ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
@@ -1962,6 +2006,142 @@ def delete_live_trade(trade_id: int) -> bool:
     with sqlite3.connect(DB_PATH) as conn:
         cur = conn.execute("DELETE FROM live_trades WHERE id = ?", [trade_id])
         return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Execution log persistence
+# ---------------------------------------------------------------------------
+
+_EXEC_LOG_TABLES = {
+    "trades": "execution_trade_logs",
+    "main": "execution_main_logs",
+    "webhooks": "execution_webhook_logs",
+}
+
+_EXEC_LOG_COLUMNS = {
+    "trades": ("timestamp", "config", "asset", "session", "event", "details_json"),
+    "main": ("timestamp", "level", "logger", "message"),
+    "webhooks": ("timestamp", "account", "status", "http_code", "latency", "payload"),
+}
+
+
+def _prepare_exec_log_row(log_type: str, entry: dict) -> tuple:
+    """Convert a parsed log entry dict to a DB row tuple."""
+    cols = _EXEC_LOG_COLUMNS[log_type]
+    row = []
+    for col in cols:
+        if col == "details_json":
+            row.append(json.dumps(entry.get("details", {})))
+        else:
+            row.append(entry.get(col))
+    return tuple(row)
+
+
+def log_execution_log(log_type: str, entry: dict) -> int:
+    """Insert a single execution log entry. Returns the rowid."""
+    table = _EXEC_LOG_TABLES[log_type]
+    cols = _EXEC_LOG_COLUMNS[log_type]
+    placeholders = ", ".join("?" for _ in cols)
+    col_names = ", ".join(cols)
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+            _prepare_exec_log_row(log_type, entry),
+        )
+        return cur.lastrowid
+
+
+def log_execution_logs_batch(log_type: str, entries: list[dict]) -> int:
+    """Batch-insert execution log entries. Returns the count inserted."""
+    if not entries:
+        return 0
+    table = _EXEC_LOG_TABLES[log_type]
+    cols = _EXEC_LOG_COLUMNS[log_type]
+    placeholders = ", ".join("?" for _ in cols)
+    col_names = ", ".join(cols)
+    rows = [_prepare_exec_log_row(log_type, e) for e in entries]
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.executemany(
+            f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+            rows,
+        )
+        return len(rows)
+
+
+def list_execution_logs(
+    log_type: str,
+    *,
+    limit: int = 500,
+    offset: int = 0,
+    config: str = "",
+    session: str = "",
+    level: str = "",
+    account: str = "",
+    search: str = "",
+) -> tuple[list[dict], int]:
+    """List execution logs with optional filters. Returns (entries, total)."""
+    table = _EXEC_LOG_TABLES[log_type]
+    init_db()
+
+    clauses: list[str] = []
+    params: list = []
+
+    if config and log_type == "trades":
+        clauses.append("config = ?")
+        params.append(config)
+    if session and log_type == "trades":
+        clauses.append("session = ?")
+        params.append(session)
+    if level and log_type == "main":
+        clauses.append("level = ?")
+        params.append(level)
+    if account and log_type == "webhooks":
+        clauses.append("account = ?")
+        params.append(account)
+    if search:
+        if log_type == "trades":
+            clauses.append("(event LIKE ? OR details_json LIKE ? OR session LIKE ?)")
+            params.extend([f"%{search}%"] * 3)
+        elif log_type == "main":
+            clauses.append("(message LIKE ? OR logger LIKE ?)")
+            params.extend([f"%{search}%"] * 2)
+        elif log_type == "webhooks":
+            clauses.append("(payload LIKE ? OR account LIKE ?)")
+            params.extend([f"%{search}%"] * 2)
+
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        total = conn.execute(f"SELECT COUNT(*) FROM {table} {where}", params).fetchone()[0]
+        rows = conn.execute(
+            f"SELECT * FROM {table} {where} ORDER BY id DESC LIMIT ? OFFSET ?",
+            params + [limit, offset],
+        ).fetchall()
+
+    entries = []
+    for r in rows:
+        d = dict(r)
+        # Deserialize details_json back to dict for trade logs
+        if log_type == "trades" and "details_json" in d:
+            try:
+                d["details"] = json.loads(d.pop("details_json"))
+            except (json.JSONDecodeError, TypeError):
+                d["details"] = {}
+                d.pop("details_json", None)
+        entries.append(d)
+
+    return entries, total
+
+
+def count_execution_logs(log_type: str) -> int:
+    """Return total row count for a log type."""
+    table = _EXEC_LOG_TABLES[log_type]
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
 # ---------------------------------------------------------------------------

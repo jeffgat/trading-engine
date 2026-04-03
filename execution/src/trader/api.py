@@ -33,6 +33,101 @@ LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 _EXPERIMENTS_DB_URL = "http://143.110.148.234:8100"
 
 
+_LOG_TYPE_MAP = {"trade_log": "trades", "log": "main", "webhook_log": "webhooks"}
+
+
+# Buffered log writer — collects entries and flushes in batches via a single
+# background thread, avoiding the thread-per-line explosion on startup.
+import queue as _queue
+import threading as _log_threading
+
+_log_queue: _queue.Queue[tuple[str, dict]] = _queue.Queue(maxsize=10_000)
+_LOG_FLUSH_INTERVAL = 2.0  # seconds
+_LOG_BATCH_SIZE = 200
+
+
+def _log_writer_loop() -> None:
+    """Drain the log queue and batch-POST to the experiments DB."""
+    import json
+    import urllib.request
+    import time
+
+    while True:
+        # Collect a batch (block on first item, then drain quickly)
+        batch: dict[str, list[dict]] = {}
+        try:
+            log_type, entry = _log_queue.get(timeout=_LOG_FLUSH_INTERVAL)
+            batch.setdefault(log_type, []).append(entry)
+        except _queue.Empty:
+            continue
+
+        # Drain remaining without blocking, up to batch size
+        while len(batch.get(log_type, [])) < _LOG_BATCH_SIZE:
+            try:
+                lt, ent = _log_queue.get_nowait()
+                batch.setdefault(lt, []).append(ent)
+            except _queue.Empty:
+                break
+
+        # Send each log type as a batch
+        for lt, entries in batch.items():
+            try:
+                payload = json.dumps({"entries": entries}).encode()
+                req = urllib.request.Request(
+                    f"{_EXPERIMENTS_DB_URL}/api/execution-logs/{lt}",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    resp.read()
+            except Exception as exc:
+                logger.debug("Failed to write %d %s log(s) to DB: %s", len(entries), lt, exc)
+
+
+_log_writer_thread = _log_threading.Thread(target=_log_writer_loop, daemon=True)
+_log_writer_thread.start()
+
+
+def _write_log_to_db(log_type: str, entry: dict) -> None:
+    """Queue a parsed log entry for batch write to the experiments DB."""
+    try:
+        _log_queue.put_nowait((log_type, entry))
+    except _queue.Full:
+        pass  # Drop silently if queue is full — local files are the fallback
+
+
+def _fetch_logs_from_db(
+    log_type: str,
+    limit: int = 500,
+    offset: int = 0,
+    **filters,
+) -> dict:
+    """Fetch execution logs from the experiments DB API."""
+    import json
+    import urllib.request
+    from urllib.parse import urlencode
+
+    params = {k: str(v) for k, v in {
+        "limit": limit,
+        "offset": offset,
+        **filters,
+    }.items() if v}
+    url = f"{_EXPERIMENTS_DB_URL}/api/execution-logs/{log_type}?{urlencode(params)}"
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read().decode())
+    if result.get("success"):
+        data = result["result"]
+        return {
+            "entries": data["entries"],
+            "total": data["total"],
+            "limit": data.get("limit", limit),
+            "offset": data.get("offset", offset),
+        }
+    return {"entries": [], "total": 0, "limit": limit, "offset": offset}
+
+
 def _write_trade_to_db(record: "TradeRecord") -> None:
     """Write a trade record to the experiments DB (non-blocking)."""
     import threading
@@ -474,6 +569,7 @@ class LogTailer:
             parsed = parser(line)
             if parsed is not None:
                 await self.state.broadcast({"type": msg_type, "data": parsed})
+                _write_log_to_db(_LOG_TYPE_MAP[msg_type], parsed)
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +627,13 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         search: str = Query(""),
         config: str = Query("", description="Filter by execution config name"),
+        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
     ):
+        if source == "db":
+            try:
+                return _fetch_logs_from_db("trades", limit=limit, offset=offset, config=config, search=search)
+            except Exception as exc:
+                logger.warning("DB log fetch failed, falling back to local: %s", exc)
         entries, total = _read_log_lines(
             LOG_DIR / "trades.log",
             limit=limit,
@@ -548,7 +650,13 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         level: str = Query(""),
         search: str = Query(""),
+        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
     ):
+        if source == "db":
+            try:
+                return _fetch_logs_from_db("main", limit=limit, offset=offset, level=level, search=search)
+            except Exception as exc:
+                logger.warning("DB log fetch failed, falling back to local: %s", exc)
         entries, total = _read_log_lines(
             LOG_DIR / "trader.log",
             limit=limit,
@@ -565,7 +673,13 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         search: str = Query(""),
         account: str = Query("", description="Filter by account/config name"),
+        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
     ):
+        if source == "db":
+            try:
+                return _fetch_logs_from_db("webhooks", limit=limit, offset=offset, account=account, search=search)
+            except Exception as exc:
+                logger.warning("DB log fetch failed, falling back to local: %s", exc)
         entries, total = _read_log_lines(
             LOG_DIR / "webhooks.log",
             limit=limit,
@@ -1131,6 +1245,7 @@ def _defaults_for_session(name: str) -> dict:
 def _session_info(engine) -> dict:
     """Extract session config info from an engine instance."""
     if _is_lsi_engine(engine):
+        regime_gates = list(getattr(engine, "regime_gates", ()) or ())
         return {
             "type": "lsi",
             "config_name": engine.config_name,
@@ -1156,7 +1271,10 @@ def _session_info(engine) -> dict:
             "long_only": engine.long_only,
             "excluded_dow": engine.excluded_dow,
             "exec_ticker": engine.exec_ticker,
+            "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
+            "regime_gates": regime_gates,
         }
+    regime_gates = list(getattr(engine, "regime_gates", ()) or ())
     return {
         "type": "continuation",
         "config_name": engine.config_name,
@@ -1190,6 +1308,7 @@ def _session_info(engine) -> dict:
         "min_stop_pts": engine.min_stop_pts,
         "min_tp1_pts": engine.min_tp1_pts,
         "exec_ticker": engine.exec_ticker,
-        "regime_gate": getattr(engine, "regime_gate", None),
+        "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
+        "regime_gates": regime_gates,
         "structure_gate": getattr(engine, "structure_gate", None),
     }

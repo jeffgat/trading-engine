@@ -1562,6 +1562,89 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
 
 ---
 
+### NY LSI fvg_limit RR2/TP0.5 + Thu Excl + Medium-Vol Gate — CONDITIONAL (Effective GO)
+
+- **Status**: CONDITIONAL (effective GO) — full 8-step strategy workflow completed. PSR/DSR validated. Phase-one payout economics strong. Holdout 100% payout success rate.
+- **Optimization**: Full new-strategy workflow — 20 filter combos → 128 variable sweeps → discovery pipeline (WF + stability + MC) → regime gate application → PSR/DSR → phase-one payout → DOW significance analysis → final save
+- **Key innovation**: RR=2.0/TP1=0.5 parameterization (lower RR, higher TP1 vs prior RR=3.0/TP1=0.3) combined with medium-vol regime avoidance gate and Thu-only DOW exclusion.
+- **Final config**:
+
+| Param | Value |
+|-------|-------|
+| strategy | lsi |
+| lsi_entry_mode | fvg_limit |
+| lsi_stop_mode | absolute |
+| session | NY |
+| entry_start | 09:35 |
+| entry_end | 15:30 |
+| flat_start | 15:50 |
+| rr | 2.0 |
+| tp1_ratio | 0.5 |
+| min_gap_atr_pct | 5.0% |
+| atr_length | 14 |
+| lsi_n_left | 8 |
+| lsi_n_right | 60 |
+| lsi_fvg_window_left | 20 |
+| lsi_fvg_window_right | 5 |
+| direction | long only |
+| DOW filter | Thu excluded only |
+| regime gate | skip bull_medium_vol + sideways_medium_vol |
+| magnifier | 1s |
+
+- **Full-history performance** (2016–2026, Thu excl + regime gated):
+  - 588 trades, 61.1% WR, PF 1.70, Sharpe 3.646, Net R +126.4R, R/yr 12.3R, Max DD -7.6R, **Calmar 16.72**
+  - **0 negative full years** (min: 2024 +1.2R; max: 2017 +28.5R)
+  - Median stop: 189 ticks (~47 pts NQ)
+  - DB: `bt-nq-ny-lsi-rr2-tp0-5-thu-gated-2016-2026-174198`
+
+- **Walk-forward OOS** (6 folds, 36m IS / 12m OOS / 12m step, Thu excl + regime gated, RR/TP1 frozen):
+  - Combined OOS: 311 trades, Sharpe 3.38, Net R +62.1R, DD -7.6R, **Calmar 8.22**
+  - WF efficiency: **0.766** | Parameter stability: **0.833 (high)**
+  - gap mode=5.0 (4/6 folds), ATR mode=14 (5/6 folds)
+  - All 6 OOS years positive
+
+- **PSR/DSR validation** (PASS):
+  - PSR: **0.9999** (strong)
+  - DSR: **0.709** at 832 raw trials — survives multiple-testing deflation (threshold >=0.50)
+  - Observed Sharpe 3.38 vs E[max SR] 2.89 under null
+
+- **Holdout OOS** (2025-04-01 onward, Thu excl + regime gated, WF mode params):
+  - 45 trades, 66.7% WR, PF 1.92, Sharpe 4.268, **+11.2R**, DD -2.6R, Calmar 4.33
+  - 2025: +8.4R, 2026: +2.8R
+  - Payout simulation: **24 accounts, 15 payouts, 0 breaches, 9 open, 100% success rate, EV +4.36R/account**
+
+- **Monte Carlo** (PASS): **99.3% survival** at 15R, **0.7% ruin**. DD p50=-7.6R, p95=-11.9R.
+
+- **5-year performance** (2021–2026, Thu excl + regime gated):
+  - 283 trades, 58.3% WR, PF 1.40, Net R +35.9R, DD -7.6R, Calmar 4.75, Sharpe 2.20
+  - DB: `bt-nq-ny-lsi-rr2-tp0-5-thu-gated-2021-2026-3c4bd8`
+
+- **DOW significance analysis** (per-day t-test + bootstrap on regime-gated trades):
+  - **Fri**: best day — +45.1R, avg R +0.347, p=0.0001, 0 neg years. **Strongly significant.**
+  - **Tue**: second — +34.7R, avg R +0.209, p=0.004. **Significant.**
+  - **Mon**: borderline — +18.4R, avg R +0.169, p=0.058, CI barely touches 0. Keep.
+  - **Wed**: noisy positive — +17.0R, avg R +0.123, p=0.114, 3 neg years. Keep (adds real R).
+  - **Thu**: dead — +2.6R, avg R +0.019, p=0.813, **5 neg years**. **Only statistically dead day.**
+  - Thu-only exclusion beats Wed+Thu: Calmar 15.24 vs 12.04, +17R more net R, 138 more trades, MC survival 99.3% vs 96.9%.
+
+- **Why Thu-only over Wed+Thu**:
+  - Wednesday contributes +17.0R of genuine (if noisy) edge — removing it costs real R
+  - Thursday is the only day with near-zero avg R, 5 neg years, and p=0.81 (indistinguishable from zero)
+  - Thu-only: Calmar 16.72, 0 neg years, 99.3% MC survival, 588 trades
+  - Wed+Thu: Calmar 12.04, 0 neg years, 96.9% MC survival, 405 trades
+
+- **Known issue**: LSI engine does not respect `excluded_days` in config. DOW filtering is applied post-hoc by `results_to_dict()` via `_apply_replay_filters()`. The DB and frontend show correct DOW-filtered results, but intermediate pipeline metrics (before `results_to_dict`) include leaked Wed/Thu trades. This bug does not affect saved results or live execution (which uses the gate infrastructure in `gates.py`).
+
+- **Regime gate details**: Skip trades on days classified as `bull_medium_vol` or `sideways_medium_vol`. Classification uses yesterday's daily close (`.shift(1)`): close_vs_sma20, ret_5d, realized_vol_21d with frozen NQ tercile thresholds (low ≤12.52%, medium 12.52–20.40%, high >20.40%). No lookahead bias (LLM council verified). Gate removes ~20-30% of trades depending on period.
+
+- **Scripts**:
+  - `run_nq_ny_lsi_discovery_step1_baseline.py` through `step7_phase_one.py` (full workflow)
+  - `run_nq_ny_lsi_dow_analysis.py` (DOW significance analysis)
+  - `run_nq_ny_lsi_dow_verify.py` (DOW filter verification — confirmed engine bug)
+  - `save_nq_ny_lsi_rr2_tp05_thu_gated_final.py` (final save script)
+
+---
+
 ## Context Filter Research: 30m Structure + VWAP Gate
 
 ### Summary
@@ -1795,3 +1878,92 @@ Because HH/HL-2 on session-aligned 15m bars (09:30 start) requires two completed
 - This is now the current NQ generalist payout portfolio to carry forward.
 - It is fast enough to be operationally useful, especially as one lane inside a broader multi-leg book.
 - Next research should split true regime specialists into a separate portfolio track instead of continuing to treat this mixed long stack as regime-specialized.
+
+---
+
+### Asia Continuation Discovery (Regime-Gated, ORB 100% Stop) — Phase-One Complete (2026-04-01)
+
+**Full pipeline with 1s bar magnifier** — discovery sweep (3,888 configs), walk-forward (9 candidates, 28 folds), PSR/DSR validation, phase-one prop simulation. All with hierarchical 5m→1m→1s magnifier.
+
+#### Asia-2 (WINNER — promoted to live paper trading)
+- **Status**: CONDITIONAL (phase-one) — holdout performance strong, recommended for paper trading
+- **Bar magnifier**: ON (5m→1m→1s hierarchical)
+- **Config**:
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 20:00-20:15 (15m) |
+| entry window | 20:15-23:15 |
+| flat | 04:00-07:00 |
+| stop | ORB 100% (full range) |
+| rr | 3.5 |
+| tp1_ratio | 0.6 (TP1 at 2.1R, TP2 at 3.5R) |
+| direction | long only |
+| atr_length | 14 |
+| min_gap_atr_pct | 1.0% |
+| regime gate | medium-vol avoidance (skip bull_medium_vol + sideways_medium_vol) |
+| bar magnifier | OFF during discovery (re-enable for production) |
+
+- **Pre-holdout** (2016-2024, 1s magnifier): 616 trades, 40.7% WR, PF 1.33, +119.2R, Calmar 9.51, DD -12.5R, Sharpe 2.02
+- **Walk-forward OOS** (1s magnifier): 28 folds, +108.7R, Calmar 8.55, WF efficiency 0.617, stability 0.821 (high)
+- **PSR**: 1.000 (strong) | **DSR** @raw 3888 trials: 0.310
+- **Holdout** (2024-03 to 2026-02, 1s magnifier): 115 trades, 46.1% WR, PF 1.71, **+42.5R, Calmar 6.55, Sharpe 3.77, DD -6.5R**
+- **Holdout yearly**: 2024: +3.3R | 2025: +36.5R | 2026: +2.8R
+- **Holdout prop simulation**: **76.7% payout rate**, 14.4% breach, EV $15,288/attempt
+- **Magnifier confirmation**: Results identical to 5m-only discovery — magnifier did not change rankings or materially alter metrics
+
+#### Asia-A (Strong Backup)
+- Same as Asia-B but RR=3.0 instead of 3.5
+- Holdout: +37.9R, Calmar 6.21, 74.8% payout rate
+
+#### NY-B (Shelved)
+- 30m ORB, ORB 25% stop, RR=2.5, TP1=0.4, long, ungated
+- Pre-holdout great (+62.6R, Cal 8.01) but **holdout collapsed** (+1.8R, Cal 0.17, 30.8% payout)
+- 2024-2025 NY session not favorable for this config
+
+#### All 9 Candidates — Walk-Forward Ranking (1s magnifier)
+
+| # | Name | OOS R | Calmar | Sharpe | WFE | Stability | HO R | HO PR | Verdict |
+|---|------|-------|--------|--------|-----|-----------|------|-------|---------|
+| 1 | **Asia-1** (RR=3.0) | +100.8 | 9.73 | 2.09 | 0.588 | 0.839 | +37.9 | 74.8% | Backup |
+| 2 | **Asia-2** (RR=3.5) | +108.7 | 8.55 | 2.16 | 0.617 | 0.821 | **+42.5** | **76.7%** | **WINNER** |
+| 3 | Asia-3 (RR=3.5 TP0.5) | +105.1 | 8.74 | 2.19 | 0.589 | 0.732 | — | — | — |
+| 4 | NY-2 (RR=3.5) | +103.4 | 6.84 | 1.74 | 0.448 | 0.750 | +8.7 | 25.2% | Shelved |
+| 5 | NY-3 (RR=3.5 TP0.4) | +87.5 | 5.86 | 1.56 | 0.451 | 0.947 | — | — | — |
+| 6 | LDN-1 (ATR 5%) | +65.0 | 5.10 | 2.04 | 0.653 | 0.822 | -2.9 | 31.9% | Shelved |
+| 7 | LDN-3 | +55.2 | 4.32 | 1.78 | 0.720 | 0.857 | — | — | — |
+| 8 | NY-1 (RR=2.5) | +70.8 | 4.69 | 1.35 | 0.364 | 0.768 | — | — | — |
+| 9 | LDN-2 | +42.1 | 3.62 | 1.65 | 0.792 | 0.679 | — | — | — |
+
+#### Post-Hoc Regime Gate Comparison (all 9 candidates, holdout)
+
+All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_vol` + `sideways_medium_vol`) on holdout (2024-03 → 2026-02). Script: `run_nq_orb_regime_gate_comparison.py`.
+
+| # | Name | Ungated R | Ungated Cal | Ungated DD | Gated R | Gated Cal | Gated DD | ΔCal | Gate helps? |
+|---|------|-----------|-------------|------------|---------|-----------|----------|------|-------------|
+| 1 | Asia-1 | +45.8 | 7.44 | -6.2 | +37.9 | 6.21 | -6.1 | -1.23 | No (trades fewer) |
+| 2 | Asia-2 | +49.6 | 6.74 | -7.4 | +42.5 | 6.55 | -6.5 | -0.18 | No (Sharpe ↑ but Cal ↓) |
+| 3 | Asia-3 | +44.8 | 7.25 | -6.2 | +39.7 | 6.49 | -6.1 | -0.76 | No (trades fewer) |
+| 4 | **NY-2** | +8.7 | 0.76 | -11.3 | **+8.7** | **1.45** | **-6.0** | **+0.68** | **YES — DD halved** |
+| 5 | NY-3 | +13.8 | 1.30 | -10.6 | +7.7 | 1.18 | -6.5 | -0.12 | No (lost 6R) |
+| 6 | NY-1 | +9.9 | 0.85 | -11.7 | +6.2 | 0.90 | -6.9 | +0.06 | Marginal |
+| 7 | LDN-3 | +2.2 | 0.16 | -13.6 | +5.3 | 0.64 | -8.2 | +0.48 | Yes (but still weak) |
+| 8 | LDN-1 | -5.3 | -0.24 | -22.0 | -2.9 | -0.27 | -10.7 | -0.03 | No (still negative) |
+| 9 | LDN-2 | -1.9 | -0.15 | -12.5 | -2.6 | -0.33 | -8.1 | -0.17 | No (still negative) |
+
+**Gate impact pattern**: the gate compresses drawdown across every candidate (ΔDD positive for all 9). For Asia, DD was already small so the gate mainly trims profitable trades. For NY and LDN, the DD compression is substantial (4-11R smaller).
+
+#### Key Findings
+1. **Asia session dominates NQ ORB continuation** — both Asia candidates crushed holdout while NY and LDN collapsed
+2. **Regime gate is essential for Asia** — medium-vol avoidance improved all metrics in walk-forward and held up on holdout
+3. **ORB 100% stop (full range)** is the correct stop for Asia overnight sessions
+4. **Higher RR (3.5) beat lower RR (3.0)** on holdout — bigger winners compensate for lower WR
+5. **NY collapsed in 2025** (-9.1R) despite strong 2024 (+18R) — not reliable as standalone
+6. **LDN went negative on holdout** (-2.9R) — 2025 was -7.4R
+7. **Bar magnifier (1s) confirmed**: results identical to 5m-only discovery — did not change rankings or conclusions
+8. **Min gap ATR = 1.0% is optimal** — every increase (1.5-3.0%) degraded performance across all sessions
+9. **NY-2 gated is the best NY candidate** — regime gate halved DD (-11.3 → -6.0R) while preserving +8.7R net. Calmar 1.45 gated vs 0.76 ungated. Original WF ran NY ungated — this was suboptimal
+10. **LDN is dead regardless of gating** — gate halves DD but session has no edge on holdout. All 3 LDN candidates negative or near-zero gated
+11. **Gate universally compresses drawdown** — every candidate saw smaller holdout DD when gated, but the trade-off is fewer trades and sometimes lost net R

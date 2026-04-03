@@ -1,7 +1,8 @@
-"""Pre-trade gate helpers for continuation sessions.
+"""Pre-trade gate helpers for execution engines.
 
 These gates intentionally mirror the backtesting research logic closely:
 - Daily bull/no-low-confidence regime routing for the bull specialist.
+- Frozen combined-regime medium-vol avoidance gates.
 - 15m HH/HL + VWAP context confirmation on the signal bar.
 """
 
@@ -17,7 +18,14 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 DailyHistoryProvider = Callable[[str], list[tuple[date, float, float, float, float]]]
+RegimeGateCheck = Callable[[str], bool]
+CompiledRegimeGate = tuple[str, RegimeGateCheck]
+
 _daily_history_provider: DailyHistoryProvider | None = None
+
+# Frozen pre-holdout tercile thresholds from regime research.
+_LOW_VOL_UPPER = 0.1252
+_MEDIUM_VOL_UPPER = 0.2040
 
 
 def _bars_to_frame(bars) -> pd.DataFrame:
@@ -78,8 +86,8 @@ def _build_nq_ny_regime_calendar(daily: pd.DataFrame) -> pd.DataFrame:
 
     close = daily["close"]
     log_returns = np.log(close / close.shift(1))
-    realized_vol_21d = log_returns.rolling(21).std() * np.sqrt(252)
-    close_vs_sma20 = close / close.rolling(20).mean() - 1.0
+    realized_vol_21d = log_returns.rolling(21, min_periods=21).std() * np.sqrt(252)
+    close_vs_sma20 = close / close.rolling(20, min_periods=20).mean() - 1.0
     ret_5d = close.pct_change(5)
 
     calendar = pd.DataFrame(
@@ -103,6 +111,30 @@ def _build_nq_ny_regime_calendar(daily: pd.DataFrame) -> pd.DataFrame:
     calendar.loc[bear_mask, "regime"] = "bear"
     calendar.loc[~calendar["warmup_ok"], "regime"] = "warmup"
     return calendar.reset_index(drop=True)
+
+
+def _classify_vol(vol_value: float) -> str:
+    if pd.isna(vol_value):
+        return "unknown"
+    if vol_value <= _LOW_VOL_UPPER:
+        return "low_vol"
+    if vol_value <= _MEDIUM_VOL_UPPER:
+        return "medium_vol"
+    return "high_vol"
+
+
+def _build_nq_ny_extended_regime_calendar(daily: pd.DataFrame) -> pd.DataFrame:
+    calendar = _build_nq_ny_regime_calendar(daily)
+    if calendar.empty:
+        return pd.DataFrame(columns=["date", "low_confidence", "regime", "vol_regime", "combined_regime"])
+
+    calendar["vol_regime"] = calendar["realized_vol_21d"].apply(_classify_vol)
+    calendar.loc[~calendar["warmup_ok"], "vol_regime"] = "unknown"
+    calendar["combined_regime"] = calendar.apply(
+        lambda row: "warmup" if str(row["regime"]) == "warmup" else f"{row['regime']}_{row['vol_regime']}",
+        axis=1,
+    )
+    return calendar
 
 
 def _session_vwap(df: pd.DataFrame) -> pd.Series:
@@ -149,52 +181,100 @@ def set_daily_history_provider(provider: DailyHistoryProvider | None) -> None:
     _daily_history_provider = provider
 
 
-def build_regime_gate(name: str | None) -> Callable[[str], bool] | None:
-    if not name:
+def normalize_regime_gates(
+    legacy_gate: str | None,
+    configured_gates: list[str] | tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    def _append(name: str | None) -> None:
+        if not name:
+            return
+        trimmed = str(name).strip()
+        if not trimmed or trimmed == "none" or trimmed in seen:
+            return
+        normalized.append(trimmed)
+        seen.add(trimmed)
+
+    _append(legacy_gate)
+    for name in configured_gates or ():
+        _append(name)
+    return tuple(normalized)
+
+
+def _load_nq_daily_history(name: str, date_key: str) -> pd.DataFrame | None:
+    if _daily_history_provider is None:
+        logger.warning(
+            "Regime gate '%s' has no daily history provider — blocking date=%s",
+            name,
+            date_key,
+        )
         return None
-    if name != "bull_no_low_confidence":
-        raise ValueError(f"Unknown regime gate: {name}")
 
+    daily_bars = _daily_history_provider("NQ.FUT")
+    if not daily_bars:
+        logger.warning(
+            "Regime gate '%s' has no NQ daily history — blocking date=%s",
+            name,
+            date_key,
+        )
+        return None
+
+    daily = _daily_bars_to_frame(daily_bars)
+    daily = _append_placeholder_day_if_needed(daily, date_key)
+    if daily.empty:
+        logger.warning(
+            "Regime gate '%s' could not build a daily frame from NQ history — blocking date=%s",
+            name,
+            date_key,
+        )
+        return None
+    return daily
+
+
+def _calendar_row_for_date(
+    calendar: pd.DataFrame,
+    *,
+    name: str,
+    date_key: str,
+    daily: pd.DataFrame,
+) -> pd.Series | None:
+    if calendar.empty:
+        logger.warning(
+            "Regime gate '%s' could not build a calendar from NQ daily history — blocking date=%s",
+            name,
+            date_key,
+        )
+        return None
+
+    row_df = calendar.loc[pd.to_datetime(calendar["date"]).dt.strftime("%Y%m%d") == date_key]
+    if row_df.empty:
+        logger.warning(
+            "Regime gate '%s' has no calendar row for date=%s (history_end=%s) — blocking",
+            name,
+            date_key,
+            daily.index[-1].strftime("%Y%m%d") if not daily.empty else "-",
+        )
+        return None
+    if len(row_df) > 1:
+        logger.warning(
+            "Regime gate '%s' found %d calendar rows for date=%s — using last",
+            name,
+            len(row_df),
+            date_key,
+        )
+    return row_df.iloc[-1]
+
+
+def _build_bull_no_low_confidence_gate(name: str) -> RegimeGateCheck:
     def _gate(date_key: str) -> bool:
-        if _daily_history_provider is None:
-            logger.warning(
-                "Regime gate '%s' has no daily history provider — blocking date=%s",
-                name,
-                date_key,
-            )
+        daily = _load_nq_daily_history(name, date_key)
+        if daily is None:
             return False
 
-        daily_bars = _daily_history_provider("NQ.FUT")
-        if not daily_bars:
-            logger.warning(
-                "Regime gate '%s' has no NQ daily history — blocking date=%s",
-                name,
-                date_key,
-            )
-            return False
-
-        daily = _daily_bars_to_frame(daily_bars)
-        daily = _append_placeholder_day_if_needed(daily, date_key)
         calendar = _build_nq_ny_regime_calendar(daily)
-        if calendar.empty:
-            logger.warning(
-                "Regime gate '%s' could not build a calendar from NQ daily history — blocking date=%s",
-                name,
-                date_key,
-            )
-            return False
-
-        row_df = calendar.loc[pd.to_datetime(calendar["date"]).dt.strftime("%Y%m%d") == date_key]
-        if row_df.empty:
-            logger.warning(
-                "Regime gate '%s' has no calendar row for date=%s (history_end=%s) — blocking",
-                name,
-                date_key,
-                daily.index[-1].strftime("%Y%m%d") if not daily.empty else "-",
-            )
-            return False
-
-        row = row_df.iloc[-1]
+        row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
         if row is None:
             return False
         return str(row["regime"]) == "bull" and not bool(row["low_confidence"])
@@ -202,8 +282,100 @@ def build_regime_gate(name: str | None) -> Callable[[str], bool] | None:
     return _gate
 
 
+def _build_combined_regime_block_gate(
+    name: str,
+    blocked_buckets: frozenset[str],
+) -> RegimeGateCheck:
+    def _gate(date_key: str) -> bool:
+        daily = _load_nq_daily_history(name, date_key)
+        if daily is None:
+            return False
+
+        calendar = _build_nq_ny_extended_regime_calendar(daily)
+        row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
+        if row is None:
+            return False
+        return str(row["combined_regime"]) not in blocked_buckets
+
+    return _gate
+
+
+_REGIME_GATE_BUILDERS: dict[str, Callable[[str], RegimeGateCheck]] = {
+    "bull_no_low_confidence": _build_bull_no_low_confidence_gate,
+    "block_bull_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_medium_vol"})),
+    "block_sideways_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"sideways_medium_vol"})),
+    "block_full_medium_vol": lambda name: _build_combined_regime_block_gate(
+        name,
+        frozenset({"bull_medium_vol", "sideways_medium_vol"}),
+    ),
+}
+
+
+def build_regime_gates(
+    names: list[str] | tuple[str, ...] | None,
+) -> tuple[CompiledRegimeGate, ...]:
+    compiled: list[CompiledRegimeGate] = []
+    for name in normalize_regime_gates(None, names):
+        builder = _REGIME_GATE_BUILDERS.get(name)
+        if builder is None:
+            raise ValueError(f"Unknown regime gate: {name}")
+        compiled.append((name, builder(name)))
+    return tuple(compiled)
+
+
+def build_regime_gate(name: str | None) -> RegimeGateCheck | None:
+    if not name or name == "none":
+        return None
+    compiled = build_regime_gates((name,))
+    return compiled[0][1] if compiled else None
+
+
+def normalize_regime_gate_fields(
+    regime_gate: str | None,
+    regime_gates: tuple[str, ...] | list[str],
+    regime_gate_check: RegimeGateCheck | None,
+    regime_gate_checks: tuple[CompiledRegimeGate, ...] | list[CompiledRegimeGate],
+) -> tuple[str | None, tuple[str, ...], RegimeGateCheck | None, tuple[CompiledRegimeGate, ...]]:
+    """Normalize and cross-link the four regime-gate fields.
+
+    Returns (regime_gate, regime_gates, regime_gate_check, regime_gate_checks)
+    with consistent values.  Used by both ORBEngine and LSIEngine at init time.
+    """
+    gates_t: tuple[str, ...] = tuple(regime_gates)
+    checks_t: tuple[CompiledRegimeGate, ...] = tuple(regime_gate_checks)
+
+    if checks_t:
+        gates_t = tuple(name for name, _check in checks_t)
+        if len(checks_t) == 1:
+            regime_gate = regime_gate or checks_t[0][0]
+            regime_gate_check = regime_gate_check or checks_t[0][1]
+        elif regime_gate not in gates_t:
+            regime_gate = None
+    elif regime_gate_check is not None:
+        gate_name = regime_gate or "custom"
+        gates_t = (gate_name,)
+        checks_t = ((gate_name, regime_gate_check),)
+        regime_gate = gate_name
+    elif gates_t:
+        if len(gates_t) != 1 or regime_gate not in gates_t:
+            regime_gate = gates_t[0] if len(gates_t) == 1 else None
+
+    return regime_gate, gates_t, regime_gate_check, checks_t
+
+
+def blocking_regime_gate_name(
+    regime_gate_checks: tuple[CompiledRegimeGate, ...],
+    date_key: str,
+) -> str | None:
+    """Return the name of the first regime gate that blocks *date_key*, or None."""
+    for gate_name, gate_check in regime_gate_checks:
+        if not gate_check(date_key):
+            return gate_name
+    return None
+
+
 def build_structure_gate(name: str | None):
-    if not name:
+    if not name or name == "none":
         return None
     if name != "hh_hl_2_vwap":
         raise ValueError(f"Unknown structure gate: {name}")

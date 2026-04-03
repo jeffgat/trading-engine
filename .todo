@@ -1,29 +1,10 @@
-# New Strategy Workflow
+# TODOS/NOTES
+- work the regime gating logic into the execution engine
+- explore adding LSI strategies to the port_4leg?
+- each leg of the port_4leg is quite weak on its own for the last 5 yrs
 
-1. **Start with the thesis**
 
-   Define the strategy family, instrument, session, direction bias, and read the relevant `backtesting/learnings/{ASSET}.md` first.
+- continue exploring LSI
+- LSI does better with regime gates than ORB
+- update the tradingview indicators
 
-2. **Build a baseline**
-
-   Create a simple baseline config or script and run a full-history pre-holdout backtest just to see if the idea is structurally alive.
-
-3. **Freeze the final hold-out early**
-
-   Reserve the most recent `12-24` months and do not touch it during discovery.
-
-4. **Explore on pre-holdout data only**
-
-   Run coarse variable sweeps or small grid searches with `2-3` parameters at a time. Start broad, then narrow.
-
-5. **Use `discovery-pipeline`**
-
-   Once the anchor stabilizes, use it to rank candidates by combined OOS behavior, walk-forward retention, and local plateau stability. Promote only a tiny frozen shortlist.
-
-6. **Run `phase-one-robust-pipeline`**
-
-   Feed only the frozen promoted candidates into phase one and evaluate payout rate, EV per attempt, and time to payout. Do not use phase one as the main search loop.
-
-7. **Save and document the winner**
-
-   After downstream validation, save the final config and update the asset learnings file with the conclusion and DB references.

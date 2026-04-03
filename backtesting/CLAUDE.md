@@ -167,7 +167,7 @@ NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Prima
 When starting from scratch with a new strategy or strategy variant, use this workflow:
 
 1. **Start with the thesis and the asset learnings**
-   - Read the relevant `learnings/{ASSET}.md` file first.
+   - Read the relevant `learnings/asset/{ASSET}.md` file first.
    - Define the strategy family clearly: continuation, inversion, LSI, VWAP, gap fill, regime specialist, etc.
    - Decide the instrument, session, direction bias, and rough execution logic before sweeping.
 
@@ -201,7 +201,7 @@ When starting from scratch with a new strategy or strategy variant, use this wor
 
 7. **Save the winning config only after downstream validation**
    - Once a candidate survives the downstream pipeline, save the final config/result.
-   - Update the relevant `learnings/{ASSET}.md` with the final conclusion, key evidence, and DB run IDs.
+   - Update the relevant `learnings/asset/{ASSET}.md` with the final conclusion, key evidence, and DB run IDs.
 
 In short:
 
@@ -306,7 +306,7 @@ FastAPI on port 8000. Endpoints for running backtests, listing/loading/deleting 
 
 ### Per-Asset Learnings
 
-Living documents in `learnings/` track what works and what doesn't for each asset. Check the relevant file before testing a strategy — if it's already NO-GO, don't re-test. Update after every conclusion with GO/NO-GO status, key metrics, and DB experiment name. See `learnings/GC.md` as the template.
+Living documents in `learnings/` track what works and what doesn't for each asset. Check the relevant file before testing a strategy — if it's already NO-GO, don't re-test. Update after every conclusion with GO/NO-GO status, key metrics, and DB experiment name. See `learnings/asset/GC.md` as the template.
 
 ### Findings Logs
 Do NOT automatically record backtest/optimization results. Only append when the user explicitly says to record/log the results. Use the format documented at the top of each file.

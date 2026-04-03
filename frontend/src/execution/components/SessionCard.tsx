@@ -313,7 +313,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
                 <AlertDialogTrigger asChild>
                   <button
                     disabled={saving}
-                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/20 text-loss hover:bg-loss/30 border-loss/30"
+                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/10 text-loss hover:bg-loss/20 border-loss/30"
                   >
                     {saving ? "..." : "Pause"}
                   </button>
@@ -322,13 +322,13 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
                   <AlertDialogHeader>
                     <AlertDialogTitle>Pause {engine.session}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This will stop the strategy from taking new trades. Any open position will remain active.
+                      This will flatten any open position and pause the strategy from taking new trades.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={handleToggle}>
-                      Pause
+                      Flatten/Pause
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>

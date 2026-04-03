@@ -108,21 +108,40 @@ Every backtest and optimization **must** have a unique, descriptive `experiment_
 3. **Include the differentiator** — if two runs share instrument/sessions/dates, the description must explain what's different (params, risk size, feature toggle, etc.)
 4. The auto-namer appends a session-config fingerprint as a safety net, but explicit names are always preferred
 
-## Per-Asset Learnings
+## Learnings Folder Structure
 
-Maintain a living document for each asset in `backtesting/learnings/`. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
+The `backtesting/learnings/` directory is organized into subfolders:
 
-- **Location**: `backtesting/learnings/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
+```
+backtesting/learnings/
+├── asset/          # Per-instrument learnings ({SYMBOL}.md)
+├── portfolios/     # Portfolio construction & allocation docs
+├── reports/        # Pipeline reports, sweep reports, council reports
+├── ALPHA_V1.md     # Strategy version notes (top-level)
+├── CURRENT_WORKFLOWS.md
+├── REGIME.md
+└── prop_regime_specialist_framework.md
+```
+
+### Per-Asset Learnings
+
+Maintain a living document for each asset. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
+
+- **Location**: `backtesting/learnings/asset/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
 - **When to update**: After completing a strategy test, robust pipeline run, or discovering a significant finding for any asset
 - **What to include**: Instrument profile, strategies tested (with GO/NO-GO status), winning configs, key findings, parameter sensitivity, prop firm considerations
-- **Format**: See `backtesting/learnings/GC.md` as the reference template
+- **Format**: See `backtesting/learnings/asset/GC.md` as the reference template
+
+### Reports
+
+Pipeline reports, council transcripts, and sweep analyses go in `backtesting/learnings/reports/`. Council reports (HTML + transcript MD) are also saved here.
 
 ### Rules for agents
 
 1. **Check learnings before testing** — read the asset's learnings file before proposing or running a strategy. If it's already marked NO-GO, don't re-test without a fundamentally different approach.
 2. **Update after every conclusion** — when a strategy is validated (GO) or ruled out (NO-GO), add it to the learnings doc immediately.
 3. **Include the evidence** — record key metrics (trades, WR, Net R, Sharpe, DD) and the DB experiment name so results are traceable.
-4. **Create new files as needed** — when testing a new asset for the first time, create its learnings file following the GC.md template.
+4. **Create new files as needed** — when testing a new asset for the first time, create its learnings file in `backtesting/learnings/asset/` following the GC.md template.
 
 ## Backtesting Best Practices
 

@@ -16,8 +16,27 @@ from trader.main import ExecutionConfig
 def test_build_config_dict_uses_backtest_reporting_risk() -> None:
     exec_config = ExecutionConfig(
         name="FAST_V1.1",
-        session_overrides={"NQ_Asia": {"risk_usd": 400, "entry_start": "19:30", "entry_end": "23:00", "flat_start": "23:55", "flat_end": "04:00"}},
-        lsi_session_overrides={"NQ_Asia_LSI": {"risk_usd": 400, "entry_start": "19:30", "entry_end": "23:00", "flat_start": "23:55", "flat_end": "04:00"}},
+        session_overrides={
+            "NQ_Asia": {
+                "risk_usd": 400,
+                "entry_start": "19:30",
+                "entry_end": "23:00",
+                "flat_start": "23:55",
+                "flat_end": "04:00",
+                "regime_gate": "bull_no_low_confidence",
+                "regime_gates": ["block_full_medium_vol"],
+            }
+        },
+        lsi_session_overrides={
+            "NQ_Asia_LSI": {
+                "risk_usd": 400,
+                "entry_start": "19:30",
+                "entry_end": "23:00",
+                "flat_start": "23:55",
+                "flat_end": "04:00",
+                "regime_gates": ["block_full_medium_vol"],
+            }
+        },
     )
 
     config = _build_config_dict("FAST_V1.1", exec_config)
@@ -25,6 +44,10 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
     assert config["risk_usd"] == BACKTEST_REPORTING_RISK_USD
     assert config["nq_asia_risk_usd"] == 400
     assert config["nq_asia_lsi_risk_usd"] == 400
+    assert config["nq_asia_regime_gates"] == ["bull_no_low_confidence", "block_full_medium_vol"]
+    assert "nq_asia_regime_gate" not in config
+    assert config["nq_asia_lsi_regime_gates"] == ["block_full_medium_vol"]
+    assert config["nq_asia_lsi_regime_gate"] == "block_full_medium_vol"
 
 
 def test_run_profile_backtest_wires_daily_history_provider(monkeypatch) -> None:

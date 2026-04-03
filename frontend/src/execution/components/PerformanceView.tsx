@@ -610,82 +610,13 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         </div>
       </div>
 
-      {/* Backtest Comparison Settings + Charts */}
-      <div className="space-y-3">
-        <div className="rounded-md border border-border bg-bg-card p-3">
-          <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-            {visibleConfigs.map((cfg) => {
-              const mapping = mappings[cfg] ?? { backtestId: "", deployDate: "" };
-              const isLoading = btLoading[cfg];
-              const error = btErrors[cfg];
-              const colorClass = CONFIG_COLORS[cfg] ?? "";
-              return (
-                <div key={cfg} className="flex items-end gap-2">
-                  <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${colorClass}`}>
-                    {cfg}
-                  </span>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[10px] text-text-muted uppercase tracking-wide">Backtest ID</label>
-                    <input
-                      type="text"
-                      value={mapping.backtestId}
-                      onChange={(e) => setMapping(cfg, { ...mapping, backtestId: e.target.value })}
-                      placeholder="bt-..."
-                      className="w-48 rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-0.5">
-                    <label className="text-[10px] text-text-muted uppercase tracking-wide">Deploy Date</label>
-                    <DatePicker
-                      value={mapping.deployDate}
-                      onChange={(v) => setMapping(cfg, { ...mapping, deployDate: v })}
-                      placeholder="Deploy date"
-                    />
-                  </div>
-                  {isLoading && <span className="text-[11px] text-text-muted animate-pulse">Loading...</span>}
-                  {error && <span className="text-[11px] text-loss">{error}</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Backtest window slider */}
-        {Object.values(backtestCurves).some((c) => c?.curve.length) && (
-          <BacktestWindowSlider
-            startDate={effectiveBtStart}
-            originalStart={btOriginalBounds.start}
-            originalEnd={btOriginalBounds.end}
-            onChange={handleBtWindowChange}
-            onReset={handleBtWindowReset}
-          />
-        )}
-
-        {/* Charts for each visible config */}
-        {visibleConfigs.map((cfg) => {
-          const data = comparisonByConfig[cfg];
-          const mapping = mappings[cfg];
-          if (!data?.length) return null;
-          return (
-            <EquityCurveComparison
-              key={cfg}
-              data={data}
-              deployDate={mapping?.deployDate ?? ""}
-              configName={cfg}
-              liveR={rawLiveRByConfig[cfg] ?? null}
-              backtestR={backtestRByConfig[cfg] ?? null}
-            />
-          );
-        })}
-      </div>
-
       <div className="text-sm text-text-muted">
         {rows.length} closed/open trades
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border bg-bg-card">
+      <div className="overflow-x-auto overflow-y-auto max-h-[800px] rounded-md border border-border bg-bg-card">
         <table className="min-w-[1160px] w-full border-collapse text-sm">
-          <thead className="bg-[#24242b] text-text-primary">
+          <thead className="bg-[#24242b] text-text-primary sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2 border-r border-border/80">Entry Date</th>
               <th className="px-3 py-2 border-r border-border/80">Entry Time</th>
@@ -767,6 +698,76 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Backtest Comparison Settings */}
+      <div className="rounded-md border border-border bg-bg-card p-3">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+          {visibleConfigs.map((cfg) => {
+            const mapping = mappings[cfg] ?? { backtestId: "", deployDate: "" };
+            const isLoading = btLoading[cfg];
+            const error = btErrors[cfg];
+            const colorClass = CONFIG_COLORS[cfg] ?? "";
+            return (
+              <div key={cfg} className="flex items-end gap-2">
+                <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${colorClass}`}>
+                  {cfg}
+                </span>
+                <div className="flex flex-col gap-0.5">
+                  <label className="text-[10px] text-text-muted uppercase tracking-wide">Backtest ID</label>
+                  <input
+                    type="text"
+                    value={mapping.backtestId}
+                    onChange={(e) => setMapping(cfg, { ...mapping, backtestId: e.target.value })}
+                    placeholder="bt-..."
+                    className="w-48 rounded border border-border bg-bg-secondary px-2 py-1 text-xs text-text-secondary font-mono focus:outline-none focus:border-accent/60"
+                  />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <label className="text-[10px] text-text-muted uppercase tracking-wide">Deploy Date</label>
+                  <DatePicker
+                    value={mapping.deployDate}
+                    onChange={(v) => setMapping(cfg, { ...mapping, deployDate: v })}
+                    placeholder="Deploy date"
+                  />
+                </div>
+                {isLoading && <span className="text-[11px] text-text-muted animate-pulse">Loading...</span>}
+                {error && <span className="text-[11px] text-loss">{error}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="space-y-3">
+        {/* Backtest window slider */}
+        {Object.values(backtestCurves).some((c) => c?.curve.length) && (
+          <BacktestWindowSlider
+            startDate={effectiveBtStart}
+            originalStart={btOriginalBounds.start}
+            originalEnd={btOriginalBounds.end}
+            onChange={handleBtWindowChange}
+            onReset={handleBtWindowReset}
+          />
+        )}
+
+        {/* Charts for each visible config */}
+        {visibleConfigs.map((cfg) => {
+          const data = comparisonByConfig[cfg];
+          const mapping = mappings[cfg];
+          if (!data?.length) return null;
+          return (
+            <EquityCurveComparison
+              key={cfg}
+              data={data}
+              deployDate={mapping?.deployDate ?? ""}
+              configName={cfg}
+              liveR={rawLiveRByConfig[cfg] ?? null}
+              backtestR={backtestRByConfig[cfg] ?? null}
+            />
+          );
+        })}
       </div>
 
       {/* Summary stats */}

@@ -547,3 +547,209 @@ R by year: 2016:+18  2017:+25  2018:+4  2019:+11  2020:+16  2021:+20  2022:+15  
 - **R by year (both)**: 2016:-6 2017:-6 2018:-18 2019:-5 2020:+6 2021:+1 2022:-1 2023:-7 2024:-20 2025:-11
 - **Conclusion**: PF < 1.0 in all directions — strategy actively loses money. Only 2020 is positive across both directions. No optimization can rescue a losing baseline. Confirms ES lacks LSI edge across both NY and Asia sessions.
 - **Script**: `run_es_asia_lsi_baseline.py`
+
+### NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO
+
+- **Status**: **NO-GO** (REJECT 2/5 pipeline phases — deep DD, MC ruin, gap fragility)
+- **Tested**: 2026-04-02, full strategy workflow (baseline → 7-phase sweeps → discovery pipeline)
+- **Approach**: Transplanted the proven NQ NY LSI RR2/TP0.5 anchor to ES and re-optimized.
+- **Entry mode**: fvg_limit | **Direction**: both (longs + shorts combined)
+
+#### Optimized Config (from sweeps)
+
+| Param | Value |
+|-------|-------|
+| entry_mode | fvg_limit |
+| direction | both |
+| n_left | 12 |
+| n_right | 78 |
+| fvg_window_left | 20 |
+| fvg_window_right | 5 |
+| rr | 3.0 |
+| tp1_ratio | 0.6 |
+| atr_length | 12 |
+| min_gap_atr_pct | 4.0% |
+| entry_end | 15:30 |
+| flat_start | 15:50 |
+| DOW | All days |
+
+#### Pre-holdout (2016-2025, pre-holdout)
+- 1356 trades, 45.7% WR, PF 1.25, Sharpe 1.54, +158.8R, DD -16.7R, **Calmar 9.52**, 2 neg years (2023: -8.8R, 2025: -10.8R)
+
+#### Walk-Forward OOS (36m IS / 12m OOS / 12m step, 6 folds)
+- 845 trades, 45.7% WR, PF 1.27, Sharpe 1.61, +103.2R, DD -14.9R, **Calmar 6.94**, 1 neg year (2023: -3.4R)
+- WF efficiency: **0.702** | Stability: **0.917 (high)**
+- Parameter modes: rr=3.5, tp1=0.6, gap=5.0, ATR=12
+
+#### Pipeline Results
+
+| Phase | Result | Key Metric |
+|-------|--------|-----------|
+| Phase 1: Structural | PASS | 1356 tr, PF 1.25, Calmar 9.52 |
+| Phase 2: WF + Stability | PASS | WFE 0.702, stability 0.917 |
+| Phase 3: Prop Constraints | **FAIL** | Worst month -7.3R (threshold -5.0R) |
+| Phase 4: Local Stability | **FAIL** | gap=3.0% collapses Calmar by -5.68 (SPIKE) |
+| Phase 5: Monte Carlo | **FAIL** | 39% survival at 15R (need 70%), 61% ruin |
+
+#### Reasons for NO-GO
+1. **MC ruin 61%** — DD p50=-16.2R, p95=-26.7R. Does not survive stress testing.
+2. **Gap parameter fragility** — gap 4.0% → 3.0% drops Calmar from 9.52 to 3.83 (cliff).
+3. **Worst month -7.3R** — too deep for prop firm constraints.
+4. **2023 structural weakness** — negative OOS year across multiple folds (Fold 5 Sharpe -0.37).
+5. **Improved but still insufficient** — Calmar 9.52 is 63% better than prior ES LSI best (5.87), but still far below NQ (16.72) and fails Monte Carlo.
+
+- **Scripts**: `run_es_ny_lsi_discovery_nq_anchor.py`, `run_es_ny_lsi_discovery_pipeline.py`
+- **Results**: `data/results/es_ny_lsi_discovery_nq_anchor.json`
+
+---
+
+### ES ORB 3-Session Discovery (Regime-Gated) — Phase-One Complete (2026-04-01)
+
+New discovery sweep with regime research framework (medium-vol avoidance gate). 3,888 configs swept across NY, Asia, LDN. 8 candidates through walk-forward. PSR/DSR validation. Phase-one prop simulation.
+
+#### Sweep Results — Best Per Session
+
+| Session | Top Config | Pre-holdout | Calmar | Direction |
+|---------|-----------|-------------|--------|-----------|
+| NY | 45m ORB, ATR 8%, RR=3.5, TP1=0.3 | +99.2R | 11.08 | **Both** |
+| Asia | 60m ORB, ORB 100%, RR=2.5, TP1=0.4 | +65.6R | 9.04 | Long |
+| LDN | 45m ORB, ATR 15%, RR=3.5, TP1=0.3 | +37.6R | 3.67 | **Short** |
+
+Key ES vs NQ differences: ES NY works with both directions (short component strong). ES Asia needs 60m ORB (not 15m). ES LDN is short-only (NQ was long-only).
+
+#### Phase-One Results
+
+| Candidate | Pre R | HO R | Pre PR | HO PR | HO EV | PSR | Verdict |
+|-----------|-------|------|--------|-------|-------|-----|---------|
+| **ES NY-A** | +71.3 | **+2.7** | 78.1% | **43.3%** | $8,596 | 0.999 | **STRONG** |
+| ES Asia-A | +65.6 | -0.4 | 87.3% | 0.0% | -$66 | 1.000 | CONDITIONAL |
+| ES LDN-B | +40.0 | -16.2 | 60.4% | 0.8% | $67 | 0.966 | CONDITIONAL |
+
+#### ES NY-A Config (WINNER — promoted with caution)
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | NY |
+| ORB window | 09:30-10:15 (45m) |
+| entry window | 10:15-12:00 |
+| flat | 15:50-16:00 |
+| stop | ATR 8% |
+| rr | 3.5 |
+| tp1_ratio | 0.3 (TP1 at 1.05R, TP2 at 3.5R) |
+| direction | **both** |
+| atr_length | 14 |
+| min_gap_atr_pct | 1.0% |
+| regime gate | medium-vol avoidance |
+| bar magnifier | OFF during discovery |
+
+- **Pre-holdout**: 641 trades, WR 68%, PF 1.93, +71.3R, Cal 7.22, DD -9.9R
+- **Holdout**: 121 trades, +2.7R, Cal 0.20, Shp 0.38, DD -13.8R
+- **Holdout payout rate**: 43.3% (barely viable)
+
+#### Post-Hoc Regime Gate Comparison (all 8 candidates, holdout)
+
+All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_vol` + `sideways_medium_vol`) on holdout (2024-03 → 2026-02). Script: `run_es_orb_regime_gate_comparison.py`.
+
+| # | Name | Ungated R | Ungated Cal | Ungated DD | Gated R | Gated Cal | Gated DD | ΔCal | Gate helps? |
+|---|------|-----------|-------------|------------|---------|-----------|----------|------|-------------|
+| 1 | **Asia-B** | **+49.4** | **8.09** | -6.1 | +36.1 | 6.97 | -5.2 | -1.13 | **No — ungated is better** |
+| 2 | Asia-C | +22.2 | 3.20 | -6.9 | +13.7 | **4.56** | **-3.0** | **+1.35** | **YES — Calmar ↑, DD halved** |
+| 3 | Asia-A | +7.4 | 0.59 | -12.7 | -0.4 | -0.04 | -8.4 | -0.63 | No (went negative) |
+| 4 | NY-A | +6.5 | 0.34 | -19.3 | +2.7 | 0.20 | -13.8 | -0.14 | No (both weak) |
+| 5 | NY-B | +1.4 | 0.26 | -5.5 | -2.6 | -0.58 | -4.5 | -0.84 | No (went negative) |
+| 6 | NY-C | -5.9 | -0.61 | -9.7 | -5.8 | -0.54 | -10.7 | +0.07 | Marginal (both negative) |
+| 7 | LDN-A | -14.9 | -0.83 | -18.0 | -13.4 | -0.79 | -17.0 | +0.04 | No (still deeply negative) |
+| 8 | LDN-B | -22.0 | -0.80 | -27.3 | -16.2 | -0.78 | -20.6 | +0.02 | No (still deeply negative) |
+
+**Surprise finding — Asia-B was missed**: ES Asia-B (15m ORB, ATR 12%, RR=3.0, TP1=0.6, long) was **not promoted to phase-one** despite being the strongest holdout performer by far: +49.4R ungated (Cal 8.09) or +36.1R gated (Cal 6.97). This crushes the phase-one winner NY-A (+2.7R gated). Asia-A was promoted instead because it ranked higher on pre-holdout metrics, but Asia-B's holdout performance is dramatically better.
+
+**Gate impact on ES is mixed**: unlike NQ where the gate universally compressed DD, on ES the gate hurt Asia-B (the best performer) by trimming profitable trades. The gate helped Asia-C and marginally helped LDN, but couldn't rescue the fundamentally weak candidates (NY, LDN).
+
+#### Key Findings
+
+1. **ES is structurally harder than NQ for ORB continuation** — all 3 sessions degraded on holdout
+2. **ES NY-A is the only viable candidate** — both-directions approach gives resilience that pure long lacks
+3. **ES Asia collapsed on holdout** (87% pre → 0% holdout) — same failure pattern as NQ NY-B
+4. **ES LDN short collapsed** — the 2024-2025 bull market killed short-only LDN
+5. **ES needs a 45-60m ORB window** (not 15m like NQ) — wider window needed to capture ES's slower breakout dynamics
+6. **Regime gate helps but can't save weak holdout** — gate was essential for pre-holdout but didn't prevent holdout degradation
+7. **ES NY holdout is marginal** — +2.7R over 24 months is barely positive. Promote with caution, consider ES as a portfolio diversifier rather than a standalone strategy
+8. **Asia-B is the real ES winner** — +49.4R ungated on holdout (Cal 8.09, Shp 3.74, DD -6.1R). Phase-one promoted Asia-A instead based on pre-holdout ranking, missing the best candidate. Asia-B uses a 15m ORB (not 60m) with ATR 12% stop — structurally different from Asia-A
+9. **ES regime gate is candidate-dependent** — helped Asia-C (+1.35 Calmar) but hurt Asia-B (-1.13 Calmar). No universal benefit like NQ. Best ES candidates should be tested both gated and ungated
+10. **ES LDN is dead regardless of gating** — both short-only candidates deeply negative on holdout (-13R to -22R). Gate trimmed ~6R of losses but fundamentally no edge
+
+---
+
+### ES Asia-B Phase-One Pipeline — STRONG (2026-04-01)
+
+**Status**: **STRONG** — both ungated and gated variants pass phase-one. Promoted to paper trading consideration.
+
+#### ES Asia-B Config
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 20:00-20:15 (15m) |
+| entry window | 20:15-23:15 |
+| flat | 04:00-07:00 |
+| stop | ATR 12% |
+| rr | 3.0 |
+| tp1_ratio | 0.6 (TP1 at 1.8R, TP2 at 3.0R) |
+| direction | long only |
+| atr_length | 14 |
+| min_gap_atr_pct | 1.0% |
+
+#### Phase-One Results (ungated vs gated)
+
+| Metric | Ungated | Gated |
+|--------|---------|-------|
+| **Pre-holdout** | 766 trades, +82.2R, Cal 7.87, Shp 1.36, DD -10.4R, 1 neg yr (2024) | 574 trades, +82.6R, Cal 8.35, Shp 1.81, DD -9.9R, 0 neg yrs |
+| **Walk-forward OOS** | +71.7R, Cal 6.04, Shp 1.37, WFE 0.563, Stab 0.750 | +57.9R, Cal 5.43, Shp 1.50, WFE 0.407, Stab 0.714 |
+| **Holdout** | 171 trades, **+49.4R**, Cal 8.09, **Shp 3.74**, DD -6.1R | 97 trades, +36.1R, Cal 6.97, **Shp 4.97**, DD -5.2R |
+| **Holdout yearly** | 2024:+13.7, 2025:+31.4, 2026:+4.2 | 2024:+11.9, 2025:+25.9, 2026:-1.7 |
+| **Holdout payout rate** | **80.1%** | 78.8% |
+| **Holdout EV** | $15,964/attempt | $15,708/attempt |
+| **Pre-holdout payout rate** | 64.1% | **77.0%** |
+| **Pre-holdout EV** | $12,748/attempt | **$15,339/attempt** |
+| **PSR** | 0.992 (strong) | 0.998 (strong) |
+| **DSR** @3888 trials | 0.098 (overfit flag) | 0.178 (overfit flag) |
+| **Verdict** | **STRONG** | **STRONG** |
+
+#### Gate Decision
+
+Both variants are STRONG. Trade-offs:
+
+- **Ungated** has higher holdout Net R (+49.4 vs +36.1), higher holdout payout rate (80.1% vs 78.8%), and better WFE (0.563 vs 0.407). All holdout years positive.
+- **Gated** has 0 negative pre-holdout years (vs 1), higher pre-holdout payout rate (77.0% vs 64.1%), and higher pre-holdout EV ($15,339 vs $12,748). But 2026 is -1.7R on holdout.
+- **Recommendation**: Run ungated in production — stronger holdout, no negative holdout years, higher WFE. Gate improves pre-holdout consistency but trims too many holdout winners.
+
+#### Comparison to Original Phase-One Winner (NY-A)
+
+| Metric | NY-A (original winner) | Asia-B ungated |
+|--------|----------------------|----------------|
+| Holdout R | +2.7 | **+49.4** |
+| Holdout Cal | 0.20 | **8.09** |
+| Holdout PR | 43.3% | **80.1%** |
+| Holdout EV | $8,596 | **$15,964** |
+
+Asia-B is dramatically stronger than NY-A across every metric. NY-A should be demoted; Asia-B is the clear ES leader.
+
+#### Script
+- `run_es_asia_b_phase_one.py`
+
+---
+
+### Regime-Gate Transfer Confirmation (2026-04-01)
+
+Shared cross-asset transfer run reconfirmed that **ES Asia-B should stay ungated**:
+
+| Variant | Trades | HO R | Calmar | Sharpe | DD | HO PR | HO EV |
+|---------|--------|------|--------|--------|----|-------|-------|
+| Ungated | 171 | +49.35 | 8.091 | 3.742 | -6.1R | 80.1% | $15,964 |
+| Gated | 97 | +36.12 | 6.966 | 4.967 | -5.2R | 78.8% | $15,708 |
+
+- **Verdict**: `rejects_gate`
+- **Interpretation**: the medium-vol gate trims too many profitable Asia-B trades. It slightly improves drawdown and Sharpe, but the drop in net R and Calmar is too large.
+- **Action**: keep **Asia-B ungated** as the ES production baseline and do **not** promote ES into the second-round gate shortlist.

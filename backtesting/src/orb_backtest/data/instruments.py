@@ -76,6 +76,15 @@ RTY = Instrument(
     exchange_tz="America/New_York",
 )
 
+SI = Instrument(
+    symbol="SI",
+    point_value=5000.0,
+    min_tick=0.005,
+    commission=0.05,
+    data_file="SI_5m.csv",
+    exchange_tz="America/New_York",
+)
+
 _INSTRUMENTS: dict[str, Instrument] = {
     "NQ": NQ,
     "MNQ": MNQ,
@@ -85,6 +94,7 @@ _INSTRUMENTS: dict[str, Instrument] = {
     "GC": GC,
     "6B": SIX_B,
     "RTY": RTY,
+    "SI": SI,
 }
 
 

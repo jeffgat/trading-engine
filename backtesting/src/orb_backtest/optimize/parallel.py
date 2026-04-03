@@ -14,6 +14,7 @@ from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
 import pandas as pd
 
 from ..config import StrategyConfig
@@ -43,6 +44,22 @@ def _cached_pickle(obj: object) -> bytes:
     if oid not in _pickle_cache:
         _pickle_cache[oid] = pickle.dumps(obj)
     return _pickle_cache[oid]
+
+
+def _dataframe_cache_fingerprint(df: pd.DataFrame) -> str:
+    """Return a content-based fingerprint for disk cache invalidation.
+
+    Using only the date bounds and row count can collide when a file is corrected
+    in place or when two datasets share the same timestamps. Hash the actual
+    frame content so cached signals cannot be silently reused across different
+    source data.
+    """
+    row_hashes = pd.util.hash_pandas_object(df, index=True, categorize=False)
+    hasher = hashlib.blake2b(digest_size=16)
+    hasher.update(np.asarray(row_hashes.values, dtype=np.uint64).tobytes())
+    hasher.update(repr(tuple(df.columns)).encode())
+    hasher.update(repr(tuple(str(dtype) for dtype in df.dtypes)).encode())
+    return hasher.hexdigest()
 
 
 def _get_or_create_pool(n_workers: int) -> Pool:
@@ -97,13 +114,12 @@ def _run_single(args: tuple) -> tuple[dict, list[TradeResult]]:
 
 
 def _signal_cache_path(df: pd.DataFrame, configs: list[StrategyConfig]) -> Path:
-    """Stable disk cache key for signal cache: hash of data bounds + unique signal params.
+    """Stable disk cache key for signal cache.
 
-    Uses dataclasses.asdict() for content-based config hashing — stable across
-    process restarts (unlike Python's built-in hash() which is PYTHONHASHSEED-randomized).
+    Uses content-based hashes for both the input data and configs so cached
+    signals are only reused when the underlying frame really matches.
     """
-    # Data identity: first timestamp + last timestamp + row count
-    data_key = f"{df.index[0]}_{df.index[-1]}_{len(df)}"
+    data_hash = _dataframe_cache_fingerprint(df)[:12]
     # Content-based key — sorts the full config dict so any param change invalidates cache
     unique_keys = sorted({
         json.dumps(dataclasses.asdict(c), sort_keys=True, default=str)
@@ -113,7 +129,6 @@ def _signal_cache_path(df: pd.DataFrame, configs: list[StrategyConfig]) -> Path:
     # Store in data/cache/ — go up from optimize/ -> orb_backtest/ -> src/ -> python/ -> data/cache/
     cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    data_hash = hashlib.md5(str(data_key).encode()).hexdigest()[:12]
     return cache_dir / f"sigcache_{data_hash}_{param_key}.pkl"
 
 
@@ -197,6 +212,9 @@ def run_sweep(
         List of (config, trades) tuples (order may differ from input when using
         parallel mode; configs are matched by content via the returned tuples).
     """
+    if not configs:
+        return []
+
     if n_workers is None:
         n_workers = min(cpu_count(), len(configs))
 

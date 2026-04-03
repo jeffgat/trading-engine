@@ -67,6 +67,10 @@ from orb_backtest.experiments import (
     get_live_trade,
     update_live_trade,
     delete_live_trade,
+    log_execution_log,
+    log_execution_logs_batch,
+    list_execution_logs,
+    count_execution_logs,
 )
 
 app = FastAPI(title="Shared Experiments DB")
@@ -460,6 +464,62 @@ def delete_live_trade_ep(trade_id: int):
     if not delete_live_trade(trade_id):
         return fail("not found", 404)
     return ok({"deleted": True})
+
+
+# --- Execution Logs ---
+
+_VALID_LOG_TYPES = {"trades", "main", "webhooks"}
+
+
+class ExecutionLogRequest(BaseModel):
+    entry: Optional[dict] = None
+    entries: Optional[list[dict]] = None
+
+
+@app.post("/api/execution-logs/{log_type}")
+def create_execution_log(log_type: str, req: ExecutionLogRequest):
+    if log_type not in _VALID_LOG_TYPES:
+        return fail(f"Invalid log type: {log_type}", 400)
+    if req.entries:
+        count = log_execution_logs_batch(log_type, req.entries)
+        return ok({"count": count})
+    if req.entry:
+        rowid = log_execution_log(log_type, req.entry)
+        return ok({"rowid": rowid})
+    return fail("Provide 'entry' or 'entries'", 400)
+
+
+@app.get("/api/execution-logs/{log_type}")
+def get_execution_logs(
+    log_type: str,
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    config: str = "",
+    session: str = "",
+    level: str = "",
+    account: str = "",
+    search: str = "",
+):
+    if log_type not in _VALID_LOG_TYPES:
+        return fail(f"Invalid log type: {log_type}", 400)
+    entries, total = list_execution_logs(
+        log_type,
+        limit=limit,
+        offset=offset,
+        config=config,
+        session=session,
+        level=level,
+        account=account,
+        search=search,
+    )
+    return ok({"entries": entries, "total": total, "limit": limit, "offset": offset})
+
+
+@app.get("/api/execution-logs/{log_type}/count")
+def get_execution_log_count(log_type: str):
+    if log_type not in _VALID_LOG_TYPES:
+        return fail(f"Invalid log type: {log_type}", 400)
+    return ok({"count": count_execution_logs(log_type)})
 
 
 # --- DB Upload (one-time migration) ---

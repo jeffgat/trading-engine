@@ -1486,6 +1486,7 @@ def _session_key(session: SessionConfig) -> tuple:
     """Hashable key identifying a session's time windows (independent of trade params)."""
     return (
         session.name,
+        session.rth_start,
         session.orb_start, session.orb_end,
         session.entry_start, session.entry_end,
         session.flat_start, session.flat_end,
@@ -1646,6 +1647,15 @@ def _extract_setup_candidates(
 
     excluded = set(config.excluded_dates)
 
+    # Add DOW-excluded days to the excluded set
+    if config.excluded_days:
+        from datetime import datetime as _dt
+        _dow_set = set(config.excluded_days)
+        _unique_dates = set(date_strs) - excluded
+        for _ds in _unique_dates:
+            if _dt.strptime(_ds, "%Y%m%d").weekday() in _dow_set:
+                excluded.add(_ds)
+
     # Filter candidates: must be in entry window, ORB ready, not excluded, bar confirmed
     # Pine uses barstate.isconfirmed — for completed 5m bars, all bars in historical data
     # are confirmed, so we just check the conditions.
@@ -1702,6 +1712,12 @@ def _extract_setup_candidates(
         )
         valid_long_lsi = fvg_lsi["long_fvg"] & masks["in_entry"] & masks["in_rth"]
         valid_short_lsi = fvg_lsi["short_fvg"] & masks["in_entry"] & masks["in_rth"]
+        # Apply date exclusions (excluded_dates + excluded_days) to LSI candidates
+        if excluded:
+            _excl_arr = np.array(list(excluded))
+            _excl_mask = np.isin(date_strs, _excl_arr)
+            valid_long_lsi &= ~_excl_mask
+            valid_short_lsi &= ~_excl_mask
         candidates = _extract_lsi_candidates(
             df, fvg_lsi, valid_long_lsi, valid_short_lsi, session_day_id,
             masks["in_entry"], masks["in_rth"], dates, close,

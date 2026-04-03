@@ -26,7 +26,7 @@ const TABS: { key: Tab; label: string }[] = [
 
 export function ExecutionApp() {
     const [activeTab, setActiveTab] = useState<Tab>('status');
-    const [activeConfig, setActiveConfig] = useState<string>('ALL');
+    const [activeConfig, setActiveConfig] = useState<string>('');
     const { connected, subscribe } = useWebSocket();
     const {
         uptime,
@@ -94,6 +94,7 @@ export function ExecutionApp() {
                         uptime={uptime}
                         loading={statusLoading}
                         activeConfig={activeConfig}
+                        setActiveConfig={setActiveConfig}
                         config={config}
                         onPause={pauseEngine}
                         onResume={resumeEngine}

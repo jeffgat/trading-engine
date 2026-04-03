@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council Report — Optimal Portfolio for Prop Firm Payout Farming</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; color: #1a1a1a; line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.4rem; }
+  h3 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; }
+  p, li { font-size: 0.95rem; }
+  ul, ol { margin-left: 1.5rem; margin-bottom: 0.75rem; }
+  li { margin-bottom: 0.3rem; }
+  .subtitle { color: #6b7280; font-size: 0.9rem; margin-bottom: 2rem; }
+  .verdict-box { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .verdict-box h2 { border: none; margin-top: 0; color: #15803d; }
+  .warning-box { background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .warning-box h3 { color: #92400e; margin-top: 0; }
+  .first-action { background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 1.5rem; margin: 1.5rem 0; }
+  .first-action h2 { border: none; margin-top: 0; color: #1d4ed8; }
+  .agreement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .agree-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; }
+  .agree-card h4 { font-size: 0.85rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+  .leg-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  .leg-table th, .leg-table td { padding: 0.5rem 0.75rem; border: 1px solid #e5e7eb; text-align: left; }
+  .leg-table th { background: #f9fafb; font-weight: 600; }
+  .leg-table tr.selected { background: #f0fdf4; }
+  .leg-table tr.cut { background: #fef2f2; color: #991b1b; }
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .tag-go { background: #dcfce7; color: #166534; }
+  .tag-cut { background: #fee2e2; color: #991b1b; }
+  .tag-wait { background: #fef3c7; color: #92400e; }
+  details { margin: 0.75rem 0; border: 1px solid #e5e7eb; border-radius: 6px; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.95rem; background: #f9fafb; border-radius: 6px; }
+  summary:hover { background: #f3f4f6; }
+  .advisor-content { padding: 1rem; font-size: 0.9rem; }
+  .advisor-label { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 0.5rem; }
+  .c-contrarian { background: #ef4444; }
+  .c-firstprinciples { background: #8b5cf6; }
+  .c-expansionist { background: #22c55e; }
+  .c-outsider { background: #f59e0b; }
+  .c-executor { background: #3b82f6; }
+  .position-map { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.75rem 0; }
+  .position-chip { padding: 0.3rem 0.75rem; border-radius: 16px; font-size: 0.8rem; font-weight: 500; border: 1px solid #e5e7eb; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>LLM Council Report</h1>
+<p class="subtitle">Optimal Portfolio Construction for Prop Firm Payout Farming &mdash; April 3, 2026</p>
+
+<div class="verdict-box">
+<h2>The Recommendation</h2>
+<p><strong>Run a 4-leg portfolio: NQ_Asia ORB + ES_Asia ORB + ES_NY ORB + NQ_NY_LSI.</strong></p>
+<p style="margin-top: 0.75rem;">This is the consensus position of 4 out of 5 advisors. It captures the highest-EV legs (92.7% success on NQ_NY_LSI), the fastest payout engine (NQ_Asia ORB at 67 days), the tightest breach clustering (ES_Asia at 5 max consecutive), and a structural stabilizer (ES_NY with 0 negative years).</p>
+
+<table class="leg-table" style="margin-top: 1rem;">
+<tr><th>Leg</th><th>Success</th><th>EV/Attempt</th><th>Speed</th><th>Max Consec Breach</th><th>2025</th><th>2026*</th><th>Status</th></tr>
+<tr class="selected"><td><strong>NQ_NY_LSI</strong></td><td>92.7%</td><td>+4.30R</td><td>126d</td><td>6</td><td>+13.3</td><td>+5.1</td><td><span class="tag tag-go">KEEP</span></td></tr>
+<tr class="selected"><td><strong>NQ_Asia ORB</strong></td><td>82.4%</td><td>+3.31R</td><td>67d</td><td>9</td><td>+37.1</td><td>+4.8</td><td><span class="tag tag-go">KEEP</span></td></tr>
+<tr class="selected"><td><strong>ES_Asia ORB</strong></td><td>81.1%</td><td>+3.25R</td><td>97d</td><td>5</td><td>+27.4</td><td>+1.1</td><td><span class="tag tag-go">KEEP</span></td></tr>
+<tr class="selected"><td><strong>ES_NY ORB</strong></td><td>75.1%</td><td>+2.70R</td><td>77d</td><td>11</td><td>+17.7</td><td>+1.8</td><td><span class="tag tag-go">KEEP</span></td></tr>
+<tr class="cut"><td>NQ_Asia_LSI</td><td>85.2%</td><td>+3.48R</td><td>144d</td><td>11</td><td>+15.6</td><td>-4.5</td><td><span class="tag tag-cut">CUT</span></td></tr>
+<tr class="cut"><td>NQ_NY ORB</td><td>67.1%</td><td>+1.90R</td><td>90d</td><td>29</td><td>+12.1</td><td>-1.9</td><td><span class="tag tag-cut">CUT</span></td></tr>
+<tr class="cut"><td>GC_NY ORB</td><td>51.7%</td><td>+0.62R</td><td>45d</td><td>13</td><td>+46.9</td><td>-7.7</td><td><span class="tag tag-cut">CUT</span></td></tr>
+</table>
+<p style="font-size: 0.8rem; color: #6b7280;">*2026 is partial (Jan-Mar only)</p>
+
+<h3 style="margin-top: 1.25rem;">Future Addition</h3>
+<p><strong>GC_Asia-1</strong> (DSR 0.652, HO +20.1R, regime-gatable) should be built as leg 5 once its execution config is validated &mdash; but <em>not</em> added to live accounts until it completes at least one live-account cycle. <span class="tag tag-wait">BUILD NEXT</span></p>
+</div>
+
+<div class="first-action">
+<h2>The One Thing to Do First</h2>
+<p><strong>Remove NQ_Asia_LSI from live execution today and confirm $400 position sizing across all four remaining legs before the next trading session.</strong></p>
+<p style="margin-top: 0.5rem;">The most immediate risk is that NQ_Asia_LSI is still running and degrading the account that the other legs are supposed to protect. Stop the bleeding on the known-degraded leg, lock the sizing, then build the rest of the framework.</p>
+</div>
+
+<h2>Where the Council Agrees</h2>
+
+<div class="agreement-grid">
+<div class="agree-card">
+<h4>Core 4 Legs</h4>
+<p>All 5 advisors converge on NQ_Asia ORB, ES_Asia ORB, ES_NY ORB, and NQ_NY_LSI as the foundation. 4/5 recommend exactly this set.</p>
+</div>
+<div class="agree-card">
+<h4>Cut NQ_NY ORB</h4>
+<p>29 consecutive breaches is universally disqualifying. At $100/reset, that's $2,900 burned in a streak. Unanimous exclusion.</p>
+</div>
+<div class="agree-card">
+<h4>Cut NQ_Asia_LSI</h4>
+<p>2026: -4.5R while NQ_Asia ORB is +4.8R in the same session. The LSI signal is degrading in current market structure. 4/5 cut it explicitly.</p>
+</div>
+<div class="agree-card">
+<h4>Skip RTY & CL for Now</h4>
+<p>RTY NY-4 at -10R in 2026 and CL LDN at +0R in 2025 are both recent-period weak. Not worth the execution complexity.</p>
+</div>
+</div>
+
+<h2>Where the Council Clashes</h2>
+
+<h3>Portfolio Size: 3 vs 4 vs 5 Legs</h3>
+<div class="position-map">
+<span class="position-chip" style="border-color: #8b5cf6;"><span class="advisor-label c-firstprinciples"></span>First Principles: 3 legs</span>
+<span class="position-chip" style="border-color: #f59e0b;"><span class="advisor-label c-outsider"></span>Outsider: 4 legs</span>
+<span class="position-chip" style="border-color: #3b82f6;"><span class="advisor-label c-executor"></span>Executor: 4+1 staged</span>
+<span class="position-chip" style="border-color: #22c55e;"><span class="advisor-label c-expansionist"></span>Expansionist: 5 legs now</span>
+<span class="position-chip" style="border-color: #ef4444;"><span class="advisor-label c-contrarian"></span>Contrarian: Validate first</span>
+</div>
+<p>The First Principles Thinker argues legs 4-6 add breach risk faster than EV. The Executor and Outsider land on 4 as the right balance. The Expansionist pushes to 5 with GC_Asia-1. The Contrarian questions whether any of these edges survive the 2025 regime shift.</p>
+
+<h3>GC_Asia-1: Add Now or Wait?</h3>
+<p>The Expansionist wants it now (DSR 0.652, untapped alpha). The Executor says build the config first, then add. Peer review flags it as discovery-phase &mdash; adding it means paying live breach costs to finish vetting. <strong>Chairman sides with the Executor: build it, validate it, then add.</strong></p>
+
+<h3>NQ Concentration Risk</h3>
+<p>Three of four recommended legs have NQ/ES equity exposure. Near-zero daily correlations can spike to 0.8+ during macro shocks. The portfolio has an effective leg count closer to 2.5 during high-correlation periods. This is the biggest unresolved risk.</p>
+
+<div class="warning-box">
+<h3>Blind Spots the Council Caught</h3>
+<ul>
+<li><strong>Correlation regime dependence:</strong> Low average correlations mask crisis-period spikes. When breach risk is highest, all equity-linked legs may drawdown together.</li>
+<li><strong>Stopping rules:</strong> No advisor addressed when to pause a leg mid-account-cycle if it's underperforming. Suggested rule: if a leg hits 50% of max allowable DD before reaching 30% of payout target, pause it.</li>
+<li><strong>Sequential breach risk:</strong> Breaching account 2 while waiting for account 1's payout to process can wipe EV. Cash flow timing matters.</li>
+<li><strong>Capital efficiency:</strong> Running 4 legs = 4 accounts funded simultaneously. Stagger funding: start NQ_Asia + ES_Asia first (fastest, lowest streak risk), add ES_NY and NQ_NY_LSI as payouts fund them.</li>
+<li><strong>The payout extraction problem is a stopping-rule problem, not just a leg-selection problem.</strong></li>
+</ul>
+</div>
+
+<h2>Advisor Position Summary</h2>
+
+<table class="leg-table">
+<tr><th>Leg</th><th><span class="advisor-label c-contrarian"></span>Contrarian</th><th><span class="advisor-label c-firstprinciples"></span>1st Principles</th><th><span class="advisor-label c-expansionist"></span>Expansionist</th><th><span class="advisor-label c-outsider"></span>Outsider</th><th><span class="advisor-label c-executor"></span>Executor</th></tr>
+<tr><td>NQ_NY_LSI</td><td>-</td><td>IN</td><td>IN</td><td>IN</td><td>IN</td></tr>
+<tr><td>NQ_Asia ORB</td><td>-</td><td>IN</td><td>IN</td><td>IN</td><td>IN</td></tr>
+<tr><td>ES_Asia ORB</td><td>-</td><td>IN</td><td>IN</td><td>IN</td><td>IN</td></tr>
+<tr><td>ES_NY ORB</td><td>-</td><td>-</td><td>IN</td><td>IN</td><td>IN</td></tr>
+<tr><td>GC_Asia-1</td><td>-</td><td>-</td><td>IN</td><td>-</td><td>STAGED</td></tr>
+<tr><td>NQ_Asia_LSI</td><td>CUT</td><td>CUT</td><td>-</td><td>CUT</td><td>CUT</td></tr>
+<tr><td>NQ_NY ORB</td><td>CUT</td><td>-</td><td>-</td><td>CUT</td><td>-</td></tr>
+<tr><td>GC_NY ORB</td><td>CUT</td><td>-</td><td>-</td><td>CUT</td><td>-</td></tr>
+<tr><td>RTY NY</td><td>-</td><td>-</td><td>CUT</td><td>-</td><td>CUT</td></tr>
+</table>
+
+<details>
+<summary><span class="advisor-label c-contrarian"></span> The Contrarian</summary>
+<div class="advisor-content">
+<p>The fatal flaw is you're optimizing for prop firm payouts, not for a strategy that survives contact with real money. The recency problem is acute &mdash; GC_NY shows +46.9R in 2025 then -7.7R in 2026. That's not a strategy, that's a trend you rode. NQ_Asia_LSI has -4.5R in 2026 while NQ_Asia ORB has +4.8R &mdash; contradictory signals on the same instrument/session, a red flag for overfit. NQ_NY (29 consec breach) is disqualifying. Correlation data is dangerously incomplete &mdash; near-zero daily correlations can mask crisis-period correlation spikes to 0.8+. The optimal portfolio is not the question. The question is: does any leg have a stable, non-overfit edge post-2025 regime shift?</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-firstprinciples"></span> The First Principles Thinker</summary>
+<div class="advisor-content">
+<p>The primary goal is asymmetric extraction from the prop firm payoff structure (+$500 payout vs $100 reset = 5:1 reward-to-cost). The portfolio should be engineered to maximize the probability of hitting +5R before -4R. Optimal portfolio is 3 legs: NQ_NY_LSI + NQ_Asia ORB + ES_Asia ORB. NQ_NY_LSI has highest success (92.7%), NQ_Asia is fastest (67 days), ES_Asia has best clustering (5 max consec). Adding legs 4-6 introduces breach risk faster than it adds EV. NQ_Asia LSI is borderline &mdash; 2026 shows regime degradation.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-expansionist"></span> The Expansionist</summary>
+<div class="advisor-content">
+<p>5-leg stack: NQ_Asia ORB + ES_Asia ORB (core engines) + NQ_NY_LSI (highest success) + ES_NY ORB (stabilizer, 0 neg years) + GC_Asia-1 from discovery pipeline (DSR 0.652, untapped alpha, regime-gated). This replaces RTY NY-4 (2026:-10R) and CL LDN with better recent performers. Every leg here has a positive 2026 print or a regime gate that surgically removes the losing environment.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-outsider"></span> The Outsider</summary>
+<div class="advisor-content">
+<p>Pick 4 legs: NQ_NY_LSI (anchor, 92.7% success), NQ_Asia ORB (speed engine, 67 days), ES_Asia ORB (loss-streak backstop, 5 max consecutive), ES_NY ORB (independence). Drop legs below 75% success rate and cut NQ_Asia_LSI which is turning negative recently. Don't dilute a strong four with a weakening one just to hit a higher count. The combination of reliability, loss-streak resistance, speed, and independence gives you breadth without introducing a known problem leg.</p>
+</div>
+</details>
+
+<details>
+<summary><span class="advisor-label c-executor"></span> The Executor</summary>
+<div class="advisor-content">
+<p>Drop NQ_Asia_LSI from live execution. Keep 4 legs: NQ_Asia ORB + ES_Asia ORB + ES_NY ORB + NQ_NY_LSI. Add GC_Asia as leg 5 once execution config is built. Skip RTY entirely (2026:-10R). Monday actions: (1) Remove NQ_Asia_LSI from FAST_V1.1 live execution. (2) Confirm remaining 4 legs are sized at $400 risk each. (3) Start GC execution config build &mdash; target FAST_V1.2 launch within 2 weeks. Four clean legs with demonstrated 2025-2026 resilience beats five with a breach liability attached.</p>
+</div>
+</details>
+
+<details>
+<summary>Peer Review Highlights</summary>
+<div class="advisor-content">
+<p><strong>Strongest response votes:</strong> Contrarian (3), Outsider (1), Executor (1)</p>
+<p><strong>Key peer review findings:</strong></p>
+<ul>
+<li>The Contrarian was the only one to question whether the underlying edges are stable &mdash; this is the most important analytical contribution.</li>
+<li>The First Principles approach ignores inter-leg correlation during drawdowns. A 3-leg portfolio heavily concentrated in NQ/ES is risky.</li>
+<li>The Expansionist's GC_Asia-1 inclusion is premature &mdash; discovery-phase strategy means paying breach costs to test.</li>
+<li>All responses failed to model breach probability as a function of time-to-payout and stagger timing.</li>
+</ul>
+</div>
+</details>
+
+<div class="footer">
+<p>LLM Council Report &mdash; Generated April 3, 2026 08:39 ET &mdash; 5 advisors, 5 peer reviews, chairman synthesis</p>
+<p>Methodology adapted from Andrej Karpathy's LLM Council. Full transcript: council-transcript-20260403-083956.md</p>
+</div>
+
+</body>
+</html>

@@ -114,6 +114,7 @@ export interface SessionConfig {
   tp1_ratio: number;
   long_only: boolean;
   regime_gate?: string | null;
+  regime_gates?: string[];
   structure_gate?: string | null;
   // Risk & sizing
   risk_usd: number;

@@ -11,7 +11,7 @@ Single source of truth for all thresholds, criteria, and decision logic used in 
 - **Guard rails**: No new negative full years; trade count stays > 100; median stop >= 10 ticks
 - **If adopted**: Update anchor, increment sweep round N, re-sweep all dimensions
 - **Convergence**: 0 adoptions in a complete pass through all dimensions
-- **Max changes per round**: Adopt 2-3 changes at most -- never 5+ simultaneously (destructive parameter interaction risk, see NQ Asia R3 crash in `python/learnings/NQ.md`)
+- **Max changes per round**: Adopt 2-3 changes at most -- never 5+ simultaneously (destructive parameter interaction risk, see NQ Asia R3 crash in `backtesting/learnings/asset/NQ.md`)
 
 ## Grid Sweep Selection
 

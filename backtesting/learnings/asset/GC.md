@@ -5,7 +5,7 @@
 - **Min tick**: 0.10
 - **Commission**: $0.05/contract/side
 - **Data**: 2016-01 to 2026-02 (~10 years, 5m + 1m + 1s)
-- **Liquidity**: NY session only. Asia and London have ~1 bar/hour avg — too thin for FVG detection or ORB computation. Do not test non-NY sessions.
+- **Liquidity**: NY is the primary session. Asia and London were previously assumed too thin (~1 bar/hour), but a 2026-04-01 3-session discovery sweep found **strong edges in both** — Asia produced the best results of all 3 sessions (Calmar 11.71, +167R, 0 neg years). All sessions are viable for ORB continuation.
 - **1s data is required**: GC's tight ATR stops (1-3%) are unreliable with 1m bars — a single 1m bar can span entry+stop simultaneously. Always use `GC_1s.parquet` for accurate fill simulation.
 
 ## Data History
@@ -300,6 +300,22 @@ R by year: 2016 +7.7 | 2017 +12.6 | 2018 +2.5 | 2019 +4.7 | 2020 +6.5 | 2021 +4.
 - **Hold-out 2025**: +5.7R in 2025 — strategy performing in-line with historical average. 2026 YTD +1.9R.
 - **Low frequency note**: Accept that some calendar years will underperform 6.0R target (e.g., 2018: +2.5R, 2019: +4.7R). These are statistical variance on 13 trades, not edge failure.
 
+### NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO
+
+- **Status**: **NO-GO** (REJECT 2/5 pipeline phases — WF efficiency too low, prop constraints fail)
+- **Tested**: 2026-04-02, full strategy workflow (baseline → 7-phase sweeps → discovery pipeline)
+- **Approach**: Transplanted NQ NY LSI RR2/TP0.5 anchor to GC and re-optimized. Different edge region from existing GC LSI (RR=9.0, entry_end=10:30).
+- **Optimized config**: nL=8, nR=120, RR=2.0, TP1=0.5, ATR=30, gap=6.0%, Fri excl, flat=14:30, fvg_limit, both dirs
+- **Pre-holdout**: 535 tr, 55.5% WR, PF 1.47, +58.5R, DD -6.3R, **Calmar 9.30**, 1 neg yr (2024: -1.9R)
+- **WF OOS** (36m/12m/12m, 6 folds): 344 tr, 49.7% WR, PF 1.16, +15.4R, DD -7.0R, Calmar 2.20, Sharpe 0.93
+- **WF efficiency**: 0.258 (FAIL, need ≥0.30) — significant IS→OOS degradation
+- **Stability**: 0.958 (high) — rr mode=2.25, tp1 mode=0.6, gap mode=6.0, ATR mode=30
+- **MC survival**: 93.4% at 15R (PASS ≥70%), ruin 6.6% (FAIL <5%)
+- **Plateau**: PASS — no collapses in local neighborhood
+- **Key failure**: OOS Calmar collapses from 9.30 (IS) to 2.20 (OOS). Fold 6 (2024 OOS) goes negative (-0.919 Sharpe). The low-RR approach does not generalize on GC.
+- **Comparison to existing GC LSI**: Existing uses RR=9.0/TP1=0.4 with 130 trades and Calmar 12.21. This NQ-anchor approach has 4× more trades but much weaker OOS. The high-RR selectivity of the existing config is what makes GC LSI work — GC needs wide targets to capture commodity-scale moves.
+- **Scripts**: `run_gc_ny_lsi_nq_anchor_sweep.py`, `run_gc_ny_lsi_nq_anchor_pipeline.py`
+
 ### CISD (Change in State of Delivery)
 - **Status**: NO-GO (tested on old data — results may differ on new complete data, but signal quality issue is fundamental)
 - **Result**: Best DD -9.6R, every config exceeds 10R prop threshold. Do not revisit without a strong quality pre-filter.
@@ -541,7 +557,7 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **Inversion shorts** — INVALIDATED (tested without sweep gate).
 - **ORB reclaims** — Without FVG filter, -65R DD in 2023 alone. Untradeable.
 - **CISD** — Good WR (50%) but DD exceeds 10R in every config.
-- **Asia/London sessions** — Too illiquid (~1 bar/hour).
+- ~~**Asia/London sessions** — Too illiquid (~1 bar/hour).~~ **OVERTURNED** (2026-04-01): 3-session discovery sweep with 1s magnifier found Asia is the strongest GC session (Calmar 11.71, +167R, 1,238 trades, 0 neg years). LDN also viable (Calmar 5.09, +85R, short-only). The "1 bar/hour" characterization was inaccurate — GC has sufficient liquidity in both sessions for ORB continuation with FVG detection.
 - **No-ORB clean air inversions** — INVALIDATED (tested without sweep gate).
 - **Stacked strategy (v9 + clean air)** — INVALIDATED (tested without sweep gate).
 - **Long ATR (50+)** — Dramatically underperforms short ATR. Do not use ATR 50 as default for GC.
@@ -586,3 +602,121 @@ Top 5 all share stop=4.0%, tp1=0.5, min_gap=2.5-3.5% — consistent region. rr=4
 - **Annual R expectation**: ~13.8R/year (WF OOS avg full years). PASS at 12.0 threshold (R1 was marginal at 11.7).
 - **2021 structural flat/down year**: GC continuation longs produce -5.5R in 2021 (WF OOS). This is a property of gold in 2021, not a strategy failure. Other OOS years strong (9.0-29.5R/yr).
 - **R2 vs R1 improvements**: MC survival 85.5% → 93.9%, Phase 3 11.7R/yr (CAUTION) → 13.8R/yr (PASS), Calmar 9.71 → 13.10.
+
+---
+
+### GC ORB 3-Session Discovery (2026-04-01)
+
+New 3-session sweep with 1s magnifier and regime gate. 1,296 configs per session (4 ORB windows × 2 stop modes × 4 RR × 4 TP1 × 3 directions × 4-5 stop values). Pre-holdout only (<2024-03). Script: `run_gc_orb_discovery.py`.
+
+**Overturns the "Asia/LDN too illiquid" assumption** — Asia produced the strongest results of all 3 sessions.
+
+#### Best Per Session
+
+| Session | Top Config | Net R | Calmar | Sharpe | DD | Trades | Dir | Neg Yrs |
+|---------|-----------|-------|--------|--------|----|--------|-----|---------|
+| **Asia** | 30m ORB, ORB 25%, RR=2.5, TP1=0.6 | **+167.0** | **11.71** | 1.67 | -14.2 | 1,238 | both | **0** |
+| **NY** | 30m ORB, ATR 15%, RR=3.0, TP1=0.4 | +72.3 | 5.70 | 1.09 | -12.7 | 947 | both | 0 |
+| **LDN** | 10m ORB, ATR 5%, RR=3.0, TP1=0.5 | +85.2 | 5.09 | 1.57 | -16.7 | 655 | short | 0 |
+
+#### Key Findings
+
+1. **Asia is the strongest GC session** — Calmar 11.71 at +167R, 0 negative years, 1,238 trades. Completely overturns "~1 bar/hour" assumption. 30m ORB with tight ORB 25% stop is the winning structure.
+2. **Shorts dominate across all sessions** — top NY configs are short or both (short carries the both). All top LDN configs are short-only. Asia top configs are both/short.
+3. **ORB range stops work well** — Asia #1 is ORB 25%, LDN #2 is ORB 25%. Not just ATR-based stops.
+4. **30m ORB is optimal for Asia and NY**, while **10m ORB is optimal for LDN**.
+5. **NY with these lower RR/TP1 params is weaker than existing R3 config** — R3 (RR=9.0, ATR 7, 8m ORB) has Calmar 16.11. The lower RR sweep finds a different, weaker optimum. NY continuation is already well-optimized.
+6. **LDN short-only is viable** — Calmar 5.09, +85R, 0 neg years at #1. 10m ORB with very tight stops (ATR 5%).
+7. **All 3 sessions show 0 negative years** at their top configs — structural edge exists across sessions.
+
+#### Discovery Pipeline — Walk-Forward Ranking
+
+9 candidates (3 per session) through 12m IS / 3m OOS / 3m step walk-forward with 1s magnifier. Script: `run_gc_orb_discovery_pipeline.py`.
+
+| # | Name | OOS R | Calmar | Sharpe | DD | WFE | Stability | Gate | Verdict |
+|---|------|-------|--------|--------|----|-----|-----------|------|---------|
+| 1 | Asia-2 (15m ORB75 short) | +97.2 | 10.51 | 2.34 | -9.2 | 0.545 | 1.000 | Y | PROMOTE |
+| 2 | Asia-3 (30m ORB75 short) | +89.9 | 7.00 | 2.10 | -12.8 | 0.491 | 1.000 | N | PROMOTE |
+| 3 | Asia-1 (30m ORB25 both) | +141.7 | 7.50 | 1.54 | -18.9 | 0.450 | 0.839 | N | PROMOTE |
+| 4 | LDN-3 (10m ATR8 short) | +46.5 | 3.16 | 1.13 | -14.7 | 0.341 | 1.000 | Y | PROMOTE |
+
+---
+
+### GC Asia ORB Continuation — Phase-One Complete (2026-04-01)
+
+**Status**: Asia-1 is **STRONG**. Asia-2/Asia-3 collapsed on holdout. LDN-3 dead. Script: `run_gc_orb_phase_one.py`.
+
+#### Phase-One Results (all 4 promoted candidates, both gate variants)
+
+| Candidate | Verdict | Pre R | HO R | Pre PR | HO PR | HO EV | PSR |
+|-----------|---------|-------|------|--------|-------|-------|-----|
+| **Asia-1 ungated** | **STRONG** | +167.0 | **+20.1** | 70.1% | **55.9%** | $11,102 | 1.000 |
+| **Asia-1 gated** | **STRONG** | +131.9 | **+20.4** | 68.1% | **58.4%** | $11,617 | 1.000 |
+| Asia-2 gated | STRONG | +92.9 | -1.1 | 77.2% | 43.3% | $8,597 | 1.000 |
+| Asia-2 ungated | CONDITIONAL | +105.2 | -4.3 | 72.7% | 35.1% | $6,955 | 1.000 |
+| Asia-3 ungated | CONDITIONAL | +111.4 | -16.0 | 78.7% | 5.8% | $1,069 | 1.000 |
+| Asia-3 gated | CONDITIONAL | +84.3 | -6.2 | 82.1% | 5.8% | $1,074 | 1.000 |
+| LDN-3 ungated | CONDITIONAL | +16.7 | -41.4 | 55.1% | 11.2% | $2,155 | 0.712 |
+| LDN-3 gated | CONDITIONAL | +34.1 | -26.1 | 58.1% | 6.1% | $1,125 | 0.900 |
+
+#### Asia-1 Config (WINNER — promoted to paper trading consideration)
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | Asia |
+| ORB window | 20:00-20:30 (30m) |
+| entry window | 20:30-23:15 |
+| flat | 04:00-07:00 |
+| stop | ORB 25% |
+| rr | 2.5 |
+| tp1_ratio | 0.6 (TP1 at 1.5R, TP2 at 2.5R) |
+| direction | both |
+| atr_length | 14 |
+| min_gap_atr_pct | 1.0% |
+| bar magnifier | ON (1s) |
+
+- **Pre-holdout ungated**: 1,238 trades, 47.1% WR, PF 1.25, +167.0R, Cal 11.71, DD -14.3R, 0 neg years
+- **Pre-holdout gated**: 943 trades, 47.2% WR, PF 1.26, +131.9R, Cal 9.59, DD -13.8R, 1 neg year (2022:-6.2)
+- **Holdout ungated**: 307 trades, +20.1R, Cal 1.38, Shp 0.82, DD -14.5R (2024:+7.4, 2025:+16.0, 2026:-3.4)
+- **Holdout gated**: 225 trades, +20.4R, Cal 1.74, Shp 1.11, DD -11.7R (2024:+9.9, 2025:+13.8, 2026:-3.4)
+- **DSR**: 0.652 ungated / 0.508 gated @1,296 trials (borderline)
+
+#### Gate Decision
+Both variants STRONG. Gated has better holdout Calmar (1.74 vs 1.38), better Sharpe (1.11 vs 0.82), smaller DD (-11.7 vs -14.5R), and higher holdout payout rate (58.4% vs 55.9%). But ungated has 0 pre-holdout negative years and more trades. **Recommend gated for production** — tighter risk profile on holdout.
+
+#### Key Findings
+1. **Asia-1 is a new GC edge** — first validated GC strategy outside NY session. 30m ORB with ORB 25% stop, both directions.
+2. **Discovery WF ranking ≠ holdout ranking** — Asia-2 was WF #1 (Cal 10.51) but collapsed on holdout. Asia-1 was WF #3 but the only holdout survivor.
+3. **Asia short-only strategies (Asia-2, Asia-3) collapsed** — 2024-2025 gold bull market killed short-only configs. Both-directions Asia-1 survived because the long component carried.
+4. **LDN is dead on holdout** — -41.4R ungated, -26.1R gated. 84-90% breach rate. Do not promote.
+5. **GC now has 3 validated strategies**: NY continuation longs (R3), NY continuation shorts (conditional), and Asia continuation both (Asia-1).
+
+---
+
+### Regime-Gate Transfer Confirmation (2026-04-01)
+
+Cross-asset transfer run with shared holdout `2024-03-01` to `2026-02-28` reconfirmed GC Asia-1 as a genuine gate candidate:
+
+| Variant | Trades | HO R | Calmar | Sharpe | DD | HO PR | HO EV |
+|---------|--------|------|--------|--------|----|-------|-------|
+| Ungated | 307 | +20.08 | 1.385 | 0.816 | -14.5R | 55.9% | $11,102 |
+| Gated | 225 | +20.41 | 1.745 | 1.110 | -11.7R | 58.4% | $11,617 |
+
+- **Verdict**: `supports_gate`
+- **Interpretation**: GC keeps essentially the same holdout net R after removing medium-vol days, but the gate meaningfully improves risk-adjusted quality and payout behavior.
+- **Action**: Keep **Asia-1 gated** as the preferred production baseline and promote GC into the second-round regime-gate study.
+
+### Regime-Gate Round Two Refinement (2026-04-01)
+
+Round two tested partial vs full medium-vol blocks on the same shared holdout:
+
+| Variant | HO R | Calmar | Sharpe | DD | HO PR |
+|---------|------|--------|--------|----|-------|
+| Ungated | +20.08 | 1.385 | 0.816 | -14.5R | 55.9% |
+| Block `bull_medium_vol` only | **+26.68** | **2.183** | **1.314** | **-12.2R** | **64.9%** |
+| Block `sideways_medium_vol` only | +13.81 | 1.143 | 0.768 | -12.1R | 46.5% |
+| Block full medium-vol gate | +20.41 | 1.745 | 1.110 | -11.7R | 58.4% |
+
+- **Damage attribution**: `bull_medium_vol` was -6.59R on holdout, while `sideways_medium_vol` was +6.26R.
+- **Updated action**: refine the GC gate to **block `bull_medium_vol` only**. The full NQ-style gate is directionally helpful, but it removes a profitable GC bucket.

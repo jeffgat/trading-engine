@@ -459,7 +459,7 @@ def build_engines(
         - atr_lengths maps DataBento symbol to ATR periods needed by that feed.
     """
     from .engine import ORBEngine
-    from .gates import build_regime_gate, build_structure_gate
+    from .gates import build_regime_gates, build_structure_gate, normalize_regime_gates
     from .overrides import load_overrides
 
     general = config.get("general", {})
@@ -503,6 +503,11 @@ def build_engines(
         merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {}), **exec_overrides.get(sess_name, {})}
         half_days = tuple(merged.get("half_days", default_half_days))
         excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
+        regime_gates = normalize_regime_gates(
+            merged.get("regime_gate"),
+            merged.get("regime_gates"),
+        )
+        compiled_regime_gates = build_regime_gates(regime_gates)
 
         # Per-session instrument (signal data source) and execution ticker
         sess_instrument = merged.get("instrument", "NQ")
@@ -552,8 +557,10 @@ def build_engines(
             icf_enabled=merged.get("icf_enabled", False),
             excluded_dow=merged.get("excluded_dow"),
             fomc_exclusion=merged.get("fomc_exclusion", False),
-            regime_gate=merged.get("regime_gate"),
-            regime_gate_check=build_regime_gate(merged.get("regime_gate")),
+            regime_gate=regime_gates[0] if len(regime_gates) == 1 else None,
+            regime_gates=regime_gates,
+            regime_gate_check=compiled_regime_gates[0][1] if len(compiled_regime_gates) == 1 else None,
+            regime_gate_checks=compiled_regime_gates,
             structure_gate=merged.get("structure_gate"),
             structure_gate_check=build_structure_gate(merged.get("structure_gate")),
             excluded_dates=excluded_dates,
@@ -566,10 +573,10 @@ def build_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s, regime_gate=%s, structure_gate=%s)",
+            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s, regime_gates=%s, structure_gate=%s)",
             config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
             merged.get("stop_basis", "atr"), sess_atr_length, merged.get("risk_usd", "?"),
-            merged.get("regime_gate") or "-",
+            ",".join(regime_gates) if regime_gates else "-",
             merged.get("structure_gate") or "-",
         )
 
@@ -591,6 +598,7 @@ def build_lsi_engines(
 
     Mutates symbol_map and atr_lengths in-place to register the new engines.
     """
+    from .gates import build_regime_gates, normalize_regime_gates
     from .lsi_engine import LSIEngine
 
     risk = config.get("risk", {})
@@ -622,6 +630,11 @@ def build_lsi_engines(
         atr_lengths.setdefault(db_symbol, set()).add(sess_atr_length)
         half_days = tuple(merged.get("half_days", default_half_days))
         excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
+        regime_gates = normalize_regime_gates(
+            merged.get("regime_gate"),
+            merged.get("regime_gates"),
+        )
+        compiled_regime_gates = build_regime_gates(regime_gates)
 
         # Handle excluded_dow as list → first value for single exclusion
         excl_dow = merged.get("excluded_dow")
@@ -652,6 +665,10 @@ def build_lsi_engines(
             max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
             long_only=merged.get("long_only", True),
             excluded_dow=excl_dow,
+            regime_gate=regime_gates[0] if len(regime_gates) == 1 else None,
+            regime_gates=regime_gates,
+            regime_gate_check=compiled_regime_gates[0][1] if len(compiled_regime_gates) == 1 else None,
+            regime_gate_checks=compiled_regime_gates,
             excluded_dates=excluded_dates,
             half_days=half_days,
             half_day_flat_start=merged.get("half_day_flat_start", config.get("dates", {}).get("half_day_flat_start", "12:50")),
@@ -664,9 +681,10 @@ def build_lsi_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] LSI engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s)",
+            "[%s] LSI engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s, regime_gates=%s)",
             config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
             merged.get("qty_multiplier", 1.0), merged.get("risk_usd", "?"),
+            ",".join(regime_gates) if regime_gates else "-",
         )
 
     return engines
