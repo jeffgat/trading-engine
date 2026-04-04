@@ -13,7 +13,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1103,14 +1103,13 @@ function SessionConfigsSection({
   const defaultConfig = liveConfigs[0] ?? sortedConfigs[0] ?? "";
   const [activeConfig, setActiveConfig] = useState(defaultConfig);
 
-  // Sync when config metadata changes
-  useEffect(() => {
-    if (!activeConfig || !execConfigs[activeConfig]) {
-      setActiveConfig(defaultConfig);
-    }
-  }, [defaultConfig, activeConfig, execConfigs]);
-
+  // If the active config was removed, fall back to default
   const validConfig = execConfigs[activeConfig] ? activeConfig : defaultConfig;
+
+  // Sync state when the valid config diverges (e.g. config deleted externally)
+  if (validConfig !== activeConfig) {
+    setActiveConfig(validConfig);
+  }
 
   const activeMeta = execConfigs[validConfig];
 
@@ -1127,7 +1126,7 @@ function SessionConfigsSection({
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-secondary">
-          Strategy Configurations
+          Strategy Parameters
         </h3>
         <div className="flex items-center gap-3">
           <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
@@ -1236,8 +1235,8 @@ export function ConfigView({
 
       <Tabs defaultValue="strategy" className="space-y-4">
         <TabsList className="bg-bg-card border border-border">
-          <TabsTrigger value="strategy">Strategy Configurations</TabsTrigger>
-          <TabsTrigger value="execution">Execution Configs</TabsTrigger>
+          <TabsTrigger value="strategy">Parameters</TabsTrigger>
+          <TabsTrigger value="execution">Configs Overview</TabsTrigger>
         </TabsList>
 
         <TabsContent value="strategy" className="space-y-6">

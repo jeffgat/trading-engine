@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council Report — Discovery Candidate Evaluation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.15rem; font-weight: 700; margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid #e5e5e5; }
+  h3 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+  p, li { font-size: 0.9rem; margin-bottom: 0.5rem; }
+  ul { padding-left: 1.25rem; }
+  .meta { color: #666; font-size: 0.82rem; margin-bottom: 1.5rem; }
+  .question-box { background: #f0f4ff; border: 1px solid #c5d4f7; border-radius: 8px; padding: 1.25rem; margin-bottom: 2rem; }
+  .question-box p { font-size: 0.88rem; color: #334; }
+  .verdict-box { background: #f0faf0; border: 1px solid #b5e0b5; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .verdict-box h2 { margin-top: 0; border: none; padding: 0; color: #1a6b1a; }
+  .clash-box { background: #fff8f0; border: 1px solid #e8d4b0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .clash-box h2 { margin-top: 0; border: none; padding: 0; color: #8a5a00; }
+  .blind-box { background: #fff0f0; border: 1px solid #e0b5b5; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .blind-box h2 { margin-top: 0; border: none; padding: 0; color: #8a1a1a; }
+  .action-box { background: #1a1a2e; color: #e0e0e0; border-radius: 8px; padding: 1.5rem; margin: 2rem 0; }
+  .action-box h2 { color: #8fd; margin: 0 0 0.75rem; border: none; padding: 0; }
+  .action-box p { color: #ccc; }
+  .action-box strong { color: #fff; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.82rem; }
+  th { background: #f5f5f5; font-weight: 600; text-align: left; padding: 0.5rem 0.6rem; border-bottom: 2px solid #ddd; }
+  td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #eee; }
+  tr:hover td { background: #f9f9f9; }
+  .strong { color: #1a7a1a; font-weight: 600; }
+  .conditional { color: #8a6a00; font-weight: 600; }
+  .excluded { color: #aa2a2a; font-weight: 600; }
+  details { margin: 0.75rem 0; border: 1px solid #e5e5e5; border-radius: 6px; overflow: hidden; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.9rem; background: #fafafa; user-select: none; }
+  summary:hover { background: #f0f0f0; }
+  .advisor-content { padding: 1rem; font-size: 0.85rem; background: #fff; }
+  .advisor-tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 3px; margin-left: 0.5rem; vertical-align: middle; }
+  .tag-contrarian { background: #ffe0e0; color: #8a2a2a; }
+  .tag-principles { background: #e0e8ff; color: #2a3a8a; }
+  .tag-expansionist { background: #e0ffe0; color: #2a6a2a; }
+  .tag-outsider { background: #fff0d0; color: #6a4a00; }
+  .tag-executor { background: #e8e0ff; color: #4a2a8a; }
+  .agreement-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 1rem 0; }
+  .advisor-pos { text-align: center; padding: 0.5rem; border-radius: 6px; font-size: 0.75rem; }
+  .pos-agree { background: #e8f5e8; border: 1px solid #b5d8b5; }
+  .pos-disagree { background: #fff0e0; border: 1px solid #e0c8a0; }
+  .pos-excluded { background: #fee; border: 1px solid #e0b5b5; }
+  .review-votes { display: flex; gap: 0.75rem; margin: 0.75rem 0; flex-wrap: wrap; }
+  .vote-chip { font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 4px; background: #f0f0f0; border: 1px solid #ddd; }
+  .vote-strong { background: #e8f5e8; border-color: #b5d8b5; }
+  .vote-weak { background: #fee; border-color: #e0b5b5; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e5; color: #999; font-size: 0.75rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>Discovery Candidate Evaluation for Prop Firm Payout Farming</h1>
+<p class="meta">LLM Council Session #4 &mdash; April 3, 2026 &bull; 5 advisors, 5 peer reviews &bull; ID: 20260403-110838</p>
+
+<div class="question-box">
+  <p><strong>Question:</strong> Evaluate all 17 discovery candidates from TOP_CANDIDATES_PER_ASSET_REPORT against the prop firm payout farming framework. Rank legs, find best 3-leg and 5-leg combinations, identify exclusions, determine if any should replace live legs, and confirm/challenge GC Asia-1 ungated as highest-confidence non-equity add.</p>
+</div>
+
+<!-- VERDICT -->
+<div class="verdict-box">
+  <h2>The Recommendation</h2>
+
+  <h3>Final Ranking (Top 8)</h3>
+  <table>
+    <tr><th>#</th><th>Leg</th><th>HO R</th><th>HO PR</th><th>DSR</th><th>Verdict</th></tr>
+    <tr><td>1</td><td><strong>NQ Asia-B gated</strong></td><td>+42.5</td><td>76.7%</td><td>0.310</td><td class="strong">STRONG</td></tr>
+    <tr><td>2</td><td><strong>NQ Asia-A gated</strong></td><td>+37.9</td><td>74.8%</td><td>0.233</td><td class="strong">STRONG*</td></tr>
+    <tr><td>3</td><td><strong>GC Asia-1 ungated</strong></td><td>+20.1</td><td>55.9%</td><td>0.652</td><td class="strong">STRONG</td></tr>
+    <tr><td>4</td><td>GC Asia-1 gated</td><td>+20.4</td><td>58.4%</td><td>0.508</td><td class="conditional">CONDITIONAL</td></tr>
+    <tr><td>5</td><td>RTY NY-1</td><td>+11.0</td><td>&mdash;</td><td>0.590</td><td class="conditional">CONDITIONAL</td></tr>
+    <tr><td>6</td><td>CL LDN-1</td><td>+12.8</td><td>54.1%</td><td>0.186</td><td class="conditional">CONDITIONAL</td></tr>
+    <tr><td>7</td><td>RTY NY-2</td><td>+8.8</td><td>52.2%</td><td>0.527</td><td class="conditional">CONDITIONAL</td></tr>
+    <tr><td>8</td><td>SI Asia-3</td><td>+10.1</td><td>37.0%</td><td>0.376</td><td class="excluded">EXCLUDED</td></tr>
+  </table>
+  <p style="font-size:0.8rem;color:#666;">* Pending trade-overlap verification with NQ Asia-B. All remaining legs excluded.</p>
+
+  <h3>Best 3-Leg Combination</h3>
+  <p><strong>NQ Asia-B + GC Asia-1 ungated + CL LDN-1</strong> &mdash; Three instruments, three market structures (equity / metals / energy), minimal session overlap. Four advisors converged independently.</p>
+
+  <h3>Best 5-Leg Combination</h3>
+  <p><strong>NQ Asia-B + GC Asia-1 ungated + CL LDN-1 + NQ Asia-A + RTY NY-1</strong> &mdash; NQ Asia-A 4th (pending overlap check), RTY NY-1 5th (NY session, different timing). SI excluded.</p>
+
+  <h3>Categorical Excludes</h3>
+  <p>ES Asia-A (HO -0.4R), GC Asia-2 (HO -1.1R), ES NY-A, RTY NY-4, NQ NY-B, all SI legs (HO PR too low), CL LDN-2/3 (redundant).</p>
+
+  <h3>Live Portfolio</h3>
+  <p>Do not replace live legs. Add discovery legs as new separate accounts. Monitor live ES legs' rolling 90-day performance.</p>
+
+  <h3>GC Asia-1 Ungated</h3>
+  <p><strong>Confirmed</strong> as highest-confidence non-equity add. DSR 0.652, positive holdout, zero equity correlation. Build priority #1.</p>
+</div>
+
+<!-- ACTION -->
+<div class="action-box">
+  <h2>The One Thing to Do First</h2>
+  <p><strong>Run NQ Asia-B and NQ Asia-A side-by-side on the same historical dates and log every trade entry time.</strong> If these two legs enter on the same bars more than 40% of the time, they are a leveraged single bet with two reset clocks, not two independent accounts. This determines whether your best-5 is actually 5 positions or 4 with a duplicate.</p>
+</div>
+
+<!-- AGREEMENT -->
+<h2>Advisor Agreement Map</h2>
+
+<h3>Best 3-Leg Combination</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-agree"><strong>Contrarian</strong><br>NQ-B + GC + (by HO R)</div>
+  <div class="advisor-pos pos-agree"><strong>Principles</strong><br>NQ-B + GC + CL</div>
+  <div class="advisor-pos pos-agree"><strong>Expansionist</strong><br>NQ-B + GC + CL</div>
+  <div class="advisor-pos pos-disagree"><strong>Outsider</strong><br>NQ-B + NQ-A + GC gated</div>
+  <div class="advisor-pos pos-agree"><strong>Executor</strong><br>NQ-B + GC + RTY</div>
+</div>
+
+<h3>GC Ungated vs Gated</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-agree"><strong>Contrarian</strong><br>Ungated</div>
+  <div class="advisor-pos pos-agree"><strong>Principles</strong><br>Ungated (gate consumes edge)</div>
+  <div class="advisor-pos pos-agree"><strong>Expansionist</strong><br>Ungated</div>
+  <div class="advisor-pos pos-disagree"><strong>Outsider</strong><br>Gated (higher EV)</div>
+  <div class="advisor-pos pos-agree"><strong>Executor</strong><br>Ungated</div>
+</div>
+
+<h3>SI Asia-3 Inclusion</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-agree"><strong>Contrarian</strong><br>Include (by HO R)</div>
+  <div class="advisor-pos pos-agree"><strong>Principles</strong><br>Include in best-5</div>
+  <div class="advisor-pos pos-agree"><strong>Expansionist</strong><br>Include in best-5</div>
+  <div class="advisor-pos pos-excluded"><strong>Outsider</strong><br>Exclude (neg EV)</div>
+  <div class="advisor-pos pos-excluded"><strong>Executor</strong><br>Exclude (29% HO PR)</div>
+</div>
+
+<!-- CLASHES -->
+<div class="clash-box">
+  <h2>Where the Council Clashes</h2>
+  <ul>
+    <li><strong>GC gated vs ungated:</strong> Outsider says gated wins on EV ($174 vs $145). First Principles says ungated wins (DSR 0.652 vs 0.508). Chairman sides with ungated &mdash; DSR is the right metric for prop payout cadence.</li>
+    <li><strong>SI Asia-3:</strong> First Principles and Expansionist include it. Executor excludes it (HO PR 29.3%). Chairman sides with Executor &mdash; 70% failure rate is not prop-viable.</li>
+    <li><strong>Replace vs add:</strong> Executor says additions only. First Principles says drop one ES leg. Contrarian says we lack the data to decide. Chairman: additions for now, monitor ES legs for removal.</li>
+    <li><strong>CL LDN-1 vs LDN-2:</strong> Insufficient data to adjudicate. Default to higher HO R (LDN-1, +12.8R).</li>
+  </ul>
+</div>
+
+<!-- BLIND SPOTS -->
+<div class="blind-box">
+  <h2>Blind Spots the Council Caught</h2>
+  <ul>
+    <li><strong>Correlation under regime shock</strong> &mdash; All 5 peer reviewers flagged this. Session timing diversity provides zero protection against global synchronous shocks. (All reviewers)</li>
+    <li><strong>Joint drawdown / daily prop cap</strong> &mdash; Simultaneous NQ Asia-B + NQ Asia-A drawdowns are not independent. Combined breach probability unmodeled. (Reviewers 2, 3, 4)</li>
+    <li><strong>Kelly-adjusted sizing</strong> &mdash; Raw HO R numbers meaningless without per-trade variance. +42.5R on 50 trades ≠ +42.5R on 500 trades. (Reviewer 5)</li>
+    <li><strong>Pre-period evaporation</strong> &mdash; 90%+ pre-to-holdout edge decay. Is remaining edge durable or still decaying? (Contrarian only)</li>
+    <li><strong>NQ Asia-B / Asia-A trade overlap</strong> &mdash; Both are long-only NQ Asia ORB. Could be a leveraged single bet. (Chairman)</li>
+  </ul>
+</div>
+
+<!-- PEER REVIEW -->
+<h2>Peer Review Summary</h2>
+<div class="review-votes">
+  <span class="vote-chip vote-strong">Strongest: First Principles (2)</span>
+  <span class="vote-chip vote-strong">Strongest: Contrarian (2)</span>
+  <span class="vote-chip vote-strong">Strongest: Expansionist (1)</span>
+  <span class="vote-chip vote-weak">Blind spot: Outsider (4)</span>
+  <span class="vote-chip vote-weak">Blind spot: Expansionist (1)</span>
+</div>
+
+<!-- ADVISOR DETAILS -->
+<h2>Full Advisor Responses</h2>
+
+<details>
+  <summary>The Contrarian <span class="advisor-tag tag-contrarian">CONTRARIAN</span></summary>
+  <div class="advisor-content">
+    <p>Fatal flaw: holdout performance is catastrophically weak for most legs &mdash; 90%+ pre-to-holdout evaporation. Only 5 legs worth considering by HO R: NQ Asia-B (+42.5R), NQ Asia-A (+37.9R), GC Asia-1 ungated (+20.1R), SI Asia-3 (+10.1R), RTY NY-1 (+11.0R).</p>
+    <p>GC Asia-1 is NOT highest-confidence by prop metrics &mdash; NQ Asia-B's holdout is double. ES Asia-A (HO -0.4R) and GC Asia-2 (HO -1.1R) must be categorically excluded. Correlation assumption unexamined &mdash; equity-dominated portfolio gets wiped by single shock.</p>
+    <p>The live portfolio replacement question is being asked backwards. Cannot evaluate replacement without incumbent's holdout data.</p>
+    <p><strong>Bottom line:</strong> Rank by holdout R only. Exclude anything with HO &lt; +5R.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The First Principles Thinker <span class="advisor-tag tag-principles">PRINCIPLES</span></summary>
+  <div class="advisor-content">
+    <p>This is a survival problem, not a ranking problem. Only HO R matters. Pre-period R is directional evidence, not a number.</p>
+    <p><strong>Best 3:</strong> NQ Asia-B + GC Asia-1 ungated + CL LDN-1. Three different market structures, zero session overlap.</p>
+    <p><strong>Best 5:</strong> Add RTY NY-1 + SI Asia-3.</p>
+    <p>Categorically exclude HO near zero or negative: ES Asia-A, GC Asia-2, ES NY-A, RTY NY-4, NQ NY-B. High pre-period WR with collapsed HO is the clearest overfitting signature.</p>
+    <p>Live portfolio should drop one ES leg and add GC. Ungated beats gated because gate consumes edge (DSR 0.652 vs 0.508).</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Expansionist <span class="advisor-tag tag-expansionist">EXPANSIONIST</span></summary>
+  <div class="advisor-content">
+    <p>Ranked all 17 by HO R with decorrelation analysis. Top: NQ Asia-B (HO PR 76.7%), NQ Asia-A, GC Asia-1 ungated (DSR 0.652), RTY NY-1 (DSR 0.590).</p>
+    <p><strong>Best 3:</strong> NQ Asia-B + GC Asia-1 ungated + CL LDN-1. Equity/metals/energy, Asia/Asia/London.</p>
+    <p><strong>Best 5:</strong> Add RTY NY-1 + SI Asia-3.</p>
+    <p>Replace ES Asia ORB from live portfolio with NQ Asia-B &mdash; HO +42.5R vs -0.4R is categorical, not marginal.</p>
+    <p>GC ungated confirmed: DSR 0.652 is best in entire 21-leg universe. CL LDN-1 and SI Asia-3 are undervalued diversifiers.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Outsider <span class="advisor-tag tag-outsider">OUTSIDER</span></summary>
+  <div class="advisor-content">
+    <p>Pure EV math: EV = (HO PR &times; 400) - ((1 - HO PR) &times; 100). NQ Asia-B +$284/attempt, NQ Asia-A +$274, GC gated +$174, GC ungated +$145.</p>
+    <p>9 legs have negative EV on holdout. <strong>Best 3:</strong> NQ Asia-B + NQ Asia-A + GC gated ($732/cycle). <strong>Best 5:</strong> add GC ungated + CL LDN-2 ($997/cycle).</p>
+    <p>Interesting: GC gated has HIGHER EV than ungated (HO PR 58.4% vs 55.9%).</p>
+    <p>Replace weak live legs with GC variants.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Executor <span class="advisor-tag tag-executor">EXECUTOR</span></summary>
+  <div class="advisor-content">
+    <p><strong>Tier 1 build immediately:</strong> NQ Asia-B, NQ Asia-A, GC Asia-1 ungated, GC Asia-1 gated.</p>
+    <p><strong>Tier 2:</strong> RTY NY-1, CL LDN-2.</p>
+    <p><strong>Best 3:</strong> NQ Asia-B + GC Asia-1 ungated + RTY NY-1. <strong>Best 5:</strong> add NQ Asia-A + CL LDN-2.</p>
+    <p>No replacements &mdash; additions only. Live track records trump backtests. Exclude SI entirely (HO PR 29.3%).</p>
+    <p><strong>Monday:</strong> Verify GC 1s data, start GC + NQ Asia-B configs in parallel, scope RTY/CL timelines.</p>
+  </div>
+</details>
+
+<details>
+  <summary>Peer Review Highlights</summary>
+  <div class="advisor-content">
+    <p><strong>Reviewer 1 (general):</strong> Strongest: First Principles (survival framing correct). Blind spot: Outsider (EV without drawdown path). All missed: correlation stress-testing.</p>
+    <p><strong>Reviewer 2 (risk manager):</strong> Strongest: Contrarian (challenges premise). Blind spot: Outsider (replacing live legs is survivorship error). All missed: joint drawdown distribution.</p>
+    <p><strong>Reviewer 3 (portfolio allocator):</strong> Strongest: Expansionist (decorrelation priority). Blind spot: Outsider (false precision). All missed: daily DD cap interaction.</p>
+    <p><strong>Reviewer 4 (operations):</strong> Strongest: Contrarian (holdout validity gating). Blind spot: Outsider (irreversible swaps). All missed: trailing drawdown rules.</p>
+    <p><strong>Reviewer 5 (data scientist):</strong> Strongest: First Principles (falsifiable claims). Blind spot: Expansionist (SI rank-filling). All missed: Kelly-adjusted sizing.</p>
+  </div>
+</details>
+
+<footer>
+  LLM Council Session #4 &bull; April 3, 2026 &bull; 5 advisors, 5 peer reviews, chairman synthesis &bull; ID: 20260403-110838
+</footer>
+
+</body>
+</html>

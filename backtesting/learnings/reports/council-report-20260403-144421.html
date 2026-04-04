@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Council — Discovery Legs vs ALPHA_V1</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fafafa; color: #1a1a1a; line-height: 1.6; max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.15rem; font-weight: 700; margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid #e5e5e5; }
+  h3 { font-size: 0.95rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+  p, li { font-size: 0.9rem; margin-bottom: 0.5rem; }
+  ul { padding-left: 1.25rem; }
+  .meta { color: #666; font-size: 0.82rem; margin-bottom: 1.5rem; }
+  .question-box { background: #f0f4ff; border: 1px solid #c5d4f7; border-radius: 8px; padding: 1.25rem; margin-bottom: 2rem; }
+  .verdict-box { background: #f0faf0; border: 1px solid #b5e0b5; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .verdict-box h2 { margin-top: 0; border: none; padding: 0; color: #1a6b1a; }
+  .clash-box { background: #fff8f0; border: 1px solid #e8d4b0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .clash-box h2 { margin-top: 0; border: none; padding: 0; color: #8a5a00; }
+  .blind-box { background: #fff0f0; border: 1px solid #e0b5b5; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .blind-box h2 { margin-top: 0; border: none; padding: 0; color: #8a1a1a; }
+  .action-box { background: #1a1a2e; color: #e0e0e0; border-radius: 8px; padding: 1.5rem; margin: 2rem 0; }
+  .action-box h2 { color: #8fd; margin: 0 0 0.75rem; border: none; padding: 0; }
+  .action-box p { color: #ccc; }
+  .action-box strong { color: #fff; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.82rem; }
+  th { background: #f5f5f5; font-weight: 600; text-align: left; padding: 0.5rem 0.6rem; border-bottom: 2px solid #ddd; }
+  td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #eee; }
+  .yes { color: #1a7a1a; font-weight: 600; }
+  .no { color: #aa2a2a; font-weight: 600; }
+  .wait { color: #8a6a00; font-weight: 600; }
+  details { margin: 0.75rem 0; border: 1px solid #e5e5e5; border-radius: 6px; overflow: hidden; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; font-size: 0.9rem; background: #fafafa; }
+  summary:hover { background: #f0f0f0; }
+  .advisor-content { padding: 1rem; font-size: 0.85rem; background: #fff; }
+  .tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 3px; margin-left: 0.5rem; }
+  .tag-c { background: #ffe0e0; color: #8a2a2a; }
+  .tag-fp { background: #e0e8ff; color: #2a3a8a; }
+  .tag-ex { background: #e0ffe0; color: #2a6a2a; }
+  .tag-ou { background: #fff0d0; color: #6a4a00; }
+  .tag-do { background: #e8e0ff; color: #4a2a8a; }
+  .decision-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 1.5rem 0; }
+  .decision-card { border-radius: 8px; padding: 1rem; text-align: center; }
+  .decision-card h3 { margin: 0 0 0.5rem; font-size: 0.9rem; }
+  .decision-card .verdict { font-size: 1.1rem; font-weight: 700; margin: 0.5rem 0; }
+  .card-no { background: #fff0f0; border: 1px solid #e0b5b5; }
+  .card-yes { background: #f0faf0; border: 1px solid #b5e0b5; }
+  .card-wait { background: #fff8f0; border: 1px solid #e8d4b0; }
+  .agreement-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 1rem 0; }
+  .advisor-pos { text-align: center; padding: 0.5rem; border-radius: 6px; font-size: 0.72rem; }
+  .pos-no { background: #fee; border: 1px solid #e0b5b5; }
+  .pos-yes { background: #e8f5e8; border: 1px solid #b5d8b5; }
+  .pos-wait { background: #fff8f0; border: 1px solid #e8d4b0; }
+  .vote-chip { font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 4px; display: inline-block; margin: 0.2rem; }
+  .vote-strong { background: #e8f5e8; border: 1px solid #b5d8b5; }
+  .vote-weak { background: #fee; border: 1px solid #e0b5b5; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e5e5; color: #999; font-size: 0.75rem; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>Discovery Legs vs ALPHA_V1 Portfolio</h1>
+<p class="meta">LLM Council Session #5 &mdash; April 3, 2026 &bull; 5 advisors, 5 peer reviews &bull; ID: 20260403-144421</p>
+
+<div class="question-box">
+  <p><strong>Question:</strong> Should NQ Asia-B, GC Asia-1, or CL LDN-1 be added to or replace any leg in the live ALPHA_V1 portfolio (4 legs, all long-only equity index on Apex)?</p>
+</div>
+
+<!-- DECISION CARDS -->
+<div class="decision-grid">
+  <div class="decision-card card-no">
+    <h3>NQ Asia-B</h3>
+    <div class="verdict no">DO NOT ADD</div>
+    <p style="font-size:0.78rem;color:#666;">Correlated duplicate. Live leg is superior on every metric (212R vs 138R, higher Calmar).</p>
+  </div>
+  <div class="decision-card card-wait">
+    <h3>GC Asia-1</h3>
+    <div class="verdict wait">ADD (different firm)</div>
+    <p style="font-size:0.78rem;color:#666;">Correct answer to concentration risk. DSR 0.652. Open TopStep/FTMO account. 3-4 week timeline.</p>
+  </div>
+  <div class="decision-card card-no">
+    <h3>CL LDN-1</h3>
+    <div class="verdict no">DO NOT ADD</div>
+    <p style="font-size:0.78rem;color:#666;">2025: +2.1R. DD: -19.9R. DSR: 0.186. Unanimous rejection.</p>
+  </div>
+</div>
+
+<!-- VERDICT -->
+<div class="verdict-box">
+  <h2>The Recommendation</h2>
+  <p><strong>Keep all 4 current ALPHA_V1 legs.</strong> No removal case exists. All profitable with Calmar above 13.</p>
+  <p><strong>Add GC Asia-1 on a second prop firm (TopStep or FTMO).</strong> GC is the only discovery leg with genuine diversification value (non-equity, non-index, DSR 0.652). The Apex ban is a platform constraint, not a strategy disqualification. 3-4 week timeline.</p>
+  <p><strong>Target: 5 legs</strong> &mdash; current 4 on Apex + GC on a second firm.</p>
+  <p><strong>Skip NQ Asia-B</strong> (correlated duplicate, inferior metrics) and <strong>CL LDN-1</strong> (dead in 2025, near-random DSR).</p>
+</div>
+
+<!-- ACTION -->
+<div class="action-box">
+  <h2>The One Thing to Do First</h2>
+  <p><strong>Open a second prop firm account (TopStep or FTMO) this week.</strong> The concentration risk is known, the solution is known, and GC is on the bench because of a platform constraint within your control. The account application takes an afternoon. Everything else is second-order.</p>
+</div>
+
+<!-- AGREEMENT MAP -->
+<h2>Advisor Positions</h2>
+
+<h3>NQ Asia-B</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-no"><strong>Contrarian</strong><br>No &mdash; concentration</div>
+  <div class="advisor-pos pos-no"><strong>Principles</strong><br>No &mdash; worse metrics</div>
+  <div class="advisor-pos pos-yes"><strong>Expansionist</strong><br>Add both</div>
+  <div class="advisor-pos pos-no"><strong>Outsider</strong><br>No &mdash; duplicate</div>
+  <div class="advisor-pos pos-wait"><strong>Executor</strong><br>Maybe &mdash; check overlap</div>
+</div>
+
+<h3>GC Asia-1</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-no"><strong>Contrarian</strong><br>No &mdash; banned</div>
+  <div class="advisor-pos pos-no"><strong>Principles</strong><br>No &mdash; non-starter</div>
+  <div class="advisor-pos pos-yes"><strong>Expansionist</strong><br>Yes &mdash; urgent</div>
+  <div class="advisor-pos pos-yes"><strong>Outsider</strong><br>Yes &mdash; switch firm</div>
+  <div class="advisor-pos pos-wait"><strong>Executor</strong><br>Watchlist</div>
+</div>
+
+<h3>CL LDN-1</h3>
+<div class="agreement-grid">
+  <div class="advisor-pos pos-no"><strong>Contrarian</strong><br>No</div>
+  <div class="advisor-pos pos-no"><strong>Principles</strong><br>No</div>
+  <div class="advisor-pos pos-no"><strong>Expansionist</strong><br>Not yet</div>
+  <div class="advisor-pos pos-no"><strong>Outsider</strong><br>Hard no</div>
+  <div class="advisor-pos pos-no"><strong>Executor</strong><br>No</div>
+</div>
+
+<!-- CLASHES -->
+<div class="clash-box">
+  <h2>Where the Council Clashes</h2>
+  <p><strong>GC is the central fight.</strong> Everyone agrees GC has quality (DSR 0.652, genuine diversification). The disagreement is operational: is the Apex ban a hard blocker (Contrarian, Principles) or a one-time friction cost (Expansionist, Outsider)?</p>
+  <p>Chairman sides with the Outsider's framing: the ban is a platform constraint, not a strategy disqualification. But the Expansionist's urgency is miscalibrated &mdash; 5/5 peer reviewers flagged it as the unanimous blind spot.</p>
+</div>
+
+<!-- BLIND SPOTS -->
+<div class="blind-box">
+  <h2>Blind Spots the Council Caught</h2>
+  <ul>
+    <li><strong>Pairwise return correlation never computed</strong> &mdash; assumed independence from different entry logic is not the same as measured return decorrelation (3 reviewers)</li>
+    <li><strong>Joint loss distribution unmodeled</strong> &mdash; a macro shock hitting all 4 equity legs simultaneously was discussed conceptually but never quantified against Apex's limits (4 reviewers)</li>
+    <li><strong>Regime conditioning</strong> &mdash; whether discovery signals are regime-dependent was never examined (Reviewer 5)</li>
+  </ul>
+</div>
+
+<!-- PEER REVIEW -->
+<h2>Peer Review Summary</h2>
+<div>
+  <span class="vote-chip vote-strong">Strongest: Contrarian (2)</span>
+  <span class="vote-chip vote-strong">Strongest: First Principles (1)</span>
+  <span class="vote-chip vote-strong">Strongest: Outsider (1)</span>
+  <span class="vote-chip vote-strong">Strongest: Executor (1)</span>
+  <span class="vote-chip vote-weak">Blind spot: Expansionist (5/5)</span>
+</div>
+
+<!-- ADVISOR DETAILS -->
+<h2>Full Advisor Responses</h2>
+
+<details>
+  <summary>The Contrarian <span class="tag tag-c">CONTRARIAN</span></summary>
+  <div class="advisor-content">
+    <p>No to all three. NQ Asia-B is concentration, not diversification &mdash; same instrument, session, direction. GC is banned on Apex &mdash; should not appear on this council. CL is dead (+2.1R in 2025, DSR 0.186, -19.9R DD). The real fatal flaw: all four live legs are long-only equity index. Fix that first.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The First Principles Thinker <span class="tag tag-fp">PRINCIPLES</span></summary>
+  <div class="advisor-content">
+    <p>Do not replace NQ Asia ORB &mdash; inferior metrics (138R vs 212R, lower Calmar). GC banned = non-starter. CL disqualified. Stay at 4. Discovery surfaced nothing that improves the portfolio. The concentration problem remains unsolved &mdash; that's the next problem to assign.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Expansionist <span class="tag tag-ex">EXPANSIONIST</span></summary>
+  <div class="advisor-content">
+    <p>Run both NQ Asia legs (different entry logic). Add GC immediately on TopStep/FTMO &mdash; most urgent addition. Delay CL. Target 6 legs, ~$5M+ lifecycle. GC diversification value exceeds standalone R numbers.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Outsider <span class="tag tag-ou">OUTSIDER</span></summary>
+  <div class="advisor-content">
+    <p>GC is the only interesting proposal &mdash; different sector, highest confidence, real diversification. Platform switch is one-time friction. NQ Asia-B is correlated duplicate with worse metrics. CL near-random. Stay at 4 + GC only.</p>
+  </div>
+</details>
+
+<details>
+  <summary>The Executor <span class="tag tag-do">EXECUTOR</span></summary>
+  <div class="advisor-content">
+    <p>Run both NQ Asia after overlap check (weekend project). GC not now &mdash; 3-4 week overhead. CL no. Keep all 4. Move to 5 legs max. Monday: pull trade logs, check overlap percentage.</p>
+  </div>
+</details>
+
+<details>
+  <summary>Peer Review Highlights</summary>
+  <div class="advisor-content">
+    <p><strong>Reviewer 1:</strong> Strongest: First Principles. Blind spot: Expansionist (ban as inconvenience). All missed: pairwise correlation.</p>
+    <p><strong>Reviewer 2:</strong> Strongest: Contrarian. Blind spot: Expansionist (optimism without constraints). All missed: drawdown sequencing.</p>
+    <p><strong>Reviewer 3:</strong> Strongest: Contrarian. Blind spot: Expansionist (urgency without evidence). All missed: daily loss limits.</p>
+    <p><strong>Reviewer 4:</strong> Strongest: Executor. Blind spot: Expansionist (onboarding complexity). All missed: correlation stress testing.</p>
+    <p><strong>Reviewer 5:</strong> Strongest: Outsider. Blind spot: Expansionist (signal vs return independence). All missed: regime conditioning.</p>
+  </div>
+</details>
+
+<footer>
+  LLM Council Session #5 &bull; April 3, 2026 &bull; 5 advisors, 5 peer reviews, chairman synthesis &bull; ID: 20260403-144421
+</footer>
+
+</body>
+</html>

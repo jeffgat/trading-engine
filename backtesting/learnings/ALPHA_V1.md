@@ -13,12 +13,42 @@ Source: LLM Council sessions (2026-04-03), lifecycle simulation, OOS verificatio
 | Account size | $50,000 |
 | Trailing drawdown | $2,000 |
 | Trail stops at | $52,000 |
-| Phase 1 (Sprint) target | $52,500 (+5R at $400/trade) |
+| Phase 1 (Sprint) target | $52,500 |
 | First payout withdrawal | $500 |
 | Phase 2 (Extraction) risk | $200/trade |
 | Weekly withdrawal | Friday, withdraw above $52.5K to $52K |
 | Account cost | $150 per account |
 | Stagger interval | 14 calendar days |
+
+### Risk Sizing Per Leg
+
+Risk is differentiated per leg based on actual trade-level prop sim (2016-2026, 14 calendar day stagger, $2500 payout / -$2000 breach).
+
+| Leg | Sprint Risk | Pay% | PayD | MCBch | EV$/acct | Rationale |
+|-----|------------|------|------|-------|----------|-----------|
+| NQ NY LSI | $400 | 96.9% | 172d | 3 | +$2,360 | Flagship, already strong |
+| NQ Asia ORB | $300 | 96.9% | 132d | 2 | +$2,362 | $400 → 90.4% with 6 MCBch. $300 fixes it |
+| ES Asia Cont | $200 | 98.4% | 323d | 3 | +$2,430 | Weak R production. $400 → 85.4% with 6 MCBch |
+| ES NY Cont | $300 | 91.9% | 210d | 5 | +$2,137 | Lumpy wins. $400 → 82.7% with 7 MCBch |
+
+**Portfolio at adjusted risk (4 separate accounts):** 96.0% payout rate, 210d avg, 3 max consec breach, +$2,322 EV/acct.
+
+**Combined single account at adjusted risk (LSI=$400, NQ Asia=$300, ES Asia=$200, ES NY=$300):**
+
+| Metric | $400 Flat | Adjusted | Delta |
+|--------|-----------|----------|-------|
+| Payout rate | 79.7% | **92.4%** | +12.7% |
+| Breach rate | 20.3% | **7.6%** | -12.7% |
+| Avg days to payout | 28d | 45d | +17d |
+| Max consec breaches | 4 | **3** | -1 |
+| Max consec payouts | 17 | **52** | +35 |
+| Payouts (10yr) | 212 | **243** | +31 |
+| Breaches (10yr) | 54 | **20** | -34 |
+| EV$/acct | +$1,586 | **+$2,158** | +$572 |
+
+2025 adjusted: 96.2% payout, 31d avg, 1 max consec breach, +$2,327 EV/acct.
+
+Source: actual trade-level backtest simulation ([alpha_v1_combined_backtest.py](../scripts/alpha_v1_combined_backtest.py)), not Monte Carlo inference.
 
 ---
 
@@ -131,7 +161,7 @@ R by year: 2016:+21.5 | 2017:+19.7 | 2018:+28.1 | 2019:+11.0 | 2020:+15.8 | 2021
 WF: WFE 0.834, stability 0.893. MC: 89.7% survival. 672/900 grid combos have 0 neg years.
 Lifecycle sim: **$598K net**, 321 days avg extraction.
 
-R by year: 2016:+15 | 2017:+15 | 2018:+12 | 2019:+24 | 2020:+14 | 2021:+8 | 2022:+19 | 2023:+20 | 2024:+18 | 2025:+33 | 2026:+4
+R by year: 2016:+7.5 | 2017:+7.6 | 2018:+1.9 | 2019:+15.3 | 2020:+14.4 | 2021:+9.1 | 2022:+22.1 | 2023:+21.7 | 2024:+18.5 | 2025:+27.4 | 2026:+1.1
 
 DB: `bt-es-asia-cont-long-2016-2026-final-6f79d8`
 
@@ -170,7 +200,7 @@ DB: `bt-es-asia-cont-long-2016-2026-final-6f79d8`
 WF: WFE 0.776, stability 0.893. **tp1=0.2 selected in 7/7 WF folds** (extremely stable). MC: 97.3% survival.
 Lifecycle sim: **$563K net**, 289 days avg extraction.
 
-R by year: 2016:+18 | 2017:+25 | 2018:+4 | 2019:+11 | 2020:+16 | 2021:+20 | 2022:+15 | 2023:+13 | 2024:+2 | 2025:+16
+R by year: 2016:+15.4 | 2017:+25.9 | 2018:+4.6 | 2019:+11.0 | 2020:+16.6 | 2021:+19.0 | 2022:+15.2 | 2023:+13.8 | 2024:+1.7 | 2025:+17.7 | 2026:+1.8
 
 DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
