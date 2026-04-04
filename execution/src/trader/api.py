@@ -346,15 +346,25 @@ def parse_trade_log_line(line: str) -> dict | None:
     config = None
     asset = ""
 
-    # Detect config tag: known config name (FAST, SLOW, DEFAULT) or uppercase
-    # non-asset string in parts[1]
+    # Detect config + asset tags. Log format:
+    #   new:    TIMESTAMP | CONFIG | ASSET | SESSION | EVENT | details
+    #   legacy: TIMESTAMP | [ASSET |] SESSION | EVENT | details
+    # Assets are always lowercase short symbols; configs are uppercase.
+    _ASSETS = {"nq", "es", "gc", "cl", "ym", "mnq", "mes", "mym", "mgc", "mcl", "rty"}
     remaining = parts[1:]
-    if remaining and remaining[0].upper() in _KNOWN_CONFIGS | {"DEFAULT"}:
-        config = remaining[0].upper()
+
+    # If first field is not an asset and not a session (sessions contain "_"),
+    # and the next field IS an asset, then first field is a config tag.
+    if (
+        len(remaining) >= 3
+        and remaining[0].lower() not in _ASSETS
+        and remaining[1].lower() in _ASSETS
+    ):
+        config = remaining[0]
         remaining = remaining[1:]
 
     # Detect asset tag
-    if remaining and remaining[0].lower() in {"nq", "es", "gc"}:
+    if remaining and remaining[0].lower() in _ASSETS:
         asset = remaining[0].lower()
         remaining = remaining[1:]
 

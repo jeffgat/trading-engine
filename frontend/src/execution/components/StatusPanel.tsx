@@ -50,20 +50,13 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
   const defaultConfig = liveConfigs[0] ?? sortedConfigs[0] ?? "";
   const validConfig = configEngines[activeConfig] ? activeConfig : defaultConfig;
 
-  // Sync the parent state when we auto-select a default, or when
-  // config metadata arrives and reveals a live config should be selected
+  // Auto-select a default config only when activeConfig is unset or invalid
   useEffect(() => {
     if (!validConfig) return;
-    // If activeConfig is unset or doesn't exist in engines, pick the default
     if (!activeConfig || !configEngines[activeConfig]) {
       setActiveConfig(validConfig);
-      return;
     }
-    // If activeConfig is a dry-run but a live config exists, switch to live
-    if (liveConfigs.length > 0 && !liveConfigs.includes(activeConfig)) {
-      setActiveConfig(liveConfigs[0]);
-    }
-  }, [validConfig, activeConfig, setActiveConfig, liveConfigs, configEngines]);
+  }, [validConfig, activeConfig, setActiveConfig, configEngines]);
 
   if (loading) {
     return (
