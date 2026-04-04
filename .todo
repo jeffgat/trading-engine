@@ -1,10 +1,10 @@
 # TODOS/NOTES
-- work the regime gating logic into the execution engine
-- explore adding LSI strategies to the port_4leg?
-- each leg of the port_4leg is quite weak on its own for the last 5 yrs
-
-
-- continue exploring LSI
-- LSI does better with regime gates than ORB
 - update the tradingview indicators
+- default the live strat to alpha_v1
 
+## orb ideas
+- fvg bars before
+
+great. now make an execution config called ALPHA_V1 which takes all the legs from this config. make this the default live config over FAST_V2 with the active traderspost account/webhook.
+
+then make an execution config called TESTING. place nq nr lsi rr2

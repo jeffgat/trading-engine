@@ -54,7 +54,7 @@ Source: actual trade-level backtest simulation ([alpha_v1_combined_backtest.py](
 
 ## Active Legs
 
-### Leg 1: NQ NY LSI (FAST_V1.1)
+### Leg 1: LSI/NQ_NY-RR3
 
 **Tier 1 — Flagship**
 
@@ -95,7 +95,7 @@ DB: FAST_V1.1 execution profile
 
 ---
 
-### Leg 2: NQ Asia ORB (FAST_V1.1)
+### Leg 2: ORB/NQ_ASIA-RR6
 
 **Tier 1 — Fastest payout engine**
 
@@ -129,7 +129,7 @@ R by year: 2016:+21.5 | 2017:+19.7 | 2018:+28.1 | 2019:+11.0 | 2020:+15.8 | 2021
 
 ---
 
-### Leg 3: ES Asia ORB Continuation Long
+### Leg 3: ORB/ES_ASIA-RR1.5
 
 **Tier 2 — Session diversification, exceptionally robust parameter surface**
 
@@ -167,7 +167,7 @@ DB: `bt-es-asia-cont-long-2016-2026-final-6f79d8`
 
 ---
 
-### Leg 4: ES NY ORB Continuation Long
+### Leg 4: ORB/ES_NY-RR5
 
 **Tier 2 — Most parameter-stable leg in the portfolio**
 
@@ -208,7 +208,8 @@ DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
 ## Dry Run — To Verify
 
-### NQ NY LSI RR2/TP0.5 + Thu-only + Regime Gate
+### LSI/NQ_NY-RR2
+#### NQ NY LSI RR2/TP0.5 + Thu-only + Regime Gate
 
 **Shadow-run alongside FAST NQ_NY_LSI for 60 days before swapping live.**
 

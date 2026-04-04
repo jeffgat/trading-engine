@@ -149,6 +149,31 @@ SESSION_CONFIGS = {
         "risk_usd": 250,
         "max_single_risk_usd": 300,
     },
+    # --- GC Asia-1 (ORB-based stop, both directions, regime gate) ---
+    "GC_Asia": {
+        "orb_start": "20:00",
+        "orb_end": "20:30",  # 30m ORB
+        "entry_start": "20:30",
+        "entry_end": "23:15",
+        "flat_start": "04:00",
+        "flat_end": "07:00",
+        "stop_orb_pct": 25.0,
+        "stop_basis": "orb",
+        "min_gap_atr_pct": 1.0,
+        "gap_filter_basis": "atr",
+        "rr": 2.5,
+        "tp1_ratio": 0.6,
+        "instrument": "GC",
+        "atr_length": 14,
+        "long_only": False,
+        "icf_enabled": False,
+        "excluded_dow": None,
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+        "risk_usd": 250,
+        "max_single_risk_usd": 300,
+    },
     # --- ES NY Final (ATR-based stop, Thursday exclusion, dual floor) ---
     "ES_NY": {
         "orb_start": "09:30",
