@@ -1,4 +1,4 @@
-import { CONFIG_COLORS, STATE_COLORS, STATE_LABELS } from "@/execution/lib/constants";
+import { CONFIG_COLORS, SESSION_DISPLAY_NAMES, STATE_COLORS, STATE_LABELS } from "@/execution/lib/constants";
 import type { SessionStatus } from "@/execution/lib/types";
 import {
   AlertDialog,
@@ -135,9 +135,9 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
       <CardHeader className="pb-2 space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle className="text-base font-semibold">
-            {engine.session}
+            {SESSION_DISPLAY_NAMES[engine.config_name ?? ""]?.[engine.session] ?? engine.session}
           </CardTitle>
-          {strategyType && (
+          {!SESSION_DISPLAY_NAMES[engine.config_name ?? ""]?.[engine.session] && strategyType && (
             <span
               className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                 isLsi
