@@ -35,7 +35,7 @@ export function TradeFeed({
   const stratLookup = buildStrategyLookup(config);
 
   const filtered = useMemo(() => {
-    if (activeConfig === "ALL") return entries;
+    if (!activeConfig || activeConfig === "ALL") return entries;
     return entries.filter((e) => e.config === activeConfig);
   }, [entries, activeConfig]);
 

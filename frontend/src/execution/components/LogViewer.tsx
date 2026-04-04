@@ -60,7 +60,7 @@ export function LogViewer({
   const filteredTrade = useMemo(() => {
     let result = tradeEntries;
     // Filter by config
-    if (activeConfig !== "ALL") {
+    if (activeConfig && activeConfig !== "ALL") {
       result = result.filter((e) => e.config === activeConfig);
     }
     if (search) {

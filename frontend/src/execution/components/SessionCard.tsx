@@ -134,20 +134,43 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
     <Card className={`bg-bg-card flex flex-col ${isPaused ? "border-loss/80 opacity-60" : "border-border"}`}>
       <CardHeader className="pb-2 space-y-1.5">
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle className="text-base font-semibold">
-            {SESSION_DISPLAY_NAMES[engine.config_name ?? ""]?.[engine.session] ?? engine.session}
-          </CardTitle>
-          {!SESSION_DISPLAY_NAMES[engine.config_name ?? ""]?.[engine.session] && strategyType && (
-            <span
-              className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                isLsi
-                  ? "text-violet-400 bg-violet-400/10"
-                  : "text-emerald-400 bg-emerald-400/10"
-              }`}
-            >
-              {isLsi ? "LSI" : "ORB"}
-            </span>
-          )}
+          {(() => {
+            const displayName = SESSION_DISPLAY_NAMES[engine.config_name ?? ""]?.[engine.session];
+            if (displayName) {
+              // Split "LSI/NQ_NY-RR3" into prefix "LSI" and body "NQ_NY-RR3"
+              const slashIdx = displayName.indexOf("/");
+              const prefix = slashIdx >= 0 ? displayName.slice(0, slashIdx) : null;
+              const body = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
+              return (
+                <>
+                  <CardTitle className="text-base font-semibold">{body}</CardTitle>
+                  {prefix && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      prefix === "LSI"
+                        ? "text-violet-400 bg-violet-400/10"
+                        : "text-emerald-400 bg-emerald-400/10"
+                    }`}>
+                      {prefix}
+                    </span>
+                  )}
+                </>
+              );
+            }
+            return (
+              <>
+                <CardTitle className="text-base font-semibold">{engine.session}</CardTitle>
+                {strategyType && (
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                    isLsi
+                      ? "text-violet-400 bg-violet-400/10"
+                      : "text-emerald-400 bg-emerald-400/10"
+                  }`}>
+                    {isLsi ? "LSI" : "ORB"}
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {engine.config_name && (
             <span
               className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${
