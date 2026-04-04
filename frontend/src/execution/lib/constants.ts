@@ -64,6 +64,20 @@ export const SESSION_COLORS: Record<string, string> = {
   LDN: "bg-warning/20 text-warning",
 };
 
+/** Map engine session names to research leg names (strategy/ASSET_SESSION-RR). */
+export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
+  ALPHA_V1: {
+    NQ_NY_LSI: "LSI/NQ_NY-RR3",
+    NQ_Asia: "ORB/NQ_ASIA-RR6",
+    ES_Asia: "ORB/ES_ASIA-RR1.5",
+    ES_NY: "ORB/ES_NY-RR5",
+  },
+  TESTING: {
+    NQ_NY_LSI: "LSI/NQ_NY-RR2",
+    GC_Asia: "ORB/GC_ASIA-RR2.5",
+  },
+};
+
 export const CONFIG_COLORS: Record<string, string> = {
   ALPHA_V1: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
   TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",

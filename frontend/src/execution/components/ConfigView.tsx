@@ -1,4 +1,4 @@
-import { CONFIG_COLORS } from "@/execution/lib/constants";
+import { CONFIG_COLORS, SESSION_DISPLAY_NAMES } from "@/execution/lib/constants";
 import type { ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/shared/ui/card";
 import {
@@ -1310,18 +1310,23 @@ export function ConfigView({
                               <div className="flex justify-between pb-1 pt-8 gap-2">
                                 <span className="text-text-muted text-xs shrink-0">Strategies</span>
                                 <div className="flex flex-wrap gap-1 justify-end">
-                                  {allSessions.map(({ name: s, isLsi }) => (
-                                    <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
-                                      {s}
-                                      <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
-                                        isLsi
-                                          ? "text-violet-400 bg-violet-400/10"
-                                          : "text-emerald-400 bg-emerald-400/10"
-                                      }`}>
-                                        {isLsi ? "LSI" : "ORB"}
+                                  {allSessions.map(({ name: s, isLsi }) => {
+                                    const displayName = SESSION_DISPLAY_NAMES[name]?.[s] ?? s;
+                                    return (
+                                      <span key={s} className="inline-flex items-center gap-1 font-mono text-xs text-white bg-white/5 border border-white/10 rounded px-1.5 py-0.5">
+                                        {displayName}
+                                        {!SESSION_DISPLAY_NAMES[name]?.[s] && (
+                                          <span className={`text-[9px] font-medium px-1 py-0.5 rounded ${
+                                            isLsi
+                                              ? "text-violet-400 bg-violet-400/10"
+                                              : "text-emerald-400 bg-emerald-400/10"
+                                          }`}>
+                                            {isLsi ? "LSI" : "ORB"}
+                                          </span>
+                                        )}
                                       </span>
-                                    </span>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
