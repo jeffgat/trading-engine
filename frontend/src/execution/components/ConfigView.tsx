@@ -1261,8 +1261,9 @@ export function ConfigView({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {Object.entries(execConfigs).map(([name, meta]) => {
                   const colorClasses = CONFIG_COLORS[name] ?? "bg-text-muted/20 text-text-muted border-text-muted/30";
+                  const isActive = name === "ALPHA_V1" || name === "TESTING";
                   return (
-                    <Card key={name} className="border-border bg-bg-card">
+                    <Card key={name} className={`border-border bg-bg-card ${!isActive ? "opacity-40" : ""}`}>
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">

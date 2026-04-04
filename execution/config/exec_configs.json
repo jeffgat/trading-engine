@@ -15,7 +15,7 @@
         "entry_start": "20:15",
         "entry_end": "22:30",
         "flat_start": "04:00",
-        "flat_end": "04:10",
+        "flat_end": "04:00",
         "stop_basis": "orb",
         "gap_filter_basis": "orb",
         "stop_orb_pct": 100.0,
@@ -38,7 +38,6 @@
         "flat_end": "07:00",
         "stop_basis": "orb",
         "gap_filter_basis": "atr",
-        "stop_orb_pct": 125.0,
         "min_gap_atr_pct": 0.5,
         "atr_length": 14,
         "rr": 1.5,
@@ -129,7 +128,7 @@
     }
   },
   "FAST": {
-    "enabled": false,
+    "enabled": true,
     "webhooks": [],
     "sessions": {
       "NQ_NY": {
@@ -172,7 +171,7 @@
     }
   },
   "FAST_V2": {
-    "enabled": false,
+    "enabled": true,
     "max_open_contracts": 20,
     "webhooks": [],
     "sessions": {
@@ -281,7 +280,7 @@
     }
   },
   "FAST_V1.1": {
-    "enabled": false,
+    "enabled": true,
     "webhooks": [],
     "sessions": {
       "NQ_Asia": {
@@ -312,7 +311,7 @@
     }
   },
   "FAST_V2.1": {
-    "enabled": false,
+    "enabled": true,
     "webhooks": [],
     "sessions": {
       "NQ_Asia": {

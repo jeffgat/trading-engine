@@ -65,8 +65,10 @@ export const SESSION_COLORS: Record<string, string> = {
 };
 
 export const CONFIG_COLORS: Record<string, string> = {
-  FAST: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  "FAST_V1.1": "bg-blue-400/20 text-blue-300 border-blue-400/30",
-  FAST_V2: "bg-fuchsia-500/20 text-fuchsia-400 border-fuchsia-500/30",
-  "FAST_V2.1": "bg-fuchsia-400/20 text-fuchsia-300 border-fuchsia-400/30",
+  ALPHA_V1: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+  TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",
+  FAST: "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
+  "FAST_V1.1": "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
+  FAST_V2: "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
+  "FAST_V2.1": "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
 };

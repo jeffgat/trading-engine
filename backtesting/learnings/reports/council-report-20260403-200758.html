@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Council Report: ALPHA_V1 & TESTING Config Audit</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 900px; margin: 0 auto; padding: 2rem; background: #fff; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.25rem; margin-top: 2rem; margin-bottom: 0.75rem; padding-bottom: 0.25rem; border-bottom: 2px solid #e0e0e0; }
+  h3 { font-size: 1.05rem; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+  p, li { margin-bottom: 0.5rem; }
+  ul { padding-left: 1.5rem; }
+  .question { background: #f7f7f7; border-left: 4px solid #333; padding: 1rem 1.25rem; margin-bottom: 2rem; font-style: italic; }
+  .verdict { background: #f0f7f0; border: 1px solid #b8dab8; border-radius: 6px; padding: 1.5rem; margin: 1.5rem 0; }
+  .verdict h2 { border-bottom: none; margin-top: 0; color: #2d6a2d; }
+  .clash { background: #fff7f0; border: 1px solid #e0c8a8; border-radius: 6px; padding: 1.5rem; margin: 1.5rem 0; }
+  .clash h2 { border-bottom: none; margin-top: 0; color: #8a6530; }
+  .blind { background: #f0f0ff; border: 1px solid #b8b8da; border-radius: 6px; padding: 1.5rem; margin: 1.5rem 0; }
+  .blind h2 { border-bottom: none; margin-top: 0; color: #3a3a7a; }
+  .action { background: #fff0f0; border: 2px solid #d04040; border-radius: 6px; padding: 1.5rem; margin: 1.5rem 0; }
+  .action h2 { border-bottom: none; margin-top: 0; color: #c03030; }
+  .priority-list { counter-reset: priority; list-style: none; padding-left: 0; }
+  .priority-list li { counter-increment: priority; padding: 0.5rem 0 0.5rem 2.5rem; position: relative; border-bottom: 1px solid #f0f0f0; }
+  .priority-list li::before { content: counter(priority); position: absolute; left: 0; top: 0.5rem; width: 1.8rem; height: 1.8rem; background: #333; color: #fff; border-radius: 50%; text-align: center; line-height: 1.8rem; font-size: 0.85rem; font-weight: 600; }
+  details { margin: 1rem 0; border: 1px solid #e0e0e0; border-radius: 4px; }
+  summary { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; background: #fafafa; border-radius: 4px; }
+  summary:hover { background: #f0f0f0; }
+  .detail-body { padding: 1rem; font-size: 0.95rem; }
+  .advisor-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.8rem; font-weight: 600; margin-right: 0.5rem; }
+  .tag-contrarian { background: #ffe0e0; color: #8a3030; }
+  .tag-fp { background: #e0e8ff; color: #30408a; }
+  .tag-expansionist { background: #e0ffe0; color: #308a30; }
+  .tag-outsider { background: #fff0d0; color: #8a7030; }
+  .tag-executor { background: #f0e0ff; color: #6a308a; }
+  .finding { padding: 0.75rem; margin: 0.5rem 0; border-radius: 4px; }
+  .finding-critical { background: #fff0f0; border-left: 3px solid #d04040; }
+  .finding-resolved { background: #f0fff0; border-left: 3px solid #40a040; }
+  .finding-minor { background: #fffff0; border-left: 3px solid #c0a040; }
+  .timestamp { color: #888; font-size: 0.85rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; }
+  strong { font-weight: 600; }
+  code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>Council Report: ALPHA_V1 & TESTING Config Audit</h1>
+<p style="color: #666; margin-bottom: 1.5rem;">5 advisors, 5 peer reviews, 1 synthesis</p>
+
+<div class="question">
+  <strong>Question:</strong> Do the ALPHA_V1 and TESTING execution configs exactly match the backtested research configs? Are there parameter mismatches that would cause live execution to differ from validated results?
+</div>
+
+<div class="verdict">
+  <h2>Where the Council Agrees</h2>
+  <ul>
+    <li><strong>Merge architecture is sound.</strong> Field-level patching works correctly. Missing fields fall back to main.py defaults.</li>
+    <li><strong><code>block_full_medium_vol</code> gate is correct.</strong> Verified to block both <code>bull_medium_vol</code> AND <code>sideways_medium_vol</code> (gates.py:307-310).</li>
+    <li><strong><code>long_only</code> resolves correctly everywhere.</strong> Defaults to <code>True</code> at engine build time. GC_Asia is explicitly <code>False</code> (both directions) matching research.</li>
+    <li><strong>One real parameter mismatch:</strong> NQ_Asia <code>flat_end</code> is 04:10 in exec config vs 04:00 in research. 10 minutes of extra hold time.</li>
+  </ul>
+</div>
+
+<div class="clash">
+  <h2>Where the Council Clashes</h2>
+  <ul>
+    <li><strong>flat_end 04:10 interpretation:</strong> Executor says it's a deliberate liquidation buffer (engine needs a window to exit). Contrarian/First Principles say it's unvalidated drift. <em>Intent is unknown and undocumented — that's the problem.</em></li>
+    <li><strong>Webhook URL in git:</strong> Outsider flagged this as critical security. No other advisor engaged. The Outsider is right — this is a real credential exposure.</li>
+  </ul>
+</div>
+
+<div class="blind">
+  <h2>Blind Spots the Council Caught</h2>
+  <ul>
+    <li><strong>Engine hard constraints vs config values.</strong> No one verified that exec config params clear the engine's enforced floors (stop >= 5% ATR, TP1 ratio x RR >= 1.0, RR >= 1.0) with margin. Near-floor configs produce inconsistent trade counts across volatility regimes.</li>
+    <li><strong>ES_Asia <code>stop_orb_pct=125</code> override is redundant.</strong> Main.py default already has the same value. Harmless now, but becomes a silent override if defaults change later.</li>
+  </ul>
+</div>
+
+<h2>Findings Summary</h2>
+
+<div class="finding finding-critical">
+  <strong>FIX NOW:</strong> NQ_Asia <code>flat_end</code> = "04:10" in exec config. Research config says flat at 04:00. Either change to 04:00 or document why 04:10 is intentional. Do not leave ambiguous before next Asia session.
+</div>
+
+<div class="finding finding-minor">
+  <strong>SECURITY:</strong> Webhook URL is in plaintext in git-tracked <code>exec_configs.json</code>. Rotate URL, move to env var.
+</div>
+
+<div class="finding finding-resolved">
+  <strong>RESOLVED:</strong> <code>block_full_medium_vol</code> confirmed correct — blocks both bull_medium_vol and sideways_medium_vol.
+</div>
+
+<div class="finding finding-resolved">
+  <strong>RESOLVED:</strong> <code>long_only</code> defaults to True everywhere. GC_Asia correctly set to False for both directions.
+</div>
+
+<div class="finding finding-resolved">
+  <strong>RESOLVED:</strong> Field naming (<code>min_stop_pts</code>/<code>min_tp1_pts</code>) consistent between main.py and exec config.
+</div>
+
+<div class="action">
+  <h2>The Recommendation</h2>
+  <ol class="priority-list">
+    <li><strong>Resolve NQ_Asia flat_end today.</strong> Change to 04:00 or document 04:10 as intentional. This is the only confirmed backtest/live mismatch.</li>
+    <li><strong>Rotate webhook URL out of git.</strong> Move to .env or secrets file. Rotate the current URL first since it's in git history.</li>
+    <li><strong>Add comment on ES_Asia stop_orb_pct override.</strong> It's redundant with main.py default — document or remove.</li>
+    <li><strong>Verify hard constraint margins.</strong> Ensure stop distances don't sit near the 5% ATR floor.</li>
+    <li><strong>Plan regime gate for ALPHA_V1's NQ_NY_LSI.</strong> TESTING validates the gate; once confirmed, apply to the live leg.</li>
+  </ol>
+</div>
+
+<div class="action" style="border-color: #333; background: #f8f8f8;">
+  <h2 style="color: #333;">The One Thing to Do First</h2>
+  <p><strong>Decide whether NQ_Asia flat_end is 04:00 or 04:10, and make the config match that decision.</strong></p>
+  <p>Everything else is security hygiene or future enhancement. This is the only confirmed parameter mismatch that affects trade behavior in a running system.</p>
+</div>
+
+<details>
+  <summary><span class="advisor-tag tag-contrarian">Contrarian</span> Full Response</summary>
+  <div class="detail-body">
+    <p>Found NQ_Asia flat_end 04:10 vs research 04:00 as real drift. Questioned whether <code>block_full_medium_vol</code> is equivalent to blocking both medium-vol regimes (verified — it is). Flagged ALPHA_V1 NQ_NY_LSI missing explicit <code>long_only</code> (resolved — defaults to True). Recommended verifying gate definition immediately.</p>
+    <p><strong>Key finding:</strong> The regime gate concern was the right instinct but resolved upon verification. The flat_end finding is the real issue.</p>
+  </div>
+</details>
+
+<details>
+  <summary><span class="advisor-tag tag-fp">First Principles</span> Full Response</summary>
+  <div class="detail-body">
+    <p>Confirmed merge is field-level patch (not replace) — missing fields fall back to defaults. Confirmed <code>min_stop_pts</code>/<code>min_tp1_pts</code> naming is consistent. Found ES_Asia <code>stop_orb_pct=125</code> override is redundant. Identified NQ_Asia flat_end 04:10 as the only real trade-production discrepancy.</p>
+    <p><strong>Strongest analysis:</strong> Clean, focused, falsifiable. Correctly scoped the one real issue.</p>
+  </div>
+</details>
+
+<details>
+  <summary><span class="advisor-tag tag-expansionist">Expansionist</span> Full Response</summary>
+  <div class="detail-body">
+    <p>ALPHA_V1's NQ_NY_LSI should eventually get a regime gate (TESTING proves it first). GC dry-run is smart for future readiness. NQ_Asia has no gate research. Single-account config doesn't match separate-account ambition from the docs.</p>
+    <p><strong>Weakest on audit:</strong> Didn't actually find any parameter mismatches. Contributed strategic context but not the audit that was asked for.</p>
+  </div>
+</details>
+
+<details>
+  <summary><span class="advisor-tag tag-outsider">Outsider</span> Full Response</summary>
+  <div class="detail-body">
+    <p>Flagged webhook URL in plaintext git as critical security issue. Missing explicit <code>long_only</code> fields. Thin override pattern on TESTING GC_Asia as silent drift risk. No version tracking in config. Disabled configs still in file as re-enable risk.</p>
+    <p><strong>Unique contribution:</strong> Only advisor to catch the security issue. Correct and important.</p>
+  </div>
+</details>
+
+<details>
+  <summary><span class="advisor-tag tag-executor">Executor</span> Full Response</summary>
+  <div class="detail-body">
+    <p>Deployment sequence: deploy.sh first (main.py), then scp exec_configs.json, then restart. flat_end 04:10 interpreted as liquidation window. Provided practical verification checklist (curl status, check logs, watch for regime gate messages).</p>
+    <p><strong>Practical value:</strong> The deployment plan is correct and actionable. The flat_end interpretation needs documentation to be authoritative.</p>
+  </div>
+</details>
+
+<details>
+  <summary>Peer Review Highlights</summary>
+  <div class="detail-body">
+    <ul>
+      <li><strong>Strongest advisors:</strong> First Principles (architecture verification) and Outsider (security finding) — tied across reviewers.</li>
+      <li><strong>Weakest:</strong> Expansionist — pivoted to opportunities without auditing.</li>
+      <li><strong>Blind spot all missed:</strong> Engine hard constraints (min stop 5% ATR, TP1>=1R) not verified against config values.</li>
+      <li><strong>Blind spot all missed:</strong> long_only signal filter path not traced end-to-end (verified post-review — resolves correctly).</li>
+    </ul>
+  </div>
+</details>
+
+<p class="timestamp">Generated: 2026-04-03 20:07 ET | LLM Council (5 advisors, 5 peer reviews, 1 chairman)</p>
+
+</body>
+</html>
