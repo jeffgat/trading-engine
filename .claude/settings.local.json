@@ -216,7 +216,8 @@
       "Bash(PYTHONUNBUFFERED=1 .venv/bin/pytest tests/test_main.py tests/test_engine.py tests/test_lsi_engine.py tests/test_historical_backtest.py tests/test_api.py -q)",
       "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-110838.html)",
       "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-144421.html)",
-      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-200758.html)"
+      "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-200758.html)",
+      "Bash(backtesting/.venv/bin/python:*)"
     ]
   }
 }

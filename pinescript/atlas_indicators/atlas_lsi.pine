@@ -23,16 +23,16 @@ drawbackDays = input.int(1, "Days Back", minval=1, maxval=50, tooltip="Number of
 // ============================================================================
 // INPUTS - NQ: NY
 // ============================================================================
-i_nqNyEntryWindow  = input.session("1010-1430", "Entry Window (ny time)", group="NQ: NY")
+i_nqNyEntryWindow  = input.session("0935-1530", "Entry Window (ny time)", group="NQ: NY")
 i_nqNyDirection    = input.string("Long Only", "Direction", options=["Long Only"], group="NQ: NY")
 i_nqNyEntryMode    = input.string("FVG Limit", "Entry Mode", options=["Bar Close", "FVG Limit"], tooltip="Bar Close = enter at inversion bar close. FVG Limit = limit order at FVG boundary after inversion.", group="NQ: NY")
-i_nqNyRR           = input.float(2.5, "Reward/Risk", step=0.25, group="NQ: NY")
-i_nqNyTp1Ratio     = input.float(0.2, "TP1/BE Level (fraction of R:R)", step=0.05, minval=0.1, maxval=0.9, group="NQ: NY")
+i_nqNyRR           = input.float(3.0, "Reward/Risk", step=0.25, group="NQ: NY")
+i_nqNyTp1Ratio     = input.float(0.34, "TP1/BE Level (fraction of R:R)", step=0.01, minval=0.1, maxval=0.9, group="NQ: NY")
 i_nqNyAtrLength    = input.int(10, "ATR Length", minval=1, group="NQ: NY")
-i_nqNyMinGapPct    = input.float(3.75, "Min Gap (% ATR)", step=0.25, tooltip="Minimum FVG size as percentage of daily ATR", group="NQ: NY")
+i_nqNyMinGapPct    = input.float(5.0, "Min Gap (% ATR)", step=0.25, tooltip="Minimum FVG size as percentage of daily ATR", group="NQ: NY")
 i_nqNyFvgWindowLeft = input.int(20, "FVG Window Left", minval=0, group="NQ: NY", tooltip="Max bars a qualifying FVG may appear before the sweep.")
 i_nqNyFvgWindowRight = input.int(5, "FVG Window Right", minval=0, group="NQ: NY", tooltip="Max bars a qualifying FVG may appear after the sweep.")
-i_nqNySwingLeft    = input.int(5, "Swing Left", minval=1, group="NQ: NY", tooltip="Bars to the left of a confirmed swing pivot.")
+i_nqNySwingLeft    = input.int(8, "Swing Left", minval=1, group="NQ: NY", tooltip="Bars to the left of a confirmed swing pivot.")
 i_nqNySwingRight   = input.int(60, "Swing Right", minval=1, group="NQ: NY", tooltip="Bars to the right of a confirmed swing pivot.")
 nqNyFvgPendColor   = input.color(#787b86, "FVG Pending Color", group="NQ: NY")
 nqNyFvgSweptColor  = input.color(#26a69a, "FVG Swept Color", group="NQ: NY")
@@ -94,7 +94,7 @@ enableAlerts = input.bool(true, "Enable Setup Alerts", tooltip="Enable alert con
 // RESOLVE ACTIVE CONFIG — NQ-only for now
 // ============================================================================
 enableNY   = true
-enableAsia = true
+enableAsia = false
 
 nySessionRTH   = "0930-1600"
 asiaSessionRTH = "2000-0700"

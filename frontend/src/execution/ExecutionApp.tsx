@@ -1,4 +1,3 @@
-import { AccountsView } from '@/execution/components/AccountsView';
 import { ConfigView } from '@/execution/components/ConfigView';
 import { ConnectionStatus } from '@/execution/components/ConnectionStatus';
 import { LogViewer } from '@/execution/components/LogViewer';
@@ -13,15 +12,14 @@ import { useLiveTrades } from '@/execution/hooks/useLiveTrades';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
 import { useMemo, useState } from 'react';
 
-type Tab = 'status' | 'trades' | 'performance' | 'logs' | 'config' | 'accounts';
+type Tab = 'status' | 'trades' | 'performance' | 'logs' | 'config';
 
 const TABS: { key: Tab; label: string }[] = [
     { key: 'status', label: 'Status' },
+    { key: 'config', label: 'Config' },
     { key: 'trades', label: 'Trades' },
     { key: 'performance', label: 'Performance' },
     { key: 'logs', label: 'Logs' },
-    { key: 'config', label: 'Config' },
-    { key: 'accounts', label: 'Accounts' },
 ];
 
 export function ExecutionApp() {
@@ -146,16 +144,10 @@ export function ExecutionApp() {
                         onUpdateWebhooks={updateWebhooks}
                         onToggleEnabled={toggleEnabled}
                         execConfigs={execConfigs}
-                    />
-                )}
-                {activeTab === 'accounts' && (
-                    <AccountsView
-                        execConfigs={execConfigs}
-                        onPause={pauseWebhook}
-                        onResume={resumeWebhook}
+                        onPauseWebhook={pauseWebhook}
+                        onResumeWebhook={resumeWebhook}
                         onUpdateMultiplier={updateWebhookMultiplier}
-                        onFlatten={flattenWebhook}
-                        onUpdateWebhooks={updateWebhooks}
+                        onFlattenWebhook={flattenWebhook}
                     />
                 )}
             </main>

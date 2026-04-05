@@ -200,6 +200,7 @@ class ORBEngine:
 
     # Direction filter
     long_only: bool = True
+    short_only: bool = False
 
     # ICF (impulse close filter) — GC only
     icf_enabled: bool = False
@@ -998,8 +999,8 @@ class ORBEngine:
             self._notify_state_change()
             return
 
-        # Check for long FVG (first one only)
-        if not self._long_fvg_found:
+        # Check for long FVG (first one only, skip if short_only)
+        if not self.short_only and not self._long_fvg_found:
             detected, entry, gap_size = self._check_long_fvg()
             if detected:
                 if not self._gap_valid(gap_size):
@@ -1090,8 +1091,8 @@ class ORBEngine:
                     self._orb_high, bar_time,
                 )
 
-        # Short FVG check (only if not long_only)
-        if not self.long_only and not self._short_fvg_found:
+        # Short FVG check (only if not long_only, or short_only)
+        if (not self.long_only or self.short_only) and not self._short_fvg_found:
             detected, entry, gap_size = self._check_short_fvg()
             if detected and self._gap_valid(gap_size):
                 self._short_fvg_found = True
@@ -1667,6 +1668,7 @@ class ORBEngine:
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,
+            "short_only": self.short_only,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "fomc_exclusion": self.fomc_exclusion,

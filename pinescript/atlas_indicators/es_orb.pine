@@ -1,0 +1,336 @@
+//@version=6
+strategy(
+     title="ES ORB Strategy [atlasfutures]",
+     overlay=true,
+     initial_capital=50000,
+     pyramiding=0,
+     margin_long=0,
+     margin_short=0,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.0,
+     calc_on_every_tick=true,
+     process_orders_on_close=true,
+     use_bar_magnifier=true,
+     fill_orders_on_standard_ohlc=false
+)
+
+// Derived from atlas_orb.pine.
+// This strategy only includes the live ALPHA_V1 ES Asia ORB long leg and ES NY ORB long leg.
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+groupRisk = "Risk"
+groupAsia = "ALPHA_V1 ES Asia ORB"
+groupNy = "ALPHA_V1 ES NY ORB"
+
+i_pointValue = input.float(syminfo.pointvalue, "Point Value ($)", minval=0.01, step=0.25, group=groupRisk)
+i_minQty = input.float(1.0, "Min Qty", minval=0.0, step=1.0, group=groupRisk)
+i_qtyStep = input.float(1.0, "Qty Step", minval=0.01, step=1.0, group=groupRisk)
+i_useBreakeven = input.bool(true, "Move Runner To Breakeven After TP1", group=groupRisk)
+
+i_asiaRiskUsd = input.float(200.0, "Asia Risk per Trade ($)", minval=1.0, step=50.0, group=groupAsia)
+i_asiaOrbWindow = input.session("2000-2015", "ORB Window", group=groupAsia)
+i_asiaEntryWindow = input.session("2015-0300", "Entry Window", group=groupAsia)
+i_asiaFlatWindow = input.session("0700-0705", "Flat Window", group=groupAsia)
+i_asiaRr = input.float(1.5, "Reward/Risk", step=0.25, group=groupAsia)
+i_asiaTp1Ratio = input.float(0.7, "TP1 Ratio", minval=0.05, maxval=0.95, step=0.05, group=groupAsia)
+i_asiaStopPct = input.float(125.0, "ORB Stop (%)", minval=0.5, step=0.5, group=groupAsia)
+i_asiaMinGapPct = input.float(0.5, "Min Gap (% ORB)", minval=0.0, step=0.25, group=groupAsia)
+i_asiaMinStopPts = input.float(3.0, "Min Stop Points", minval=0.0, step=0.25, group=groupAsia)
+i_asiaMinTp1Pts = input.float(3.0, "Min TP1 Points", minval=0.0, step=0.25, group=groupAsia)
+
+i_nyRiskUsd = input.float(300.0, "NY Risk per Trade ($)", minval=1.0, step=50.0, group=groupNy)
+i_nyOrbWindow = input.session("0930-0945", "ORB Window", group=groupNy)
+i_nyEntryWindow = input.session("0945-1300", "Entry Window", group=groupNy)
+i_nyFlatWindow = input.session("1550-1600", "Flat Window", group=groupNy)
+i_nyRr = input.float(5.0, "Reward/Risk", step=0.25, group=groupNy)
+i_nyTp1Ratio = input.float(0.2, "TP1 Ratio", minval=0.05, maxval=0.95, step=0.05, group=groupNy)
+i_nyAtrLength = input.int(7, "ATR Length", minval=1, group=groupNy)
+i_nyStopPct = input.float(5.0, "ATR Stop (%)", minval=0.5, step=0.5, group=groupNy)
+i_nyMinGapPct = input.float(0.25, "Min Gap (% ATR)", minval=0.0, step=0.25, group=groupNy)
+i_nyMinStopPts = input.float(3.0, "Min Stop Points", minval=0.0, step=0.25, group=groupNy)
+i_nyMinTp1Pts = input.float(3.0, "Min TP1 Points", minval=0.0, step=0.25, group=groupNy)
+i_nySkipThu = input.bool(true, "Skip Thursday", group=groupNy)
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+floorToStep(value, step) =>
+    step > 0 ? math.floor(value / step) * step : value
+
+calcQty(riskUsd, entryPrice, stopPrice) =>
+    riskPts = math.abs(entryPrice - stopPrice)
+    riskPerContract = riskPts * i_pointValue
+    rawQty = riskPerContract > 0 ? riskUsd / riskPerContract : i_minQty
+    steppedQty = floorToStep(rawQty, i_qtyStep)
+    math.max(steppedQty, i_minQty)
+
+// ============================================================================
+// TIMEFRAME / SESSION FILTERS
+// ============================================================================
+isFiveMinute = timeframe.isminutes and timeframe.multiplier == 5
+tz = "America/New_York"
+asiaRth = "1800-0700"
+nyRth = "0930-1600"
+
+inAsiaRTH = not na(time("5", asiaRth, tz))
+inAsiaORB = not na(time("5", i_asiaOrbWindow, tz))
+inAsiaEntry = not na(time("5", i_asiaEntryWindow, tz))
+inAsiaFlat = not na(time("5", i_asiaFlatWindow, tz))
+asiaStart = inAsiaRTH and not inAsiaRTH[1]
+
+inNyRTH = not na(time("5", nyRth, tz))
+inNyORB = not na(time("5", i_nyOrbWindow, tz))
+inNyEntry = not na(time("5", i_nyEntryWindow, tz))
+inNyFlat = not na(time("5", i_nyFlatWindow, tz))
+nyStart = inNyRTH and not inNyRTH[1]
+
+dow = dayofweek(time, tz)
+nySkipToday = dow == dayofweek.thursday and i_nySkipThu
+
+// ============================================================================
+// DAILY ATR (MIDNIGHT ET) FOR ES NY LEG
+// ============================================================================
+curDay = dayofmonth(time, tz)
+
+var float dayHigh = na
+var float dayLow = na
+var float dayClose = na
+var float lastClose = na
+var int lastDay = na
+var float nyAtrValue = na
+var float nyAtrBuilding = na
+var int nyAtrCount = 0
+var array<float> nyAtrTrHist = array.new_float()
+
+if isFiveMinute
+    if not na(lastDay) and curDay != lastDay and not na(dayHigh)
+        if not na(lastClose)
+            tr = math.max(dayHigh - dayLow, math.max(math.abs(dayHigh - lastClose), math.abs(dayLow - lastClose)))
+            nyAtrCount += 1
+            if nyAtrCount <= i_nyAtrLength
+                array.push(nyAtrTrHist, tr)
+                if nyAtrCount == i_nyAtrLength
+                    sumTr = 0.0
+                    for i = 0 to i_nyAtrLength - 1
+                        sumTr += array.get(nyAtrTrHist, i)
+                    nyAtrBuilding := sumTr / i_nyAtrLength
+            else
+                nyAtrBuilding := ((nyAtrBuilding * (i_nyAtrLength - 1)) + tr) / i_nyAtrLength
+        nyAtrValue := nyAtrBuilding
+        lastClose := dayClose
+        dayHigh := high
+        dayLow := low
+        dayClose := close
+    else
+        dayHigh := na(dayHigh) ? high : math.max(dayHigh, high)
+        dayLow := na(dayLow) ? low : math.min(dayLow, low)
+        dayClose := close
+    lastDay := curDay
+
+// ============================================================================
+// ES ASIA STATE
+// ============================================================================
+var float asiaOrbHigh = na
+var float asiaOrbLow = na
+var bool asiaOrbReady = false
+var bool asiaFirstSetupFound = false
+var float asiaEntry = na
+var float asiaStop = na
+var float asiaTp1 = na
+var float asiaTp2 = na
+var float asiaQty = na
+var bool asiaOrderPending = false
+var bool asiaMovedToBreakeven = false
+var bool asiaTradeActive = false
+
+asiaEntryId = "ESAsiaLong"
+asiaTp1Id = "ESAsiaTP1"
+asiaTp2Id = "ESAsiaTP2"
+asiaRunnerId = "ESAsiaRunner"
+
+if asiaStart
+    asiaOrbHigh := na
+    asiaOrbLow := na
+    asiaOrbReady := false
+    asiaFirstSetupFound := false
+    asiaEntry := na
+    asiaStop := na
+    asiaTp1 := na
+    asiaTp2 := na
+    asiaQty := na
+    asiaOrderPending := false
+    asiaMovedToBreakeven := false
+    asiaTradeActive := false
+    strategy.cancel(asiaEntryId)
+    strategy.cancel(asiaTp1Id)
+    strategy.cancel(asiaTp2Id)
+    strategy.cancel(asiaRunnerId)
+
+if isFiveMinute and inAsiaRTH and inAsiaORB
+    asiaOrbHigh := na(asiaOrbHigh) ? high : math.max(asiaOrbHigh, high)
+    asiaOrbLow := na(asiaOrbLow) ? low : math.min(asiaOrbLow, low)
+
+if isFiveMinute and inAsiaRTH and not inAsiaORB and not asiaOrbReady and not na(asiaOrbHigh) and not na(asiaOrbLow)
+    asiaOrbReady := true
+
+asiaOrbRange = nz(asiaOrbHigh - asiaOrbLow)
+asiaMinGap = (i_asiaMinGapPct / 100.0) * asiaOrbRange
+asiaStopDist = math.max((i_asiaStopPct / 100.0) * asiaOrbRange, i_asiaMinStopPts)
+
+asiaLongFvgTop = low
+asiaLongFvgBottom = high[2]
+asiaLongGapSize = asiaLongFvgTop - asiaLongFvgBottom
+asiaLongBreakout = asiaLongFvgTop > asiaOrbHigh
+asiaLongFvg = high[2] < low and high[2] < high[1] and low[2] < low and asiaLongBreakout and asiaLongGapSize >= asiaMinGap
+
+asiaCanDetect = isFiveMinute and bar_index >= 2 and inAsiaRTH and inAsiaEntry and asiaOrbReady and not asiaFirstSetupFound
+
+if asiaCanDetect and asiaLongFvg and asiaStopDist > 0
+    asiaFirstSetupFound := true
+    asiaEntry := asiaLongFvgTop
+    asiaStop := asiaEntry - asiaStopDist
+    asiaRiskPts = asiaEntry - asiaStop
+    asiaTp1Dist = math.max(i_asiaRr * asiaRiskPts * i_asiaTp1Ratio, i_asiaMinTp1Pts)
+    asiaTp1 := asiaEntry + asiaTp1Dist
+    asiaTp2 := asiaEntry + (i_asiaRr * asiaRiskPts)
+    asiaQty := calcQty(i_asiaRiskUsd, asiaEntry, asiaStop)
+    asiaOrderPending := true
+    asiaMovedToBreakeven := false
+
+    strategy.entry(asiaEntryId, strategy.long, qty=asiaQty, limit=asiaEntry)
+    strategy.exit(asiaTp1Id, asiaEntryId, qty_percent=50, limit=asiaTp1, stop=asiaStop)
+    strategy.exit(asiaTp2Id, asiaEntryId, qty_percent=50, limit=asiaTp2, stop=asiaStop)
+
+if asiaOrderPending and strategy.position_size > 0
+    asiaOrderPending := false
+    asiaTradeActive := true
+
+if asiaOrderPending and not inAsiaEntry and strategy.position_size == 0
+    asiaOrderPending := false
+    strategy.cancel(asiaEntryId)
+    strategy.cancel(asiaTp1Id)
+    strategy.cancel(asiaTp2Id)
+
+if asiaTradeActive and strategy.position_size > 0 and not asiaMovedToBreakeven and high >= nz(asiaTp1)
+    if i_useBreakeven
+        asiaMovedToBreakeven := true
+        strategy.cancel(asiaTp1Id)
+        strategy.cancel(asiaTp2Id)
+        strategy.exit(asiaRunnerId, asiaEntryId, qty_percent=100, limit=asiaTp2, stop=asiaEntry)
+
+if asiaTradeActive and strategy.position_size == 0 and strategy.position_size[1] > 0
+    asiaTradeActive := false
+    asiaMovedToBreakeven := false
+
+if asiaTradeActive and inAsiaFlat and strategy.position_size != 0
+    strategy.close_all("Asia Flat")
+
+// ============================================================================
+// ES NY STATE
+// ============================================================================
+var float nyOrbHigh = na
+var float nyOrbLow = na
+var bool nyOrbReady = false
+var bool nyFirstSetupFound = false
+var float nyEntry = na
+var float nyStop = na
+var float nyTp1 = na
+var float nyTp2 = na
+var float nyQty = na
+var bool nyOrderPending = false
+var bool nyMovedToBreakeven = false
+var bool nyTradeActive = false
+
+nyEntryId = "ESNyLong"
+nyTp1Id = "ESNyTP1"
+nyTp2Id = "ESNyTP2"
+nyRunnerId = "ESNyRunner"
+
+if nyStart
+    nyOrbHigh := na
+    nyOrbLow := na
+    nyOrbReady := false
+    nyFirstSetupFound := false
+    nyEntry := na
+    nyStop := na
+    nyTp1 := na
+    nyTp2 := na
+    nyQty := na
+    nyOrderPending := false
+    nyMovedToBreakeven := false
+    nyTradeActive := false
+    strategy.cancel(nyEntryId)
+    strategy.cancel(nyTp1Id)
+    strategy.cancel(nyTp2Id)
+    strategy.cancel(nyRunnerId)
+
+if isFiveMinute and inNyRTH and inNyORB
+    nyOrbHigh := na(nyOrbHigh) ? high : math.max(nyOrbHigh, high)
+    nyOrbLow := na(nyOrbLow) ? low : math.min(nyOrbLow, low)
+
+if isFiveMinute and inNyRTH and not inNyORB and not nyOrbReady and not na(nyOrbHigh) and not na(nyOrbLow)
+    nyOrbReady := true
+
+nyLongFvgTop = low
+nyLongFvgBottom = high[2]
+nyLongGapSize = nyLongFvgTop - nyLongFvgBottom
+nyMinGap = (i_nyMinGapPct / 100.0) * nz(nyAtrValue)
+nyLongBreakout = nyLongFvgTop > nyOrbHigh
+nyLongFvg = high[2] < low and high[2] < high[1] and low[2] < low and nyLongBreakout and nyLongGapSize >= nyMinGap
+
+nyCanDetect = isFiveMinute and bar_index >= 2 and inNyRTH and inNyEntry and nyOrbReady and not nySkipToday and not nyFirstSetupFound and nz(nyAtrValue) > 0
+
+if nyCanDetect and nyLongFvg
+    nyStopDist = math.max((i_nyStopPct / 100.0) * nz(nyAtrValue), i_nyMinStopPts)
+    if nyStopDist > 0
+        nyFirstSetupFound := true
+        nyEntry := nyLongFvgTop
+        nyStop := nyEntry - nyStopDist
+        nyRiskPts = nyEntry - nyStop
+        nyTp1Dist = math.max(i_nyRr * nyRiskPts * i_nyTp1Ratio, i_nyMinTp1Pts)
+        nyTp1 := nyEntry + nyTp1Dist
+        nyTp2 := nyEntry + (i_nyRr * nyRiskPts)
+        nyQty := calcQty(i_nyRiskUsd, nyEntry, nyStop)
+        nyOrderPending := true
+        nyMovedToBreakeven := false
+
+        strategy.entry(nyEntryId, strategy.long, qty=nyQty, limit=nyEntry)
+        strategy.exit(nyTp1Id, nyEntryId, qty_percent=50, limit=nyTp1, stop=nyStop)
+        strategy.exit(nyTp2Id, nyEntryId, qty_percent=50, limit=nyTp2, stop=nyStop)
+
+if nyOrderPending and strategy.position_size > 0
+    nyOrderPending := false
+    nyTradeActive := true
+
+if nyOrderPending and not inNyEntry and strategy.position_size == 0
+    nyOrderPending := false
+    strategy.cancel(nyEntryId)
+    strategy.cancel(nyTp1Id)
+    strategy.cancel(nyTp2Id)
+
+if nyTradeActive and strategy.position_size > 0 and not nyMovedToBreakeven and high >= nz(nyTp1)
+    if i_useBreakeven
+        nyMovedToBreakeven := true
+        strategy.cancel(nyTp1Id)
+        strategy.cancel(nyTp2Id)
+        strategy.exit(nyRunnerId, nyEntryId, qty_percent=100, limit=nyTp2, stop=nyEntry)
+
+if nyTradeActive and strategy.position_size == 0 and strategy.position_size[1] > 0
+    nyTradeActive := false
+    nyMovedToBreakeven := false
+
+if nyTradeActive and inNyFlat and strategy.position_size != 0
+    strategy.close_all("NY Flat")
+
+// ============================================================================
+// VISUALS
+// ============================================================================
+plot(isFiveMinute and inAsiaRTH and asiaOrbReady ? asiaOrbHigh : na, "Asia ORB High", color=color.new(#2196F3, 0), style=plot.style_linebr, linewidth=2)
+plot(isFiveMinute and inAsiaRTH and asiaOrbReady ? asiaOrbLow : na, "Asia ORB Low", color=color.new(#A5DFFA, 0), style=plot.style_linebr, linewidth=2)
+plot(isFiveMinute and inNyRTH and nyOrbReady ? nyOrbHigh : na, "NY ORB High", color=color.new(#18B79C, 0), style=plot.style_linebr, linewidth=2)
+plot(isFiveMinute and inNyRTH and nyOrbReady ? nyOrbLow : na, "NY ORB Low", color=color.new(#94E3DA, 0), style=plot.style_linebr, linewidth=2)
+
+if barstate.isfirst and not isFiveMinute
+    label.new(bar_index, high, "Use this strategy on a 5m chart.", style=label.style_label_down, color=color.red, textcolor=color.white)

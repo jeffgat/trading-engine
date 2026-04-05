@@ -99,8 +99,18 @@
     "sessions": {
       "GC_Asia": {
         "regime_gates": ["block_bull_medium_vol"],
-        "risk_usd": 200,
-        "max_single_risk_usd": 300
+        "risk_usd": 400,
+        "max_single_risk_usd": 500
+      },
+      "NQ_NY_Short": {
+        "regime_gates": ["block_bull_low_vol"],
+        "risk_usd": 400,
+        "max_single_risk_usd": 500
+      },
+      "SI_Asia": {
+        "regime_gates": ["block_bull_medium_vol"],
+        "risk_usd": 400,
+        "max_single_risk_usd": 500
       }
     },
     "lsi_sessions": {

@@ -302,6 +302,7 @@ def _build_combined_regime_block_gate(
 
 _REGIME_GATE_BUILDERS: dict[str, Callable[[str], RegimeGateCheck]] = {
     "bull_no_low_confidence": _build_bull_no_low_confidence_gate,
+    "block_bull_low_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_low_vol"})),
     "block_bull_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_medium_vol"})),
     "block_sideways_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"sideways_medium_vol"})),
     "block_full_medium_vol": lambda name: _build_combined_regime_block_gate(

@@ -1,0 +1,172 @@
+//@version=6
+strategy(
+     title="NQ ORB Strategy [atlasfutures]",
+     overlay=true,
+     initial_capital=50000,
+     pyramiding=0,
+     margin_long=0,
+     margin_short=0,
+     commission_type=strategy.commission.cash_per_contract,
+     commission_value=0.0,
+     calc_on_every_tick=true,
+     process_orders_on_close=true,
+     use_bar_magnifier=true,
+     fill_orders_on_standard_ohlc=false
+)
+
+// Derived from atlas_orb.pine.
+// This strategy only includes the live ALPHA_V1 NQ Asia ORB long leg.
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+groupRisk = "Risk"
+groupLeg = "ALPHA_V1 NQ Asia ORB"
+
+i_riskUsd = input.float(300.0, "Risk per Trade ($)", minval=1.0, step=50.0, group=groupRisk)
+i_pointValue = input.float(syminfo.pointvalue, "Point Value ($)", minval=0.01, step=0.25, group=groupRisk)
+i_minQty = input.float(1.0, "Min Qty", minval=0.0, step=1.0, group=groupRisk)
+i_qtyStep = input.float(1.0, "Qty Step", minval=0.01, step=1.0, group=groupRisk)
+i_useBreakeven = input.bool(true, "Move Runner To Breakeven After TP1", group=groupRisk)
+
+i_orbWindow = input.session("2000-2015", "ORB Window", group=groupLeg)
+i_entryWindow = input.session("2015-2230", "Entry Window", group=groupLeg)
+i_flatWindow = input.session("0400-0405", "Flat Window", group=groupLeg)
+i_rr = input.float(6.0, "Reward/Risk", step=0.25, group=groupLeg)
+i_tp1Ratio = input.float(0.3, "TP1 Ratio", minval=0.05, maxval=0.95, step=0.05, group=groupLeg)
+i_stopPct = input.float(100.0, "ORB Stop (%)", minval=0.5, step=0.5, group=groupLeg)
+i_minGapPct = input.float(10.0, "Min Gap (% ORB)", minval=0.0, step=0.25, group=groupLeg)
+i_skipTue = input.bool(true, "Skip Tuesday", group=groupLeg)
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+floorToStep(value, step) =>
+    step > 0 ? math.floor(value / step) * step : value
+
+calcQty(entryPrice, stopPrice) =>
+    riskPts = math.abs(entryPrice - stopPrice)
+    riskPerContract = riskPts * i_pointValue
+    rawQty = riskPerContract > 0 ? i_riskUsd / riskPerContract : i_minQty
+    steppedQty = floorToStep(rawQty, i_qtyStep)
+    math.max(steppedQty, i_minQty)
+
+// ============================================================================
+// TIMEFRAME / SESSION FILTERS
+// ============================================================================
+isFiveMinute = timeframe.isminutes and timeframe.multiplier == 5
+asiaRth = "1800-0700"
+tz = "America/New_York"
+
+inAsiaRTH = not na(time("5", asiaRth, tz))
+inAsiaORB = not na(time("5", i_orbWindow, tz))
+inEntryWin = not na(time("5", i_entryWindow, tz))
+inFlatWin = not na(time("5", i_flatWindow, tz))
+asiaStart = inAsiaRTH and not inAsiaRTH[1]
+
+dow = dayofweek(time, tz)
+skipToday = dow == dayofweek.tuesday and i_skipTue
+
+// ============================================================================
+// ORB STATE
+// ============================================================================
+var float orbHigh = na
+var float orbLow = na
+var bool orbReady = false
+var bool firstSetupFound = false
+
+var float setupEntry = na
+var float setupStop = na
+var float setupTp1 = na
+var float setupTp2 = na
+var float setupQty = na
+var bool orderPending = false
+var bool movedToBreakeven = false
+
+entryId = "NQAsiaLong"
+tp1Id = "NQAsiaTP1"
+tp2Id = "NQAsiaTP2"
+runnerId = "NQAsiaRunner"
+
+if asiaStart
+    orbHigh := na
+    orbLow := na
+    orbReady := false
+    firstSetupFound := false
+    setupEntry := na
+    setupStop := na
+    setupTp1 := na
+    setupTp2 := na
+    setupQty := na
+    orderPending := false
+    movedToBreakeven := false
+    strategy.cancel_all()
+
+if isFiveMinute and inAsiaRTH and inAsiaORB
+    orbHigh := na(orbHigh) ? high : math.max(orbHigh, high)
+    orbLow := na(orbLow) ? low : math.min(orbLow, low)
+
+if isFiveMinute and inAsiaRTH and not inAsiaORB and not orbReady and not na(orbHigh) and not na(orbLow)
+    orbReady := true
+
+// ============================================================================
+// LIVE LEG LOGIC
+// ============================================================================
+orbRange = nz(orbHigh - orbLow)
+minGap = (i_minGapPct / 100.0) * orbRange
+stopDist = (i_stopPct / 100.0) * orbRange
+
+longFvgTop = low
+longFvgBottom = high[2]
+longGapSize = longFvgTop - longFvgBottom
+longBreakout = longFvgTop > orbHigh
+longFvg = high[2] < low and high[2] < high[1] and low[2] < low and longBreakout and longGapSize >= minGap
+
+canDetect = isFiveMinute and bar_index >= 2 and inAsiaRTH and inEntryWin and orbReady and not skipToday and not firstSetupFound
+
+if canDetect and longFvg and stopDist > 0
+    firstSetupFound := true
+    setupEntry := longFvgTop
+    setupStop := setupEntry - stopDist
+    riskPts = setupEntry - setupStop
+    setupTp1 := setupEntry + (i_rr * riskPts * i_tp1Ratio)
+    setupTp2 := setupEntry + (i_rr * riskPts)
+    setupQty := calcQty(setupEntry, setupStop)
+    orderPending := true
+    movedToBreakeven := false
+
+    strategy.entry(entryId, strategy.long, qty=setupQty, limit=setupEntry)
+    strategy.exit(tp1Id, entryId, qty_percent=50, limit=setupTp1, stop=setupStop)
+    strategy.exit(tp2Id, entryId, qty_percent=50, limit=setupTp2, stop=setupStop)
+
+if orderPending and strategy.position_size > 0
+    orderPending := false
+
+if orderPending and not inEntryWin and strategy.position_size == 0
+    orderPending := false
+    strategy.cancel_all()
+
+if strategy.position_size > 0 and i_useBreakeven and not movedToBreakeven and high >= nz(setupTp1)
+    movedToBreakeven := true
+    strategy.cancel(tp1Id)
+    strategy.cancel(tp2Id)
+    strategy.exit(runnerId, entryId, qty_percent=100, limit=setupTp2, stop=setupEntry)
+
+if strategy.position_size == 0 and strategy.position_size[1] > 0
+    movedToBreakeven := false
+
+if inFlatWin and strategy.position_size != 0
+    strategy.close_all("Asia Flat")
+
+// ============================================================================
+// VISUALS
+// ============================================================================
+plot(isFiveMinute and orbReady and inAsiaRTH ? orbHigh : na, "ORB High", color=color.new(#2196F3, 0), style=plot.style_linebr, linewidth=2)
+plot(isFiveMinute and orbReady and inAsiaRTH ? orbLow : na, "ORB Low", color=color.new(#A5DFFA, 0), style=plot.style_linebr, linewidth=2)
+plot(isFiveMinute and (orderPending or strategy.position_size > 0) ? setupEntry : na, "Entry", color=color.new(#787b86, 0), style=plot.style_linebr)
+plot(isFiveMinute and (orderPending or strategy.position_size > 0) ? setupStop : na, "Stop", color=color.new(#FF5252, 0), style=plot.style_linebr)
+plot(isFiveMinute and (orderPending or strategy.position_size > 0) ? setupTp1 : na, "TP1", color=color.new(#FFB74D, 0), style=plot.style_linebr)
+plot(isFiveMinute and (orderPending or strategy.position_size > 0) ? setupTp2 : na, "TP2", color=color.new(#26A69A, 0), style=plot.style_linebr)
+
+if barstate.isfirst and not isFiveMinute
+    label.new(bar_index, high, "Use this strategy on a 5m chart.", style=label.style_label_down, color=color.red, textcolor=color.white)

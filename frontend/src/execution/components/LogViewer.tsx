@@ -30,6 +30,15 @@ export function LogViewer({
   const [tab, setTab] = useState<"main" | "trade">("main");
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("ALL");
+  const [tradeConfigFilter, setTradeConfigFilter] = useState("ALL");
+
+  const tradeConfigNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const e of tradeEntries) {
+      if (e.config) names.add(e.config);
+    }
+    return Array.from(names).sort();
+  }, [tradeEntries]);
 
   const filteredMain = useMemo(() => {
     let result = mainEntries;
@@ -59,9 +68,8 @@ export function LogViewer({
 
   const filteredTrade = useMemo(() => {
     let result = tradeEntries;
-    // Filter by config
-    if (activeConfig && activeConfig !== "ALL") {
-      result = result.filter((e) => e.config === activeConfig);
+    if (tradeConfigFilter !== "ALL") {
+      result = result.filter((e) => e.config === tradeConfigFilter);
     }
     if (search) {
       const s = search.toLowerCase();
@@ -73,7 +81,7 @@ export function LogViewer({
       );
     }
     return result;
-  }, [tradeEntries, search, activeConfig]);
+  }, [tradeEntries, search, tradeConfigFilter]);
 
   const isMain = tab === "main";
   const loading = isMain ? mainLoading : tradeLoading;
@@ -126,6 +134,20 @@ export function LogViewer({
             <option value="INFO">INFO+</option>
             <option value="WARNING">WARNING+</option>
             <option value="ERROR">ERROR</option>
+          </select>
+        )}
+
+        {/* Config filter (trade log only) */}
+        {!isMain && (
+          <select
+            value={tradeConfigFilter}
+            onChange={(e) => setTradeConfigFilter(e.target.value)}
+            className="h-8 rounded-md border border-border bg-bg-secondary px-2 text-xs text-text-secondary"
+          >
+            <option value="ALL">All Configs</option>
+            {tradeConfigNames.map((name) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
           </select>
         )}
 

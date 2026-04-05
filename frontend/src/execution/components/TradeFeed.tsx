@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { TradeEventRow } from "./TradeEventRow";
 import { ExecTradeChartModal } from "./ExecTradeChartModal";
 import type { ConfigResponse, TradeLogEntry, ExecTradeContext } from "@/execution/lib/types";
@@ -29,15 +30,25 @@ export function TradeFeed({
   total,
   loading,
   loadMore,
-  activeConfig,
+  activeConfig: _activeConfig,
   config,
 }: TradeFeedProps) {
   const stratLookup = buildStrategyLookup(config);
 
+  const [selectedConfig, setSelectedConfig] = useState("ALL");
+
+  const configNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const e of entries) {
+      if (e.config) names.add(e.config);
+    }
+    return Array.from(names).sort();
+  }, [entries]);
+
   const filtered = useMemo(() => {
-    if (!activeConfig || activeConfig === "ALL") return entries;
-    return entries.filter((e) => e.config === activeConfig);
-  }, [entries, activeConfig]);
+    if (selectedConfig === "ALL") return entries;
+    return entries.filter((e) => e.config === selectedConfig);
+  }, [entries, selectedConfig]);
 
   const [chartContext, setChartContext] = useState<ExecTradeContext | null>(null);
   const [chartOpen, setChartOpen] = useState(false);
@@ -68,8 +79,21 @@ export function TradeFeed({
 
   return (
     <div className="space-y-2">
-      <div className="text-sm text-text-muted">
-        {filtered.length} of {total} events
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-text-muted">
+          {filtered.length} of {total} events
+        </div>
+        <Select value={selectedConfig} onValueChange={setSelectedConfig}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All Configs</SelectItem>
+            {configNames.map((name) => (
+              <SelectItem key={name} value={name}>{name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <ScrollArea className="h-[calc(100vh-220px)] rounded-md border border-border bg-bg-card">
         <div>

@@ -1,3 +1,4 @@
+import { AccountsView } from "@/execution/components/AccountsView";
 import { CONFIG_COLORS, SESSION_DISPLAY_NAMES } from "@/execution/lib/constants";
 import type { ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/shared/ui/card";
@@ -29,6 +30,10 @@ interface ConfigViewProps {
   onUpdateWebhooks: (configName: string, webhooks: WebhookEntry[]) => Promise<void>;
   onToggleEnabled?: (configName: string, enabled: boolean) => Promise<void>;
   execConfigs: Record<string, ExecConfigMeta>;
+  onPauseWebhook: (configName: string, idx: number) => Promise<void>;
+  onResumeWebhook: (configName: string, idx: number) => Promise<void>;
+  onUpdateMultiplier: (configName: string, idx: number, multiplier: number) => Promise<void>;
+  onFlattenWebhook: (configName: string, idx: number) => Promise<void>;
 }
 
 /** Derive the 3-state mode from config metadata. */
@@ -1197,6 +1202,10 @@ export function ConfigView({
   onUpdateWebhooks,
   onToggleEnabled,
   execConfigs,
+  onPauseWebhook,
+  onResumeWebhook,
+  onUpdateMultiplier,
+  onFlattenWebhook,
 }: ConfigViewProps) {
   if (loading) {
     return (
@@ -1237,6 +1246,7 @@ export function ConfigView({
         <TabsList className="bg-bg-card border border-border">
           <TabsTrigger value="strategy">Parameters</TabsTrigger>
           <TabsTrigger value="execution">Configs Overview</TabsTrigger>
+          <TabsTrigger value="accounts">Accounts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="strategy" className="space-y-6">
@@ -1380,6 +1390,17 @@ export function ConfigView({
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="accounts" className="space-y-6">
+          <AccountsView
+            execConfigs={execConfigs}
+            onPause={onPauseWebhook}
+            onResume={onResumeWebhook}
+            onUpdateMultiplier={onUpdateMultiplier}
+            onFlatten={onFlattenWebhook}
+            onUpdateWebhooks={onUpdateWebhooks}
+          />
         </TabsContent>
       </Tabs>
     </div>

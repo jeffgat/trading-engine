@@ -22,7 +22,7 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
     # Risk & sizing
     "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
     # Toggles
-    "long_only", "icf_enabled", "fomc_exclusion",
+    "long_only", "short_only", "icf_enabled", "fomc_exclusion",
     "min_stop_pts", "min_tp1_pts",
 })
 
