@@ -29,6 +29,7 @@ class SweepEvent:
     level: float      # the swing level that was swept
     direction: int    # +1 long setup (low sweep), -1 short setup (high sweep)
     bar_index: int    # bar count when sweep occurred
+    pivot_time: str   # timestamp of the pivot bar that formed the swing level ("HH:MM" ET)
 
 
 class SwingTracker:
@@ -56,6 +57,7 @@ class SwingTracker:
         # Rolling window of (high, low) tuples
         self._highs: deque[float] = deque(maxlen=self._window_size)
         self._lows: deque[float] = deque(maxlen=self._window_size)
+        self._timestamps: deque[str] = deque(maxlen=self._window_size)  # "HH:MM" ET
 
         self._bar_count: int = 0
         self._current_date: str = ""
@@ -64,9 +66,15 @@ class SwingTracker:
         self._latest_swing_high: float = float("nan")
         self._latest_swing_low: float = float("nan")
 
+        # Timestamps of the pivot bars that formed the swing levels ("HH:MM" ET)
+        self._latest_swing_high_time: str = ""
+        self._latest_swing_low_time: str = ""
+
         # Previous bar's swing levels (for 1-bar-shifted sweep check)
         self._prev_swing_high: float = float("nan")
         self._prev_swing_low: float = float("nan")
+        self._prev_swing_high_time: str = ""
+        self._prev_swing_low_time: str = ""
 
     @property
     def latest_swing_high(self) -> float:
@@ -96,10 +104,14 @@ class SwingTracker:
         # Save previous bar's swing levels before any update
         self._prev_swing_high = self._latest_swing_high
         self._prev_swing_low = self._latest_swing_low
+        self._prev_swing_high_time = self._latest_swing_high_time
+        self._prev_swing_low_time = self._latest_swing_low_time
 
         # Add to rolling window
+        bar_time_str = bar.timestamp.strftime("%H:%M") if hasattr(bar.timestamp, "strftime") else ""
         self._highs.append(bar.high)
         self._lows.append(bar.low)
+        self._timestamps.append(bar_time_str)
 
         # Check for confirmed pivot (need full window)
         if len(self._highs) == self._window_size:
@@ -147,9 +159,11 @@ class SwingTracker:
 
         if is_swing_high:
             self._latest_swing_high = pivot_high
+            self._latest_swing_high_time = self._timestamps[n_l] if len(self._timestamps) > n_l else ""
 
         if is_swing_low:
             self._latest_swing_low = pivot_low
+            self._latest_swing_low_time = self._timestamps[n_l] if len(self._timestamps) > n_l else ""
 
     def _check_sweep(self, bar) -> SweepEvent | None:
         """Check if bar sweeps the previous bar's swing level.
@@ -167,6 +181,7 @@ class SwingTracker:
                 level=self._prev_swing_low,
                 direction=1,
                 bar_index=self._bar_count,
+                pivot_time=self._prev_swing_low_time,
             )
 
         # High sweep of swing high → bearish setup (direction=-1)
@@ -179,6 +194,7 @@ class SwingTracker:
                         level=self._prev_swing_high,
                         direction=-1,
                         bar_index=self._bar_count,
+                        pivot_time=self._prev_swing_high_time,
                     )
 
         return sweep
@@ -194,8 +210,10 @@ class SwingTracker:
         self._current_date = new_date
         self._highs.clear()
         self._lows.clear()
-        # NOTE: _latest_swing_high/low and _prev_swing_high/low are
-        # intentionally preserved across days to match the backtester.
+        self._timestamps.clear()
+        # NOTE: _latest_swing_high/low and _prev_swing_high/low (and their
+        # timestamps) are intentionally preserved across days to match the
+        # backtester.
 
     def reset(self) -> None:
         """Full reset (e.g. on service restart)."""
@@ -217,10 +235,15 @@ class SwingTracker:
             "current_date": self._current_date,
             "highs": list(self._highs),
             "lows": list(self._lows),
+            "timestamps": list(self._timestamps),
             "latest_swing_high": self._latest_swing_high if not math.isnan(self._latest_swing_high) else None,
             "latest_swing_low": self._latest_swing_low if not math.isnan(self._latest_swing_low) else None,
+            "latest_swing_high_time": self._latest_swing_high_time,
+            "latest_swing_low_time": self._latest_swing_low_time,
             "prev_swing_high": self._prev_swing_high if not math.isnan(self._prev_swing_high) else None,
             "prev_swing_low": self._prev_swing_low if not math.isnan(self._prev_swing_low) else None,
+            "prev_swing_high_time": self._prev_swing_high_time,
+            "prev_swing_low_time": self._prev_swing_low_time,
         }
 
     def restore(self, data: dict) -> None:
@@ -236,14 +259,24 @@ class SwingTracker:
         for l in data.get("lows", []):
             self._lows.append(l)
 
+        self._timestamps.clear()
+        for t in data.get("timestamps", []):
+            self._timestamps.append(t)
+
         lsh = data.get("latest_swing_high")
         self._latest_swing_high = lsh if lsh is not None else float("nan")
 
         lsl = data.get("latest_swing_low")
         self._latest_swing_low = lsl if lsl is not None else float("nan")
 
+        self._latest_swing_high_time = data.get("latest_swing_high_time", "")
+        self._latest_swing_low_time = data.get("latest_swing_low_time", "")
+
         psh = data.get("prev_swing_high")
         self._prev_swing_high = psh if psh is not None else float("nan")
 
         psl = data.get("prev_swing_low")
         self._prev_swing_low = psl if psl is not None else float("nan")
+
+        self._prev_swing_high_time = data.get("prev_swing_high_time", "")
+        self._prev_swing_low_time = data.get("prev_swing_low_time", "")

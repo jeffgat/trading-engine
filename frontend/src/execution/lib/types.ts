@@ -44,6 +44,7 @@ export interface SessionStatus {
   qty?: number | null;
   // LSI overlay fields
   swept_level?: number | null;
+  swept_level_time?: string | null;  // "HH:MM" ET of the pivot bar
   fvg_top?: number | null;
   fvg_bottom?: number | null;
 }

@@ -1,10 +1,7 @@
 # TODOS/NOTES
-- update the tradingview indicators
-- default the live strat to alpha_v1
+- continue the short suite research in downside_research.md
+- pass the trend following paper into the council. compare to current strategyies + regime filtering. explore further
 
 ## orb ideas
-- fvg bars before
-
-great. now make an execution config called ALPHA_V1 which takes all the legs from this config. make this the default live config over FAST_V2 with the active traderspost account/webhook.
-
-then make an execution config called TESTING. place nq nr lsi rr2
+- candles after gap is made. this is basically an entry window though. meh.
+- max distance from the ORB range

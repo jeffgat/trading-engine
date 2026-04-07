@@ -123,6 +123,7 @@ def _serialize_sweep(sweep: Any) -> dict | None:
         "level": sweep.level,
         "direction": sweep.direction,
         "bar_index": sweep.bar_index,
+        "pivot_time": sweep.pivot_time,
     }
 
 
@@ -131,6 +132,9 @@ def _deserialize_sweep(data: dict | None) -> Any:
     if data is None:
         return None
     from .swing import SweepEvent
+    # Backward compat: old checkpoints lack pivot_time
+    if "pivot_time" not in data:
+        data["pivot_time"] = ""
     return SweepEvent(**data)
 
 

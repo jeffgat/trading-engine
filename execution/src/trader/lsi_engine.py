@@ -206,6 +206,7 @@ class LSIEngine:
 
         # LSI overlay (swept level + FVG zone, persists until next session reset)
         self._swept_level: float | None = None
+        self._swept_level_time: str | None = None  # "HH:MM" ET of the pivot bar
         self._fvg_top: float | None = None
         self._fvg_bottom: float | None = None
 
@@ -234,6 +235,7 @@ class LSIEngine:
     def _clear_dashboard_overlay(self) -> None:
         """Clear the current LSI setup overlay shown on the dashboard."""
         self._swept_level = None
+        self._swept_level_time = None
         self._fvg_top = None
         self._fvg_bottom = None
 
@@ -244,6 +246,7 @@ class LSIEngine:
     def _set_sweep_overlay(self, sweep: SweepEvent) -> None:
         """Persist the active swept level immediately after sweep detection."""
         self._swept_level = sweep.level
+        self._swept_level_time = sweep.pivot_time
         self._fvg_top = None
         self._fvg_bottom = None
 
@@ -251,6 +254,7 @@ class LSIEngine:
         """Add the identified gap bounds to the current dashboard overlay."""
         if self._active_sweep is not None:
             self._swept_level = self._active_sweep.level
+            self._swept_level_time = self._active_sweep.pivot_time
         self._fvg_top = gap.top
         self._fvg_bottom = gap.bottom
 
@@ -1424,6 +1428,7 @@ class LSIEngine:
             "trade_overlap": overlap_active,
             # LSI overlay — swept level + FVG zone (persists into FLAT)
             "swept_level": round(self._swept_level, 2) if self._swept_level is not None else None,
+            "swept_level_time": self._swept_level_time,
             "fvg_top": round(self._fvg_top, 2) if self._fvg_top is not None else None,
             "fvg_bottom": round(self._fvg_bottom, 2) if self._fvg_bottom is not None else None,
         }

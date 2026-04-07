@@ -251,7 +251,17 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
             <div className="text-xs text-text-muted font-medium mb-1">
               Sweep &amp; Gap
             </div>
-            <PriceRow label="Swept Level" value={engine.swept_level ?? null} />
+            {engine.swept_level != null && (
+              <div className="flex justify-between">
+                <span className="text-text-muted text-xs">Swept Level</span>
+                <span className="font-mono text-xs text-text-secondary">
+                  {engine.swept_level.toFixed(2)}
+                  {engine.swept_level_time && (
+                    <span className="text-text-muted ml-1.5">{engine.swept_level_time}</span>
+                  )}
+                </span>
+              </div>
+            )}
             <PriceRow label="Gap High" value={engine.fvg_top ?? null} />
             <PriceRow label="Gap Low" value={engine.fvg_bottom ?? null} />
           </div>
