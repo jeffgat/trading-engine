@@ -10,6 +10,14 @@
 - try concepts like "resting liquidity", which should require a certain amount of time elapsed
 - consider things like the open high or low? after a certain time? esentially using ORB levels as a sweep
 
+## to test individually
+- equal highs, highs near each other within x amount of points
+- data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
+- max candles before inversion else invalidate the trade?
+- define trendline liquidity on the way to the target
+- vwap/ema/sma?
+- 1h high or low, minimum x (5) bars to the left and unswept?
+
 ### params
 session times
 rr=2
