@@ -118,7 +118,8 @@ backtesting/learnings/
 ├── portfolios/     # Portfolio construction & allocation docs
 ├── reports/        # Pipeline reports, sweep reports, council reports
 ├── ALPHA_V1.md     # Strategy version notes (top-level)
-├── CURRENT_WORKFLOWS.md
+├── CURRENT_REGIME_WORKFLOW.md
+├── CURRENT_STRATEGY_WORKFLOW.md
 ├── REGIME.md
 └── prop_regime_specialist_framework.md
 ```

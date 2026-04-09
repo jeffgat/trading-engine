@@ -1725,6 +1725,22 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
   - `3m`: `107` pre-holdout trades, PF `2.1349`, avg R `0.2692`; validation PF `2.9399`, avg R `0.3700` → strongest of the three, but still too few pre-holdout trades for promotion
 - conclusion: `PDH + Asia Low` is interesting descriptively, but as a standalone exact-level thesis it is too sparse under the current workflow. It does not earn a full discovery promotion path on `1m`, `2m`, or `3m`.
 
+**Widened exact-level restart (`previous_day_* + Asia Low`) on `2m` and `3m` — still baseline no-go, but `3m` is close**:
+- to add trades without reopening the whole thesis, the next restart widened the active levels to:
+  - `previous_day_high`
+  - `previous_day_low`
+  - `asia_low`
+- results:
+  - `2m`: `111` pre-holdout trades, PF `1.1756`, avg R `0.0650`; validation PF `1.1939`, avg R `0.0825`
+  - `3m`: `147` pre-holdout trades, PF `1.7003`, avg R `0.2025`; validation PF `2.2998`, avg R `0.3157`
+- both still failed the repo’s baseline alive gate, so neither advanced into Stage A
+- interpretation:
+  - `2m` remained too weak to justify further work
+  - `3m` is the interesting one: quality was strong and it only missed the alive gate by being just under the current pre-holdout trade-count bar
+- practical takeaway: if this family is ever revisited again as a new thesis, `3m previous_day_* + Asia Low` is the only exact-level specialist branch that looks close enough to justify either:
+  - a specialist-sample exception to the baseline trade-count rule, or
+  - adding one more tightly justified level without reopening the full family
+
 ---
 
 ## NQ ASIA LSI (Long) — CONDITIONAL (4/5)

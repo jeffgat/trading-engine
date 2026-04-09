@@ -64,6 +64,11 @@ LEVEL_GROUPS = {
         "previous_day_high",
         "asia_low",
     ),
+    "previous_day_asia_low": (
+        "previous_day_high",
+        "previous_day_low",
+        "asia_low",
+    ),
 }
 
 

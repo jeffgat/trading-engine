@@ -13,7 +13,7 @@ The idea was to keep the core 5-minute LSI structure, but replace swing-pivot sw
 - `london_high`
 - `london_low`
 
-The branch was run using the workflow in `CURRENT_WORKFLOWS.md`:
+The branch was run using the workflow in `CURRENT_STRATEGY_WORKFLOW.md`:
 
 1. baseline on pre-holdout data
 2. broad structural sweep

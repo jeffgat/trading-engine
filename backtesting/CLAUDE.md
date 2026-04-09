@@ -162,50 +162,13 @@ NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Prima
 
 ### Optimization
 
-### From-Scratch Strategy Workflow
+### Workflow References
 
-When starting from scratch with a new strategy or strategy variant, use this workflow:
+Use `backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md` as the source of truth for new-strategy discovery, candidate promotion, and downstream handoff into `discovery-pipeline` and `phase-one-robust-pipeline`.
 
-1. **Start with the thesis and the asset learnings**
-   - Read the relevant `learnings/asset/{ASSET}.md` file first.
-   - Define the strategy family clearly: continuation, inversion, LSI, VWAP, gap fill, regime specialist, etc.
-   - Decide the instrument, session, direction bias, and rough execution logic before sweeping.
+Use `backtesting/learnings/CURRENT_REGIME_WORKFLOW.md` as the source of truth for causal regime labeling, regime attribution, and regime-specialist promotion work.
 
-2. **Build a baseline, not a winner**
-   - Create a simple baseline config or baseline script with reasonable defaults.
-   - Run a full-history pre-holdout backtest to confirm the strategy is structurally alive.
-   - Reject obviously dead ideas early: too few trades, no edge, pathological DD shape, or strategy logic that only works in a tiny slice of history.
-
-3. **Freeze a final hold-out before discovery**
-   - Reserve the most recent `12-24` months as the final untouched hold-out.
-   - Do not let baseline screening, variable sweeps, discovery ranking, or structural tuning touch this hold-out.
-   - Bailey posture matters more than any single backtest metric.
-
-4. **Run exploratory sweeps on pre-holdout data only**
-   - Use `strategy-optimizer`, per-asset sweep scripts, or manual variable sweeps to explore the search space.
-   - Start coarse, then narrow.
-   - Sweep only `2-3` dimensions at a time unless the user explicitly wants a broader brute-force pass.
-   - Track how many rounds and combinations were tried.
-
-5. **Use `discovery-pipeline` to promote candidates**
-   - `discovery-pipeline` is the pre-holdout robustness workflow.
-   - Its job is not final live approval. Its job is to turn a noisy search space into a frozen shortlist.
-   - Rank candidates by combined OOS behavior, walk-forward retention, and local plateau stability.
-   - Prefer stable neighborhoods over single-point maxima.
-   - Promote a very small shortlist: ideally `1` leader plus at most `1-2` challengers.
-
-6. **Hand frozen candidates into `phase-one-robust-pipeline`**
-   - `phase-one-robust-pipeline` is downstream of discovery.
-   - It evaluates whether a promoted all-weather candidate can reach first payout fast enough and often enough to justify the funded-account model.
-   - Do not use phase one as the primary parameter search loop.
-
-7. **Save the winning config only after downstream validation**
-   - Once a candidate survives the downstream pipeline, save the final config/result.
-   - Update the relevant `learnings/asset/{ASSET}.md` with the final conclusion, key evidence, and DB run IDs.
-
-In short:
-
-`baseline -> exploratory sweeps -> discovery-pipeline -> phase-one-robust-pipeline -> save final candidate`
+Read the relevant `learnings/asset/{ASSET}.md` file before starting either path, and update it after a meaningful conclusion with evidence and DB references.
 
 #### Variable Sweep Discipline — CRITICAL RULE
 **Every time the anchor config changes, all variable sweeps must be rerun from scratch.**

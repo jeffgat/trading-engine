@@ -56,7 +56,7 @@ A persistent knowledge base lives at `references/strategy-learnings.md`. It capt
 
 ### Step 0: Load Strategy Learnings
 
-Before any backtest, optimization, or strategy modification, load `references/strategy-learnings.md` and review relevant sections. For strategy research, also read the relevant asset learnings file in `backtesting/learnings/asset/` and follow `backtesting/learnings/CURRENT_WORKFLOWS.md` when the task is new-strategy discovery, regime research, or promotion work. Use prior findings to inform parameter choices and avoid repeating failed experiments.
+Before any backtest, optimization, or strategy modification, load `references/strategy-learnings.md` and review relevant sections. For strategy research, also read the relevant asset learnings file in `backtesting/learnings/asset/`. Use `backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md` for new-strategy discovery, candidate promotion, and downstream handoff work. Use `backtesting/learnings/CURRENT_REGIME_WORKFLOW.md` for regime research, regime labeling, and regime-specialist promotion work. Use prior findings to inform parameter choices and avoid repeating failed experiments.
 
 ### Step 1: Understand the Request
 
