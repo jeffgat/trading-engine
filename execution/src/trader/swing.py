@@ -29,7 +29,7 @@ class SweepEvent:
     level: float      # the swing level that was swept
     direction: int    # +1 long setup (low sweep), -1 short setup (high sweep)
     bar_index: int    # bar count when sweep occurred
-    pivot_time: str   # timestamp of the pivot bar that formed the swing level ("HH:MM" ET)
+    pivot_time: str = ""   # timestamp of the pivot bar that formed the swing level ("HH:MM" ET)
 
 
 class SwingTracker:

@@ -224,6 +224,16 @@ class TestTimestampNormalization:
 
 
 class TestDataBentoFeedIngestion:
+    def test_daily_only_symbols_keep_intraday_unsubscribed(self):
+        feed = DataBentoFeed(symbols=["GC.FUT"], daily_only_symbols=["NQ.FUT"])
+
+        assert feed.symbols == ["GC.FUT"]
+        assert feed.daily_only_symbols == ["NQ.FUT"]
+        assert feed.history_symbols == ["GC.FUT", "NQ.FUT"]
+        assert "NQ.FUT" in feed._daily_history
+        assert "NQ.FUT" in feed._atrs
+        assert "NQ.FUT" not in feed._aggregators
+
     def test_live_and_preload_use_identical_1m_ingestion(self):
         minutes = range(30, 45)  # interval-start stamped 09:30-09:44 bars
 

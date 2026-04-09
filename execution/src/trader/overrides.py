@@ -30,7 +30,7 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
 LSI_EDITABLE_FIELDS: frozenset[str] = frozenset({
     "entry_start", "entry_end", "flat_start", "flat_end", "excluded_dow",
     "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_points",
-    "fvg_window_right", "fvg_window_left", "lsi_entry_mode",
+    "fvg_window_right", "fvg_window_left", "lsi_entry_mode", "lsi_variant",
     "risk_usd", "min_qty", "max_single_risk_usd",
     "qty_multiplier", "long_only",
 })

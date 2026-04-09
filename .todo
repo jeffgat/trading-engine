@@ -1,7 +1,57 @@
 # TODOS/NOTES
 - continue the short suite research in downside_research.md
-- pass the trend following paper into the council. compare to current strategyies + regime filtering. explore further
+- LSI is somewhat broken in terms of sweep identification
+- all 8 bars before the low, and all 60 bars after the low must have lows above the pivot low itself
+- this holds true for 5+ hours
+- need to reset the pivot low every session? or at some given point
+- don't want to eliminate premarket sweeps that invert during NY session
+- but definitely don't want to be using levels from the previous session.
+- we also want to define a structural low
+- try concepts like "resting liquidity", which should require a certain amount of time elapsed
+- consider things like the open high or low? after a certain time? esentially using ORB levels as a sweep
+
+### params
+session times
+rr=2
+tp1_ratio=0.5
+min_gap_atr_pct=3.0
+lsi_n_left=8
+lsi_n_right=60
+fvg_window_left=20
+fvg_window_right=5
+lsi_entry_mode=fvg_limit
+excluded_dow=[2,3]
+
+ILM checklist
+- liquidity sweep
+- liquidity draw
+- trend bias
+- momentum
 
 ## orb ideas
 - candles after gap is made. this is basically an entry window though. meh.
 - max distance from the ORB range
+
+
+### LSI
+How the Sweep / Pivot Low Logic Works
+Pivot detection runs on every 5m bar, all hours, in both engines. A swing low requires:
+
+n_left=8 bars before it with strictly higher lows
+n_right=60 bars after it with strictly higher lows
+Confirmed only after all 60 right-side bars close — a ~5 hour delay on 5m bars
+Once confirmed, the swing low level is forward-filled and persists until a newer swing low replaces it. Swing levels carry across day boundaries — they are never reset.
+
+Sweep detection is gated:
+
+Backtester: in_rth mask (starts at rth_start=09:30)
+Execution engine: SCANNING state (starts at entry_start=09:35)
+Before that window, sweeps fire from the swing tracker but are ignored by the state machine
+What happened on this trade:
+
+A swing low at 24204.50 formed during Sunday night's Asia session (~22:00-23:00 ET April 6)
+It was confirmed ~60 bars later (~03:00-04:00 ET April 7)
+Pre-market bars from 06:50-09:30 traded well below 24204.50 many times, but those sweeps were outside the entry window — ignored
+No new swing low from today has been confirmed yet (n_right=60 means the earliest today's lows could confirm is ~5 hours after they form)
+At 09:40 (first SCANNING bar with low < 24204.50), the sweep triggered
+Both engines behave identically here. Not a bug — the backtester would produce the same trade on the same data. The stale-looking swept level is a consequence of the large n_right=60 confirmation delay combined with sweep detection being restricted to the entry window.

@@ -312,6 +312,19 @@ _REGIME_GATE_BUILDERS: dict[str, Callable[[str], RegimeGateCheck]] = {
 }
 
 
+def required_daily_history_symbols_for_regime_gates(
+    names: list[str] | tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    """Return extra daily-history symbols required to evaluate *names*.
+
+    All current execution regime gates are derived from the NQ daily regime
+    calendar, even when the traded session is a different instrument.
+    """
+    if not normalize_regime_gates(None, names):
+        return ()
+    return ("NQ.FUT",)
+
+
 def build_regime_gates(
     names: list[str] | tuple[str, ...] | None,
 ) -> tuple[CompiledRegimeGate, ...]:

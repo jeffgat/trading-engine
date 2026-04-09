@@ -21,11 +21,12 @@ import pandas as pd
 
 from collections import defaultdict
 
-from ..config import StrategyConfig, SessionConfig
+from ..config import StrategyConfig, SessionConfig, ASIA_SESSION, LDN_SESSION
 from ..signals.session import compute_session_masks, compute_trading_days, compute_session_days, compute_date_strings
 from ..signals.daily_atr import compute_daily_atr
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
+from ..signals.reference_levels import compute_reference_levels
 from ..signals.swing import detect_swing_highs, detect_swing_lows
 from ..signals.vwap import compute_session_vwap
 
@@ -83,6 +84,8 @@ class TradeResult(NamedTuple):
     lsi_fvg_bottom: float = 0.0    # lower boundary of the inverting FVG zone
     lsi_fvg_time: str = ""         # ISO timestamp of the FVG bar (bar[0] of 3-candle pattern)
     lsi_sweep_time: str = ""       # ISO timestamp of the bar where the liquidity sweep occurred
+    reference_level_name: str = ""  # completed-session / previous-day level used by reference_lsi
+    reference_level_price: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -1480,6 +1483,8 @@ class _SetupCandidate:
     lsi_fvg_bar: int = -1
     lsi_sweep_bar: int = -1
     lsi_internal_swing_level: float = 1e38  # sentinel: 1e38=disabled (longs), -1e38=disabled (shorts)
+    reference_level_name: str = ""
+    reference_level_price: float = 0.0
 
 
 def _session_key(session: SessionConfig) -> tuple:
@@ -1487,6 +1492,7 @@ def _session_key(session: SessionConfig) -> tuple:
     return (
         session.name,
         session.rth_start,
+        session.sweep_start, session.sweep_end,
         session.orb_start, session.orb_end,
         session.entry_start, session.entry_end,
         session.flat_start, session.flat_end,
@@ -1502,6 +1508,37 @@ def _fvg_key(session: SessionConfig, config: StrategyConfig) -> tuple:
         getattr(session, "min_gap_orb_pct", 0.0),
         config.impulse_close_filter,
     )
+
+
+def _fvg_no_orb_key(session: SessionConfig, config: StrategyConfig) -> tuple:
+    """Hashable key identifying a unique no-ORB FVG computation."""
+    return (
+        config.atr_length,
+        session.min_gap_atr_pct,
+    )
+
+
+def _compute_previous_day_instance_ids(timestamps: pd.DatetimeIndex) -> np.ndarray:
+    """Return a per-bar id for the currently published previous-day level."""
+    return np.cumsum(compute_trading_days(timestamps)) - 1
+
+
+def _compute_completed_session_instance_ids(
+    timestamps: pd.DatetimeIndex,
+    session: SessionConfig,
+) -> np.ndarray:
+    """Return a per-bar id for the most recently completed session instance."""
+    masks = compute_session_masks(timestamps, session)
+    in_rth = masks["in_rth"]
+    instance_ids = np.full(len(timestamps), -1, dtype=np.int64)
+    completed_count = -1
+
+    for i in range(len(timestamps)):
+        if i > 0 and in_rth[i - 1] and not in_rth[i]:
+            completed_count += 1
+        instance_ids[i] = completed_count
+
+    return instance_ids
 
 
 def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.ndarray:
@@ -1704,12 +1741,15 @@ def _extract_setup_candidates(
     if config.strategy == "lsi":
         # LSI uses ORB-free FVG detection — no directional ORB filter, no orb_ready gate
         from ..signals.fvg import detect_fvg_no_orb
-        fvg_lsi = detect_fvg_no_orb(
-            df["high"].values,
-            df["low"].values,
-            daily_atr,
-            session.min_gap_atr_pct,
-        )
+        if _signal_cache is not None and "fvg_no_orb" in _signal_cache:
+            fvg_lsi = _signal_cache["fvg_no_orb"][_fvg_no_orb_key(session, config)]
+        else:
+            fvg_lsi = detect_fvg_no_orb(
+                df["high"].values,
+                df["low"].values,
+                daily_atr,
+                session.min_gap_atr_pct,
+            )
         valid_long_lsi = fvg_lsi["long_fvg"] & masks["in_entry"] & masks["in_rth"]
         valid_short_lsi = fvg_lsi["short_fvg"] & masks["in_entry"] & masks["in_rth"]
         # Apply date exclusions (excluded_dates + excluded_days) to LSI candidates
@@ -1720,7 +1760,7 @@ def _extract_setup_candidates(
             valid_short_lsi &= ~_excl_mask
         candidates = _extract_lsi_candidates(
             df, fvg_lsi, valid_long_lsi, valid_short_lsi, session_day_id,
-            masks["in_entry"], masks["in_rth"], dates, close,
+            masks["in_entry"], masks["in_rth"], masks["in_sweep"], dates, close,
             daily_atr, orb_high, orb_low, session,
             n_left=config.lsi_n_left,
             n_right=config.lsi_n_right,
@@ -1734,6 +1774,66 @@ def _extract_setup_candidates(
             rr=config.rr,
             tp1_ratio=config.tp1_ratio,
             be_swing_n_left=config.lsi_be_swing_n_left,
+            sweep_gate=config.lsi_sweep_gate,
+            stale_breach_consumes_pivot=config.lsi_stale_breach_consumes_pivot,
+        )
+    elif config.strategy == "reference_lsi":
+        from ..signals.fvg import detect_fvg_no_orb
+
+        if _signal_cache is not None and "fvg_no_orb" in _signal_cache:
+            fvg_ref = _signal_cache["fvg_no_orb"][_fvg_no_orb_key(session, config)]
+        else:
+            fvg_ref = detect_fvg_no_orb(
+                df["high"].values,
+                df["low"].values,
+                daily_atr,
+                session.min_gap_atr_pct,
+            )
+
+        valid_long_ref = fvg_ref["long_fvg"] & masks["in_entry"] & masks["in_rth"]
+        valid_short_ref = fvg_ref["short_fvg"] & masks["in_entry"] & masks["in_rth"]
+        if excluded:
+            _excl_arr = np.array(list(excluded))
+            _excl_mask = np.isin(date_strs, _excl_arr)
+            valid_long_ref &= ~_excl_mask
+            valid_short_ref &= ~_excl_mask
+
+        if _signal_cache is not None and "reference_levels" in _signal_cache:
+            reference_levels = _signal_cache["reference_levels"]
+            reference_instance_ids = _signal_cache["reference_level_instance_ids"]
+        else:
+            reference_levels = compute_reference_levels(df)
+            prev_day_ids = _compute_previous_day_instance_ids(timestamps)
+            asia_ids = _compute_completed_session_instance_ids(timestamps, ASIA_SESSION)
+            london_ids = _compute_completed_session_instance_ids(timestamps, LDN_SESSION)
+            reference_instance_ids = {
+                "previous_day_high": prev_day_ids,
+                "previous_day_low": prev_day_ids,
+                "asia_high": asia_ids,
+                "asia_low": asia_ids,
+                "london_high": london_ids,
+                "london_low": london_ids,
+            }
+
+        candidates = _extract_reference_lsi_candidates(
+            df,
+            fvg_ref,
+            valid_long_ref,
+            valid_short_ref,
+            session_day_id,
+            masks["in_entry"],
+            masks["in_rth"],
+            dates,
+            close,
+            daily_atr,
+            session,
+            reference_levels=reference_levels,
+            reference_instance_ids=reference_instance_ids,
+            gap_lookback_bars=config.ref_lsi_gap_lookback_bars,
+            inversion_max_bars=config.ref_lsi_inversion_max_bars,
+            direction_filter=config.direction_filter,
+            gap_entry_edge=config.ref_lsi_gap_entry_edge,
+            selected_level_names=config.ref_lsi_reference_levels,
         )
     elif config.strategy == "cisd":
         # CISD mode: ORB liquidity sweep + displacement candle reversal.
@@ -2180,6 +2280,7 @@ def _extract_lsi_candidates(
     session_day_id: np.ndarray,
     in_entry: np.ndarray,
     in_rth: np.ndarray,
+    in_sweep: np.ndarray,
     dates,
     close: np.ndarray,
     daily_atr: np.ndarray,
@@ -2198,6 +2299,8 @@ def _extract_lsi_candidates(
     rr: float = 2.5,
     tp1_ratio: float = 0.5,
     be_swing_n_left: int = 0,
+    sweep_gate: str = "sweep_window",
+    stale_breach_consumes_pivot: bool = True,
 ) -> list[_SetupCandidate]:
     """Extract Liquidity Sweep Inversion (LSI) candidates.
 
@@ -2226,31 +2329,13 @@ def _extract_lsi_candidates(
     swing_highs = detect_swing_highs(high, n_left, n_right)
     swing_lows = detect_swing_lows(low, n_left, n_right)
 
-    # Build forward-filled latest confirmed swing levels
-    # The pivot level is the actual price of the pivot candle: high[i - n_right] when confirmed at bar i
+    # Pivot level is the actual price of the pivot candle: high[i - n_right]
+    # when confirmed at bar i.
     pivot_high_vals = np.where(swing_highs, np.roll(high, n_right), np.nan).astype(float)
     pivot_high_vals[:n_right] = np.nan  # first n_right bars have no valid pivot reference
 
     pivot_low_vals = np.where(swing_lows, np.roll(low, n_right), np.nan).astype(float)
     pivot_low_vals[:n_right] = np.nan
-
-    latest_sh = pd.Series(pivot_high_vals).ffill().values  # forward-fill swing high level
-    latest_sl = pd.Series(pivot_low_vals).ffill().values   # forward-fill swing low level
-
-    # Sweep detection uses the PRIOR bar's level (prev_sh/prev_sl) to avoid same-bar lookahead
-    prev_sh = np.roll(latest_sh, 1)
-    prev_sh[0] = np.nan
-    prev_sl = np.roll(latest_sl, 1)
-    prev_sl[0] = np.nan
-
-    # Sweep of swing high → short setup trigger (price goes above prior swing high)
-    is_sweep_high = in_rth & (high > prev_sh) & ~np.isnan(prev_sh)
-    # Sweep of swing low → long setup trigger (price goes below prior swing low)
-    is_sweep_low = in_rth & (low < prev_sl) & ~np.isnan(prev_sl)
-
-    # Cumulative sums for O(1) window queries: "did a sweep happen in [i-window, i]?"
-    sh_cumsum = np.cumsum(is_sweep_high.astype(int))
-    sl_cumsum = np.cumsum(is_sweep_low.astype(int))
 
     # FVG zone boundaries
     long_fvg_bottom = fvg["long_fvg_bottom"]  # high[2] — inversion level for shorts
@@ -2264,6 +2349,13 @@ def _extract_lsi_candidates(
     long_fvg_top_arr = fvg["long_entry_price"]  # low[j] — upper boundary of bullish FVG zone
     long_fvg_bot_arr = fvg["long_fvg_bottom"]   # high[j-2] — lower boundary of bullish FVG zone
 
+    if sweep_gate == "entry":
+        sweep_gate_mask = in_entry
+    elif sweep_gate == "rth":
+        sweep_gate_mask = in_rth
+    else:
+        sweep_gate_mask = in_sweep
+
     # --- Phase 2: Sequential state machine ---
 
     # Pending bullish FVGs waiting for a nearby sweep → then awaiting inversion for SHORT
@@ -2275,26 +2367,59 @@ def _extract_lsi_candidates(
     detected_bearish_fvgs: list = []  # bearish FVGs seen, no sweep yet
     active_for_long: list = []        # bearish FVGs with confirmed nearby sweep → await inversion
 
+    # Active confirmed pivots. A breach consumes the pivot immediately even if
+    # the breach happens outside the valid sweep window.
+    active_swing_high = np.nan
+    active_swing_low = np.nan
+
+    # Only valid in-window sweeps can activate LSI setups. Keep a short rolling
+    # history so same-bar / post-sweep FVGs can attach to the most recent valid sweep.
+    recent_sweep_highs: list[tuple[int, float, int]] = []  # (bar, level, session_day_id)
+    recent_sweep_lows: list[tuple[int, float, int]] = []
+
     seen_days: set = set()            # one trade per session-day
     candidates: list[_SetupCandidate] = []
 
     for i in range(n):
         sd = session_day_id[i]
 
+        valid_sweep_high = False
+        valid_sweep_low = False
+        swept_high_level = np.nan
+        swept_low_level = np.nan
+
+        # Fixed mode retires a pivot on any breach. Legacy mode leaves the pivot
+        # active until a breach happens inside the configured sweep gate.
+        if not np.isnan(active_swing_high) and high[i] > active_swing_high:
+            swept_high_level = float(active_swing_high)
+            valid_sweep_high = bool(sweep_gate_mask[i])
+            if valid_sweep_high or stale_breach_consumes_pivot:
+                active_swing_high = np.nan
+            if valid_sweep_high and take_shorts:
+                recent_sweep_highs.append((i, swept_high_level, sd))
+
+        if not np.isnan(active_swing_low) and low[i] < active_swing_low:
+            swept_low_level = float(active_swing_low)
+            valid_sweep_low = bool(sweep_gate_mask[i])
+            if valid_sweep_low or stale_breach_consumes_pivot:
+                active_swing_low = np.nan
+            if valid_sweep_low and take_longs:
+                recent_sweep_lows.append((i, swept_low_level, sd))
+
+        recent_sweep_highs = [
+            sweep for sweep in recent_sweep_highs
+            if sweep[2] == sd and (i - sweep[0]) <= fvg_window_right
+        ]
+        recent_sweep_lows = [
+            sweep for sweep in recent_sweep_lows
+            if sweep[2] == sd and (i - sweep[0]) <= fvg_window_right
+        ]
+
         # A) Register new bullish FVG (valid_long[i] means in_entry + in_rth + orb_ready)
         if valid_long[i] and take_shorts:
-            # Check if a sweep_high already occurred within [i-fvg_window_right, i]
-            lo = max(0, i - fvg_window_right)
-            recent_sh = sh_cumsum[i] - (sh_cumsum[lo - 1] if lo > 0 else 0)
             base_entry = (i, long_fvg_bottom[i], fvg["long_gap_size"][i], daily_atr[i], sd)
-            if recent_sh > 0:
-                # Find exact sweep bar (most recent is_sweep_high in [lo, i])
-                _sweep_bar = i
-                for _sb in range(i, lo - 1, -1):
-                    if is_sweep_high[_sb]:
-                        _sweep_bar = _sb
-                        break
-                _swept = float(prev_sh[_sweep_bar]) if not np.isnan(prev_sh[_sweep_bar]) else 0.0
+            if recent_sweep_highs:
+                _sweep_bar, _swept, _ = recent_sweep_highs[-1]
                 # 8-element: adds swept_level + fvg_other_bound + sweep_bar
                 active_entry = base_entry + (_swept, float(long_fvg_top_arr[i]), _sweep_bar)
                 if first_fvg_only:
@@ -2307,17 +2432,9 @@ def _extract_lsi_candidates(
 
         # B) Register new bearish FVG
         if valid_short[i] and take_longs:
-            lo = max(0, i - fvg_window_right)
-            recent_sl = sl_cumsum[i] - (sl_cumsum[lo - 1] if lo > 0 else 0)
             base_entry = (i, short_fvg_top[i], fvg["short_gap_size"][i], daily_atr[i], sd)
-            if recent_sl > 0:
-                # Find exact sweep bar (most recent is_sweep_low in [lo, i])
-                _sweep_bar = i
-                for _sb in range(i, lo - 1, -1):
-                    if is_sweep_low[_sb]:
-                        _sweep_bar = _sb
-                        break
-                _swept = float(prev_sl[_sweep_bar]) if not np.isnan(prev_sl[_sweep_bar]) else 0.0
+            if recent_sweep_lows:
+                _sweep_bar, _swept, _ = recent_sweep_lows[-1]
                 # 8-element: adds swept_level + fvg_other_bound + sweep_bar
                 active_entry = base_entry + (_swept, float(short_fvg_bot_arr[i]), _sweep_bar)
                 if first_fvg_only:
@@ -2329,8 +2446,8 @@ def _extract_lsi_candidates(
                 detected_bearish_fvgs.append(base_entry)
 
         # C) Sweep of swing HIGH at bar i → promote bullish FVGs within window → active_for_short
-        if is_sweep_high[i] and take_shorts:
-            _swept_c = float(prev_sh[i]) if not np.isnan(prev_sh[i]) else 0.0
+        if valid_sweep_high and take_shorts:
+            _swept_c = float(swept_high_level)
             still_pending = []
             to_promote = []
             for pending in detected_bullish_fvgs:
@@ -2349,8 +2466,8 @@ def _extract_lsi_candidates(
             detected_bullish_fvgs = still_pending
 
         # D) Sweep of swing LOW at bar i → promote bearish FVGs within window → active_for_long
-        if is_sweep_low[i] and take_longs:
-            _swept_d = float(prev_sl[i]) if not np.isnan(prev_sl[i]) else 0.0
+        if valid_sweep_low and take_longs:
+            _swept_d = float(swept_low_level)
             still_pending = []
             to_promote = []
             for pending in detected_bearish_fvgs:
@@ -2527,6 +2644,239 @@ def _extract_lsi_candidates(
         detected_bearish_fvgs = [p for p in detected_bearish_fvgs if p[4] >= sd]
         active_for_short = [p for p in active_for_short if p[4] >= sd]
         active_for_long = [p for p in active_for_long if p[4] >= sd]
+
+        if swing_highs[i]:
+            active_swing_high = float(pivot_high_vals[i])
+        if swing_lows[i]:
+            active_swing_low = float(pivot_low_vals[i])
+
+    return candidates
+
+
+def _extract_reference_lsi_candidates(
+    df: pd.DataFrame,
+    fvg: dict[str, np.ndarray],
+    valid_long: np.ndarray,
+    valid_short: np.ndarray,
+    session_day_id: np.ndarray,
+    in_entry: np.ndarray,
+    in_rth: np.ndarray,
+    dates,
+    close: np.ndarray,
+    daily_atr: np.ndarray,
+    session,
+    *,
+    reference_levels: dict[str, np.ndarray],
+    reference_instance_ids: dict[str, np.ndarray],
+    gap_lookback_bars: int = 12,
+    inversion_max_bars: int = 18,
+    direction_filter: str = "both",
+    gap_entry_edge: str = "near",
+    selected_level_names: tuple[str, ...] | None = None,
+) -> list[_SetupCandidate]:
+    """Extract reference-level sweep inversion candidates.
+
+    Setup logic:
+    1. A completed reference level is swept during the active entry window.
+    2. A same-direction FVG must have formed before the sweep within
+       ``gap_lookback_bars``.
+    3. Price must invert that FVG within ``inversion_max_bars`` after the sweep.
+    4. Entry is a limit at the configured FVG edge.
+
+    High-side level sweeps create short candidates, low-side sweeps create long
+    candidates. Each published level instance can only sweep once.
+    """
+    n = len(df)
+    open_ = df["open"].values
+    high = df["high"].values
+    low = df["low"].values
+
+    take_shorts = direction_filter in ("both", "short")
+    take_longs = direction_filter in ("both", "long")
+
+    long_fvg_bottom = fvg["long_fvg_bottom"]
+    long_fvg_top = fvg["long_entry_price"]
+    short_fvg_top = fvg["short_fvg_top"]
+    short_fvg_bottom = fvg["short_entry_price"]
+
+    if selected_level_names is None:
+        selected_level_names = (
+            "previous_day_high",
+            "previous_day_low",
+            "asia_high",
+            "asia_low",
+            "london_high",
+            "london_low",
+        )
+
+    high_side_levels = tuple(level for level in selected_level_names if level.endswith("_high"))
+    low_side_levels = tuple(level for level in selected_level_names if level.endswith("_low"))
+
+    level_state: dict[str, dict[str, int | bool]] = {
+        name: {"instance_id": -10_000_000, "consumed": False}
+        for name in (*high_side_levels, *low_side_levels)
+    }
+
+    active_short_events: list[dict] = []
+    active_long_events: list[dict] = []
+    candidates: list[_SetupCandidate] = []
+
+    for i in range(n):
+        sd = session_day_id[i]
+
+        # Reset per-level consumption when a new published level instance arrives.
+        for level_name, state in level_state.items():
+            instance_ids = reference_instance_ids[level_name]
+            instance_id = int(instance_ids[i]) if i < len(instance_ids) else -1
+            if instance_id != state["instance_id"]:
+                state["instance_id"] = instance_id
+                state["consumed"] = False
+
+        # A reference level can only create one sweep event per published instance.
+        if in_entry[i] and in_rth[i]:
+            if take_shorts:
+                for level_name in high_side_levels:
+                    level = float(reference_levels[level_name][i])
+                    if not np.isfinite(level):
+                        continue
+                    state = level_state[level_name]
+                    if state["consumed"]:
+                        continue
+                    if not (open_[i] <= level and high[i] > level):
+                        continue
+                    state["consumed"] = True
+                    lo = max(0, i - gap_lookback_bars)
+                    eligible_fvg_bars = [
+                        j for j in range(lo, i)
+                        if session_day_id[j] == sd and valid_long[j]
+                    ]
+                    if eligible_fvg_bars:
+                        active_short_events.append(
+                            {
+                                "sd": sd,
+                                "sweep_bar": i,
+                                "expiry_bar": i + inversion_max_bars,
+                                "level_name": level_name,
+                                "level_price": level,
+                                "fvg_bars": eligible_fvg_bars,
+                            }
+                        )
+
+            if take_longs:
+                for level_name in low_side_levels:
+                    level = float(reference_levels[level_name][i])
+                    if not np.isfinite(level):
+                        continue
+                    state = level_state[level_name]
+                    if state["consumed"]:
+                        continue
+                    if not (open_[i] >= level and low[i] < level):
+                        continue
+                    state["consumed"] = True
+                    lo = max(0, i - gap_lookback_bars)
+                    eligible_fvg_bars = [
+                        j for j in range(lo, i)
+                        if session_day_id[j] == sd and valid_short[j]
+                    ]
+                    if eligible_fvg_bars:
+                        active_long_events.append(
+                            {
+                                "sd": sd,
+                                "sweep_bar": i,
+                                "expiry_bar": i + inversion_max_bars,
+                                "level_name": level_name,
+                                "level_price": level,
+                                "fvg_bars": eligible_fvg_bars,
+                            }
+                        )
+
+        remaining_short_events: list[dict] = []
+        for event in active_short_events:
+            if event["sd"] != sd:
+                continue
+            if i <= event["sweep_bar"]:
+                remaining_short_events.append(event)
+                continue
+            if i > event["expiry_bar"] or not in_entry[i]:
+                continue
+
+            inverted = [
+                fvg_bar for fvg_bar in event["fvg_bars"]
+                if close[i] < long_fvg_bottom[fvg_bar]
+            ]
+            if not inverted:
+                remaining_short_events.append(event)
+                continue
+
+            # Use the most recent eligible pre-sweep FVG when several invert on
+            # the same bar. This keeps the setup anchored to the freshest gap.
+            fvg_bar = max(inverted)
+            entry_price = float(long_fvg_bottom[fvg_bar]) if gap_entry_edge == "near" else float(long_fvg_top[fvg_bar])
+            structural_stop = float(np.max(high[event["sweep_bar"]: i + 1]))
+            candidates.append(
+                _SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=-1,
+                    signal_bar=i,
+                    entry_price=entry_price,
+                    gap_size=float(fvg["long_gap_size"][fvg_bar]),
+                    daily_atr=float(daily_atr[i]),
+                    orb_range=0.0,
+                    structural_stop_price=structural_stop,
+                    lsi_swept_level=event["level_price"],
+                    lsi_fvg_top=float(long_fvg_top[fvg_bar]),
+                    lsi_fvg_bottom=float(long_fvg_bottom[fvg_bar]),
+                    lsi_fvg_bar=fvg_bar,
+                    lsi_sweep_bar=int(event["sweep_bar"]),
+                    reference_level_name=str(event["level_name"]),
+                    reference_level_price=float(event["level_price"]),
+                )
+            )
+        active_short_events = remaining_short_events
+
+        remaining_long_events: list[dict] = []
+        for event in active_long_events:
+            if event["sd"] != sd:
+                continue
+            if i <= event["sweep_bar"]:
+                remaining_long_events.append(event)
+                continue
+            if i > event["expiry_bar"] or not in_entry[i]:
+                continue
+
+            inverted = [
+                fvg_bar for fvg_bar in event["fvg_bars"]
+                if close[i] > short_fvg_top[fvg_bar]
+            ]
+            if not inverted:
+                remaining_long_events.append(event)
+                continue
+
+            fvg_bar = max(inverted)
+            entry_price = float(short_fvg_top[fvg_bar]) if gap_entry_edge == "near" else float(short_fvg_bottom[fvg_bar])
+            structural_stop = float(np.min(low[event["sweep_bar"]: i + 1]))
+            candidates.append(
+                _SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=1,
+                    signal_bar=i,
+                    entry_price=entry_price,
+                    gap_size=float(fvg["short_gap_size"][fvg_bar]),
+                    daily_atr=float(daily_atr[i]),
+                    orb_range=0.0,
+                    structural_stop_price=structural_stop,
+                    lsi_swept_level=event["level_price"],
+                    lsi_fvg_top=float(short_fvg_top[fvg_bar]),
+                    lsi_fvg_bottom=float(short_fvg_bottom[fvg_bar]),
+                    lsi_fvg_bar=fvg_bar,
+                    lsi_sweep_bar=int(event["sweep_bar"]),
+                    reference_level_name=str(event["level_name"]),
+                    reference_level_price=float(event["level_price"]),
+                )
+            )
+        active_long_events = remaining_long_events
 
     return candidates
 
@@ -2719,11 +3069,26 @@ def build_signal_cache(
     computations run in parallel (batch 2) since FVG depends on session + ATR.
     NumPy/Numba operations release the GIL, so threads achieve true parallelism.
     """
-    cache: dict = {"atr": {}, "session": {}, "fvg": {}}
+    cache: dict = {"atr": {}, "session": {}, "fvg": {}, "fvg_no_orb": {}}
     timestamps = df.index
 
     # --- Date strings: config-independent, computed exactly once ---
     date_strs = compute_date_strings(timestamps)
+
+    needs_reference_levels = any(c.strategy == "reference_lsi" for c in configs)
+    if needs_reference_levels:
+        cache["reference_levels"] = compute_reference_levels(df)
+        prev_day_ids = _compute_previous_day_instance_ids(timestamps)
+        asia_ids = _compute_completed_session_instance_ids(timestamps, ASIA_SESSION)
+        london_ids = _compute_completed_session_instance_ids(timestamps, LDN_SESSION)
+        cache["reference_level_instance_ids"] = {
+            "previous_day_high": prev_day_ids,
+            "previous_day_low": prev_day_ids,
+            "asia_high": asia_ids,
+            "asia_low": asia_ids,
+            "london_high": london_ids,
+            "london_low": london_ids,
+        }
 
     # Collect unique keys
     atr_lengths = {c.atr_length for c in configs}
@@ -2796,13 +3161,19 @@ def build_signal_cache(
     # --- Batch 2: FVG signals in parallel (depends on ATR + session from batch 1) ---
     unique_fvg_tasks: list[tuple] = []
     seen_fvg: set = set()
+    unique_no_orb_fvg_tasks: list[tuple] = []
+    seen_no_orb_fvg: set = set()
     for config in configs:
         for session in config.sessions:
             fkey = _fvg_key(session, config)
-            if fkey in seen_fvg:
-                continue
-            seen_fvg.add(fkey)
-            unique_fvg_tasks.append((fkey, session, config))
+            if fkey not in seen_fvg:
+                seen_fvg.add(fkey)
+                unique_fvg_tasks.append((fkey, session, config))
+            if config.strategy in {"lsi", "reference_lsi"}:
+                no_orb_key = _fvg_no_orb_key(session, config)
+                if no_orb_key not in seen_no_orb_fvg:
+                    seen_no_orb_fvg.add(no_orb_key)
+                    unique_no_orb_fvg_tasks.append((no_orb_key, session, config))
 
     def _compute_fvg(fkey, session, config):
         skey = _session_key(session)
@@ -2821,6 +3192,18 @@ def build_signal_cache(
         )
         return fkey, fvg
 
+    def _compute_no_orb_fvg(no_orb_key, session, config):
+        from ..signals.fvg import detect_fvg_no_orb
+
+        daily_atr = cache["atr"][config.atr_length]
+        fvg = detect_fvg_no_orb(
+            df["high"].values,
+            df["low"].values,
+            daily_atr,
+            session.min_gap_atr_pct,
+        )
+        return no_orb_key, fvg
+
     n_fvg = len(unique_fvg_tasks)
     max_fvg_workers = min(n_fvg, (os.cpu_count() or 1))
 
@@ -2837,6 +3220,23 @@ def build_signal_cache(
         for fkey, session, config in unique_fvg_tasks:
             _, fvg = _compute_fvg(fkey, session, config)
             cache["fvg"][fkey] = fvg
+
+    n_no_orb_fvg = len(unique_no_orb_fvg_tasks)
+    max_no_orb_workers = min(n_no_orb_fvg, (os.cpu_count() or 1))
+
+    if max_no_orb_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_no_orb_workers) as executor:
+            futures = [
+                executor.submit(_compute_no_orb_fvg, no_orb_key, session, config)
+                for no_orb_key, session, config in unique_no_orb_fvg_tasks
+            ]
+            for f in futures:
+                no_orb_key, fvg = f.result()
+                cache["fvg_no_orb"][no_orb_key] = fvg
+    else:
+        for no_orb_key, session, config in unique_no_orb_fvg_tasks:
+            _, fvg = _compute_no_orb_fvg(no_orb_key, session, config)
+            cache["fvg_no_orb"][no_orb_key] = fvg
 
     return cache
 
@@ -2858,6 +3258,39 @@ def _resolve_time(
     if bar_5m >= 0:
         return timestamps_5m[bar_5m].isoformat()
     return ""
+
+
+def _entry_context_passes(
+    gate_tokens: tuple[str, ...],
+    min_atr: float,
+    max_atr: float,
+    direction: int,
+    entry_price: float,
+    fill_bar: int,
+    daily_atr: np.ndarray,
+    indicator_values: dict[str, np.ndarray],
+) -> bool:
+    """Return True when the configured fill-time context overlay is satisfied."""
+    if not gate_tokens:
+        return True
+    if fill_bar < 0 or fill_bar >= len(daily_atr):
+        return False
+
+    atr = daily_atr[fill_bar]
+    if not np.isfinite(atr) or atr <= 0:
+        return False
+
+    def _in_band(token: str) -> bool:
+        values = indicator_values.get(token)
+        if values is None or fill_bar >= len(values):
+            return False
+        level = values[fill_bar]
+        if not np.isfinite(level):
+            return False
+        signed_dist = float(direction) * (entry_price - float(level)) / float(atr)
+        return min_atr <= signed_dist < max_atr
+
+    return all(_in_band(token) for token in gate_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -3008,6 +3441,32 @@ def run_backtest(
                 map_1m_1s_arr = build_1m_to_1s_map(df_1m, df_1s)
 
     all_results: list[TradeResult] = []
+    context_gate = config.entry_context_gate
+    context_gate_tokens = tuple()
+    context_daily_atr = None
+    context_indicator_values: dict[str, np.ndarray] = {}
+    if context_gate:
+        context_gate_tokens = tuple(
+            token for token in context_gate[: -len("_aligned")].split("_") if token
+        )
+        if _signal_cache is not None:
+            context_daily_atr = _signal_cache["atr"][config.atr_length]
+        else:
+            context_daily_atr = compute_daily_atr(df, config.atr_length)
+        close_series = pd.Series(close, index=timestamps)
+        for token in context_gate_tokens:
+            if token == "vwap":
+                continue
+            if token.startswith("sma"):
+                period = int(token[3:])
+                context_indicator_values[token] = np.ascontiguousarray(
+                    close_series.rolling(period, min_periods=period).mean().shift(1).to_numpy(dtype=np.float64)
+                )
+            elif token.startswith("ema"):
+                period = int(token[3:])
+                context_indicator_values[token] = np.ascontiguousarray(
+                    close_series.ewm(span=period, adjust=False, min_periods=period).mean().shift(1).to_numpy(dtype=np.float64)
+                )
 
     for session in config.sessions:
         # Extract candidates (vectorized); reuses _signal_cache when provided
@@ -3037,6 +3496,24 @@ def run_backtest(
             # Session-aware day boundaries for precomputing bar lookups
             _, session_day_id = compute_session_days(timestamps, session)
             date_strs = compute_date_strings(timestamps)
+
+        session_context_values = dict(context_indicator_values)
+        if context_gate and "vwap" in context_gate_tokens:
+            if _signal_cache is not None:
+                session_vwap = sc["vwap"]
+            else:
+                session_vwap = compute_session_vwap(
+                    high,
+                    low,
+                    close,
+                    np.ascontiguousarray(df["volume"].fillna(0.0).values, dtype=np.float64),
+                    session_day_id,
+                )
+            context_vwap_prev = np.empty_like(session_vwap)
+            context_vwap_prev[:] = np.nan
+            if len(context_vwap_prev) > 1:
+                context_vwap_prev[1:] = session_vwap[:-1]
+            session_context_values["vwap"] = context_vwap_prev
 
         # Pre-compute half-day flat mask for NY
         half_day_set = set(config.half_days) if session.name == "NY" else set()
@@ -3084,6 +3561,11 @@ def run_backtest(
 
             if risk_pts <= 0:
                 continue
+
+            if config.strategy == "reference_lsi":
+                max_stop_points = config.risk_usd / config.point_value
+                if risk_pts > max_stop_points:
+                    continue
 
             # Position sizing
             qty_raw = config.risk_usd / (risk_pts * config.point_value)
@@ -3194,11 +3676,11 @@ def run_backtest(
         for pc in prepared:
             sd_groups[pc.sd].append(pc)
 
-        def _simulate_and_append(pc: _PreparedCandidate) -> None:
+        def _run_simulation(pc: _PreparedCandidate) -> tuple[int, int, int, float, float, float]:
             if use_hierarchical:
                 # Hierarchical: 5m primary, 1m drill-down on ambiguous bars,
                 # 30s on ambiguous 1m bars (when available), 1s on ambiguous 30s bars
-                fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f = _simulate_single_trade_hierarchical(
+                return _simulate_single_trade_hierarchical(
                     high, low, close,
                     pc.entry_bar_start, pc.entry_bar_end,
                     pc.flat_bar_start, pc.last_bar,
@@ -3231,8 +3713,9 @@ def run_backtest(
                 # Map 1m indices back to 5m for TradeResult timestamps
                 fill_bar = map_1m_to_5m(fill_bar_1m, bar_map) if fill_bar_1m >= 0 else -1
                 exit_bar = map_1m_to_5m(exit_bar_1m, bar_map) if exit_bar_1m >= 0 else -1
+                return fill_bar, exit_type, exit_bar, pnl_pts, -1.0, -1.0
             else:
-                fill_bar, exit_type, exit_bar, pnl_pts, _, _ = _simulate_single_trade(
+                return _simulate_single_trade(
                     high, low, close,
                     pc.entry_bar_start, pc.entry_bar_end,
                     pc.flat_bar_start, pc.last_bar,
@@ -3244,6 +3727,35 @@ def run_backtest(
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                 )
+
+        def _simulate_candidate(pc: _PreparedCandidate) -> tuple[int, int, int, float, float, float]:
+            fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f = _run_simulation(pc)
+            if (
+                context_gate_tokens
+                and fill_bar >= 0
+                and not _entry_context_passes(
+                    context_gate_tokens,
+                    config.entry_context_min_atr,
+                    config.entry_context_max_atr,
+                    pc.direction,
+                    pc.entry_price,
+                    fill_bar,
+                    context_daily_atr,
+                    session_context_values,
+                )
+            ):
+                return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+            return fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f
+
+        def _append_sim_result(
+            pc: _PreparedCandidate,
+            fill_bar: int,
+            exit_type: int,
+            exit_bar: int,
+            pnl_pts: float,
+            fill_1m_f: float,
+            exit_1m_f: float,
+        ) -> None:
             if reverse_dir:
                 pnl_pts = -pnl_pts
                 # Swap exit labels so dashboard shows correct win/loss
@@ -3272,12 +3784,14 @@ def run_backtest(
                 lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
                 lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
+                reference_level_name=pc.cand.reference_level_name,
+                reference_level_price=pc.cand.reference_level_price,
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
-                direction=pc.direction, signal_bar=pc.cand.signal_bar,
+                direction=-pc.direction if reverse_dir else pc.direction, signal_bar=pc.cand.signal_bar,
                 fill_bar=-1, entry_price=pc.entry_price,
                 stop_price=pc.stop_price, tp1_price=pc.tp1_price,
                 tp2_price=pc.tp2_price, exit_type=EXIT_NO_FILL,
@@ -3290,6 +3804,8 @@ def run_backtest(
                 lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
                 lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
+                reference_level_name=pc.cand.reference_level_name,
+                reference_level_price=pc.cand.reference_level_price,
             ))
 
         is_ib = config.strategy == "ib"
@@ -3337,6 +3853,46 @@ def run_backtest(
 
         for sd in sorted(sd_groups):
             group = sd_groups[sd]
+            if config.strategy == "reference_lsi":
+                pending = [
+                    (pc, _simulate_candidate(pc))
+                    for pc in sorted(group, key=lambda pc: (pc.cand.signal_bar, pc.entry_bar_start))
+                ]
+                current_exit_bar = -1
+
+                while pending:
+                    blocked = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar <= current_exit_bar]
+                    if blocked:
+                        for pc, _ in blocked:
+                            _append_no_fill(pc)
+                        pending = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar > current_exit_bar]
+                        if not pending:
+                            break
+
+                    filled = [(pc, sim) for pc, sim in pending if sim[0] >= 0]
+                    if not filled:
+                        for pc, sim in pending:
+                            _append_sim_result(pc, *sim)
+                        break
+
+                    winner_pc, winner_sim = min(
+                        filled,
+                        key=lambda x: (x[1][0], x[0].cand.signal_bar),
+                    )
+                    _append_sim_result(winner_pc, *winner_sim)
+                    current_exit_bar = max(current_exit_bar, winner_sim[2])
+
+                    next_pending = []
+                    for pc, sim in pending:
+                        if pc is winner_pc:
+                            continue
+                        if pc.cand.signal_bar <= current_exit_bar:
+                            _append_no_fill(pc)
+                        else:
+                            next_pending.append((pc, sim))
+                    pending = next_pending
+                continue
+
             if len(group) == 1:
                 pc = group[0]
                 if is_ib and pc.cand.lsi_fvg_top > 0:
@@ -3386,38 +3942,33 @@ def run_backtest(
                             internal_swing_level=pc.internal_swing_level,
                             cancel_on_swing=pc.cancel_on_swing,
                         )
-                        _simulate_and_append(pc)
+                        _append_sim_result(pc, *_simulate_candidate(pc))
                 else:
-                    _simulate_and_append(pc)
+                    _append_sim_result(pc, *_simulate_candidate(pc))
             else:
                 # Multiple candidates (long + short) on same session-day.
-                # Determine which limit order fills first.
-                fill_bars = []
+                # Determine which valid candidate fills first after structural
+                # simulation plus any configured fill-time context overlay.
+                sim_results = []
                 for pc in group:
-                    if use_magnifier and pc.entry_start_1m >= 0:
-                        fb_1m = _scan_fill_bar_magnifier(
-                            high_1m, low_1m,
-                            pc.entry_start_1m, pc.entry_end_1m, pc.last_bar_1m,
-                            pc.direction, pc.entry_price,
-                        )
-                        fb = map_1m_to_5m(fb_1m, bar_map) if fb_1m >= 0 else -1
-                    else:
-                        fb = _scan_fill_bar(
-                            high, low,
-                            pc.entry_bar_start, pc.entry_bar_end, pc.last_bar,
-                            pc.direction, pc.entry_price,
-                        )
-                    fill_bars.append((pc, fb))
+                    sim_results.append((pc, _simulate_candidate(pc)))
 
-                filled = [(pc, fb) for pc, fb in fill_bars if fb >= 0]
+                filled = [
+                    (pc, sim)
+                    for pc, sim in sim_results
+                    if sim[0] >= 0
+                ]
                 if not filled:
-                    for pc, _ in fill_bars:
+                    for pc, _ in sim_results:
                         _append_no_fill(pc)
                 else:
                     # Winner = earliest fill bar (ties: earlier signal_bar wins)
-                    winner_pc, _ = min(filled, key=lambda x: (x[1], x[0].cand.signal_bar))
-                    _simulate_and_append(winner_pc)
-                    for pc, _ in fill_bars:
+                    winner_pc, winner_sim = min(
+                        filled,
+                        key=lambda x: (x[1][0], x[0].cand.signal_bar),
+                    )
+                    _append_sim_result(winner_pc, *winner_sim)
+                    for pc, _ in sim_results:
                         if pc is not winner_pc:
                             _append_no_fill(pc)
 

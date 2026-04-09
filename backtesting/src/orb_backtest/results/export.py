@@ -216,6 +216,8 @@ def results_to_dict(
             config_dict[f"{prefix}_orb_window"] = f"{sess.orb_start}-{sess.orb_end}"
         if sess.rth_start:
             config_dict[f"{prefix}_rth_start"] = sess.rth_start
+        if sess.sweep_start and sess.sweep_end:
+            config_dict[f"{prefix}_sweep_window"] = f"{sess.sweep_start}-{sess.sweep_end}"
         config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
         config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
 
@@ -231,6 +233,12 @@ def results_to_dict(
         config_dict["lsi_clean_path"] = config.lsi_clean_path
         config_dict["lsi_be_swing_n_left"] = config.lsi_be_swing_n_left
         config_dict["lsi_cancel_on_swing"] = config.lsi_cancel_on_swing
+        config_dict["lsi_sweep_gate"] = config.lsi_sweep_gate
+        config_dict["lsi_stale_breach_consumes_pivot"] = config.lsi_stale_breach_consumes_pivot
+    if config.strategy == "reference_lsi":
+        config_dict["ref_lsi_gap_lookback_bars"] = config.ref_lsi_gap_lookback_bars
+        config_dict["ref_lsi_inversion_max_bars"] = config.ref_lsi_inversion_max_bars
+        config_dict["ref_lsi_gap_entry_edge"] = config.ref_lsi_gap_entry_edge
 
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
@@ -273,6 +281,8 @@ def results_to_dict(
                 "lsi_fvg_bottom": t.lsi_fvg_bottom if t.lsi_fvg_bottom else None,
                 "lsi_fvg_time": t.lsi_fvg_time if t.lsi_fvg_time else None,
                 "lsi_sweep_time": t.lsi_sweep_time if t.lsi_sweep_time else None,
+                "reference_level_name": t.reference_level_name if t.reference_level_name else None,
+                "reference_level_price": t.reference_level_price if t.reference_level_name else None,
             }
             for t in trades
         ]

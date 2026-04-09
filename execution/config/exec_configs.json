@@ -87,6 +87,7 @@
         "fvg_window_left": 20,
         "fvg_window_right": 5,
         "lsi_entry_mode": "fvg_limit",
+        "lsi_variant": "legacy-LSI",
         "lsi_n_left": 8,
         "lsi_n_right": 60,
         "excluded_dow": [2, 3]
@@ -130,6 +131,7 @@
         "fvg_window_left": 20,
         "fvg_window_right": 5,
         "lsi_entry_mode": "fvg_limit",
+        "lsi_variant": "legacy-LSI",
         "lsi_n_left": 8,
         "lsi_n_right": 60,
         "excluded_dow": [3],
@@ -176,7 +178,8 @@
         "tp1_ratio": 0.34,
         "risk_usd": 400,
         "max_single_risk_usd": 500,
-        "qty_multiplier": 1.0
+        "qty_multiplier": 1.0,
+        "lsi_variant": "legacy-LSI"
       }
     }
   },
@@ -283,6 +286,7 @@
         "fvg_window_left": 20,
         "fvg_window_right": 5,
         "lsi_entry_mode": "fvg_limit",
+        "lsi_variant": "legacy-LSI",
         "lsi_n_left": 5,
         "lsi_n_right": 60,
         "excluded_dow": [2, 3]
@@ -316,7 +320,8 @@
         "tp1_ratio": 0.34,
         "risk_usd": 400,
         "max_single_risk_usd": 500,
-        "qty_multiplier": 1.0
+        "qty_multiplier": 1.0,
+        "lsi_variant": "legacy-LSI"
       }
     }
   },
@@ -383,6 +388,7 @@
         "fvg_window_left": 20,
         "fvg_window_right": 5,
         "lsi_entry_mode": "fvg_limit",
+        "lsi_variant": "legacy-LSI",
         "lsi_n_left": 5,
         "lsi_n_right": 60,
         "excluded_dow": [2, 3]

@@ -1483,6 +1483,250 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
 
 ---
 
+### NY LSI ALPHA_V1 Sweep-Semantics Retest (Apr 2026)
+- **Status**: CONDITIONAL ALTERNATE VARIANT
+- **Question tested**: whether the stale-pivot "bug" should be treated as the real strategy instead of the corrected fresh-sweep interpretation
+- **Date range**: `2016-01-01` to `2025-12-31`
+- **Anchor params**: `rr=3.0`, `tp1_ratio=0.34`, `atr_length=10`, `min_gap_atr_pct=5.0`, `lsi_n_left=8`, `lsi_n_right=60`, `fvg_window=20/5`, `direction=long`, `entry_mode=fvg_limit`
+
+- **Corrected intended branch** (`08:30-14:30 ET` sweep window, stale pivots consumed):
+  - all-days: `319` trades, PF `1.34`, Sharpe `1.89`, Net R `+35.5`, DD `-7.08R`, Calmar `5.01`
+  - `Wed+Thu` excluded: `180` trades, PF `1.54`, Sharpe `2.96`, Net R `+31.9`, DD `-4.42R`, Calmar `7.21`
+
+- **Live-matched legacy branch** (entry-gated, non-consumptive sweeps):
+  - all-days: `544` trades, PF `1.37`, Sharpe `1.95`, Net R `+62.8`, DD `-7.33R`, Calmar `8.58`
+  - `Wed+Thu` excluded: `310` trades, PF `1.61`, Sharpe `3.17`, Net R `+59.8`, DD `-5.61R`, Calmar `10.67`, `0` negative years
+
+- **Structural findings**:
+  - the legacy/live-matched branch materially outperformed the corrected fresh-sweep branch on both filtered and all-days runs
+  - the old backtester behavior was even more distorted than this explicit legacy recreation, so do not equate the old 600+/1000+ trade headlines with the live-matched branch
+  - `lsi_n_left=8` remained the best setting even on the legacy/live-matched branch; larger left-side values degraded quickly
+  - best post-hoc DOW cuts on the live-matched branch were `Thu+Fri` by Calmar (`12.24`), `Thu` only by balance (`428` trades, `+66.3R`, Calmar `11.52`), and `Wed+Thu` for a cleaner `0` negative-year profile
+
+- **Decision**:
+  - this is a valid alternate strategy idea, not obvious look-ahead bias
+  - do **not** leave it as an accidental bug
+  - if adopted, formalize it as an explicit "entry-gated non-consumptive LSI" variant and test live/restart behavior carefully, because continuous runtime preserves older swing levels across days while restart recovery only warms same-day bars
+
+- **Exact execution replay follow-up**:
+  - after formalizing the live branch as `legacy-LSI`, a one-leg exact replay on `2016-01-01` to `2025-12-31` was materially stronger than the research surrogate: `599` trades, PF `1.47`, Sharpe `2.54`, Net R `+83.0`, DD `-5.51R`, Calmar `15.06`, all positive years
+  - important divergence: on the exact replay, all-days beat the tested DOW cuts; excluding `Thu` dropped Calmar to `13.05`, `Wed+Thu` to `10.62`, and `Thu+Fri` to `6.48`
+  - practical implication: if this branch is promoted for live use, trust the exact replay more than the research surrogate on weekday selection and start from **all days enabled**
+
+---
+
+## NY Reference-Level LSI (PDH/PDL + Asia/LDN completed session sweeps) — DISCOVERY ONLY
+
+**Status**: DISCOVERY ONLY — structurally alive, but not promoted past the Bailey-style overfitting gate yet.
+
+**Strategy**:
+- `strategy="reference_lsi"`
+- sweeps of `previous_day_high`, `previous_day_low`, `asia_high`, `asia_low`, `london_high`, `london_low`
+- active window `08:30-14:00 ET`, flat by `14:00`
+- pre-sweep FVG only
+- inversion must occur within a fixed number of bars after the sweep
+- limit entry at the `near` or `far` FVG edge
+- structural stop = sweep extreme through inversion bar, with hard 5% ATR minimum stop and explicit 1-contract max-stop rejection
+
+**Baseline config**:
+- `direction_filter=both`
+- `entry_end=14:00`
+- `ref_lsi_gap_entry_edge=near`
+- `ref_lsi_gap_lookback_bars=12`
+- `ref_lsi_inversion_max_bars=18`
+- `rr=2.0`
+- `tp1_ratio=0.5`
+- `atr_length=10`
+
+**Baseline performance** (`2016-01-01` to `2024-12-31`, holdout frozen at `2025-01-01+`):
+- 251 trades, PF 1.056, avg R 0.0136, total R +3.42, max DD -7.12R
+- 2023-2024 validation: 57 trades, PF 1.218, avg R 0.0735, total R +4.19
+
+**Stage A findings**:
+- strongest raw validation pockets were short-side, early-cutoff (`11:00`) `near`-edge variants
+- the small short-only leaders were too thin to pass the structural promotion screen
+- the viable family that survived the trade-count / PF requirements still clustered around `11:00` cutoff and `near` entries
+
+**Stage B findings**:
+- the best reward shape shifted to `RR=3.0` with `TP1=0.7-0.8`
+- top candidates converged around:
+  - `both 11:00 near gap6 inv18 rr3.0 tp0.8`
+  - `both 11:00 near gap12 inv12 rr3.0 tp0.8`
+  - `both 11:00 near gap6 inv18 rr3.0 tp0.7`
+
+**Walk-forward / promotion packet**:
+- top candidate: `both 11:00 near gap6 inv18 rr3.0 tp0.8`
+- combined pre-holdout OOS: 72 trades, avg R 0.127, PF 1.35, total R +9.16, max DD -7.43R
+- local plateau score: 0.358
+- search count: 456 raw trials, 13 effective trials
+- PSR: 0.788
+- DSR: 0.169
+
+**Narrow follow-up + confirmation findings**:
+- a second narrower branch fixed the family to `both`, `11:00`, `near`, then centered the search on the `gap6 / inv15-18` and `gap12 / inv12` neighborhoods with `RR≈3.0` and `TP1≈0.7-0.8`
+- raw validation still favored `gap12 inv12 rr3.25 tp0.7` and `gap12 inv12 rr3.0 tp0.8`
+- after forcing the full 16-config micro-branch through walk-forward, the best OOS configs reverted to:
+  - `both 11:00 near gap6 inv15 rr3.0 tp0.8`
+  - `both 11:00 near gap6 inv18 rr3.0 tp0.8`
+  - `both 11:00 near gap6 inv15 rr3.25 tp0.7`
+- top confirmed config: `both 11:00 near gap6 inv15 rr3.0 tp0.8`
+- confirmed pre-holdout walk-forward: 70 trades, avg R 0.132, PF 1.35, total R +9.21, max DD -7.38R
+- confirmation search count: 16 raw trials, 1 effective trial
+- confirmed PSR / DSR: 0.789 / 0.789
+- `gap8 inv18` degraded materially in the confirmation pass and no longer looked competitive
+
+**Attribution follow-up on the frozen winner**:
+- candidate analyzed: `both 11:00 near gap6 inv15 rr3.0 tp0.8`
+- the full pre-holdout sample was weaker than the walk-forward headline suggested: `101` trades, avg R `0.093`, PF `1.23`, but the discovery slice (`2016-2022`) was almost flat to slightly negative: `73` trades, avg R `-0.013`, PF `0.999`
+- the edge is not evenly distributed across the six levels:
+  - `previous_day` family: pre avg R `0.284`, PF `1.73`
+  - `asia` family: pre avg R `0.185`, PF `1.47`
+  - `london` family: pre avg R `-0.176`, PF `0.73`
+- high-side sweeps / short trades carried most of the edge:
+  - high-side: pre avg R `0.202`, PF `1.54`
+  - low-side: pre avg R `0.013`, PF `1.01`
+- best balanced simplification hypothesis from attribution was `exclude_london`:
+  - pre: `68` trades, avg R `0.224`, PF `1.56`, total R `+15.24`
+  - discovery: avg R `0.128`, PF `1.32`
+  - validation: avg R `0.472`, PF `2.43`
+- stronger but thinner challenger: `previous_day_high + asia_high`
+  - pre avg R `0.370`, PF `2.04`, but validation only `5` trades
+- next fresh thesis, if revisited, should be a **new discovery branch** restricted to `previous_day_* + asia_*` only, with the all-level candidate kept as the attribution anchor
+
+**Conclusion**:
+- This branch is worth keeping as a discovery family because it is causally implemented, structurally alive, and the shortlisted configs were profitable in pre-holdout walk-forward.
+- It is **not** ready for holdout or phase-one promotion yet because even after the narrow confirmation pass, the best config only reached PSR / DSR `0.789 / 0.789`, still below the repo’s moderate PSR bar.
+- If revisited again, do not broaden the search. Restart from the tighter thesis: `previous_day_* + asia_*` only, still pinned to `near`, `11:00`, `RR≈3`, `TP1≈0.7-0.8`, and the `gap6 / inv15-18` pocket.
+
+**Timeframe restart check (same baseline-case params, lower bar size)**:
+- question: keep the same `reference_lsi` baseline-case parameters, but detect gaps and inversions on `3m` or `1m` bars instead of `5m`
+- shared baseline: `both`, `entry_end=14:00`, `near`, `gap_lookback=12`, `inversion_max=18`, `RR=2.0`, `TP1=0.5`, `ATR=10`, holdout still frozen at `2025-01-01+`
+- `5m` baseline reference: `251` pre-holdout trades, PF `1.056`, avg R `0.0136`; validation `57` trades, PF `1.218`, avg R `0.0735`
+- `3m` baseline: `234` pre-holdout trades, PF `1.373`, avg R `0.1179`; validation `49` trades, PF `1.669`, avg R `0.2092`
+- `1m` baseline: `132` pre-holdout trades, PF `1.149`, avg R `0.0627`; validation `22` trades, PF `0.875`, avg R `-0.0435`
+- takeaway: lower timeframe is not automatically better. `3m` looks materially stronger than the original `5m` baseline and deserves its own dedicated discovery branch. `1m` fails the alive gate and should stay closed unless a different thesis is introduced.
+
+**3m discovery branch (same all-level thesis, full pre-holdout discovery packet)**:
+- the `3m` branch completed the full discovery workflow and produced a real promoted shortlist, unlike the original `5m` branch
+- Stage A survivors clustered around:
+  - `both`
+  - `12:00-14:00`
+  - `far gap12 inv12`, `far gap9 inv12`, `far gap6 inv12`, `far gap3 inv18`
+  - challenger `near gap6 inv12`
+- the reward sweep favored `RR=2.5-3.0` and `TP1=0.7-0.8`
+- promoted candidates:
+  - `both 13:00 far gap9 inv12 rr3.0 tp0.7`
+    - pre: `107` trades, PF `1.611`, avg R `0.293`
+    - WF OOS: `67` trades, avg R `0.392`, PF `1.877`, total R `+26.25`, max DD `-4.41R`
+    - PSR / DSR: `0.989 / 0.769`
+  - `both 12:00 near gap6 inv12 rr3.0 tp0.8`
+    - pre: `116` trades, PF `1.800`, avg R `0.296`
+    - WF OOS: `78` trades, avg R `0.300`, PF `1.837`, total R `+23.42`, max DD `-5.27R`
+    - PSR / DSR: `0.997 / 0.886`
+  - `both 13:00 near gap6 inv12 rr2.5 tp0.8`
+    - pre: `130` trades, PF `1.739`, avg R `0.269`
+    - WF OOS: `87` trades, avg R `0.294`, PF `1.861`, total R `+25.54`, max DD `-5.57R`
+    - PSR / DSR: `0.997 / 0.881`
+- trial posture: `456` raw trials, `8` effective trials
+- conclusion: `3m` is the new lead `reference_lsi` branch for NQ NY. It cleared the discovery-pipeline bar and is now eligible for downstream evaluation as a frozen shortlist. The original `5m` all-level branch remains a useful historical anchor, but the `3m` branch is materially stronger on pre-holdout evidence.
+
+**3m phase-one payout read (frozen shortlist, holdout opened once)**:
+- phase-one runner used the stitched discovery OOS stream for pre-holdout payout modeling (`2019-01-01` to `2024-12-31`), then opened the frozen holdout once on `2025-01-01` to `2026-03-24`
+- all three promoted `3m` candidates were strong on stitched OOS payout modeling, but weak on holdout payout conversion
+- best leader: `both 13:00 far gap9 inv12 rr3.0 tp0.7`
+  - stitched OOS: `67` trades, PF `1.8766`, avg R `0.3917`, total R `+26.25`
+  - OOS funded scorecard: payout rate `77.1%`, breach `3.5%`, EV/start `$282.76`
+  - holdout: `18` trades, PF `1.3016`, avg R `0.1812`, total R `+3.26`
+  - holdout funded scorecard: payout `1.6%`, breach `81.2%`, EV/start `-$99.74`
+- near-entry challengers failed outright on holdout:
+  - `both 12:00 near gap6 inv12 rr3.0 tp0.8`: holdout PF `0.5372`, avg R `-0.2509`, funded payout `0.0%`
+  - `both 13:00 near gap6 inv12 rr2.5 tp0.8`: holdout PF `0.4970`, avg R `-0.2774`, funded payout `0.0%`
+- conclusion: discovery-grade edge on `3m` did not fully carry into a strong phase-one first-payout business. Keep the far-entry leader as the only conditional candidate; do not advance the two near challengers, and do not move this family into phase two yet.
+
+**3m all-level holdout failure analysis (why the conditional leader still failed payout conversion)**:
+- focused failure analysis was run on `both 13:00 far gap9 inv12 rr3.0 tp0.7`
+- raw holdout trade quality stayed positive:
+  - `18` trades, PF `1.3016`, avg R `0.1812`, total R `+3.26`
+- but payout conversion still failed badly:
+  - holdout funded payout `1.6%`
+  - holdout funded EV/start `-$99.74`
+- main read: the problem was speed/sample, not a total collapse of raw edge
+  - too few holdout trades to reliably reach a `+5R` payout threshold across rolling starts
+  - many starts remained open or breached before enough positive trades accumulated
+- structural drag in holdout was concentrated in short / high-side sweeps:
+  - short: `11` trades, avg R `-0.4615`, PF `0.2884`
+  - long: `7` trades, avg R `1.1911`, PF `5.7965`
+- time bucket note:
+  - `09:30-10:30` dragged
+  - `10:30-12:00` was much healthier
+- important nuance: this was not a clean “London caused the holdout failure” story. London actually held up best on holdout raw trade quality, though on a small sample.
+
+**3m restricted-thesis restart (`previous_day_* + asia_*` only, no London) — new lead discovery branch**:
+- the thesis was restarted from the beginning on `3m`, but restricted to:
+  - `previous_day_high`, `previous_day_low`, `asia_high`, `asia_low`
+- baseline strengthened materially vs the all-level `3m` branch:
+  - pre-holdout: `188` trades, PF `1.4965`, avg R `0.1447`
+  - validation: `41` trades, PF `2.0714`, avg R `0.2836`
+- promoted shortlist:
+  - `both 12:00 near gap9 inv12 rr3.0 tp0.8`
+    - pre: `101` trades, PF `1.8329`, avg R `0.3016`
+    - WF OOS: `68` trades, avg R `0.3248`, PF `1.9874`, total R `+22.09`
+    - PSR / DSR: `0.9961 / 0.8198`
+  - `both 13:00 near gap9 inv12 rr2.5 tp0.8`
+    - pre: `113` trades, PF `1.8014`, avg R `0.2747`
+    - WF OOS: `75` trades, avg R `0.3189`, PF `2.0386`, total R `+23.92`
+    - PSR / DSR: `0.9961 / 0.8280`
+  - `both 14:00 near gap6 inv12 rr2.5 tp0.8`
+    - pre: `101` trades, PF `1.7967`, avg R `0.2742`
+    - WF OOS: `69` trades, avg R `0.3007`, PF `1.9382`, total R `+20.75`
+    - PSR / DSR: `0.9935 / 0.7771`
+- trial posture: `456` raw trials, `11` effective trials
+- conclusion: the restricted `3m previous_day_* + asia_*` family is now the cleaner NQ NY `reference_lsi` discovery lead. The old all-level `3m` far-entry config should be kept only as the failure-analysis anchor. The restricted branch has not opened holdout yet; the next clean step is a frozen downstream phase-one evaluation on this shortlist only.
+
+**3m restricted-thesis phase-one read (`previous_day_* + asia_*`, holdout opened once)**:
+- the restricted shortlist was then evaluated in the same phase-one payout framework on the untouched `2025-01-01` to `2026-03-24` holdout
+- OOS scorecards were still strong:
+  - `both 12:00 near gap9 inv12 rr3.0 tp0.8`: funded payout `77.1%`, EV/start `$270.00`
+  - `both 13:00 near gap9 inv12 rr2.5 tp0.8`: funded payout `75.0%`, EV/start `$215.90`
+  - `both 14:00 near gap6 inv12 rr2.5 tp0.8`: funded payout `64.7%`, EV/start `$190.54`
+- but holdout failed cleanly across the whole restricted branch:
+  - leader `both 12:00 near gap9 inv12 rr3.0 tp0.8`: `15` trades, PF `0.7802`, avg R `-0.0865`, funded payout `0.0%`, funded EV/start `-$100`
+  - challenger `both 13:00 near gap9 inv12 rr2.5 tp0.8`: `15` trades, PF `0.7241`, avg R `-0.1197`, funded payout `0.0%`
+  - challenger `both 14:00 near gap6 inv12 rr2.5 tp0.8`: `13` trades, PF `0.3814`, avg R `-0.3564`, funded payout `0.0%`
+- compared with the old all-level `3m` far-entry leader, the restricted branch was actually worse on raw holdout trade quality
+- conclusion: the restricted `3m previous_day_* + asia_*` branch improved discovery posture but did not survive holdout phase-one validation. Treat the family as closed for this research line; do not tune it further, since the holdout has now been opened.
+
+**Exact swept level ranking across the reference-LSI studies**:
+- a cross-study level matrix was built from:
+  - the `5m` all-level attribution candidate
+  - the `3m` all-level phase-one leader failure analysis
+- strongest repeated exact levels:
+  - `previous_day_high`
+  - `asia_low`
+- `previous_day_high` was the strongest exact level in both `5m` pre-holdout and `3m` OOS, but failed on a tiny `3m` holdout sample (`2` trades)
+- `asia_low` was the cleanest exact level that stayed positive on `5m`, `3m` OOS, and `3m` holdout
+- clearest recurring drag:
+  - `asia_high`
+  - mildly positive on `5m`, negative on `3m` OOS, negative again on `3m` holdout
+- London exact levels were unstable:
+  - negative on the original `5m` attribution study
+  - positive on the `3m` far-entry leader
+  - too inconsistent and too thin to treat as reliable
+- practical takeaway: if this family is ever revisited as a genuinely new thesis, the exact levels most worth centering are `PDH` and `Asia Low`, while `Asia High` is the clearest candidate to avoid.
+
+**Focused `PDH + Asia Low` restart on lower timeframes (`1m`, `2m`, `3m`) — baseline no-go**:
+- after the exact-level matrix suggested `PDH` and `Asia Low` were the strongest repeated exact levels, a fresh discovery restart was run with only:
+  - `previous_day_high`
+  - `asia_low`
+- tested on `1m`, `2m`, and `3m` with holdout still frozen and the normal discovery alive gate
+- results:
+  - `1m`: `54` pre-holdout trades, PF `0.9906`, avg R `-0.0009`; validation PF `0.8651`, avg R `-0.0327` → clear no-go
+  - `2m`: `78` pre-holdout trades, PF `1.5775`, avg R `0.1860`; validation PF `1.6685`, avg R `0.2318` → quality looked decent, but sample too thin to clear the alive gate
+  - `3m`: `107` pre-holdout trades, PF `2.1349`, avg R `0.2692`; validation PF `2.9399`, avg R `0.3700` → strongest of the three, but still too few pre-holdout trades for promotion
+- conclusion: `PDH + Asia Low` is interesting descriptively, but as a standalone exact-level thesis it is too sparse under the current workflow. It does not earn a full discovery promotion path on `1m`, `2m`, or `3m`.
+
+---
+
 ## NQ ASIA LSI (Long) — CONDITIONAL (4/5)
 
 **Status**: CONDITIONAL — deploy with awareness of WF OOS R/yr constraint artifact.

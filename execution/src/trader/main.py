@@ -363,6 +363,7 @@ LSI_SESSION_CONFIGS = {
         "max_single_risk_usd": 300,
         "lsi_n_left": 8,
         "lsi_n_right": 60,
+        "lsi_variant": "legacy-LSI",
     },
 }
 
@@ -498,6 +499,20 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
     with open(EXEC_CONFIGS_PATH, "w") as f:
         json.dump(raw, f, indent=2)
         f.write("\n")
+
+
+def _required_regime_daily_symbols(engines: list) -> list[str]:
+    """Collect extra daily-history symbols required by configured regime gates."""
+    from .gates import required_daily_history_symbols_for_regime_gates
+
+    required: set[str] = set()
+    for engine in engines:
+        required.update(
+            required_daily_history_symbols_for_regime_gates(
+                getattr(engine, "regime_gates", ()),
+            )
+        )
+    return sorted(required)
 
 
 def apply_atr_values(
@@ -738,6 +753,7 @@ def build_lsi_engines(
             fvg_window_left=merged.get("fvg_window_left", 10),
             fvg_window_right=merged.get("fvg_window_right", 5),
             lsi_entry_mode=merged.get("lsi_entry_mode", "close"),
+            lsi_variant=merged.get("lsi_variant", "legacy-LSI"),
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
@@ -763,8 +779,9 @@ def build_lsi_engines(
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] LSI engine created: %s (signal=%s, exec=%s, feed=%s, qty_mult=%.1f, risk=$%s, regime_gates=%s)",
+            "[%s] LSI engine created: %s (signal=%s, exec=%s, feed=%s, variant=%s, qty_mult=%.1f, risk=$%s, regime_gates=%s)",
             config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
+            merged.get("lsi_variant", "legacy-LSI"),
             merged.get("qty_multiplier", 1.0), merged.get("risk_usd", "?"),
             ",".join(regime_gates) if regime_gates else "-",
         )
@@ -1021,15 +1038,22 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key")
     feed_symbols = list(global_symbol_map.keys())
+    daily_only_symbols = [
+        symbol for symbol in _required_regime_daily_symbols(all_engines)
+        if symbol not in feed_symbols
+    ]
 
     feed = DataBentoFeed(
         api_key=api_key or None,
         symbols=feed_symbols,
+        daily_only_symbols=daily_only_symbols,
         dataset=db_cfg.get("dataset", "GLBX.MDP3"),
         on_bar=on_bar,
         on_tick=on_tick,
         atr_lengths_by_symbol=global_atr_lengths,
     )
+    if daily_only_symbols:
+        logger.info("Daily-history-only symbols added for regime gates: %s", daily_only_symbols)
     set_daily_history_provider(feed.get_daily_history_for_symbol)
 
     # Refresh ATR from historical daily bars (prior completed day)

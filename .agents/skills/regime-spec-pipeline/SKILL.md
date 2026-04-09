@@ -29,6 +29,10 @@ Regime-specific pipeline that answers: **"Does this strategy have real edge in t
 ## Required Posture
 
 - Regime labels must be causal and point-in-time. No hindsight tagging from future data.
+- Separate trend and volatility first, then combine them only if the interaction clearly earns the extra complexity.
+- Start with simple hand-built rules before HMM/clustering or other higher-flexibility regime definitions.
+- Use regimes for attribution on the full calendar before optimizing a specialist inside a target regime.
+- Audit sample size, yearly counts, and episode balance before trusting a regime bucket.
 - Optimize the strategy only inside the target regime.
 - Validate the full gated system across all dates, because live trading includes non-target regimes too.
 - Same-regime OOS is the correct conditional test. A bull specialist does not need to survive bear markets.
@@ -50,11 +54,11 @@ Regime-specific pipeline that answers: **"Does this strategy have real edge in t
 | # | Phase | Purpose | Pass Focus |
 |---|-------|---------|------------|
 | 0 | Regime Definition Audit | Verify the regime label is causal and stable enough to use | No lookahead, enough samples, clear rules |
-| 1 | In-Regime Structural Check | Sanity check the candidate on pre-holdout target-regime data | Enough trades, basic viability |
-| 2 | Same-Regime Walk-Forward | Optimize on earlier regime episodes, test on unseen later episodes of that regime | Conditional OOS edge, stability |
-| 3 | Full-Calendar Gate Test | Run the gated system across all dates | Good in target regime, controlled outside |
-| 4 | Final Same-Regime Hold-Out | One untouched final test on a later target-regime slice | Conditional hold-out confirmation |
-| 5 | Monte Carlo + Specialist Diagnostics | Stress target-regime OOS trade distribution and specialization ratio | Survive path risk, stay regime-specific |
+| 1 | Full-Calendar Attribution Check | Measure where the ungated strategy naturally works before specializing it | Real separation, stable bucket behavior |
+| 2 | In-Regime Structural Check | Sanity check the specialist thesis on pre-holdout target-regime data | Enough trades, basic viability |
+| 3 | Same-Regime Walk-Forward | Optimize on earlier regime episodes, test on unseen later episodes of that regime | Conditional OOS edge, stability |
+| 4 | Full-Calendar Gate Test | Run the gated system across all dates | Good in target regime, controlled outside |
+| 5 | Final Same-Regime Hold-Out + Diagnostics | One untouched final test plus specialist diagnostics | Conditional hold-out confirmation |
 
 See `references/phases.md` for the workflow.
 See `references/regime-rules.md` for regime-label and Bailey rules.

@@ -10,6 +10,7 @@ Stop is absolute-range high/low from FVG bar through inversion bar (stop_mode="a
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -533,6 +534,62 @@ class TestInversionToManaging:
 
 
 # =============================================================================
+# WAITING_FOR_INVERSION → ARMED_LIMIT → MANAGING (fvg_limit entry mode)
+# =============================================================================
+
+class TestFvgLimitEntryMode:
+    async def test_inversion_bar_touch_does_not_fill_same_bar(self):
+        eng = make_lsi_engine(lsi_entry_mode="fvg_limit")
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        gap = eng._active_gap
+        inversion_bar = make_bar(
+            "2025-01-15 09:55",
+            gap.top + 2,      # open
+            gap.top + 10,     # high
+            gap.top - 2,      # low touches through limit price
+            gap.top + 1,      # close confirms inversion
+        )
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng.broker.send_entry.await_count == 0
+        assert eng._limit_price == pytest.approx(gap.top)
+
+    async def test_limit_fills_on_next_bar_after_inversion(self):
+        eng = make_lsi_engine(lsi_entry_mode="fvg_limit")
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        gap = eng._active_gap
+        inversion_bar = make_bar(
+            "2025-01-15 09:55",
+            gap.top + 2,
+            gap.top + 10,
+            gap.top - 2,
+            gap.top + 1,
+        )
+        await eng.on_bar(inversion_bar, 300.0)
+
+        fill_bar = make_bar(
+            "2025-01-15 10:00",
+            gap.top + 4,
+            gap.top + 8,
+            gap.top - 1,
+            gap.top + 2,
+        )
+        await eng.on_bar(fill_bar, 300.0)
+
+        assert eng._state == LSIState.MANAGING
+        eng.broker.send_entry.assert_awaited_once()
+        assert eng._levels is not None
+        assert eng._levels.entry == pytest.approx(gap.top)
+
+
+# =============================================================================
 # MANAGING exits
 # =============================================================================
 
@@ -918,6 +975,56 @@ class TestDailyReset:
         assert recovered is True
         assert eng._state == LSIState.FLAT
         eng._log_trade.assert_called_with("REGIME_GATE_BLOCKED", "gate=block_full_medium_vol date=20250115")
+
+    def test_legacy_lsi_recovery_replays_prior_day_swings(self):
+        eng = make_lsi_engine(lsi_variant="legacy-LSI")
+        base_price = 19500.0
+        swing_low = 19400.0
+        bars = [
+            make_bar("2025-01-14 08:30", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:35", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:40", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:45", base_price - 50, base_price - 40, swing_low, base_price - 60),
+            make_bar("2025-01-14 08:50", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:55", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 09:00", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-15 09:00", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-15 09:05", base_price, base_price + 10, base_price - 10, base_price),
+        ]
+
+        recovered = eng.recover_session_state(
+            bars,
+            make_bar("2025-01-15 09:45", base_price, base_price + 10, base_price - 10, base_price).timestamp,
+        )
+
+        assert recovered is True
+        assert eng._state == LSIState.SCANNING
+        assert eng._swings.latest_swing_low == pytest.approx(swing_low)
+
+    def test_standard_recovery_keeps_same_day_only_warmup(self):
+        eng = make_lsi_engine(lsi_variant="standard")
+        base_price = 19500.0
+        swing_low = 19400.0
+        bars = [
+            make_bar("2025-01-14 08:30", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:35", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:40", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:45", base_price - 50, base_price - 40, swing_low, base_price - 60),
+            make_bar("2025-01-14 08:50", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 08:55", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-14 09:00", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-15 09:00", base_price, base_price + 10, base_price - 10, base_price),
+            make_bar("2025-01-15 09:05", base_price, base_price + 10, base_price - 10, base_price),
+        ]
+
+        recovered = eng.recover_session_state(
+            bars,
+            make_bar("2025-01-15 09:45", base_price, base_price + 10, base_price - 10, base_price).timestamp,
+        )
+
+        assert recovered is True
+        assert eng._state == LSIState.SCANNING
+        assert math.isnan(eng._swings.latest_swing_low)
 
 
 # =============================================================================

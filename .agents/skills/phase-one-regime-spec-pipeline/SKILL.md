@@ -41,9 +41,11 @@ Unless the user specifies otherwise, use the same default phase-one funded-accou
 ## Required Posture
 
 - Regime labels must be causal and point-in-time.
+- Preserve the upstream regime workflow: separate trend and volatility first, use full-calendar attribution before specialist optimization, and only bring in a specialist after the separation looks real.
 - Same-regime OOS is still the right conditional test, but the final business question is payout EV.
 - Validate the full gated system across all dates because the gate itself must survive live use.
 - Reuse Bailey discipline from the current `regime-spec-pipeline`.
+- Treat PSR/DSR clearance from the upstream discovery step as a required input when those diagnostics are implemented; phase one should not be used to rescue a weak specialist discovery packet.
 - Do **not** judge a specialist primarily by worst month or generic survival if the true phase-one question is first-payout economics.
 
 ## Key Inputs and References

@@ -195,6 +195,7 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "min_stop_points",
             "qty_multiplier",
             "lsi_entry_mode",
+            "lsi_variant",
             "lsi_n_left",
             "lsi_n_right",
         ):

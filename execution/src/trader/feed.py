@@ -353,6 +353,7 @@ class DataBentoFeed:
         self,
         api_key: str | None = None,
         symbols: list[str] | None = None,
+        daily_only_symbols: list[str] | None = None,
         dataset: str = "GLBX.MDP3",
         on_bar: OnSymbolBarCallback | None = None,
         on_tick: OnSymbolTickCallback | None = None,
@@ -371,6 +372,12 @@ class DataBentoFeed:
             self.symbols = [symbol]
         else:
             self.symbols = ["NQ.FUT"]
+        # Extra symbols can be loaded for daily ATR/history only without
+        # subscribing to their intraday streams.
+        self.daily_only_symbols = [
+            sym for sym in (daily_only_symbols or []) if sym and sym not in self.symbols
+        ]
+        self.history_symbols = self.symbols + self.daily_only_symbols
         self.dataset = dataset
         self.on_bar = on_bar
         self.on_tick = on_tick
@@ -385,6 +392,7 @@ class DataBentoFeed:
         self._daily_history: dict[str, DailyHistoryTracker] = {}
         for sym in self.symbols:
             self._aggregators[sym] = BarAggregator()
+        for sym in self.history_symbols:
             raw_lengths = None if atr_lengths_by_symbol is None else atr_lengths_by_symbol.get(sym)
             lengths = sorted({int(length) for length in (raw_lengths or [atr_length])})
             self._atr_lengths_by_symbol[sym] = lengths
@@ -502,7 +510,7 @@ class DataBentoFeed:
         start = end - timedelta(days=lookback_days)
         refreshed: list[ATRRefreshInfo] = []
 
-        for sym in self.symbols:
+        for sym in self.history_symbols:
             try:
                 logger.info(
                     "Refreshing ATR for %s: fetching %d days ending %s",

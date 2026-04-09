@@ -60,6 +60,7 @@ def compute_session_masks(
             'in_entry': True during entry window
             'in_flat': True during flat/EOD window
             'in_rth': True during regular trading hours
+            'in_sweep': True during the configured sweep-valid window
             'after_cutoff': True after entry window closes but still in RTH
     """
     hour = timestamps.hour.values
@@ -80,6 +81,11 @@ def compute_session_masks(
     # RTH spans from rth_start (or orb_start) to flat end
     in_rth = _time_in_range(hour, minute, rth_start, session.flat_end)
 
+    if session.sweep_start and session.sweep_end:
+        in_sweep = _time_in_range(hour, minute, session.sweep_start, session.sweep_end)
+    else:
+        in_sweep = in_rth.copy()
+
     after_cutoff = in_rth & ~in_entry & ~in_orb
 
     return {
@@ -87,6 +93,7 @@ def compute_session_masks(
         "in_entry": in_entry,
         "in_flat": in_flat,
         "in_rth": in_rth,
+        "in_sweep": in_sweep,
         "after_cutoff": after_cutoff,
     }
 

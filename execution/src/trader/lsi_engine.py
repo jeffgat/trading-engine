@@ -36,6 +36,10 @@ from .swing import SweepEvent, SwingTracker
 logger = logging.getLogger(__name__)
 trade_logger = logging.getLogger("trader.trades")
 
+STANDARD_LSI_VARIANT = "standard"
+LEGACY_LSI_VARIANT = "legacy-LSI"
+VALID_LSI_VARIANTS = frozenset({STANDARD_LSI_VARIANT, LEGACY_LSI_VARIANT})
+
 
 class LSIState(enum.Enum):
     IDLE = "idle"
@@ -86,6 +90,7 @@ class LSIEngine:
         fvg_window_left: int = 10,
         fvg_window_right: int = 5,
         lsi_entry_mode: str = "close",  # "close" or "fvg_limit"
+        lsi_variant: str = LEGACY_LSI_VARIANT,
         # Risk params
         risk_usd: float = 250.0,
         point_value: float = 2.0,
@@ -141,6 +146,12 @@ class LSIEngine:
         self.fvg_window_left = fvg_window_left
         self.fvg_window_right = fvg_window_right
         self.lsi_entry_mode = lsi_entry_mode
+        if lsi_variant not in VALID_LSI_VARIANTS:
+            raise ValueError(
+                "lsi_variant must be one of "
+                f"{sorted(VALID_LSI_VARIANTS)} (got {lsi_variant!r})"
+            )
+        self.lsi_variant = lsi_variant
 
         # Risk
         self.risk_usd = risk_usd
@@ -231,6 +242,9 @@ class LSIEngine:
         self._trade_overlap: bool = False
         self._trade_overlap_direction: int = 0
         self._cleanup_task: asyncio.Task | None = None
+
+    def _is_legacy_variant(self) -> bool:
+        return self.lsi_variant == LEGACY_LSI_VARIANT
 
     def _clear_dashboard_overlay(self) -> None:
         """Clear the current LSI setup overlay shown on the dashboard."""
@@ -509,12 +523,16 @@ class LSIEngine:
             return True
 
         # Feed historical bars through swing tracker to warm pivot levels.
-        # Filter to session-relevant bars (today + yesterday for cross-midnight).
+        # For legacy-LSI day sessions, replay all supplied warmup bars so a
+        # carried swing from the prior day survives restart the same way it
+        # would during continuous runtime.
         if self._crosses_midnight:
             valid_dates = {date_str, (datetime.strptime(date_str, "%Y%m%d") + _td(days=1)).strftime("%Y%m%d")}
-            session_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") in valid_dates]
+            session_bars = [b for b in bars if b.timestamp <= now and b.timestamp.strftime("%Y%m%d") in valid_dates]
+        elif self._is_legacy_variant():
+            session_bars = [b for b in bars if b.timestamp <= now]
         else:
-            session_bars = [b for b in bars if b.timestamp.strftime("%Y%m%d") == date_str]
+            session_bars = [b for b in bars if b.timestamp <= now and b.timestamp.strftime("%Y%m%d") == date_str]
 
         for b in session_bars:
             self._swings.on_bar(b)
@@ -879,6 +897,7 @@ class LSIEngine:
                         return
                     if self.lsi_entry_mode == "fvg_limit":
                         await self._arm_limit(bar, gap, direction=-1, daily_atr=daily_atr)
+                        return  # fill scan starts on the NEXT bar, not the inversion bar
                     else:
                         await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
             elif not gap.is_bullish and bar.close > gap.top:
@@ -886,6 +905,7 @@ class LSIEngine:
                     return
                 if self.lsi_entry_mode == "fvg_limit":
                     await self._arm_limit(bar, gap, direction=1, daily_atr=daily_atr)
+                    return  # fill scan starts on the NEXT bar, not the inversion bar
                 else:
                     await self._enter_at_close(bar, gap, direction=1, daily_atr=daily_atr)
 

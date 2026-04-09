@@ -35,6 +35,7 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
                 "flat_start": "23:55",
                 "flat_end": "04:00",
                 "regime_gates": ["block_full_medium_vol"],
+                "lsi_variant": "legacy-LSI",
             }
         },
     )
@@ -48,6 +49,7 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
     assert "nq_asia_regime_gate" not in config
     assert config["nq_asia_lsi_regime_gates"] == ["block_full_medium_vol"]
     assert config["nq_asia_lsi_regime_gate"] == "block_full_medium_vol"
+    assert config["nq_asia_lsi_lsi_variant"] == "legacy-LSI"
 
 
 def test_run_profile_backtest_wires_daily_history_provider(monkeypatch) -> None:

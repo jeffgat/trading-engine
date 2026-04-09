@@ -37,6 +37,8 @@ A persistent knowledge base lives at `references/strategy-learnings.md`. It capt
 **Every agent MUST:**
 1. **Read** `references/strategy-learnings.md` before running backtests, sweeps, or proposing strategy changes
 2. **Update** it after discovering meaningful insights — new parameter findings, failed hypotheses, edge cases, or notable optimization results
+3. **Read** the relevant asset learnings file at `backtesting/learnings/asset/{SYMBOL}.md` before running new strategy research on that asset
+4. **Update** the relevant asset learnings file after reaching a meaningful strategy conclusion
 
 **What to record:**
 - Parameter values that consistently help or hurt (with data: instrument, session, date range, metric impact)
@@ -54,7 +56,7 @@ A persistent knowledge base lives at `references/strategy-learnings.md`. It capt
 
 ### Step 0: Load Strategy Learnings
 
-Before any backtest, optimization, or strategy modification, load `references/strategy-learnings.md` and review relevant sections. Use prior findings to inform parameter choices and avoid repeating failed experiments.
+Before any backtest, optimization, or strategy modification, load `references/strategy-learnings.md` and review relevant sections. For strategy research, also read the relevant asset learnings file in `backtesting/learnings/asset/` and follow `backtesting/learnings/CURRENT_WORKFLOWS.md` when the task is new-strategy discovery, regime research, or promotion work. Use prior findings to inform parameter choices and avoid repeating failed experiments.
 
 ### Step 1: Understand the Request
 
@@ -77,8 +79,8 @@ Classify the request:
 
 1. Determine instrument (NQ, MNQ, ES), sessions (ny, asia, ldn), and date range
 2. Identify any parameter overrides (risk_usd, rr, tp1_ratio, stop_atr_pct, etc.)
-3. Execute via CLI script: `cd python && uv run python scripts/run_backtest.py` or `run_optimize.py`
-4. Results auto-save to `python/data/results/` and log to `experiments.db`
+3. Execute from the research workspace: `cd backtesting && uv run python scripts/...`
+4. Results auto-save under `backtesting/data/results/`; use explicit experiment names whenever the run is meant to be compared later
 
 **For historical execution-profile replays (profiles from `execution/config/exec_configs.json`):**
 
@@ -100,16 +102,16 @@ Classify the request:
 
 **For adding a new signal module:**
 
-1. Create pure function in `python/src/orb_backtest/signals/` — arrays in, arrays out
+1. Create pure function in `backtesting/src/orb_backtest/signals/` — arrays in, arrays out
 2. Use Numba @njit only when vectorization is insufficient (stateful bar-by-bar logic)
 3. Shift indicators by 1 bar to prevent look-ahead bias
 4. Integrate into `_extract_setup_candidates()` in `engine/simulator.py`
 
 **For adding a new instrument:**
 
-1. Add entry to `INSTRUMENTS` dict in `python/src/orb_backtest/data/instruments.py`
+1. Add entry to `INSTRUMENTS` dict in `backtesting/src/orb_backtest/data/instruments.py`
 2. Provide: symbol, point_value, min_tick, commission, data_file, exchange_tz
-3. Ensure CSV data file exists in `python/data/raw/`
+3. Ensure the required data files exist in the research data directories under `backtesting/data/`
 
 ### Step 3: Validate and Report
 
@@ -124,7 +126,7 @@ After modifying engine code:
 
 ### Step 4: Update Strategy Learnings
 
-After completing the task, determine if any new insight was discovered. If so, update `references/strategy-learnings.md` under the appropriate section:
+After completing the task, determine if any new insight was discovered. If so, update `references/strategy-learnings.md` under the appropriate section and update the relevant `backtesting/learnings/asset/{SYMBOL}.md` file when the work reached a real conclusion:
 
 - **Parameter Insights** — include instrument, session, date range, and metric impact
 - **Session Behavior** — note session-specific differences
@@ -137,32 +139,32 @@ After completing the task, determine if any new insight was discovered. If so, u
 
 | Error | Recovery |
 |-------|----------|
-| `unknown_instrument` | Check spelling; valid: NQ, MNQ, ES. Add new ones to `instruments.py` |
+| `unknown_instrument` | Check spelling against `backtesting/src/orb_backtest/data/instruments.py` and add new ones there if needed |
 | `unknown_session` | Valid sessions: ny, asia, ldn. Check `config.py` for session definitions |
 | `data_not_found` | Run `scripts/download_data.py {SYMBOL} --start YYYY-MM-DD --save-1m` (always use `--save-1m` for chart data) |
 | `invalid_sweep_spec` | Format: `param=start:end:step` or `param=val1,val2,val3` |
 | Numba compilation slow on first run | Normal cold-start behavior; subsequent calls are fast |
-| `ModuleNotFoundError` | Run `cd python && uv sync` to install dependencies |
+| `ModuleNotFoundError` | Run `cd backtesting && uv sync` to install research dependencies |
 
 ## Key Files Quick Reference
 
 | Purpose | File |
 |---------|------|
-| Strategy config | `python/src/orb_backtest/config.py` |
-| Trade simulator | `python/src/orb_backtest/engine/simulator.py` |
-| FVG detection | `python/src/orb_backtest/signals/fvg.py` |
-| ORB levels | `python/src/orb_backtest/signals/orb.py` |
-| Session masks | `python/src/orb_backtest/signals/session.py` |
-| Daily ATR | `python/src/orb_backtest/signals/daily_atr.py` |
-| Metrics | `python/src/orb_backtest/results/metrics.py` |
-| Save/load results | `python/src/orb_backtest/results/export.py` |
-| Grid optimization | `python/src/orb_backtest/optimize/grid.py` |
-| Parallel execution | `python/src/orb_backtest/optimize/parallel.py` |
-| API endpoints | `python/src/orb_backtest/api.py` |
-| Experiments DB | `python/src/orb_backtest/experiments.py` |
-| Instruments | `python/src/orb_backtest/data/instruments.py` |
-| Data loader | `python/src/orb_backtest/data/loader.py` |
-| Equity plots | `python/src/orb_backtest/viz/equity.py` |
+| Strategy config | `backtesting/src/orb_backtest/config.py` |
+| Trade simulator | `backtesting/src/orb_backtest/engine/simulator.py` |
+| FVG detection | `backtesting/src/orb_backtest/signals/fvg.py` |
+| ORB levels | `backtesting/src/orb_backtest/signals/orb.py` |
+| Session masks | `backtesting/src/orb_backtest/signals/session.py` |
+| Daily ATR | `backtesting/src/orb_backtest/signals/daily_atr.py` |
+| Metrics | `backtesting/src/orb_backtest/results/metrics.py` |
+| Save/load results | `backtesting/src/orb_backtest/results/export.py` |
+| Grid optimization | `backtesting/src/orb_backtest/optimize/grid.py` |
+| Parallel execution | `backtesting/src/orb_backtest/optimize/parallel.py` |
+| API endpoints | `backtesting/src/orb_backtest/api.py` |
+| Experiments DB | `backtesting/src/orb_backtest/experiments.py` |
+| Instruments | `backtesting/src/orb_backtest/data/instruments.py` |
+| Data loader | `backtesting/src/orb_backtest/data/loader.py` |
+| Equity plots | `backtesting/src/orb_backtest/viz/equity.py` |
 | Exact execution replay | `execution/src/trader/historical_backtest.py` |
 | Exact execution replay CLI | `execution/scripts/save_exact_exec_backtests.py` |
 

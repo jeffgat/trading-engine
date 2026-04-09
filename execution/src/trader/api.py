@@ -1210,6 +1210,8 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
                 setattr(engine, key, risk.get("risk_usd", 250))
             elif key == "min_qty":
                 setattr(engine, key, risk.get("min_qty", 1.0))
+            elif key == "lsi_variant":
+                setattr(engine, key, "legacy-LSI")
     else:
         defaults = SESSION_CONFIGS.get(session_name, {})
         for key in EDITABLE_FIELDS:
@@ -1271,6 +1273,7 @@ def _session_info(engine) -> dict:
             "fvg_window_right": engine.fvg_window_right,
             "fvg_window_left": engine.fvg_window_left,
             "lsi_entry_mode": engine.lsi_entry_mode,
+            "lsi_variant": engine.lsi_variant,
             "risk_usd": engine.risk_usd,
             "point_value": engine.point_value,
             "min_qty": engine.min_qty,

@@ -38,7 +38,9 @@ Discovery-first pipeline that answers: **"Which small set of parameter candidate
 - Prefer stable neighborhoods and plateaus over single-point maxima.
 - Promote a very small frozen shortlist, ideally 1 main candidate plus at most 1-2 challengers.
 - Treat parameter stability as a heuristic, not proof against overfitting.
-- If PBO, CSCV, PSR, or DSR are not implemented, say so explicitly and cap the verdict at **heuristic** rather than statistically strong.
+- If PSR and DSR are implemented in the codebase, run them on every promoted candidate before handing anything to `phase-one-robust-pipeline`.
+- If PBO or CSCV are implemented, include them as stronger Bailey-style diagnostics; if they are not implemented, say so explicitly.
+- If PSR or DSR are not implemented, say so explicitly and cap the verdict at **heuristic** rather than statistically strong.
 - Do not call this skill's output a final deployment verdict. Its job is candidate promotion, not final approval.
 
 ## Key Files
@@ -61,7 +63,7 @@ Discovery-first pipeline that answers: **"Which small set of parameter candidate
 | 2 | Discovery Search | Coarse search over pre-holdout data with explicit trial tracking | Candidate pool |
 | 3 | Rolling Walk-Forward | Rank candidates by combined OOS behavior, not IS peaks | OOS-ranked shortlist |
 | 4 | Local Stability / Plateau Check | Prefer robust neighborhoods over fragile maxima | Frozen promoted candidates |
-| 5 | Promotion Packet | Prepare 1-3 candidates for `phase-one-robust-pipeline` | Promotion memo + frozen params |
+| 5 | Promotion Packet | Prepare 1-3 candidates for `phase-one-robust-pipeline` with raw/effective trial counts and PSR/DSR when implemented | Promotion memo + frozen params |
 
 See `references/phases.md` for the detailed execution guide with promotion rules.
 See `references/prop-constraints.md` for constraint thresholds and interpretation.
@@ -69,7 +71,7 @@ See `references/prop-constraints.md` for constraint thresholds and interpretatio
 ## Bailey Add-On
 
 - Prefer PBO via CSCV when available. Bailey treats that as the direct estimate of backtest overfitting.
-- Prefer DSR or PSR when available. Raw Sharpe thresholds are not enough after multiple testing.
+- Run DSR and PSR on every promoted candidate when available. Raw Sharpe thresholds are not enough after multiple testing.
 - If those diagnostics are missing in the codebase, say: `Bailey-style PBO/DSR not implemented; verdict is heuristic, not statistically deflated.`
 
 ## Decision Framework
@@ -78,6 +80,6 @@ After all phases, classify candidates conservatively:
 
 | Outcome | Criteria | Action |
 |---------|----------|--------|
-| **PROMOTE** | Candidate is strong on pre-holdout discovery, combined OOS, and local stability; Bailey posture is acceptable | Freeze params and pass into `phase-one-robust-pipeline` |
-| **CHALLENGER** | Candidate is viable but slower, thinner, or less stable than the leader | Keep as backup and optionally pass alongside the leader |
-| **REJECT** | Candidate relies on sharp peaks, weak OOS retention, or excessive search inflation | Do not pass forward; revise the search space |
+| **PROMOTE** | Candidate is strong on pre-holdout discovery, combined OOS, and local stability; raw/effective trial counts are honest; PSR/DSR posture is acceptable | Freeze params and pass into `phase-one-robust-pipeline` |
+| **CHALLENGER** | Candidate is viable but slower, thinner, or less stable than the leader, or its Bailey posture is acceptable but clearly weaker | Keep as backup and optionally pass alongside the leader |
+| **REJECT** | Candidate relies on sharp peaks, weak OOS retention, missing deflation evidence, or excessive search inflation | Do not pass forward; revise the search space |

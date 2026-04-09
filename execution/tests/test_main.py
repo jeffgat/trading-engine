@@ -14,11 +14,13 @@ from trader.gates import (
     build_regime_gates,
     normalize_regime_gate_fields,
     normalize_regime_gates,
+    required_daily_history_symbols_for_regime_gates,
     set_daily_history_provider,
 )
 from trader.lsi_engine import LSIState
 from trader.main import (
     _checkpoint_shutdown_flat,
+    _required_regime_daily_symbols,
     apply_atr_values,
     build_engines,
     build_lsi_engines,
@@ -50,6 +52,11 @@ def test_frozen_vol_threshold_edges_match_backtest_buckets():
     assert _classify_vol(0.1252001) == "medium_vol"
     assert _classify_vol(0.2040) == "medium_vol"
     assert _classify_vol(0.2040001) == "high_vol"
+
+
+def test_required_daily_history_symbols_for_regime_gates_use_nq_calendar():
+    assert required_daily_history_symbols_for_regime_gates(()) == ()
+    assert required_daily_history_symbols_for_regime_gates(("block_full_medium_vol",)) == ("NQ.FUT",)
 
 
 def test_build_engines_applies_session_date_overrides():
@@ -125,6 +132,33 @@ def test_build_lsi_engines_applies_session_date_overrides():
     assert engine._half_day_flat_start_t.minute == 35
     assert engine._half_day_flat_end_t.hour == 12
     assert engine._half_day_flat_end_t.minute == 40
+
+
+def test_build_lsi_engines_applies_legacy_lsi_variant_override():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+    }
+
+    symbol_map: dict[str, list] = {}
+    atr_lengths: dict[str, int] = {}
+    engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name="LEGACY_TEST",
+        lsi_list=["NQ_Asia_LSI"],
+        lsi_overrides={"NQ_Asia_LSI": {"lsi_variant": "legacy-LSI"}},
+    )
+
+    assert engines[0].lsi_variant == "legacy-LSI"
 
 
 def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
@@ -288,6 +322,17 @@ def test_build_lsi_engines_normalizes_multi_regime_gates():
     assert [name for name, _check in engine.regime_gate_checks] == list(engine.regime_gates)
 
 
+def test_required_regime_daily_symbols_collects_aux_history_from_engines():
+    engine_a = MagicMock()
+    engine_a.regime_gates = ()
+    engine_b = MagicMock()
+    engine_b.regime_gates = ("block_full_medium_vol",)
+    engine_c = MagicMock()
+    engine_c.regime_gates = ("bull_no_low_confidence",)
+
+    assert _required_regime_daily_symbols([engine_a, engine_b, engine_c]) == ["NQ.FUT"]
+
+
 def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
     class ContEngine:
         pass
@@ -344,6 +389,7 @@ def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
     lsi_engine.fvg_window_left = 20
     lsi_engine.fvg_window_right = 5
     lsi_engine.qty_multiplier = 1.0
+    lsi_engine.lsi_variant = "legacy-LSI"
     lsi_engine.risk_usd = 250.0
     lsi_engine.point_value = 2.0
     lsi_engine.min_qty = 1.0
@@ -364,6 +410,7 @@ def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
     assert cont_info["regime_gates"] == ["bull_no_low_confidence", "block_full_medium_vol"]
     assert lsi_info["regime_gate"] == "block_full_medium_vol"
     assert lsi_info["regime_gates"] == ["block_full_medium_vol"]
+    assert lsi_info["lsi_variant"] == "legacy-LSI"
 
 
 def test_apply_atr_values_updates_engines():

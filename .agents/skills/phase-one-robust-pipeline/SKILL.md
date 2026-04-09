@@ -47,6 +47,7 @@ Use this default when the user does not specify a different prop setup:
 - Reserve the hold-out period before Phase 1 and do not let screening touch it.
 - Keep Bailey-style multiple-testing discipline from the existing `discovery-pipeline`.
 - Prefer passing in a frozen shortlist from `discovery-pipeline` rather than using this skill as the primary parameter discovery loop.
+- Treat PSR/DSR clearance from discovery as a required input when those diagnostics are implemented; phase one should not be used to rescue a weak discovery packet.
 - Reuse structural and walk-forward rigor from the existing robust pipeline.
 - Do **not** treat worst month, annual R, or pure survival as the primary objective in phase one.
 - Judge phase one with a scorecard first: payout rate, EV per attempt, time to payout, open-account trajectory, and failure clustering.

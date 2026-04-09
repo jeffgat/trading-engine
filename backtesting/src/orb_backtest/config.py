@@ -5,6 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 
+ENTRY_CONTEXT_TOKENS = frozenset(
+    {
+        "vwap",
+        "sma20", "sma50", "sma100", "sma200", "sma300",
+        "ema20", "ema50", "ema100", "ema200", "ema300",
+    }
+)
+
+REF_LSI_LEVELS = (
+    "previous_day_high",
+    "previous_day_low",
+    "asia_high",
+    "asia_low",
+    "london_high",
+    "london_low",
+)
+
+
 @dataclass(frozen=True)
 class Instrument:
     """Futures instrument specification."""
@@ -26,7 +44,7 @@ class SessionConfig:
     For ORB-based strategies (continuation, reversal, inversion, cisd):
         orb_start/orb_end define the ORB window; in_rth spans orb_start → flat_end.
 
-    For non-ORB strategies (lsi):
+    For non-ORB strategies (lsi, reference_lsi):
         Set ``rth_start`` instead — it defines the start of RTH for signal
         detection (FVGs, sweeps).  ``orb_start``/``orb_end`` can be omitted.
     """
@@ -46,6 +64,12 @@ class SessionConfig:
     # RTH start override — used instead of orb_start for in_rth when set.
     # LSI sessions use this since they have no ORB.
     rth_start: str = ""
+
+    # Optional sweep-valid window. When set, LSI-style sweep events are only
+    # allowed to activate setups inside this window. Breaches outside this
+    # window can still consume an existing pivot.
+    sweep_start: str = ""
+    sweep_end: str = ""
 
     # ATR-based parameters
     stop_atr_pct: float = 0.0  # stop distance as % of daily ATR
@@ -82,6 +106,18 @@ class StrategyConfig:
     # Optional session VWAP slope confirmation lookback in bars.
     # 0 disables the slope check.
     vwap_slope_lookback: int = 0
+    # Optional fill-time context overlay for continuation/reversal entries.
+    # Enforced on the actual fill bar using previous completed 5m indicator values.
+    # Supported values:
+    #   "" -> disabled
+    #   "<token>_aligned"
+    #   "<token1>_<token2>_aligned"
+    #   ...
+    # where tokens are drawn from ENTRY_CONTEXT_TOKENS. Every component must
+    # satisfy the same signed-distance band on the actual fill bar.
+    entry_context_gate: str = ""
+    entry_context_min_atr: float = 0.0
+    entry_context_max_atr: float = 0.0
 
     # Session configs
     sessions: tuple[SessionConfig, ...] = field(default_factory=tuple)
@@ -98,7 +134,8 @@ class StrategyConfig:
     # Excluded weekdays (0=mon ... 4=fri) applied as a post-trade gate.
     excluded_days: tuple[int, ...] = field(default_factory=tuple)
 
-    # Strategy type: "continuation", "reversal", "inversion", "cisd", "lsi", or "ib"
+    # Strategy type: "continuation", "reversal", "inversion", "cisd",
+    # "lsi", "reference_lsi", or "ib"
     strategy: str = "continuation"
 
     # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
@@ -135,6 +172,17 @@ class StrategyConfig:
 
     lsi_be_swing_n_left: int = 0        # 0 = disabled; N > 0 = find left-only pivot N bars wide as internal swing BE trigger
     lsi_cancel_on_swing: bool = False   # True = cancel pending limit order if internal swing swept before fill
+    lsi_sweep_gate: str = "sweep_window"  # "sweep_window", "entry", or "rth"
+    lsi_stale_breach_consumes_pivot: bool = True
+    # When False, a breach outside the active sweep gate does not retire the pivot.
+    # This reproduces the legacy/live-style behavior where a pre-entry breach can
+    # still re-trigger later once the active scan window opens.
+
+    # Reference-level LSI params
+    ref_lsi_gap_lookback_bars: int = 12
+    ref_lsi_inversion_max_bars: int = 18
+    ref_lsi_gap_entry_edge: str = "near"  # "near" (inversion-side edge) or "far" (opposite FVG edge)
+    ref_lsi_reference_levels: tuple[str, ...] = REF_LSI_LEVELS
 
     # Experiment metadata (not used in simulation, just for labeling results)
     name: str = ""
@@ -153,6 +201,45 @@ class StrategyConfig:
                 f"{self.tp1_ratio * self.rr:.3f}). TP1 distance from entry must be "
                 f"at least as far as the stop loss distance."
             )
+        if self.ref_lsi_gap_entry_edge not in {"near", "far"}:
+            raise ValueError(
+                "ref_lsi_gap_entry_edge must be either 'near' or 'far' "
+                f"(got {self.ref_lsi_gap_entry_edge!r})"
+            )
+        invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(REF_LSI_LEVELS))
+        if invalid_ref_levels:
+            raise ValueError(
+                f"ref_lsi_reference_levels contains unsupported levels {invalid_ref_levels}; "
+                f"supported levels are {list(REF_LSI_LEVELS)}"
+            )
+        if self.strategy == "reference_lsi" and not self.ref_lsi_reference_levels:
+            raise ValueError("ref_lsi_reference_levels must contain at least one level for reference_lsi.")
+        if self.lsi_sweep_gate not in {"sweep_window", "entry", "rth"}:
+            raise ValueError(
+                "lsi_sweep_gate must be one of 'sweep_window', 'entry', or 'rth' "
+                f"(got {self.lsi_sweep_gate!r})"
+            )
+        if self.entry_context_gate:
+            if not self.entry_context_gate.endswith("_aligned"):
+                raise ValueError(
+                    "entry_context_gate must end with '_aligned' when enabled "
+                    f"(got {self.entry_context_gate!r})"
+                )
+            gate_prefix = self.entry_context_gate[: -len("_aligned")]
+            gate_tokens = tuple(token for token in gate_prefix.split("_") if token)
+            if not gate_tokens:
+                raise ValueError("entry_context_gate must include at least one indicator token.")
+            invalid_tokens = sorted(set(gate_tokens) - ENTRY_CONTEXT_TOKENS)
+            if invalid_tokens:
+                raise ValueError(
+                    f"entry_context_gate contains unsupported tokens {invalid_tokens}; "
+                    f"supported tokens are {sorted(ENTRY_CONTEXT_TOKENS)}"
+                )
+            if self.entry_context_max_atr <= self.entry_context_min_atr:
+                raise ValueError(
+                    "entry_context_max_atr must be > entry_context_min_atr when "
+                    "entry_context_gate is enabled."
+                )
 
     @property
     def point_value(self) -> float:
