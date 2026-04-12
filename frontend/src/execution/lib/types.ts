@@ -110,6 +110,8 @@ export interface SessionConfig {
   orb_start: string;
   orb_end: string;
   // Common time fields
+  sweep_start?: string;
+  sweep_end?: string;
   entry_start: string;
   entry_end: string;
   flat_start: string;
@@ -130,6 +132,13 @@ export interface SessionConfig {
   min_stop_points: number;
   max_bars_after_sweep: number;
   fvg_window_left: number;
+  fvg_window_right?: number;
+  lsi_entry_mode?: string;
+  lsi_variant?: string;
+  htf_level_tf_minutes?: number;
+  htf_n_left?: number;
+  htf_trade_max_per_session?: number;
+  max_fvg_to_inversion_bars?: number;
   qty_multiplier: number;
   // Common strategy fields
   atr_length?: number;
@@ -165,6 +174,7 @@ export interface ExecConfigPortfolioParams {
 
 export interface ExecConfigMeta {
   enabled: boolean;
+  max_open_contracts?: number;
   /** New multi-webhook format */
   webhooks: WebhookEntry[];
   portfolio_params?: ExecConfigPortfolioParams;

@@ -169,6 +169,30 @@ function formatPortfolioParamValue(
     return String(value);
 }
 
+function formatLsiVariant(value: string | null | undefined): string {
+    if (!value) return '—';
+    if (value === 'htf-LSI') return 'HTF LSI';
+    if (value === 'legacy-LSI') return 'Legacy LSI';
+    return value;
+}
+
+function formatLsiEntryMode(value: string | null | undefined): string {
+    if (!value) return '—';
+    if (value === 'fvg_limit') return 'FVG Retest Limit';
+    if (value === 'close') return 'Signal Bar Close';
+    return value;
+}
+
+function formatBars(value: number | null | undefined, suffix = 'bars'): string {
+    if (value == null) return '—';
+    return `${value} ${suffix}`;
+}
+
+function formatMinutes(value: number | null | undefined): string {
+    if (value == null) return '—';
+    return `${value} min`;
+}
+
 function PortfolioParametersCard({
     configName,
     params,
@@ -498,6 +522,7 @@ function WebhookManager({
 function SessionConfigCard({
     name,
     cfg,
+    maxOpenContracts,
     globalRisk,
     overrides,
     saving,
@@ -506,6 +531,7 @@ function SessionConfigCard({
 }: {
     name: string;
     cfg: SessionConfig;
+    maxOpenContracts?: number;
     globalRisk: GlobalRiskDefaults;
     overrides: Partial<SessionConfig>;
     defaults?: Partial<SessionConfig>;
@@ -669,6 +695,10 @@ function SessionConfigCard({
     const minQtyOverridden = cfg.min_qty !== globalRisk.min_qty;
     const maxRiskOverridden = maxSingleRisk !== globalRisk.max_single_risk_usd;
     const hasAnyRiskOverride = riskOverridden || minQtyOverridden || maxRiskOverridden;
+    const maxContractCapValue =
+        maxOpenContracts && maxOpenContracts > 0
+            ? maxOpenContracts.toString()
+            : '—';
 
     // ── Edit mode ───────────────────────────────────────────────────
     if (editing) {
@@ -817,6 +847,48 @@ function SessionConfigCard({
                                     type="number"
                                     overridden={isOverridden('fvg_window_left')}
                                 />
+                                {cfg.lsi_variant && (
+                                    <ConfigItem
+                                        label="LSI Variant"
+                                        value={formatLsiVariant(cfg.lsi_variant)}
+                                        overridden={isOverridden('lsi_variant')}
+                                    />
+                                )}
+                                {cfg.lsi_entry_mode && (
+                                    <ConfigItem
+                                        label="Entry Trigger"
+                                        value={formatLsiEntryMode(cfg.lsi_entry_mode)}
+                                        overridden={isOverridden('lsi_entry_mode')}
+                                    />
+                                )}
+                                {cfg.htf_level_tf_minutes != null && (
+                                    <ConfigItem
+                                        label="HTF Sweep Timeframe"
+                                        value={formatMinutes(cfg.htf_level_tf_minutes)}
+                                        overridden={isOverridden('htf_level_tf_minutes')}
+                                    />
+                                )}
+                                {cfg.htf_n_left != null && (
+                                    <ConfigItem
+                                        label="HTF Pivot Width"
+                                        value={`${cfg.htf_n_left} bars each side`}
+                                        overridden={isOverridden('htf_n_left')}
+                                    />
+                                )}
+                                {cfg.htf_trade_max_per_session != null && (
+                                    <ConfigItem
+                                        label="HTF Trades / Session"
+                                        value={cfg.htf_trade_max_per_session.toString()}
+                                        overridden={isOverridden('htf_trade_max_per_session')}
+                                    />
+                                )}
+                                {cfg.max_fvg_to_inversion_bars != null && (
+                                    <ConfigItem
+                                        label="FVG Inversion Window"
+                                        value={formatBars(cfg.max_fvg_to_inversion_bars)}
+                                        overridden={isOverridden('max_fvg_to_inversion_bars')}
+                                    />
+                                )}
                             </>
                         ) : (
                             <>
@@ -906,6 +978,10 @@ function SessionConfigCard({
                         )}
                         <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
                         <ConfigItem label="Exec Contract" value={cfg.exec_ticker} />
+                        <ConfigItem
+                            label="Max Contract Cap"
+                            value={maxContractCapValue}
+                        />
                     </div>
                 </CardContent>
 
@@ -1076,6 +1152,48 @@ function SessionConfigCard({
                                 value={cfg.fvg_window_left?.toString() ?? '—'}
                                 overridden={isOverridden('fvg_window_left')}
                             />
+                            {cfg.lsi_variant && (
+                                <ConfigItem
+                                    label="LSI Variant"
+                                    value={formatLsiVariant(cfg.lsi_variant)}
+                                    overridden={isOverridden('lsi_variant')}
+                                />
+                            )}
+                            {cfg.lsi_entry_mode && (
+                                <ConfigItem
+                                    label="Entry Trigger"
+                                    value={formatLsiEntryMode(cfg.lsi_entry_mode)}
+                                    overridden={isOverridden('lsi_entry_mode')}
+                                />
+                            )}
+                            {cfg.htf_level_tf_minutes != null && (
+                                <ConfigItem
+                                    label="HTF Sweep Timeframe"
+                                    value={formatMinutes(cfg.htf_level_tf_minutes)}
+                                    overridden={isOverridden('htf_level_tf_minutes')}
+                                />
+                            )}
+                            {cfg.htf_n_left != null && (
+                                <ConfigItem
+                                    label="HTF Pivot Width"
+                                    value={`${cfg.htf_n_left} bars each side`}
+                                    overridden={isOverridden('htf_n_left')}
+                                />
+                            )}
+                            {cfg.htf_trade_max_per_session != null && (
+                                <ConfigItem
+                                    label="HTF Trades / Session"
+                                    value={cfg.htf_trade_max_per_session.toString()}
+                                    overridden={isOverridden('htf_trade_max_per_session')}
+                                />
+                            )}
+                            {cfg.max_fvg_to_inversion_bars != null && (
+                                <ConfigItem
+                                    label="FVG Inversion Window"
+                                    value={formatBars(cfg.max_fvg_to_inversion_bars)}
+                                    overridden={isOverridden('max_fvg_to_inversion_bars')}
+                                />
+                            )}
                         </>
                     ) : (
                         <>
@@ -1154,6 +1272,10 @@ function SessionConfigCard({
                     )}
                     <ConfigItem label="Point Value" value={`$${cfg.point_value}`} />
                     <ConfigItem label="Exec Contract" value={cfg.exec_ticker} />
+                    <ConfigItem
+                        label="Max Contract Cap"
+                        value={maxContractCapValue}
+                    />
                     {(hasAnyRiskOverride || hasOverrides) && (
                         <p className="text-[10px] text-amber-400/70 pt-0.5">
                             * overridden from default
@@ -1324,6 +1446,7 @@ function SessionConfigsSection({
                         key={name}
                         name={name}
                         cfg={cfg}
+                        maxOpenContracts={activeMeta?.max_open_contracts}
                         globalRisk={globalRisk}
                         overrides={overrides[name] ?? {}}
                         defaults={defaults[name] ?? {}}
