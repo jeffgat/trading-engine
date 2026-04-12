@@ -1,0 +1,3586 @@
+{
+  "generated_at": "2026-04-12T18:46:36.900131Z",
+  "paths": {
+    "readme": "backtesting/learnings/README.md",
+    "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
+    "strategy_memory": "backtesting/learnings/global/strategy-memory.md",
+    "registry": "backtesting/learnings/registry/catalog.json"
+  },
+  "overview": {
+    "asset_histories": 8,
+    "report_files": 105,
+    "result_directories": 129,
+    "result_loose_files": 43
+  },
+  "assets": {
+    "6B": {
+      "brief": "backtesting/learnings/briefs/assets/6B.md",
+      "detail_history": "backtesting/learnings/asset/6B.md",
+      "index": "backtesting/learnings/indexes/assets/6B.md",
+      "strategy_sections": [
+        {
+          "title": "Continuation (bullish FVG -> long, bearish FVG -> short)",
+          "status": "NO-GO",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Inversion Longs (bearish FVG -> long)",
+          "status": "NO-GO",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "LSI Longs (Liquidity Sweep Inversion)",
+          "status": "CONDITIONAL GO (4/5)",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY LSI (Liquidity Sweep Inversion) \u2014 Both Directions \u2014 NO-GO",
+          "status": "**NO-GO** (definitive \u2014 losing strategy despite LDN LSI edge)",
+          "status_bucket": "NO-GO"
+        }
+      ],
+      "status_counts": {
+        "NO-GO": 3,
+        "CONDITIONAL": 1
+      },
+      "reports": [],
+      "result_directories": []
+    },
+    "CL": {
+      "brief": "backtesting/learnings/briefs/assets/CL.md",
+      "detail_history": "backtesting/learnings/asset/CL.md",
+      "index": "backtesting/learnings/indexes/assets/CL.md",
+      "strategy_sections": [
+        {
+          "title": "Continuation Both (bullish FVG \u2192 long, bearish FVG \u2192 short) \u2014 NO-GO (INVALIDATED)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "VWAP Reversion Shorts \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "LSI (Liquidity Sweep Inversion) Both \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Reversal with Liquidity Sweep Gate \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "5. 3-Session ORB Continuation Discovery (NY + Asia + LDN) \u2014 CONDITIONAL GO (LDN longs)",
+          "status": "**CONDITIONAL GO** \u2014 LDN longs survive holdout with 49-55% holdout PR; DSR marginal (0.19-0.29)",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "6. NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) \u2014 CONDITIONAL",
+          "status": "**CONDITIONAL** \u2014 unlike regular CL LSI, the HTF-LSI branch produced a real `1m` pre-holdout family and two downstream candidates with positive funded holdout EV/start, but holdout payout rates are still only moderate.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "Updated Interpretation",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        }
+      ],
+      "status_counts": {
+        "UNSPECIFIED": 5,
+        "CONDITIONAL": 2
+      },
+      "reports": [
+        {
+          "name": "CL_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "slug": "cl_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T18:28:14.542796Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_anchor_explore"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "slug": "cl_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.543694Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_broad_discovery"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_EXACT_REPLAY.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_EXACT_REPLAY.md",
+          "slug": "cl_ny_htf_lsi_exact_replay",
+          "mtime_utc": "2026-04-12T18:28:14.544164Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_exact_replay"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_EXIT_DIFF.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_EXIT_DIFF.md",
+          "slug": "cl_ny_htf_lsi_exit_diff",
+          "mtime_utc": "2026-04-12T18:28:14.544755Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_exit_diff"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_GAP_TRACE.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_GAP_TRACE.md",
+          "slug": "cl_ny_htf_lsi_gap_trace",
+          "mtime_utc": "2026-04-12T18:28:14.544941Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_gap_trace"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_GAP_TRACE_HOLDOUT_RESIDUAL.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_GAP_TRACE_HOLDOUT_RESIDUAL.md",
+          "slug": "cl_ny_htf_lsi_gap_trace_holdout_residual",
+          "mtime_utc": "2026-04-12T18:28:14.545121Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "CL_NY_HTF_LSI_GAP_TRACE_HOLDOUT_RESIDUAL_AFTER_FIX.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_GAP_TRACE_HOLDOUT_RESIDUAL_AFTER_FIX.md",
+          "slug": "cl_ny_htf_lsi_gap_trace_holdout_residual_after_fix",
+          "mtime_utc": "2026-04-12T18:28:14.545564Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "CL_NY_HTF_LSI_IMPROVEMENT_PATHS.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_IMPROVEMENT_PATHS.md",
+          "slug": "cl_ny_htf_lsi_improvement_paths",
+          "mtime_utc": "2026-04-12T18:28:14.545861Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_improvement_paths"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_LOCAL_REFINEMENT.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_LOCAL_REFINEMENT.md",
+          "slug": "cl_ny_htf_lsi_local_refinement",
+          "mtime_utc": "2026-04-12T18:28:14.546183Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_local_refinement"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_PARITY_DIFF.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_PARITY_DIFF.md",
+          "slug": "cl_ny_htf_lsi_parity_diff",
+          "mtime_utc": "2026-04-12T18:28:14.546412Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_parity_diff"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "cl_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.546577Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "CL_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/CL_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "slug": "cl_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T18:28:14.546695Z",
+          "matched_result_directory": "backtesting/data/results/cl_ny_htf_lsi_stitched_followup"
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "cl_ny_htf_lsi_anchor_explore",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T02:27:50.345277Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_broad_discovery",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T03:28:27.579658Z",
+          "file_count": 3,
+          "primary_files": [
+            "stage_a_structural.json",
+            "stage_b_trade_cap.json",
+            "stage_c_oat.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_exact_replay",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_exact_replay",
+          "mtime_utc": "2026-04-12T14:33:00.397816Z",
+          "file_count": 1,
+          "primary_files": [
+            "exact_replay_compare.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_exit_diff",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_exit_diff",
+          "mtime_utc": "2026-04-12T17:56:54.279233Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_gap_trace",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_gap_trace",
+          "mtime_utc": "2026-04-12T17:36:00.884657Z",
+          "file_count": 3,
+          "primary_files": [
+            "trace_summary.json",
+            "trace_summary_holdout_residual.json",
+            "trace_summary_holdout_residual_after_fix.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_improvement_paths",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_improvement_paths",
+          "mtime_utc": "2026-04-12T13:39:03.408429Z",
+          "file_count": 2,
+          "primary_files": [
+            "summary.json",
+            "grid_results.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_local_refinement",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_local_refinement",
+          "mtime_utc": "2026-04-12T14:14:41.026268Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "interaction_results.json",
+            "oat_results.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_parity_diff",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_parity_diff",
+          "mtime_utc": "2026-04-12T14:53:22.131043Z",
+          "file_count": 1,
+          "primary_files": [
+            "parity_diff.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T03:54:20.136138Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_ny_htf_lsi_stitched_followup",
+          "path": "backtesting/data/results/cl_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T03:49:29.156703Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_orb_discovery_3session",
+          "path": "backtesting/data/results/cl_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T22:02:16.050048Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_orb_discovery_pipeline",
+          "path": "backtesting/data/results/cl_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T22:18:28.106635Z",
+          "file_count": 1,
+          "primary_files": [
+            "pipeline_results.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        },
+        {
+          "name": "cl_orb_phase_one",
+          "path": "backtesting/data/results/cl_orb_phase_one",
+          "mtime_utc": "2026-04-01T22:25:50.567785Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "CL"
+          ]
+        }
+      ]
+    },
+    "ES": {
+      "brief": "backtesting/learnings/briefs/assets/ES.md",
+      "detail_history": "backtesting/learnings/asset/ES.md",
+      "index": "backtesting/learnings/indexes/assets/ES.md",
+      "strategy_sections": [
+        {
+          "title": "London ORB Continuation \u2014 Both Directions",
+          "status": "CONDITIONAL GO (edge confirmed, DD structural but accepted)",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "London ORB Continuation \u2014 Both Directions (Fresh Full Optimization, 2026-02-22)",
+          "status": "NO-GO (2/5 phases passed at best \u2014 overfit)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "London ORB Continuation \u2014 Long Only (R12 config, direction split)",
+          "status": "EXPLORATORY \u2014 long side carries 81% of R but ORB%-based sizing underperforms ATR%",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "London ORB Continuation \u2014 Long Only (earlier test)",
+          "status": "NO-GO",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Variable Sweeps Summary (2026-02-18)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Key Findings",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "London ORB Inversion \u2014 Both Directions",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal/inversion definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "London ORB CISD \u2014 Both Directions",
+          "status": "NO-GO (definitive)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Minimum Stop Floor: 3.0% ATR",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Dual Floor: min_stop_points + min_tp1_points (CRITICAL)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "1s Variable Sweep Results (sweep_1, original anchor)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "1s Broad Stop Sweep (3-12% ATR)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "1s Fine-Tune v1 (complete)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "1s Robust Pipeline (pre fill-bar fix)",
+          "status": "Complete, but engine fill-bar fix landed \u2014 re-optimization needed",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Post Fill-Bar Fix Re-Optimization (in progress)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Optimization History",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Final Config",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Structural Backtest (full history 2016-2026)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Robust Pipeline Result",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "WF Fold Details",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Key Findings",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "DB Entry",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Optimization History",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Final Config",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Structural Backtest (full history 2016-2026)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Robust Pipeline Result",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "WF Fold Details",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Key Findings",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "DB Entry",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY LSI (Liquidity Sweep Inversion) \u2014 Long Only",
+          "status": "**NO-GO** (thin edge, parameter instability, structural negative year)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "London LSI (Liquidity Sweep Inversion) \u2014 Both Directions",
+          "status": "**NO-GO** (2/5 pipeline phases \u2014 PF ceiling, no WF transferability)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Asia LSI (Liquidity Sweep Inversion) \u2014 Both Directions",
+          "status": "**NO-GO** (definitive \u2014 losing strategy, no edge)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY LSI v2 (NQ RR2/TP0.5 Anchor) \u2014 Both Directions \u2014 NO-GO",
+          "status": "**NO-GO** (REJECT 2/5 pipeline phases \u2014 deep DD, MC ruin, gap fragility)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY HTF-LSI (NQ Anchor Transfer Packet) \u2014 EXPLORATORY / NOT ALIVE YET",
+          "status": "EXPLORATORY \u2014 all anchors were diagnostic-only; none cleared the discovery gate",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY HTF-LSI (ES Broad Discovery + Stitched Follow-Up) \u2014 ALIVE / PRE-HOLDOUT LEAD",
+          "status": "ALIVE pre-holdout; promoted to downstream phase-one evaluation",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY HTF-LSI Phase One \u2014 CONDITIONAL / HOLDOUT WEAK",
+          "status": "CONDITIONAL at best; not promoted to phase two",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "ES ORB 3-Session Discovery (Regime-Gated) \u2014 Phase-One Complete (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "ES Asia-B Phase-One Pipeline \u2014 STRONG (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Regime-Gate Transfer Confirmation (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        }
+      ],
+      "status_counts": {
+        "CONDITIONAL": 2,
+        "NO-GO": 7,
+        "UNSPECIFIED": 29,
+        "INVALIDATED_OR_CORRUPT": 1
+      },
+      "reports": [
+        {
+          "name": "ES_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "path": "backtesting/learnings/reports/ES_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "slug": "es_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T18:28:14.546819Z",
+          "matched_result_directory": "backtesting/data/results/es_ny_htf_lsi_anchor_explore"
+        },
+        {
+          "name": "ES_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/ES_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "slug": "es_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.546974Z",
+          "matched_result_directory": "backtesting/data/results/es_ny_htf_lsi_broad_discovery"
+        },
+        {
+          "name": "ES_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/ES_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "es_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.547091Z",
+          "matched_result_directory": "backtesting/data/results/es_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "slug": "es_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T18:28:14.547189Z",
+          "matched_result_directory": "backtesting/data/results/es_ny_htf_lsi_stitched_followup"
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "es_asia_b_phase_one",
+          "path": "backtesting/data/results/es_asia_b_phase_one",
+          "mtime_utc": "2026-04-01T16:04:22.522533Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_ny_htf_lsi_anchor_explore",
+          "path": "backtesting/data/results/es_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-11T16:35:59.226429Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_ny_htf_lsi_broad_discovery",
+          "path": "backtesting/data/results/es_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-11T17:48:08.428690Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "stage_a_structural.json",
+            "stage_b_trade_cap.json",
+            "stage_c_oat.json",
+            "stage_d_grid.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/es_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-11T22:00:17.567786Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_ny_htf_lsi_stitched_followup",
+          "path": "backtesting/data/results/es_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-11T18:49:35.202667Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_orb_discovery_3session",
+          "path": "backtesting/data/results/es_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T03:21:12.841940Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "es_orb_discovery_pipeline",
+          "path": "backtesting/data/results/es_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T12:40:58.759644Z",
+          "file_count": 2,
+          "primary_files": [
+            "phase_one_results.json",
+            "discovery_pipeline_results.json"
+          ],
+          "assets": [
+            "ES"
+          ]
+        },
+        {
+          "name": "nq_combo_with_es_candidates",
+          "path": "backtesting/data/results/nq_combo_with_es_candidates",
+          "mtime_utc": "2026-03-28T18:04:00.140156Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.md",
+            "combo_es_candidate_details.json",
+            "combo_es_candidate_ranking.csv"
+          ],
+          "assets": [
+            "ES",
+            "NQ"
+          ]
+        }
+      ]
+    },
+    "GC": {
+      "brief": "backtesting/learnings/briefs/assets/GC.md",
+      "detail_history": "backtesting/learnings/asset/GC.md",
+      "index": "backtesting/learnings/indexes/assets/GC.md",
+      "strategy_sections": [
+        {
+          "title": "Continuation Longs (bullish FVG \u2192 long) \u2705 GO \u2014 Pipeline validated 2026-02-22",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Reversal (bullish FVG -> short, bearish FVG -> long)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "Inversion Longs (wait for FVG invalidation, then enter long)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal/inversion definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "ORB Reclaim Longs",
+          "status": "NO-GO",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Continuation Shorts \u2014 CONDITIONAL GO (pipeline validated 2026-02-21)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Inversion Shorts (with Qualifying Move Gate)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "No-ORB Liquidity Sweep Inversions (incl. Clean Air)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "Stacked GC Strategy: v9 Regime-Sized + Clean Air No-ORB",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "VWAP Reversion (session-anchored VWAP deviation + rejection candle)",
+          "status": "NO-GO \u2014 confirmed 2026-02-23, comprehensive diagnostic sweep on clean 1s data",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "VWAP + FVG Inversion Longs (hybrid: bearish FVG below VWAP deviation \u2192 invalidation \u2192 long)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. The FVG inversion component needs re-testing with sweep-gated definition.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "VWAP Trend Continuation Longs (pullback to VWAP center \u2192 FVG inversion or CISD \u2192 long)",
+          "status": "INVALIDATED \u2014 prior results tested without liquidity sweep gate. The FVG inversion entry component needs re-testing with sweep-gated definition. CISD entry component also showed no edge (PF 1.04, Calmar 0.07) but is a separate signal type.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "NY Liquidity Sweep Inversion (LSI) fvg_limit \u2014 CONDITIONAL GO (2026-02-27)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) \u2014 NO-GO",
+          "status": "**NO-GO** (real pre-holdout family, but the opened funded holdout rejected the entire frozen shortlist)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY LSI v2 (NQ RR2/TP0.5 Anchor) \u2014 Both Directions \u2014 NO-GO",
+          "status": "**NO-GO** (REJECT 2/5 pipeline phases \u2014 WF efficiency too low, prop constraints fail)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "CISD (Change in State of Delivery)",
+          "status": "NO-GO (tested on old data \u2014 results may differ on new complete data, but signal quality issue is fundamental)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Variable Sweep Convergence Path (R1\u2192R4)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "R2 Grid Sweep Results (clean data, 450 combos)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Variable Sweep Results (Round 2, 1s magnifier, anchor: stop=4.5%, rr=4.0, min_gap=2.5%, tp1=0.5)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Variable Sweep Results (Round 3, 1s magnifier, anchor: stop=4.0%, rr=4.5, min_gap=2.5%, tp1=0.5, ATR 14, 10m ORB)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Variable Sweep Results (Round 4, 1s magnifier, anchor: stop=4.0%, rr=4.5, min_gap=2.5%, tp1=0.5, ATR 14, 10m ORB, entry\u219211:00)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Variable Sweep Results (Round 5, 1s magnifier, anchor: stop=4.0%, rr=4.5, min_gap=2.5%, tp1=0.5, ATR 16, 10m ORB, entry\u219211:00)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "FOMC vs Wednesday Diagnostic (`run_gc_fomc_vs_wed.py`, `run_gc_fomc_dow_check.py`)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Grid Sweep R6 Results (ATR 16, 10m ORB, entry\u219211:00, FOMC excl, 450 combos)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "R6 Robust Pipeline \u2014 \u2705 GO (validated 2026-02-20)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Grid Sweep Round 5 Results (ATR 14, 10m ORB, 450 combos \u2014 stop \u00d7 rr \u00d7 min_gap \u00d7 tp1)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "What works on GC",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "What doesn't work on GC",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Parameter sensitivity (continuation longs, clean 1s data, R2 final)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Prop firm considerations (continuation shorts \u2014 CONDITIONAL GO)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Prop firm considerations (continuation longs R2 clean data \u2014 current)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "GC ORB 3-Session Discovery (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "GC Asia ORB Continuation \u2014 Phase-One Complete (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Regime-Gate Transfer Confirmation (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Regime-Gate Round Two Refinement (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        }
+      ],
+      "status_counts": {
+        "UNSPECIFIED": 22,
+        "INVALIDATED_OR_CORRUPT": 7,
+        "NO-GO": 5
+      },
+      "reports": [
+        {
+          "name": "GC_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "path": "backtesting/learnings/reports/GC_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "slug": "gc_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T18:28:14.547365Z",
+          "matched_result_directory": "backtesting/data/results/gc_ny_htf_lsi_anchor_explore"
+        },
+        {
+          "name": "GC_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/GC_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "slug": "gc_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.547541Z",
+          "matched_result_directory": "backtesting/data/results/gc_ny_htf_lsi_broad_discovery"
+        },
+        {
+          "name": "GC_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/GC_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "gc_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.547670Z",
+          "matched_result_directory": "backtesting/data/results/gc_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "GC_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/GC_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "slug": "gc_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T18:28:14.547772Z",
+          "matched_result_directory": "backtesting/data/results/gc_ny_htf_lsi_stitched_followup"
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "gc_ny_htf_lsi_anchor_explore",
+          "path": "backtesting/data/results/gc_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T00:53:47.962603Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_ny_htf_lsi_broad_discovery",
+          "path": "backtesting/data/results/gc_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T01:30:43.866669Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "stage_a_structural.json",
+            "stage_b_trade_cap.json",
+            "stage_c_oat.json",
+            "stage_d_grid.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/gc_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T01:34:54.223592Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_ny_htf_lsi_stitched_followup",
+          "path": "backtesting/data/results/gc_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T01:32:23.509845Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_orb_discovery",
+          "path": "backtesting/data/results/gc_orb_discovery",
+          "mtime_utc": "2026-04-01T12:58:22.038085Z",
+          "file_count": 2,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_gc_ny.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_orb_discovery_3session",
+          "path": "backtesting/data/results/gc_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T17:04:48.199592Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_orb_discovery_pipeline",
+          "path": "backtesting/data/results/gc_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T17:15:23.892349Z",
+          "file_count": 1,
+          "primary_files": [
+            "pipeline_results.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "gc_orb_phase_one",
+          "path": "backtesting/data/results/gc_orb_phase_one",
+          "mtime_utc": "2026-04-01T17:25:49.670679Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        }
+      ]
+    },
+    "NQ": {
+      "brief": "backtesting/learnings/briefs/assets/NQ.md",
+      "detail_history": "backtesting/learnings/asset/NQ.md",
+      "index": "backtesting/learnings/indexes/assets/NQ.md",
+      "strategy_sections": [
+        {
+          "title": "Asia Continuation (magnifier) \u2014 low R:R / high WR",
+          "status": "NO-GO (robust pipeline failed Phases 3 + 5)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Asia Continuation v2 (10m ORB, no-Thursday, magnifier) \u2014 optimized",
+          "status": "CONDITIONAL (robust pipeline passed Phases 1, 2, 4; failed Phases 3, 5)",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "Asia Continuation v3 \u2014 Dual-Model Sweep + Stop Anchor Discovery + Round 11 Grid (SUPERSEDED by R4 Final)",
+          "status": "SUPERSEDED \u2014 R4 Final (1s magnifier, 2016 start) achieved Calmar 23.85 vs v3's 20.14 (1m magnifier, 2015 start)",
+          "status_bucket": "SUPERSEDED"
+        },
+        {
+          "title": "Asia Continuation v3+ICF \u2014 Impulse Close Filter Optimization",
+          "status": "OPTIMIZATION COMPLETE \u2014 walk-forward pending",
+          "status_bucket": "OPTIMIZATION_COMPLETE"
+        },
+        {
+          "title": "Asia Continuation R5 Final (10m ORB, both, 1s magnifier) \u2014 GO (post same-candle SL/TP bug fix)",
+          "status": "GO \u2014 fixed-param WF 6/6 folds profitable, hold-out PASS. Supersedes R4 Final.",
+          "status_bucket": "GO"
+        },
+        {
+          "title": "Asia Continuation R9 Restart Final (15m ORB, long, 1s magnifier) \u2014 GO (tp1>=0.2 restart)",
+          "status": "GO \u2014 All 5 phases passed. Supersedes R5 Final (which had degenerate tp1=0.10 producing 94.5% WR).",
+          "status_bucket": "GO"
+        },
+        {
+          "title": "Asia Continuation Short (10m ORB, short, 1s magnifier) \u2014 NO-GO",
+          "status": "NO-GO \u2014 robust pipeline passed 2/5 phases (Structural + Hold-Out). Failed WF, Prop, MC.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Asia Continuation R4 Final (10m ORB, both, 1s magnifier) \u2014 SUPERSEDED by R5",
+          "status": "SUPERSEDED \u2014 R5 Final (post bug fix) achieved Calmar 60.19 vs R4's 23.85",
+          "status_bucket": "SUPERSEDED"
+        },
+        {
+          "title": "NY Continuation Short (20m ORB, short-only, 1s magnifier) \u2014 NO-GO",
+          "status": "NO-GO \u2014 best achievable config has 4 negative years, Calmar 1.40, PF 1.10. Edge is marginal and fragile to slippage.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY Continuation Short v2 (25m ORB, short-only, 1s magnifier, dual floors) \u2014 CONDITIONAL",
+          "status": "CONDITIONAL \u2014 4/5 pipeline phases pass. Phase 3 annual R FAIL (12R/yr threshold too aggressive for short-only ~33 trades/yr). All other phases pass strongly.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "CORRUPTION NOTICE \u2014 All NY Results Pre-Fix (commit 6079ad4)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY Continuation R20 (20m ORB, both, 1s magnifier) \u2014 CORRUPT (was GO)",
+          "status": "CORRUPT \u2014 all metrics pre-date TP1+BE same-bar exit bug fix (commit 6079ad4). tp1=0.3 makes this config heavily affected.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "NY Continuation Long 30m ICF \u2014 CORRUPT + INVALIDATED",
+          "status": "CORRUPT + INVALIDATED \u2014 pre-dates TP1+BE bug fix AND original data (2015-2026) no longer available. Rerun on current data (2016-2026) shows degraded performance.",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "NY Continuation (20m ORB, long-only, magnifier) \u2014 CORRUPT (was CONDITIONAL, superseded by R20)",
+          "status": "CORRUPT \u2014 pre-dates TP1+BE bug fix. Was CONDITIONAL, superseded by R20 Final.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "Asia Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY Continuation Long R11 Final (20m ORB, long-only, 1s magnifier) \u2014 CONDITIONAL",
+          "status": "CONDITIONAL \u2014 4/5 pipeline phases passed. Phase 3 (Prop Constraints) failed on avg annual R.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "LDN Session \u2014 CORRUPT (pre-fix metrics, directional findings preserved)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "LDN Continuation R2 Final (15m ORB, both, 1s magnifier) \u2014 CORRUPT (was MARGINAL GO)",
+          "status": "CORRUPT \u2014 pre-dates TP1+BE bug fix. tp1=0.6 means less affected than NY R20, but all metrics are still unreliable. Was MARGINAL GO \u2014 fixed-param WF 6/6 folds profitable, hold-out PASS (barely).",
+          "status_bucket": "INVALIDATED_OR_CORRUPT"
+        },
+        {
+          "title": "LDN Continuation Long (30m ORB, 1s magnifier) \u2014 NO-GO",
+          "status": "NO-GO \u2014 robust pipeline failed Phases 2, 3, 4, 5 (only Phase 1 passed)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "LDN LSI (Liquidity Sweep Inversion) Long \u2014 GO",
+          "status": "GO \u2014 5/5 pipeline phases passed",
+          "status_bucket": "GO"
+        },
+        {
+          "title": "NY Liquidity Sweep Inversion (LSI) Long \u2014 CONDITIONAL",
+          "status": "CONDITIONAL \u2014 4/5 pipeline phases passed; Phase 3 (prop constraints) failed on annual R gate",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY LSI Long v2 \u2014 DOW-filtered, Refined Anchor \u2014 CONDITIONAL",
+          "status": "CONDITIONAL \u2014 4/5 pipeline phases passed. Phase 3 annual R gate fails (5.9R OOS vs 12R gate), but 0 neg OOS years and strong hold-out OOS. Gate is miscalibrated for DOW-filtered strategy.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY Liquidity Sweep Inversion (LSI) fvg_limit Long \u2014 NO-GO (threshold)",
+          "status": "NO-GO (3/5) \u2014 failures are threshold calibration issues, not strategy failure. Strategy generates genuine OOS profit every year.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY LSI fvg_limit v2 Long \u2014 DOW-Filtered \u2014 CONDITIONAL (Effective GO)",
+          "status": "CONDITIONAL (4/5) \u2014 Phase 3 fail is a known calibration artifact for Mon/Tue/Fri strategies; all substantive phases pass. **Effective GO.**",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY LSI ALPHA_V1 Sweep-Semantics Retest (Apr 2026)",
+          "status": "CONDITIONAL ALTERNATE VARIANT",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY LSI fvg_limit RR2/TP0.5 + Thu Excl + Medium-Vol Gate \u2014 CONDITIONAL (Effective GO)",
+          "status": "CONDITIONAL (effective GO) \u2014 full 8-step strategy workflow completed. PSR/DSR validated. Phase-one payout economics strong. Holdout 100% payout success rate.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY HTF-LSI (Unswept 60m Extremes, Patched Sweep Invalidation) \u2014 STRONG Phase One / CONDITIONAL Phase Two",
+          "status": "STRONG to first payout, CONDITIONAL as a post-first-payout extractor. The frozen `5m` long-only anchor passed discovery, holdout, and phase one cleanly, but default post-payout operation at `$250/R` was too jagged on stitched OOS continuity risk.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "Summary",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "How it works",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Timeframe comparison (FAST_V2 NQ_NY, 2021-2026)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Tested across configs",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Comparison to VWAP-only gates",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Entry window investigation: can we trade earlier?",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Key findings",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Implementation",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Asia Continuation Discovery (Regime-Gated, ORB 100% Stop) \u2014 Phase-One Complete (2026-04-01)",
+          "status": "CONDITIONAL (phase-one) \u2014 holdout performance strong, recommended for paper trading",
+          "status_bucket": "CONDITIONAL"
+        }
+      ],
+      "status_counts": {
+        "NO-GO": 5,
+        "CONDITIONAL": 11,
+        "SUPERSEDED": 2,
+        "OPTIMIZATION_COMPLETE": 1,
+        "GO": 3,
+        "UNSPECIFIED": 12,
+        "INVALIDATED_OR_CORRUPT": 3
+      },
+      "reports": [
+        {
+          "name": "NQ_NY_HTF_LSI_1M_LAG10_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_1M_LAG10_FOLLOWUP.md",
+          "slug": "nq_ny_htf_lsi_1m_lag10_followup",
+          "mtime_utc": "2026-04-12T18:28:14.547853Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_1m_lag10_followup"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_2M_3M_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_3M_FOLLOWUP.md",
+          "slug": "nq_ny_htf_lsi_2m_3m_followup",
+          "mtime_utc": "2026-04-12T18:28:14.547945Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_2m_3m_followup"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_2M_DATA_SWEEP_COMPARE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_DATA_SWEEP_COMPARE.md",
+          "slug": "nq_ny_htf_lsi_2m_data_sweep_compare",
+          "mtime_utc": "2026-04-12T18:28:14.548066Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_2m_data_sweep_compare"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_2M_SECONDARY_PACKET.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_SECONDARY_PACKET.md",
+          "slug": "nq_ny_htf_lsi_2m_secondary_packet",
+          "mtime_utc": "2026-04-12T18:28:14.548175Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_2m_secondary_packet"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_2M_SWEEP_SOURCE_COMPARE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_SWEEP_SOURCE_COMPARE.md",
+          "slug": "nq_ny_htf_lsi_2m_sweep_source_compare",
+          "mtime_utc": "2026-04-12T18:28:14.548271Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_2m_sweep_source_compare"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_2M_VS_5M_PROMOTION.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_VS_5M_PROMOTION.md",
+          "slug": "nq_ny_htf_lsi_2m_vs_5m_promotion",
+          "mtime_utc": "2026-04-12T18:28:14.548362Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_2m_vs_5m_promotion"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_5M_1M_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_5M_1M_FOLLOWUP.md",
+          "slug": "nq_ny_htf_lsi_5m_1m_followup",
+          "mtime_utc": "2026-04-12T18:28:14.548446Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_5m_1m_followup"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_COUNT_EXPANSION.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_COUNT_EXPANSION.md",
+          "slug": "nq_ny_htf_lsi_count_expansion",
+          "mtime_utc": "2026-04-12T18:28:14.548555Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_count_expansion"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_DISCOVERY.md",
+          "slug": "nq_ny_htf_lsi_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.548664Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_discovery"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_GATED_COUNT_HOLDOUT.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_GATED_COUNT_HOLDOUT.md",
+          "slug": "nq_ny_htf_lsi_gated_count_holdout",
+          "mtime_utc": "2026-04-12T18:28:14.548757Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_gated_count_holdout"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_GATED_COUNT_TIEBREAK.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_GATED_COUNT_TIEBREAK.md",
+          "slug": "nq_ny_htf_lsi_gated_count_tiebreak",
+          "mtime_utc": "2026-04-12T18:28:14.548848Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2016_01_05.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2016_01_05.md",
+          "slug": "nq_ny_htf_lsi_lag24_day_trace_2016_01_05",
+          "mtime_utc": "2026-04-12T18:28:14.549445Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2016_01_05"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2019_05_14.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2019_05_14.md",
+          "slug": "nq_ny_htf_lsi_lag24_day_trace_2019_05_14",
+          "mtime_utc": "2026-04-12T18:28:14.550128Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2019_05_14"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2023_06_05.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2023_06_05.md",
+          "slug": "nq_ny_htf_lsi_lag24_day_trace_2023_06_05",
+          "mtime_utc": "2026-04-12T18:28:14.550719Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2023_06_05"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2025_04_23.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2025_04_23.md",
+          "slug": "nq_ny_htf_lsi_lag24_day_trace_2025_04_23",
+          "mtime_utc": "2026-04-12T18:28:14.550963Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2025_04_23"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_EXACT_REPLAY.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_EXACT_REPLAY.md",
+          "slug": "nq_ny_htf_lsi_lag24_exact_replay",
+          "mtime_utc": "2026-04-12T18:28:14.551107Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_exact_replay"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_PARITY_DIFF.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_PARITY_DIFF.md",
+          "slug": "nq_ny_htf_lsi_lag24_parity_diff",
+          "mtime_utc": "2026-04-12T18:28:14.551213Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_parity_diff"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG24_PROMOTION.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_PROMOTION.md",
+          "slug": "nq_ny_htf_lsi_lag24_promotion",
+          "mtime_utc": "2026-04-12T18:28:14.551324Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_promotion"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG_CURVE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG_CURVE.md",
+          "slug": "nq_ny_htf_lsi_lag_curve",
+          "mtime_utc": "2026-04-12T18:28:14.551461Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag_curve"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_LAG_CURVE_UNCAPPED.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG_CURVE_UNCAPPED.md",
+          "slug": "nq_ny_htf_lsi_lag_curve_uncapped",
+          "mtime_utc": "2026-04-12T18:28:14.551611Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag_curve_uncapped"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "nq_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.551787Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_PHASE_TWO.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_PHASE_TWO.md",
+          "slug": "nq_ny_htf_lsi_phase_two",
+          "mtime_utc": "2026-04-12T18:28:14.551907Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_phase_two"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_PHASE_TWO_RISK_SWEEP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_PHASE_TWO_RISK_SWEEP.md",
+          "slug": "nq_ny_htf_lsi_phase_two_risk_sweep",
+          "mtime_utc": "2026-04-12T18:28:14.552007Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_phase_two_risk_sweep"
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_UNCAPPED_RERUN.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md",
+          "slug": "nq_ny_htf_lsi_uncapped_rerun",
+          "mtime_utc": "2026-04-12T18:28:14.552112Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md",
+          "slug": "nq_ny_htf_lsi_window_exit_local_sweep",
+          "mtime_utc": "2026-04-12T18:28:14.552283Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_window_exit_local_sweep"
+        },
+        {
+          "name": "NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md",
+          "slug": "nq_ny_lsi_legacy_vs_htf_exact_comparison",
+          "mtime_utc": "2026-04-12T18:28:14.552612Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_3M_FAILURE_ANALYSIS.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_3M_FAILURE_ANALYSIS.md",
+          "slug": "nq_ny_reference_lsi_3m_failure_analysis",
+          "mtime_utc": "2026-04-09T00:09:36.210793Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_3m_failure_analysis"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_3M_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_3M_PHASE_ONE.md",
+          "slug": "nq_ny_reference_lsi_3m_phase_one",
+          "mtime_utc": "2026-04-08T23:49:50.779015Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_3m_phase_one"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_3M_PREVIOUS_DAY_ASIA_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_3M_PREVIOUS_DAY_ASIA_PHASE_ONE.md",
+          "slug": "nq_ny_reference_lsi_3m_previous_day_asia_phase_one",
+          "mtime_utc": "2026-04-09T01:19:34.199166Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_3m_previous_day_asia_phase_one"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_ATTRIBUTION.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_ATTRIBUTION.md",
+          "slug": "nq_ny_reference_lsi_attribution",
+          "mtime_utc": "2026-04-08T22:27:09.726095Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_attribution"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_CONFIRMATION.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_CONFIRMATION.md",
+          "slug": "nq_ny_reference_lsi_confirmation",
+          "mtime_utc": "2026-04-08T01:15:25.203940Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_confirmation"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_CONFIRMATION_SPEC.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_CONFIRMATION_SPEC.md",
+          "slug": "nq_ny_reference_lsi_confirmation_spec",
+          "mtime_utc": "2026-04-08T01:03:46.700817Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY.md",
+          "slug": "nq_ny_reference_lsi_discovery",
+          "mtime_utc": "2026-04-08T00:33:16.222423Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_1M.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_1M.md",
+          "slug": "nq_ny_reference_lsi_discovery_1m",
+          "mtime_utc": "2026-04-08T22:35:29.704256Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_1m"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_1M_PDH_ASIA_LOW.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_1M_PDH_ASIA_LOW.md",
+          "slug": "nq_ny_reference_lsi_discovery_1m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:25.274514Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_1m_pdh_asia_low"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_2M_PDH_ASIA_LOW.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_2M_PDH_ASIA_LOW.md",
+          "slug": "nq_ny_reference_lsi_discovery_2m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:11.914410Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_2m_pdh_asia_low"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_2M_PREVIOUS_DAY_ASIA_LOW.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_2M_PREVIOUS_DAY_ASIA_LOW.md",
+          "slug": "nq_ny_reference_lsi_discovery_2m_previous_day_asia_low",
+          "mtime_utc": "2026-04-09T03:33:12.763324Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_2m_previous_day_asia_low"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_3M.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_3M.md",
+          "slug": "nq_ny_reference_lsi_discovery_3m",
+          "mtime_utc": "2026-04-08T23:39:04.093089Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PDH_ASIA_LOW.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PDH_ASIA_LOW.md",
+          "slug": "nq_ny_reference_lsi_discovery_3m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:06.494985Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_pdh_asia_low"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PREVIOUS_DAY_ASIA.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PREVIOUS_DAY_ASIA.md",
+          "slug": "nq_ny_reference_lsi_discovery_3m_previous_day_asia",
+          "mtime_utc": "2026-04-09T00:38:38.088665Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PREVIOUS_DAY_ASIA_LOW.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_3M_PREVIOUS_DAY_ASIA_LOW.md",
+          "slug": "nq_ny_reference_lsi_discovery_3m_previous_day_asia_low",
+          "mtime_utc": "2026-04-09T03:33:08.508812Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia_low"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_DISCOVERY_SPEC.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_DISCOVERY_SPEC.md",
+          "slug": "nq_ny_reference_lsi_discovery_spec",
+          "mtime_utc": "2026-04-07T23:27:05.238096Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_FOLLOWUP.md",
+          "slug": "nq_ny_reference_lsi_followup",
+          "mtime_utc": "2026-04-08T00:54:17.332587Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_reference_lsi_followup"
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md",
+          "slug": "nq_ny_reference_lsi_followup_spec",
+          "mtime_utc": "2026-04-08T00:46:11.699809Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md",
+          "path": "backtesting/learnings/reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md",
+          "slug": "nq_ny_reference_lsi_level_matrix",
+          "mtime_utc": "2026-04-09T02:52:12.131352Z",
+          "matched_result_directory": null
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "nq_asia_4leg_combo_sweep",
+          "path": "backtesting/data/results/nq_asia_4leg_combo_sweep",
+          "mtime_utc": "2026-03-28T18:32:08.033786Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "asia_combo_details.json",
+            "asia_combo_ranking.csv",
+            "asia_combo_ranking_practical.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_asia_lsi_4leg_combo_sweep",
+          "path": "backtesting/data/results/nq_asia_lsi_4leg_combo_sweep",
+          "mtime_utc": "2026-03-28T18:40:42.616522Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "asia_lsi_combo_details.json",
+            "asia_lsi_combo_ranking.csv",
+            "asia_lsi_combo_ranking_practical.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bear_specialist_v1",
+          "path": "backtesting/data/results/nq_bear_specialist_v1",
+          "mtime_utc": "2026-03-29T16:58:04.253962Z",
+          "file_count": 7,
+          "primary_files": [
+            "summary.md",
+            "candidate_ranking.csv",
+            "regime_confusion_log.csv",
+            "selected_candidate_regime_attribution.csv",
+            "selected_candidate_specialist_readout.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_biased_combo_papertrade_v1",
+          "path": "backtesting/data/results/nq_bull_biased_combo_papertrade_v1",
+          "mtime_utc": "2026-03-29T16:31:22.799357Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.md",
+            "combo_paper_trade_package.json",
+            "combo_trades.csv",
+            "forecast_timeline.csv",
+            "forecast_timeline_holdout.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_biased_combo_sweep",
+          "path": "backtesting/data/results/nq_bull_biased_combo_sweep",
+          "mtime_utc": "2026-03-29T16:27:07.283368Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.md",
+            "best_overall.json",
+            "best_2leg.json",
+            "best_3leg.json",
+            "combo_ranking.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_portfolio_addon_sweep",
+          "path": "backtesting/data/results/nq_bull_portfolio_addon_sweep",
+          "mtime_utc": "2026-03-29T16:22:57.836392Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "best_overall.json",
+            "addon_ranking.csv",
+            "best_by_family.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_overlap_analysis",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_overlap_analysis",
+          "mtime_utc": "2026-03-28T18:00:50.339125Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "best_overlap_days.csv",
+            "daily_overlap_summary.csv",
+            "leg_correlation_matrix.csv",
+            "overlap_analysis.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_overlap_analysis_optimized",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_overlap_analysis_optimized",
+          "mtime_utc": "2026-03-28T18:57:53.775423Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "best_overlap_days.csv",
+            "daily_overlap_summary.csv",
+            "leg_correlation_matrix.csv",
+            "overlap_analysis.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_papertrade_balanced",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_papertrade_balanced",
+          "mtime_utc": "2026-03-28T17:40:52.804260Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "account_outcomes_holdout.csv",
+            "combo_paper_trade_package.json",
+            "combo_trades.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_papertrade_optimized",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_papertrade_optimized",
+          "mtime_utc": "2026-03-28T18:56:58.911230Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "account_outcomes_holdout.csv",
+            "combo_paper_trade_package.json",
+            "combo_trades.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_papertrade_optimized_last5y",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_papertrade_optimized_last5y",
+          "mtime_utc": "2026-03-29T15:11:48.922052Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "account_outcomes_holdout.csv",
+            "combo_paper_trade_package.json",
+            "combo_trades.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_regime_audit_last5y",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_regime_audit_last5y",
+          "mtime_utc": "2026-03-29T15:31:58.141738Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.md",
+            "calendar_regime_days.csv",
+            "leg_regime_summary.csv",
+            "leg_year_regime_summary.csv",
+            "leg_year_summary.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_combo_resolution",
+          "path": "backtesting/data/results/nq_bull_specialist_combo_resolution",
+          "mtime_utc": "2026-03-28T17:31:11.460578Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "combo_details.json",
+            "combo_ranking.csv",
+            "combo_ranking_practical.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_bull_specialist_v1",
+          "path": "backtesting/data/results/nq_bull_specialist_v1",
+          "mtime_utc": "2026-03-29T16:08:51.594129Z",
+          "file_count": 7,
+          "primary_files": [
+            "summary.md",
+            "candidate_ranking.csv",
+            "regime_confusion_log.csv",
+            "selected_candidate_regime_attribution.csv",
+            "selected_candidate_specialist_readout.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_combo_with_es_candidates",
+          "path": "backtesting/data/results/nq_combo_with_es_candidates",
+          "mtime_utc": "2026-03-28T18:04:00.140156Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.md",
+            "combo_es_candidate_details.json",
+            "combo_es_candidate_ranking.csv"
+          ],
+          "assets": [
+            "ES",
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_1m_lag10_followup",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_1m_lag10_followup",
+          "mtime_utc": "2026-04-10T18:16:23.751836Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_2m_3m_followup",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_2m_3m_followup",
+          "mtime_utc": "2026-04-11T03:02:28.340977Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "2m.json",
+            "3m.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_2m_data_sweep_compare",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_2m_data_sweep_compare",
+          "mtime_utc": "2026-04-12T18:24:01.909703Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_2m_secondary_packet",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_2m_secondary_packet",
+          "mtime_utc": "2026-04-11T13:48:31.559813Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "all_rows.json",
+            "survivors.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_2m_sweep_source_compare",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_2m_sweep_source_compare",
+          "mtime_utc": "2026-04-12T17:54:36.371222Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_2m_vs_5m_promotion",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_2m_vs_5m_promotion",
+          "mtime_utc": "2026-04-11T14:02:00.025654Z",
+          "file_count": 1,
+          "primary_files": [
+            "promotion_compare.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_5m_1m_followup",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_5m_1m_followup",
+          "mtime_utc": "2026-04-10T16:49:56.815623Z",
+          "file_count": 1,
+          "primary_files": [
+            "five_minute_partial.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_confluence",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_confluence",
+          "mtime_utc": "2026-04-10T00:21:53.822941Z",
+          "file_count": 1,
+          "primary_files": [
+            "confluence_manual.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_count_expansion",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_count_expansion",
+          "mtime_utc": "2026-04-11T03:05:23.843112Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_discovery",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_discovery",
+          "mtime_utc": "2026-04-10T12:25:45.877274Z",
+          "file_count": 10,
+          "primary_files": [
+            "shortlist.json",
+            "stage_a_structural.json",
+            "stage_a_structural_manual.json",
+            "stage_b_trade_cap_manual.json",
+            "stage_c_oat_manual.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_gated_count_holdout",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_gated_count_holdout",
+          "mtime_utc": "2026-04-11T13:47:28.547775Z",
+          "file_count": 1,
+          "primary_files": [
+            "holdout_compare.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_day_trace_2016_01_05",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2016_01_05",
+          "mtime_utc": "2026-04-11T00:23:43.818168Z",
+          "file_count": 1,
+          "primary_files": [
+            "trace.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_day_trace_2019_05_14",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2019_05_14",
+          "mtime_utc": "2026-04-11T00:24:02.584167Z",
+          "file_count": 1,
+          "primary_files": [
+            "trace.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_day_trace_2023_06_05",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2023_06_05",
+          "mtime_utc": "2026-04-11T00:24:03.298523Z",
+          "file_count": 1,
+          "primary_files": [
+            "trace.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_day_trace_2025_04_23",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_day_trace_2025_04_23",
+          "mtime_utc": "2026-04-10T22:34:05.093057Z",
+          "file_count": 1,
+          "primary_files": [
+            "trace.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_exact_replay",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_exact_replay",
+          "mtime_utc": "2026-04-10T21:21:36.330502Z",
+          "file_count": 1,
+          "primary_files": [
+            "exact_replay_compare.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_parity_diff",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_parity_diff",
+          "mtime_utc": "2026-04-10T22:26:04.513004Z",
+          "file_count": 1,
+          "primary_files": [
+            "parity_diff.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag24_promotion",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag24_promotion",
+          "mtime_utc": "2026-04-10T19:15:34.344214Z",
+          "file_count": 1,
+          "primary_files": [
+            "promotion_compare.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag_curve",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag_curve",
+          "mtime_utc": "2026-04-10T15:38:35.091452Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.json",
+            "1m.json",
+            "2m.json",
+            "3m.json",
+            "5m.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_lag_curve_uncapped",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_lag_curve_uncapped",
+          "mtime_utc": "2026-04-11T17:30:34.430480Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.json",
+            "1m.json",
+            "2m.json",
+            "3m.json",
+            "5m.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-10T12:40:39.140471Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_phase_two",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_phase_two",
+          "mtime_utc": "2026-04-10T12:56:08.281018Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_two_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_phase_two_risk_sweep",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_phase_two_risk_sweep",
+          "mtime_utc": "2026-04-10T12:58:53.131628Z",
+          "file_count": 1,
+          "primary_files": [
+            "risk_sweep.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_smoke",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_smoke",
+          "mtime_utc": "2026-04-09T23:43:42.660383Z",
+          "file_count": 1,
+          "primary_files": [
+            "smoke.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_tf_transfer",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_tf_transfer",
+          "mtime_utc": "2026-04-10T00:19:48.613119Z",
+          "file_count": 5,
+          "primary_files": [
+            "1m_manual.json",
+            "2m_manual.json",
+            "3m_manual.json",
+            "5m_manual.json",
+            "summary_manual.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_tf_transfer_uncapped",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_tf_transfer_uncapped",
+          "mtime_utc": "2026-04-11T16:49:41.757866Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.json",
+            "1m.json",
+            "2m.json",
+            "3m.json",
+            "5m.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_htf_lsi_window_exit_local_sweep",
+          "path": "backtesting/data/results/nq_ny_htf_lsi_window_exit_local_sweep",
+          "mtime_utc": "2026-04-12T17:33:03.948924Z",
+          "file_count": 4,
+          "primary_files": [
+            "finalists.json",
+            "selected_windows.json",
+            "exit_rows.json",
+            "window_rows.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_4leg_combo_sweep",
+          "path": "backtesting/data/results/nq_ny_lsi_4leg_combo_sweep",
+          "mtime_utc": "2026-03-28T18:54:10.090970Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "ny_lsi_combo_details.json",
+            "ny_lsi_combo_ranking.csv",
+            "ny_lsi_combo_ranking_practical.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_3m_failure_analysis",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_3m_failure_analysis",
+          "mtime_utc": "2026-04-09T00:09:36.208814Z",
+          "file_count": 1,
+          "primary_files": [
+            "failure_analysis.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_3m_phase_one",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_3m_phase_one",
+          "mtime_utc": "2026-04-08T23:49:50.778714Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_3m_previous_day_asia_phase_one",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_3m_previous_day_asia_phase_one",
+          "mtime_utc": "2026-04-09T01:19:34.198819Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_attribution",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_attribution",
+          "mtime_utc": "2026-04-08T22:27:09.725726Z",
+          "file_count": 1,
+          "primary_files": [
+            "attribution_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_confirmation",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_confirmation",
+          "mtime_utc": "2026-04-08T01:03:03.998738Z",
+          "file_count": 1,
+          "primary_files": [
+            "confirmation_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery",
+          "mtime_utc": "2026-04-08T00:33:16.219896Z",
+          "file_count": 2,
+          "primary_files": [
+            "discovery_results.json",
+            "baseline_only.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_1m",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_1m",
+          "mtime_utc": "2026-04-08T22:35:29.702701Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_only.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_1m_pdh_asia_low",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_1m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:25.273948Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_no_go.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_2m_pdh_asia_low",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_2m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:11.913928Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_no_go.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_2m_previous_day_asia_low",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_2m_previous_day_asia_low",
+          "mtime_utc": "2026-04-09T03:33:12.763070Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_no_go.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_3m",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m",
+          "mtime_utc": "2026-04-08T23:39:04.090055Z",
+          "file_count": 2,
+          "primary_files": [
+            "discovery_results.json",
+            "baseline_only.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_3m_pdh_asia_low",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_pdh_asia_low",
+          "mtime_utc": "2026-04-09T03:18:06.493906Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_no_go.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_3m_previous_day_asia",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia",
+          "mtime_utc": "2026-04-09T00:38:38.087809Z",
+          "file_count": 1,
+          "primary_files": [
+            "discovery_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_discovery_3m_previous_day_asia_low",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia_low",
+          "mtime_utc": "2026-04-09T03:33:08.508582Z",
+          "file_count": 1,
+          "primary_files": [
+            "baseline_no_go.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_reference_lsi_followup",
+          "path": "backtesting/data/results/nq_ny_reference_lsi_followup",
+          "mtime_utc": "2026-04-08T00:54:17.331794Z",
+          "file_count": 1,
+          "primary_files": [
+            "followup_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_orb_discovery_3session",
+          "path": "backtesting/data/results/nq_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T01:36:40.435253Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_orb_discovery_3session_mag",
+          "path": "backtesting/data/results/nq_orb_discovery_3session_mag",
+          "mtime_utc": "2026-04-01T13:15:03.022604Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_orb_discovery_pipeline",
+          "path": "backtesting/data/results/nq_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T02:42:56.304855Z",
+          "file_count": 2,
+          "primary_files": [
+            "discovery_pipeline_results.json",
+            "psr_dsr_validation.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_orb_phase_one",
+          "path": "backtesting/data/results/nq_orb_phase_one",
+          "mtime_utc": "2026-04-01T02:59:33.113702Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_orb_wf_9candidates_mag",
+          "path": "backtesting/data/results/nq_orb_wf_9candidates_mag",
+          "mtime_utc": "2026-04-01T13:43:19.626294Z",
+          "file_count": 2,
+          "primary_files": [
+            "phase_one_results.json",
+            "wf_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_prop_regime_specialists_bull_fast_payout",
+          "path": "backtesting/data/results/nq_prop_regime_specialists_bull_fast_payout",
+          "mtime_utc": "2026-03-28T17:05:15.555109Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.md",
+            "best_candidate.json",
+            "confusion_log.csv",
+            "fast_payout_ranking.csv",
+            "regime_calendar.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_prop_regime_specialists_papertrade_bull",
+          "path": "backtesting/data/results/nq_prop_regime_specialists_papertrade_bull",
+          "mtime_utc": "2026-03-28T16:34:51.538756Z",
+          "file_count": 7,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "eligibility_calendar.csv",
+            "eligibility_calendar_holdout.csv",
+            "paper_trade_package.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_prop_regime_specialists_round1",
+          "path": "backtesting/data/results/nq_prop_regime_specialists_round1",
+          "mtime_utc": "2026-03-28T15:50:55.600848Z",
+          "file_count": 10,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "confusion_log.csv",
+            "paper_trade_shortlist.csv",
+            "prop_scorecards.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_prop_regime_specialists_round1_smoke",
+          "path": "backtesting/data/results/nq_prop_regime_specialists_round1_smoke",
+          "mtime_utc": "2026-03-28T15:36:38.284623Z",
+          "file_count": 10,
+          "primary_files": [
+            "summary.md",
+            "account_outcomes.csv",
+            "confusion_log.csv",
+            "paper_trade_shortlist.csv",
+            "prop_scorecards.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_prop_regime_specialists_round2",
+          "path": "backtesting/data/results/nq_prop_regime_specialists_round2",
+          "mtime_utc": "2026-03-28T16:28:19.354356Z",
+          "file_count": 10,
+          "primary_files": [
+            "summary.md",
+            "confusion_log.csv",
+            "low_confidence_policy_summary.csv",
+            "paper_trade_shortlist.csv",
+            "prop_scorecards.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_regime_challengers",
+          "path": "backtesting/data/results/nq_regime_challengers",
+          "mtime_utc": "2026-04-01T17:01:42.359716Z",
+          "file_count": 26,
+          "primary_files": [
+            "challenger_registry.json",
+            "downstream/baseline_v1.json",
+            "downstream/vol_atr20_pct.json",
+            "downstream_finalists.json",
+            "finalist_memo.md"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_regime_research",
+          "path": "backtesting/data/results/nq_regime_research",
+          "mtime_utc": "2026-03-31T22:17:17.930429Z",
+          "file_count": 22,
+          "primary_files": [
+            "attribution_lsi_close_both.csv",
+            "attribution_lsi_close_long.csv",
+            "attribution_lsi_close_short.csv",
+            "attribution_lsi_fvg_limit_both.csv",
+            "attribution_lsi_fvg_limit_long.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        }
+      ]
+    },
+    "RTY": {
+      "brief": "backtesting/learnings/briefs/assets/RTY.md",
+      "detail_history": "backtesting/learnings/asset/RTY.md",
+      "index": "backtesting/learnings/indexes/assets/RTY.md",
+      "strategy_sections": [
+        {
+          "title": "1. Asia Continuation Longs \u2014 NO-GO",
+          "status": "NO-GO (pipeline failed Phase 2 + Phase 3)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "2. NY Continuation Longs \u2014 NO-GO",
+          "status": "NO-GO (pipeline failed Phase 2 + Phase 3)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Direction (updated 2026-04)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Stop Type \u2014 Critical Discovery",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "DOW Exclusion",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Parameter Interactions (prior testing)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Asia Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "3. NY LSI (Liquidity Sweep Inversion) \u2014 Both Directions \u2014 NO-GO",
+          "status": "**NO-GO** (definitive \u2014 losing strategy, no edge)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "4. 3-Session ORB Continuation Discovery (NY + Asia + LDN) \u2014 GO (NY-4 STRONG, NY-1/NY-2 CONDITIONAL)",
+          "status": "**GO** \u2014 multiple NY configs pass phase-one with STRONG/CONDITIONAL verdicts",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "5. NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) \u2014 NO-GO",
+          "status": "**NO-GO** (pre-holdout family was alive, but the opened funded holdout failed across the frozen shortlist)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Regime-Gate Transfer Update (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Regime-Gate Round Two Refinement (2026-04-01)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        }
+      ],
+      "status_counts": {
+        "NO-GO": 4,
+        "UNSPECIFIED": 9,
+        "CONDITIONAL": 1
+      },
+      "reports": [
+        {
+          "name": "RTY_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "path": "backtesting/learnings/reports/RTY_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "slug": "rty_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T18:28:14.552767Z",
+          "matched_result_directory": "backtesting/data/results/rty_ny_htf_lsi_anchor_explore"
+        },
+        {
+          "name": "RTY_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/RTY_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "slug": "rty_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.552909Z",
+          "matched_result_directory": "backtesting/data/results/rty_ny_htf_lsi_broad_discovery"
+        },
+        {
+          "name": "RTY_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/RTY_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "rty_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.553096Z",
+          "matched_result_directory": "backtesting/data/results/rty_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "RTY_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/RTY_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "slug": "rty_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T18:28:14.553218Z",
+          "matched_result_directory": "backtesting/data/results/rty_ny_htf_lsi_stitched_followup"
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "rty_ny_htf_lsi_anchor_explore",
+          "path": "backtesting/data/results/rty_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-11T22:23:04.944410Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_ny_htf_lsi_broad_discovery",
+          "path": "backtesting/data/results/rty_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-11T22:40:05.710753Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "stage_a_structural.json",
+            "stage_b_trade_cap.json",
+            "stage_c_oat.json",
+            "stage_d_grid.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/rty_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-11T22:47:45.713087Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_ny_htf_lsi_stitched_followup",
+          "path": "backtesting/data/results/rty_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-11T22:41:38.388931Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_orb_discovery_3session",
+          "path": "backtesting/data/results/rty_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T20:24:32.620228Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_orb_discovery_pipeline",
+          "path": "backtesting/data/results/rty_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T20:37:28.861213Z",
+          "file_count": 1,
+          "primary_files": [
+            "pipeline_results.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        },
+        {
+          "name": "rty_orb_phase_one",
+          "path": "backtesting/data/results/rty_orb_phase_one",
+          "mtime_utc": "2026-04-01T20:41:46.212140Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "RTY"
+          ]
+        }
+      ]
+    },
+    "SI": {
+      "brief": "backtesting/learnings/briefs/assets/SI.md",
+      "detail_history": "backtesting/learnings/asset/SI.md",
+      "index": "backtesting/learnings/indexes/assets/SI.md",
+      "strategy_sections": [
+        {
+          "title": "1. 3-Session ORB Continuation Discovery (NY + Asia + LDN) \u2014 CONDITIONAL GO (Asia shorts)",
+          "status": "**CONDITIONAL GO** \u2014 Asia shorts pass WF with strong metrics; holdout positive but holdout PR below 40%",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "Direction",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Session",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Stop Type",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Holdout Behavior (2025-2026)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Updated Interpretation",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Updated Action",
+          "status": "**NO-GO** under the default funded-account phase-one model, despite the strongest pre-holdout transfer read outside NQ.",
+          "status_bucket": "NO-GO"
+        }
+      ],
+      "status_counts": {
+        "CONDITIONAL": 1,
+        "UNSPECIFIED": 5,
+        "NO-GO": 1
+      },
+      "reports": [
+        {
+          "name": "SI_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "path": "backtesting/learnings/reports/SI_NY_HTF_LSI_ANCHOR_EXPLORE.md",
+          "slug": "si_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T18:28:14.553333Z",
+          "matched_result_directory": "backtesting/data/results/si_ny_htf_lsi_anchor_explore"
+        },
+        {
+          "name": "SI_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "path": "backtesting/learnings/reports/SI_NY_HTF_LSI_BROAD_DISCOVERY.md",
+          "slug": "si_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T18:28:14.553452Z",
+          "matched_result_directory": "backtesting/data/results/si_ny_htf_lsi_broad_discovery"
+        },
+        {
+          "name": "SI_NY_HTF_LSI_PHASE_ONE.md",
+          "path": "backtesting/learnings/reports/SI_NY_HTF_LSI_PHASE_ONE.md",
+          "slug": "si_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T18:28:14.553610Z",
+          "matched_result_directory": "backtesting/data/results/si_ny_htf_lsi_phase_one"
+        },
+        {
+          "name": "SI_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "path": "backtesting/learnings/reports/SI_NY_HTF_LSI_STITCHED_FOLLOWUP.md",
+          "slug": "si_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T18:28:14.553698Z",
+          "matched_result_directory": "backtesting/data/results/si_ny_htf_lsi_stitched_followup"
+        }
+      ],
+      "result_directories": [
+        {
+          "name": "si_ny_htf_lsi_anchor_explore",
+          "path": "backtesting/data/results/si_ny_htf_lsi_anchor_explore",
+          "mtime_utc": "2026-04-12T01:42:56.746323Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_ny_htf_lsi_broad_discovery",
+          "path": "backtesting/data/results/si_ny_htf_lsi_broad_discovery",
+          "mtime_utc": "2026-04-12T02:00:17.428392Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "stage_a_structural.json",
+            "stage_b_trade_cap.json",
+            "stage_c_oat.json",
+            "stage_d_grid.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_ny_htf_lsi_phase_one",
+          "path": "backtesting/data/results/si_ny_htf_lsi_phase_one",
+          "mtime_utc": "2026-04-12T02:07:50.180114Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_ny_htf_lsi_stitched_followup",
+          "path": "backtesting/data/results/si_ny_htf_lsi_stitched_followup",
+          "mtime_utc": "2026-04-12T02:03:34.953739Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_orb_discovery_3session",
+          "path": "backtesting/data/results/si_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T21:14:14.108384Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_orb_discovery_pipeline",
+          "path": "backtesting/data/results/si_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T21:30:23.089739Z",
+          "file_count": 1,
+          "primary_files": [
+            "pipeline_results.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        },
+        {
+          "name": "si_orb_phase_one",
+          "path": "backtesting/data/results/si_orb_phase_one",
+          "mtime_utc": "2026-04-01T21:34:13.028889Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "SI"
+          ]
+        }
+      ]
+    },
+    "YM": {
+      "brief": "backtesting/learnings/briefs/assets/YM.md",
+      "detail_history": "backtesting/learnings/asset/YM.md",
+      "index": "backtesting/learnings/indexes/assets/YM.md",
+      "strategy_sections": [
+        {
+          "title": "1. Asia Continuation Long-Only \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "2. Asia Continuation Short-Only \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "3. NY Continuation Long-Only \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "4. NY Continuation Short-Only \u2014 NO-GO",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "5. 3-Session ORB Continuation Discovery (NY + Asia + LDN) \u2014 NO-GO",
+          "status": "**NO-GO** (DSR overfit across all candidates; holdout failed for 2/3 promoted)",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "6. NY LSI (Liquidity Sweep Inversion) \u2014 Both Directions \u2014 NO-GO",
+          "status": "**NO-GO** (definitive \u2014 losing strategy, no edge)",
+          "status_bucket": "NO-GO"
+        }
+      ],
+      "status_counts": {
+        "UNSPECIFIED": 4,
+        "NO-GO": 2
+      },
+      "reports": [],
+      "result_directories": [
+        {
+          "name": "ym_orb_discovery_3session",
+          "path": "backtesting/data/results/ym_orb_discovery_3session",
+          "mtime_utc": "2026-04-01T18:03:25.551292Z",
+          "file_count": 4,
+          "primary_files": [
+            "discovery_results.json",
+            "top50_asia.csv",
+            "top50_ldn.csv",
+            "top50_ny.csv"
+          ],
+          "assets": [
+            "YM"
+          ]
+        },
+        {
+          "name": "ym_orb_discovery_pipeline",
+          "path": "backtesting/data/results/ym_orb_discovery_pipeline",
+          "mtime_utc": "2026-04-01T19:53:39.633156Z",
+          "file_count": 1,
+          "primary_files": [
+            "pipeline_results.json"
+          ],
+          "assets": [
+            "YM"
+          ]
+        },
+        {
+          "name": "ym_orb_phase_one",
+          "path": "backtesting/data/results/ym_orb_phase_one",
+          "mtime_utc": "2026-04-01T19:56:58.542120Z",
+          "file_count": 1,
+          "primary_files": [
+            "phase_one_results.json"
+          ],
+          "assets": [
+            "YM"
+          ]
+        }
+      ]
+    }
+  },
+  "global": {
+    "brief": "backtesting/learnings/briefs/GLOBAL.md",
+    "strategy_memory": "backtesting/learnings/global/strategy-memory.md",
+    "top_level_learnings": [
+      "backtesting/learnings/ALPHA_V1.md",
+      "backtesting/learnings/CURRENT_REGIME_WORKFLOW.md",
+      "backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md",
+      "backtesting/learnings/REGIME.md",
+      "backtesting/learnings/downside_research.md",
+      "backtesting/learnings/lsi_research_apr.md"
+    ],
+    "reports": {
+      "cross_asset_or_other": [
+        {
+          "name": "FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "path": "backtesting/learnings/reports/FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "slug": "fast_phase1_robust_pipeline_report",
+          "mtime_utc": "2026-03-30T01:57:02.351348Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "FAST_V2_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "path": "backtesting/learnings/reports/FAST_V2_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "slug": "fast_v2_phase1_robust_pipeline_report",
+          "mtime_utc": "2026-03-30T13:52:45.623056Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "FAST_VARIABLE_SWEEP_REPORT.md",
+          "path": "backtesting/learnings/reports/FAST_VARIABLE_SWEEP_REPORT.md",
+          "slug": "fast_variable_sweep_report",
+          "mtime_utc": "2026-03-30T03:58:37.843224Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "GENERAL_V1_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "path": "backtesting/learnings/reports/GENERAL_V1_PHASE1_ROBUST_PIPELINE_REPORT.md",
+          "slug": "general_v1_phase1_robust_pipeline_report",
+          "mtime_utc": "2026-03-30T13:52:48.348227Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_ENGINE_RERUN.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_ENGINE_RERUN.md",
+          "slug": "orb_indicator_confluence_engine_rerun",
+          "mtime_utc": "2026-04-07T17:48:59.536930Z",
+          "matched_result_directory": "backtesting/data/results/orb_indicator_confluence_engine_rerun"
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_FOLLOWUP_RESULTS.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_FOLLOWUP_RESULTS.md",
+          "slug": "orb_indicator_confluence_followup_results",
+          "mtime_utc": "2026-04-07T17:12:32.230392Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_HOLDOUT_READ.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_HOLDOUT_READ.md",
+          "slug": "orb_indicator_confluence_holdout_read",
+          "mtime_utc": "2026-04-07T17:55:29.589697Z",
+          "matched_result_directory": "backtesting/data/results/orb_indicator_confluence_holdout_read"
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_INITIAL_RESULTS.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_INITIAL_RESULTS.md",
+          "slug": "orb_indicator_confluence_initial_results",
+          "mtime_utc": "2026-04-07T16:43:12.135576Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_INITIAL_SPEC.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_INITIAL_SPEC.md",
+          "slug": "orb_indicator_confluence_initial_spec",
+          "mtime_utc": "2026-04-07T16:41:27.187440Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_CONFLUENCE_WALKFORWARD.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_CONFLUENCE_WALKFORWARD.md",
+          "slug": "orb_indicator_confluence_walkforward",
+          "mtime_utc": "2026-04-07T17:19:49.603108Z",
+          "matched_result_directory": "backtesting/data/results/orb_indicator_confluence_walkforward"
+        },
+        {
+          "name": "ORB_INDICATOR_LONG_MA_ENGINE_RERUN.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_LONG_MA_ENGINE_RERUN.md",
+          "slug": "orb_indicator_long_ma_engine_rerun",
+          "mtime_utc": "2026-04-07T18:16:35.944658Z",
+          "matched_result_directory": "backtesting/data/results/orb_indicator_long_ma_engine_rerun"
+        },
+        {
+          "name": "ORB_INDICATOR_LONG_MA_FOLLOWUP_RESULTS.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_LONG_MA_FOLLOWUP_RESULTS.md",
+          "slug": "orb_indicator_long_ma_followup_results",
+          "mtime_utc": "2026-04-07T18:11:32.568790Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_LONG_MA_INITIAL_RESULTS.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_LONG_MA_INITIAL_RESULTS.md",
+          "slug": "orb_indicator_long_ma_initial_results",
+          "mtime_utc": "2026-04-07T18:09:33.976429Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_LONG_MA_INITIAL_SPEC.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_LONG_MA_INITIAL_SPEC.md",
+          "slug": "orb_indicator_long_ma_initial_spec",
+          "mtime_utc": "2026-04-07T18:07:52.246168Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ORB_INDICATOR_LONG_MA_WALKFORWARD.md",
+          "path": "backtesting/learnings/reports/ORB_INDICATOR_LONG_MA_WALKFORWARD.md",
+          "slug": "orb_indicator_long_ma_walkforward",
+          "mtime_utc": "2026-04-07T18:13:49.234512Z",
+          "matched_result_directory": "backtesting/data/results/orb_indicator_long_ma_walkforward"
+        },
+        {
+          "name": "TOP_CANDIDATES_PER_ASSET_REPORT.md",
+          "path": "backtesting/learnings/reports/TOP_CANDIDATES_PER_ASSET_REPORT.md",
+          "slug": "top_candidates_per_asset_report",
+          "mtime_utc": "2026-04-02T00:56:47.546736Z",
+          "matched_result_directory": null
+        }
+      ],
+      "council": [
+        {
+          "name": "council-report-20260331-221500.html",
+          "path": "backtesting/learnings/reports/council-report-20260331-221500.html",
+          "slug": "council_report_20260331_221500",
+          "mtime_utc": "2026-04-01T02:24:41.419227Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260402-102407.html",
+          "path": "backtesting/learnings/reports/council-report-20260402-102407.html",
+          "slug": "council_report_20260402_102407",
+          "mtime_utc": "2026-04-02T16:25:05.991910Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-083956.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-083956.html",
+          "slug": "council_report_20260403_083956",
+          "mtime_utc": "2026-04-03T14:41:29.980254Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-093017.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-093017.html",
+          "slug": "council_report_20260403_093017",
+          "mtime_utc": "2026-04-03T15:31:48.455564Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-103125.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-103125.html",
+          "slug": "council_report_20260403_103125",
+          "mtime_utc": "2026-04-03T16:32:29.198349Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-110838.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-110838.html",
+          "slug": "council_report_20260403_110838",
+          "mtime_utc": "2026-04-03T17:11:50.633043Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-144421.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-144421.html",
+          "slug": "council_report_20260403_144421",
+          "mtime_utc": "2026-04-03T20:46:21.986832Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-report-20260403-200758.html",
+          "path": "backtesting/learnings/reports/council-report-20260403-200758.html",
+          "slug": "council_report_20260403_200758",
+          "mtime_utc": "2026-04-04T02:09:20.622008Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260331-221500.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260331-221500.md",
+          "slug": "council_transcript_20260331_221500",
+          "mtime_utc": "2026-04-01T02:23:47.766228Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260402-102407.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260402-102407.md",
+          "slug": "council_transcript_20260402_102407",
+          "mtime_utc": "2026-04-02T16:25:30.902447Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-083956.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-083956.md",
+          "slug": "council_transcript_20260403_083956",
+          "mtime_utc": "2026-04-03T14:43:23.465869Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-093017.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-093017.md",
+          "slug": "council_transcript_20260403_093017",
+          "mtime_utc": "2026-04-03T17:01:42.068018Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-103125.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-103125.md",
+          "slug": "council_transcript_20260403_103125",
+          "mtime_utc": "2026-04-03T16:33:18.791239Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-110838.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-110838.md",
+          "slug": "council_transcript_20260403_110838",
+          "mtime_utc": "2026-04-03T17:10:14.105324Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-144421.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-144421.md",
+          "slug": "council_transcript_20260403_144421",
+          "mtime_utc": "2026-04-03T20:45:14.619867Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "council-transcript-20260403-200758.md",
+          "path": "backtesting/learnings/reports/council-transcript-20260403-200758.md",
+          "slug": "council_transcript_20260403_200758",
+          "mtime_utc": "2026-04-04T02:09:51.575081Z",
+          "matched_result_directory": null
+        }
+      ]
+    },
+    "result_directories": [
+      {
+        "name": "alpha_v1_downside",
+        "path": "backtesting/data/results/alpha_v1_downside",
+        "mtime_utc": "2026-04-03T23:48:14.991662Z",
+        "file_count": 823,
+        "primary_files": [
+          "baseline_full/baseline_packet.json",
+          "baseline_full/daily_r.csv",
+          "baseline_full/pairwise_overlap.csv",
+          "baseline_full/summary.md",
+          "wave1_full/baseline_manifest.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "cross_asset_regime_gate_research",
+        "path": "backtesting/data/results/cross_asset_regime_gate_research",
+        "mtime_utc": "2026-04-02T00:08:42.797709Z",
+        "file_count": 2,
+        "primary_files": [
+          "regime_gate_memo.md",
+          "regime_gate_results.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "cross_asset_regime_gate_round2",
+        "path": "backtesting/data/results/cross_asset_regime_gate_round2",
+        "mtime_utc": "2026-04-02T00:49:10.940343Z",
+        "file_count": 2,
+        "primary_files": [
+          "round2_memo.md",
+          "round2_results.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_confluence_engine_rerun",
+        "path": "backtesting/data/results/orb_indicator_confluence_engine_rerun",
+        "mtime_utc": "2026-04-07T17:48:00.812754Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "aggregate_segment_summary.csv",
+          "anchor_variant_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_confluence_exploration",
+        "path": "backtesting/data/results/orb_indicator_confluence_exploration",
+        "mtime_utc": "2026-04-07T16:43:12.133342Z",
+        "file_count": 4,
+        "primary_files": [
+          "summary.json",
+          "aggregate_rule_summary.csv",
+          "anchor_rule_results.csv",
+          "base_anchor_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_confluence_followup",
+        "path": "backtesting/data/results/orb_indicator_confluence_followup",
+        "mtime_utc": "2026-04-07T17:12:32.227609Z",
+        "file_count": 5,
+        "primary_files": [
+          "summary.json",
+          "aggregate_summary.csv",
+          "anchor_candidate_results.csv",
+          "base_anchor_summary.csv",
+          "rolling_window_results.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_confluence_holdout_read",
+        "path": "backtesting/data/results/orb_indicator_confluence_holdout_read",
+        "mtime_utc": "2026-04-07T17:54:37.409101Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "aggregate_holdout_summary.csv",
+          "anchor_holdout_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_confluence_walkforward",
+        "path": "backtesting/data/results/orb_indicator_confluence_walkforward",
+        "mtime_utc": "2026-04-07T17:19:49.602305Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "fixed_oos_summary.csv",
+          "fold_rows.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_long_ma_engine_rerun",
+        "path": "backtesting/data/results/orb_indicator_long_ma_engine_rerun",
+        "mtime_utc": "2026-04-07T18:16:35.940502Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "aggregate_segment_summary.csv",
+          "anchor_variant_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_long_ma_exploration",
+        "path": "backtesting/data/results/orb_indicator_long_ma_exploration",
+        "mtime_utc": "2026-04-07T18:09:33.974334Z",
+        "file_count": 4,
+        "primary_files": [
+          "summary.json",
+          "aggregate_rule_summary.csv",
+          "anchor_rule_results.csv",
+          "base_anchor_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_long_ma_followup",
+        "path": "backtesting/data/results/orb_indicator_long_ma_followup",
+        "mtime_utc": "2026-04-07T18:11:32.567845Z",
+        "file_count": 4,
+        "primary_files": [
+          "summary.json",
+          "aggregate_summary.csv",
+          "anchor_candidate_results.csv",
+          "rolling_window_results.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_indicator_long_ma_walkforward",
+        "path": "backtesting/data/results/orb_indicator_long_ma_walkforward",
+        "mtime_utc": "2026-04-07T18:13:49.233343Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "fixed_oos_summary.csv",
+          "fold_rows.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "portfolio_4leg",
+        "path": "backtesting/data/results/portfolio_4leg",
+        "mtime_utc": "2026-04-01T23:39:33.904473Z",
+        "file_count": 1,
+        "primary_files": [
+          "portfolio_results.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "portfolio_5leg",
+        "path": "backtesting/data/results/portfolio_5leg",
+        "mtime_utc": "2026-04-01T22:49:33.990158Z",
+        "file_count": 1,
+        "primary_files": [
+          "portfolio_results.json"
+        ],
+        "assets": []
+      }
+    ],
+    "result_loose_files": [
+      {
+        "name": "alpha_v1_hmm_drawdown.png",
+        "path": "backtesting/data/results/alpha_v1_hmm_drawdown.png",
+        "mtime_utc": "2026-04-04T16:34:24.680303Z"
+      },
+      {
+        "name": "alpha_v1_hmm_regimes.png",
+        "path": "backtesting/data/results/alpha_v1_hmm_regimes.png",
+        "mtime_utc": "2026-04-04T16:34:22.879414Z"
+      },
+      {
+        "name": "alpha_v1_htf_hybrid_2r_min_spacing_test_2024_2025.json",
+        "path": "backtesting/data/results/alpha_v1_htf_hybrid_2r_min_spacing_test_2024_2025.json",
+        "mtime_utc": "2026-04-12T17:22:02.795869Z"
+      },
+      {
+        "name": "alpha_v1_htf_lsi_replacement_combined_2024_2025_risk_sweep.json",
+        "path": "backtesting/data/results/alpha_v1_htf_lsi_replacement_combined_2024_2025_risk_sweep.json",
+        "mtime_utc": "2026-04-12T14:13:34.506613Z"
+      },
+      {
+        "name": "alpha_v1_htf_lsi_replacement_combined_exact.json",
+        "path": "backtesting/data/results/alpha_v1_htf_lsi_replacement_combined_exact.json",
+        "mtime_utc": "2026-04-12T13:39:56.563184Z"
+      },
+      {
+        "name": "alpha_v1_htf_portfolio_frontier_2024_2025.json",
+        "path": "backtesting/data/results/alpha_v1_htf_portfolio_frontier_2024_2025.json",
+        "mtime_utc": "2026-04-12T14:39:13.873521Z"
+      },
+      {
+        "name": "alpha_v1_htf_stagger_policy_frontier_2024_2025.json",
+        "path": "backtesting/data/results/alpha_v1_htf_stagger_policy_frontier_2024_2025.json",
+        "mtime_utc": "2026-04-12T15:34:26.529897Z"
+      },
+      {
+        "name": "alpha_v1_lstm_drawdown.png",
+        "path": "backtesting/data/results/alpha_v1_lstm_drawdown.png",
+        "mtime_utc": "2026-04-04T16:34:25.477371Z"
+      },
+      {
+        "name": "alpha_v1_lstm_regimes.png",
+        "path": "backtesting/data/results/alpha_v1_lstm_regimes.png",
+        "mtime_utc": "2026-04-04T16:34:23.256181Z"
+      },
+      {
+        "name": "alpha_v1_regime_heatmap.png",
+        "path": "backtesting/data/results/alpha_v1_regime_heatmap.png",
+        "mtime_utc": "2026-04-04T16:34:23.989974Z"
+      },
+      {
+        "name": "alpha_v1_rule_based_drawdown.png",
+        "path": "backtesting/data/results/alpha_v1_rule_based_drawdown.png",
+        "mtime_utc": "2026-04-04T16:34:26.179942Z"
+      },
+      {
+        "name": "alpha_v1_rule_based_regimes.png",
+        "path": "backtesting/data/results/alpha_v1_rule_based_regimes.png",
+        "mtime_utc": "2026-04-04T16:34:23.737165Z"
+      },
+      {
+        "name": "es_asia_long_propfirm_sweep.json",
+        "path": "backtesting/data/results/es_asia_long_propfirm_sweep.json",
+        "mtime_utc": "2026-03-08T19:42:48.843827Z"
+      },
+      {
+        "name": "es_asia_long_propfirm_sweep_v2.json",
+        "path": "backtesting/data/results/es_asia_long_propfirm_sweep_v2.json",
+        "mtime_utc": "2026-03-14T22:23:28.797816Z"
+      },
+      {
+        "name": "es_ny_cont_propfirm_sweep.json",
+        "path": "backtesting/data/results/es_ny_cont_propfirm_sweep.json",
+        "mtime_utc": "2026-03-09T01:38:07.623534Z"
+      },
+      {
+        "name": "es_ny_lsi_discovery_nq_anchor.json",
+        "path": "backtesting/data/results/es_ny_lsi_discovery_nq_anchor.json",
+        "mtime_utc": "2026-04-02T22:27:56.676221Z"
+      },
+      {
+        "name": "experiments.db",
+        "path": "backtesting/data/results/experiments.db",
+        "mtime_utc": "2026-04-12T17:40:33.797992Z"
+      },
+      {
+        "name": "fast_v2_alpha_beta.png",
+        "path": "backtesting/data/results/fast_v2_alpha_beta.png",
+        "mtime_utc": "2026-03-15T15:32:33.864204Z"
+      },
+      {
+        "name": "fast_v2_entry_window_sweep.json",
+        "path": "backtesting/data/results/fast_v2_entry_window_sweep.json",
+        "mtime_utc": "2026-03-15T00:51:27.260631Z"
+      },
+      {
+        "name": "fast_v2_nq_asia_lsi_flat_sweep.json",
+        "path": "backtesting/data/results/fast_v2_nq_asia_lsi_flat_sweep.json",
+        "mtime_utc": "2026-03-16T13:27:44.409616Z"
+      },
+      {
+        "name": "gc_ny_lsi_nq_anchor_sweep.json",
+        "path": "backtesting/data/results/gc_ny_lsi_nq_anchor_sweep.json",
+        "mtime_utc": "2026-04-02T23:28:49.452499Z"
+      },
+      {
+        "name": "hmm_annual_regime_r.png",
+        "path": "backtesting/data/results/hmm_annual_regime_r.png",
+        "mtime_utc": "2026-03-08T00:31:14.033476Z"
+      },
+      {
+        "name": "hmm_regime_boxplot.png",
+        "path": "backtesting/data/results/hmm_regime_boxplot.png",
+        "mtime_utc": "2026-03-08T00:31:13.955441Z"
+      },
+      {
+        "name": "hmm_regimes_overview.png",
+        "path": "backtesting/data/results/hmm_regimes_overview.png",
+        "mtime_utc": "2026-03-08T00:31:13.910694Z"
+      },
+      {
+        "name": "holdout_log.json",
+        "path": "backtesting/data/results/holdout_log.json",
+        "mtime_utc": "2026-03-30T01:03:21.605327Z"
+      },
+      {
+        "name": "lstm_annual_regime_r.png",
+        "path": "backtesting/data/results/lstm_annual_regime_r.png",
+        "mtime_utc": "2026-03-08T00:43:15.995429Z"
+      },
+      {
+        "name": "lstm_latent_tsne.png",
+        "path": "backtesting/data/results/lstm_latent_tsne.png",
+        "mtime_utc": "2026-03-08T00:43:20.768747Z"
+      },
+      {
+        "name": "lstm_regimes_overview.png",
+        "path": "backtesting/data/results/lstm_regimes_overview.png",
+        "mtime_utc": "2026-03-08T00:43:15.881530Z"
+      },
+      {
+        "name": "nq_asia_long_propfirm_sweep.json",
+        "path": "backtesting/data/results/nq_asia_long_propfirm_sweep.json",
+        "mtime_utc": "2026-03-08T19:43:10.404644Z"
+      },
+      {
+        "name": "nq_asia_lsi_propfirm_sweep.json",
+        "path": "backtesting/data/results/nq_asia_lsi_propfirm_sweep.json",
+        "mtime_utc": "2026-03-09T01:37:15.993337Z"
+      },
+      {
+        "name": "nq_lsi_propfirm_2x_risk.json",
+        "path": "backtesting/data/results/nq_lsi_propfirm_2x_risk.json",
+        "mtime_utc": "2026-03-08T19:01:31.384683Z"
+      },
+      {
+        "name": "nq_lsi_propfirm_sweep.json",
+        "path": "backtesting/data/results/nq_lsi_propfirm_sweep.json",
+        "mtime_utc": "2026-03-08T18:36:59.851107Z"
+      },
+      {
+        "name": "nq_ny_cont_propfirm_sweep_v2.json",
+        "path": "backtesting/data/results/nq_ny_cont_propfirm_sweep_v2.json",
+        "mtime_utc": "2026-03-14T22:40:45.287899Z"
+      },
+      {
+        "name": "nq_ny_htf_lsi_exact_cap_compare.json",
+        "path": "backtesting/data/results/nq_ny_htf_lsi_exact_cap_compare.json",
+        "mtime_utc": "2026-04-11T18:07:24.165240Z"
+      },
+      {
+        "name": "nq_ny_htf_lsi_replacement_risk_10y.json",
+        "path": "backtesting/data/results/nq_ny_htf_lsi_replacement_risk_10y.json",
+        "mtime_utc": "2026-04-12T13:26:14.588385Z"
+      },
+      {
+        "name": "nq_ny_htf_lsi_replacement_risk_recent.json",
+        "path": "backtesting/data/results/nq_ny_htf_lsi_replacement_risk_recent.json",
+        "mtime_utc": "2026-04-12T13:14:58.774205Z"
+      },
+      {
+        "name": "nq_ny_lsi_1m_tf_study.json",
+        "path": "backtesting/data/results/nq_ny_lsi_1m_tf_study.json",
+        "mtime_utc": "2026-04-02T20:36:32.364238Z"
+      },
+      {
+        "name": "nq_ny_lsi_2y_sweep_analysis.json",
+        "path": "backtesting/data/results/nq_ny_lsi_2y_sweep_analysis.json",
+        "mtime_utc": "2026-03-08T17:12:53.972073Z"
+      },
+      {
+        "name": "nq_ny_lsi_2y_sweep_top20.csv",
+        "path": "backtesting/data/results/nq_ny_lsi_2y_sweep_top20.csv",
+        "mtime_utc": "2026-03-08T17:12:53.972909Z"
+      },
+      {
+        "name": "nq_ny_lsi_3m_tf_study.json",
+        "path": "backtesting/data/results/nq_ny_lsi_3m_tf_study.json",
+        "mtime_utc": "2026-04-02T19:05:41.078186Z"
+      },
+      {
+        "name": "nq_ny_lsi_discovery_step1_baseline.json",
+        "path": "backtesting/data/results/nq_ny_lsi_discovery_step1_baseline.json",
+        "mtime_utc": "2026-04-02T01:00:46.684142Z"
+      },
+      {
+        "name": "nq_ny_lsi_discovery_step2_sweeps.json",
+        "path": "backtesting/data/results/nq_ny_lsi_discovery_step2_sweeps.json",
+        "mtime_utc": "2026-04-02T01:21:53.151865Z"
+      },
+      {
+        "name": "nq_ny_lsi_rr_tp1_grid_sweep.json",
+        "path": "backtesting/data/results/nq_ny_lsi_rr_tp1_grid_sweep.json",
+        "mtime_utc": "2026-04-02T21:15:03.536578Z"
+      }
+    ]
+  }
+}

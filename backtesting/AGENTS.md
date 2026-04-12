@@ -164,11 +164,13 @@ NQ, MNQ, ES, MES, YM, MYM, RTY (indices) + GC, MGC, CL, MCL (commodities). Prima
 
 ### Workflow References
 
+Start with `backtesting/learnings/README.md`, then `backtesting/learnings/briefs/GLOBAL.md`, then the relevant `backtesting/learnings/briefs/assets/{ASSET}.md`.
+
 Use `backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md` as the source of truth for new-strategy discovery, candidate promotion, and downstream handoff into `discovery-pipeline` and `phase-one-robust-pipeline`.
 
 Use `backtesting/learnings/CURRENT_REGIME_WORKFLOW.md` as the source of truth for causal regime labeling, regime attribution, and regime-specialist promotion work.
 
-Read the relevant `learnings/asset/{ASSET}.md` file before starting either path, and update it after a meaningful conclusion with evidence and DB references.
+Read the relevant `learnings/asset/{ASSET}.md` file only after the brief is not enough, and update it after a meaningful conclusion with evidence and DB references. After updating learnings or adding reports, regenerate `backtesting/learnings/registry/catalog.json` via `uv run python backtesting/scripts/build_learnings_registry.py`.
 
 #### Variable Sweep Discipline — CRITICAL RULE
 **Every time the anchor config changes, all variable sweeps must be rerun from scratch.**

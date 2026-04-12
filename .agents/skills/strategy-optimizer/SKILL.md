@@ -34,20 +34,21 @@ Advanced parameter optimization for the ORB+FVG backtesting engine. Covers grid 
 
 ## Shared Strategy Learnings
 
-The optimization knowledge base lives at `references/strategy-learnings.md` in the `orb-backtester` skill (`.claude/skills/orb-backtester/references/strategy-learnings.md`). It captures parameter insights, failed hypotheses, and optimization results.
+The optimization knowledge base now lives under `backtesting/learnings/`.
 
 **Every optimization run MUST:**
-1. **Read** the orb-backtester's `references/strategy-learnings.md` before starting
-2. **Update** it after discovering meaningful insights — best param combos, failed sweeps, robustness findings
+1. **Read** `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and the relevant `backtesting/learnings/briefs/assets/{SYMBOL}.md` before starting
+2. **Update** the relevant detailed learnings file after discovering meaningful insights, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
 
 ## Workflow
 
 ### Step 0: Load Context
 
 Before any optimization work:
-1. Read `.claude/skills/orb-backtester/references/strategy-learnings.md` for prior findings
-2. Load `references/parameter-guide.md` for sweepable parameter ranges and recommendations
-3. Load `references/optimization-methods.md` for the specific method being requested
+1. Read `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and the relevant `backtesting/learnings/briefs/assets/{SYMBOL}.md` for prior findings
+2. Open `backtesting/learnings/global/strategy-memory.md`, `backtesting/learnings/asset/{SYMBOL}.md`, or `backtesting/learnings/indexes/assets/{SYMBOL}.md` only when the brief is not enough
+3. Load `references/parameter-guide.md` for sweepable parameter ranges and recommendations
+4. Load `references/optimization-methods.md` for the specific method being requested
 
 ### Step 1: Classify the Request
 
@@ -126,7 +127,7 @@ After a sweep completes:
    - Unrealistic Sharpe (>3.0 on multi-year data)
    - Single metric looks great but others are poor (e.g., high Sharpe but low profit factor)
 4. **Recommend validation** — Suggest out-of-sample test or walk-forward if not already done
-5. **Compare with prior results** — Reference strategy-learnings.md
+5. **Compare with prior results** — Reference the learnings briefs first, then the detailed histories only if needed
 
 ### Step 5: Validate (When Applicable)
 
@@ -139,12 +140,18 @@ For any optimization that produces a "best" parameter set:
 
 ### Step 6: Update Strategy Learnings
 
-After completing optimization work, update `.claude/skills/orb-backtester/references/strategy-learnings.md` with:
+After completing optimization work, update the appropriate detailed learnings source with:
 
 - **Optimization Results** — Best param combos with instrument, session, date range, and key metrics
 - **Parameter Insights** — Which params matter most, which are insensitive
 - **Failed Hypotheses** — Sweeps that didn't improve results
 - **Robustness Findings** — Walk-forward degradation, Monte Carlo confidence intervals
+
+Use:
+- `backtesting/learnings/global/strategy-memory.md` for cross-asset or cross-strategy conclusions
+- `backtesting/learnings/asset/{SYMBOL}.md` for asset-specific conclusions
+- `backtesting/learnings/reports/` for long-form optimization writeups
+- `uv run python backtesting/scripts/build_learnings_registry.py` after updating learnings
 
 ## Error Handling
 
@@ -175,6 +182,6 @@ After completing optimization work, update `.claude/skills/orb-backtester/refere
 
 - Load `references/parameter-guide.md` for all sweepable parameters, recommended ranges, and session-specific defaults
 - Load `references/optimization-methods.md` for walk-forward, Monte Carlo, sensitivity analysis, and custom optimization patterns
-- Load `.claude/skills/orb-backtester/references/strategy-learnings.md` for accumulated insights — **read before every sweep, update after new discoveries**
-- Load `.claude/skills/orb-backtester/references/bias-prevention.md` for overfitting prevention and optimization discipline
-- Load `.claude/skills/orb-backtester/references/architecture.md` for engine execution model and config hierarchy
+- Load `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and `backtesting/learnings/briefs/assets/{SYMBOL}.md` for accumulated insights before every sweep; follow with the detailed histories only when needed
+- Load `.agents/skills/orb-backtester/references/bias-prevention.md` for overfitting prevention and optimization discipline
+- Load `.agents/skills/orb-backtester/references/architecture.md` for engine execution model and config hierarchy

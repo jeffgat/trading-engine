@@ -114,35 +114,49 @@ The `backtesting/learnings/` directory is organized into subfolders:
 
 ```
 backtesting/learnings/
-├── asset/          # Per-instrument learnings ({SYMBOL}.md)
-├── portfolios/     # Portfolio construction & allocation docs
-├── reports/        # Pipeline reports, sweep reports, council reports
-├── ALPHA_V1.md     # Strategy version notes (top-level)
+├── README.md                     # Canonical entrypoint and read order
+├── briefs/                       # Short LLM-first briefings
+│   ├── GLOBAL.md
+│   └── assets/{SYMBOL}.md
+├── global/strategy-memory.md     # Full cross-asset strategy memory
+├── registry/catalog.json         # Machine-readable index of assets, reports, and results
+├── indexes/assets/{SYMBOL}.md    # Full per-asset report/result index
+├── asset/                        # Detailed per-instrument learnings ({SYMBOL}.md)
+├── portfolios/                   # Portfolio construction and allocation docs
+├── reports/                      # Pipeline reports, sweep reports, council reports
+├── ALPHA_V1.md                   # Research thesis docs (top-level)
 ├── CURRENT_REGIME_WORKFLOW.md
 ├── CURRENT_STRATEGY_WORKFLOW.md
-├── REGIME.md
-└── prop_regime_specialist_framework.md
+└── REGIME.md
 ```
 
 ### Per-Asset Learnings
 
-Maintain a living document for each asset. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost.
+Maintain a living document for each asset. These files capture what works, what doesn't, and why — so no strategy is re-tested and no insight is lost. Agents should load the brief first, then the detailed history only if needed.
 
 - **Location**: `backtesting/learnings/asset/{SYMBOL}.md` (e.g., `GC.md`, `NQ.md`, `CL.md`)
+- **Brief**: `backtesting/learnings/briefs/assets/{SYMBOL}.md`
 - **When to update**: After completing a strategy test, robust pipeline run, or discovering a significant finding for any asset
 - **What to include**: Instrument profile, strategies tested (with GO/NO-GO status), winning configs, key findings, parameter sensitivity, prop firm considerations
 - **Format**: See `backtesting/learnings/asset/GC.md` as the reference template
 
 ### Reports
 
-Pipeline reports, council transcripts, and sweep analyses go in `backtesting/learnings/reports/`. Council reports (HTML + transcript MD) are also saved here.
+Pipeline reports, council transcripts, and sweep analyses go in `backtesting/learnings/reports/`. Council reports (HTML + transcript MD) are also saved here. Raw artifacts stay in `backtesting/data/results/`, and the generated registry plus indexes link reports to result folders.
+
+### Registry And Briefs
+
+- **Read order**: `README.md` -> `briefs/GLOBAL.md` -> `briefs/assets/{SYMBOL}.md` -> detailed histories/reports/results only when needed
+- **Generated files**: `briefs/`, `indexes/`, and `registry/catalog.json` are generated access layers; do not hand-edit them
+- **Rebuild command**: `uv run python backtesting/scripts/build_learnings_registry.py`
 
 ### Rules for agents
 
-1. **Check learnings before testing** — read the asset's learnings file before proposing or running a strategy. If it's already marked NO-GO, don't re-test without a fundamentally different approach.
-2. **Update after every conclusion** — when a strategy is validated (GO) or ruled out (NO-GO), add it to the learnings doc immediately.
+1. **Check briefs before testing** — read `backtesting/learnings/README.md`, `briefs/GLOBAL.md`, and the relevant asset brief before proposing or running a strategy. If the asset is already marked NO-GO, don't re-test without a fundamentally different approach.
+2. **Update after every conclusion** — when a strategy is validated (GO) or ruled out (NO-GO), add it to the detailed learnings doc immediately.
 3. **Include the evidence** — record key metrics (trades, WR, Net R, Sharpe, DD) and the DB experiment name so results are traceable.
-4. **Create new files as needed** — when testing a new asset for the first time, create its learnings file in `backtesting/learnings/asset/` following the GC.md template.
+4. **Regenerate the access layer** — after updating detailed learnings or adding reports, run `uv run python backtesting/scripts/build_learnings_registry.py`.
+5. **Create new files as needed** — when testing a new asset for the first time, create its learnings file in `backtesting/learnings/asset/` following the GC.md template.
 
 ## Backtesting Best Practices
 

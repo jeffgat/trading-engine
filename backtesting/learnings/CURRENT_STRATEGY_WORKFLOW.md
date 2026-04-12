@@ -2,7 +2,7 @@
 
 1. **Start with the thesis**
 
-   Define the strategy family, instrument, session, direction bias, and read the relevant `backtesting/learnings/asset/{ASSET}.md` first.
+   Define the strategy family, instrument, session, and direction bias. Read `backtesting/learnings/briefs/assets/{ASSET}.md` first, then open `backtesting/learnings/asset/{ASSET}.md` only if the brief is not enough.
 
 2. **Build a baseline**
 
@@ -34,4 +34,4 @@
 
 8. **Save and document the winner**
 
-   After downstream validation, save the final config and update the asset learnings file with the conclusion and DB references.
+   After downstream validation, save the final config, update the asset learnings file with the conclusion and DB references, and regenerate `backtesting/learnings/registry/catalog.json`.

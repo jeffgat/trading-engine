@@ -2,6 +2,8 @@
 
 1. **Define the regime question before labeling**
 
+   Start by reading the relevant `backtesting/learnings/briefs/assets/{ASSET}.md`, and open the detailed asset history only if you need the full context.
+
    Separate the dimensions on purpose:
    trend = `up`, `down`, `sideways`
    volatility = `low`, `medium`, `high`

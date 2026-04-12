@@ -32,13 +32,13 @@ Python backtesting engine for Opening Range Breakout + Fair Value Gap trading st
 
 ## Shared Strategy Learnings
 
-A persistent knowledge base lives at `references/strategy-learnings.md`. It captures parameter insights, session behavior, signal observations, failed hypotheses, edge cases, and optimization results discovered across all sessions.
+The canonical research memory now lives under `backtesting/learnings/`. It is layered so agents can load small briefs first and only open detailed histories, reports, or raw result artifacts when needed.
 
 **Every agent MUST:**
-1. **Read** `references/strategy-learnings.md` before running backtests, sweeps, or proposing strategy changes
-2. **Update** it after discovering meaningful insights — new parameter findings, failed hypotheses, edge cases, or notable optimization results
-3. **Read** the relevant asset learnings file at `backtesting/learnings/asset/{SYMBOL}.md` before running new strategy research on that asset
-4. **Update** the relevant asset learnings file after reaching a meaningful strategy conclusion
+1. **Read** `backtesting/learnings/README.md`, then `backtesting/learnings/briefs/GLOBAL.md`, before running backtests, sweeps, or proposing strategy changes
+2. **Read** the relevant asset brief at `backtesting/learnings/briefs/assets/{SYMBOL}.md` before opening the detailed asset history
+3. **Use** `backtesting/learnings/global/strategy-memory.md`, `backtesting/learnings/asset/{SYMBOL}.md`, `backtesting/learnings/indexes/assets/{SYMBOL}.md`, and `backtesting/learnings/registry/catalog.json` only as deeper layers when the brief is not enough
+4. **Update** the relevant detailed learnings file after reaching a meaningful strategy conclusion, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
 
 **What to record:**
 - Parameter values that consistently help or hurt (with data: instrument, session, date range, metric impact)
@@ -56,7 +56,7 @@ A persistent knowledge base lives at `references/strategy-learnings.md`. It capt
 
 ### Step 0: Load Strategy Learnings
 
-Before any backtest, optimization, or strategy modification, load `references/strategy-learnings.md` and review relevant sections. For strategy research, also read the relevant asset learnings file in `backtesting/learnings/asset/`. Use `backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md` for new-strategy discovery, candidate promotion, and downstream handoff work. Use `backtesting/learnings/CURRENT_REGIME_WORKFLOW.md` for regime research, regime labeling, and regime-specialist promotion work. Use prior findings to inform parameter choices and avoid repeating failed experiments.
+Before any backtest, optimization, or strategy modification, load `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and the relevant `backtesting/learnings/briefs/assets/{SYMBOL}.md`. Open `backtesting/learnings/global/strategy-memory.md`, `backtesting/learnings/asset/{SYMBOL}.md`, and `backtesting/learnings/indexes/assets/{SYMBOL}.md` only when you need more detail. Use `backtesting/learnings/CURRENT_STRATEGY_WORKFLOW.md` for new-strategy discovery, candidate promotion, and downstream handoff work. Use `backtesting/learnings/CURRENT_REGIME_WORKFLOW.md` for regime research, regime labeling, and regime-specialist promotion work. Use prior findings to inform parameter choices and avoid repeating failed experiments.
 
 ### Step 1: Understand the Request
 
@@ -126,7 +126,7 @@ After modifying engine code:
 
 ### Step 4: Update Strategy Learnings
 
-After completing the task, determine if any new insight was discovered. If so, update `references/strategy-learnings.md` under the appropriate section and update the relevant `backtesting/learnings/asset/{SYMBOL}.md` file when the work reached a real conclusion:
+After completing the task, determine if any new insight was discovered. If so, update the appropriate detailed learnings source and regenerate the registry:
 
 - **Parameter Insights** — include instrument, session, date range, and metric impact
 - **Session Behavior** — note session-specific differences
@@ -134,6 +134,12 @@ After completing the task, determine if any new insight was discovered. If so, u
 - **Failed Hypotheses** — what was tested, what the result was, why it failed
 - **Known Edge Cases** — specific dates or conditions causing anomalies
 - **Optimization Results** — best parameter combos from sweeps with context
+
+Use:
+- `backtesting/learnings/global/strategy-memory.md` for cross-asset or cross-strategy conclusions
+- `backtesting/learnings/asset/{SYMBOL}.md` for asset-specific conclusions
+- `backtesting/learnings/reports/` for long-form reports
+- `uv run python backtesting/scripts/build_learnings_registry.py` after updating learnings so briefs and indexes stay current
 
 ## Error Handling
 
@@ -174,4 +180,4 @@ After completing the task, determine if any new insight was discovered. If so, u
 - Load `references/signals.md` for FVG detection logic, ORB levels, session masks, daily ATR, and how to add new signal modules
 - Load `references/workflows.md` for CLI commands, API calls, and programmatic usage examples
 - Load `references/bias-prevention.md` for look-ahead bias prevention, optimization discipline, and engine safeguards
-- Load `references/strategy-learnings.md` for accumulated parameter insights, session behavior, failed hypotheses, and optimization results — **read before every backtest/sweep, update after new discoveries**
+- Load `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and `backtesting/learnings/briefs/assets/{SYMBOL}.md` before every backtest or sweep; use `backtesting/learnings/global/strategy-memory.md` and `backtesting/learnings/indexes/assets/{SYMBOL}.md` as deeper follow-up context

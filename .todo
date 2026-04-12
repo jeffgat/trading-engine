@@ -4,13 +4,14 @@
 - vwap/ema/sma? - done, not helpful
 - 1h high or low, minimum x (5) bars to the left and unswept? - done, 3 was best
 
-- define DOL. if it can be defined as a sweep, it can be defined as the DOL as well imo
-  - issue is, how old can this be?
+- revisit data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
 
 - define trendline liquidity on the way to the target
 
 - define equal highs, highs near each other within x amount of points
-- revisit data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
+
+- define DOL. if it can be defined as a sweep, it can be defined as the DOL as well imo
+  - issue is, how old can this be for the DOL to remain valid?
 
 ### params
 session times
@@ -35,25 +36,3 @@ ILM checklist
 - max distance from the ORB range
 
 
-### LSI
-How the Sweep / Pivot Low Logic Works
-Pivot detection runs on every 5m bar, all hours, in both engines. A swing low requires:
-
-n_left=8 bars before it with strictly higher lows
-n_right=60 bars after it with strictly higher lows
-Confirmed only after all 60 right-side bars close — a ~5 hour delay on 5m bars
-Once confirmed, the swing low level is forward-filled and persists until a newer swing low replaces it. Swing levels carry across day boundaries — they are never reset.
-
-Sweep detection is gated:
-
-Backtester: in_rth mask (starts at rth_start=09:30)
-Execution engine: SCANNING state (starts at entry_start=09:35)
-Before that window, sweeps fire from the swing tracker but are ignored by the state machine
-What happened on this trade:
-
-A swing low at 24204.50 formed during Sunday night's Asia session (~22:00-23:00 ET April 6)
-It was confirmed ~60 bars later (~03:00-04:00 ET April 7)
-Pre-market bars from 06:50-09:30 traded well below 24204.50 many times, but those sweeps were outside the entry window — ignored
-No new swing low from today has been confirmed yet (n_right=60 means the earliest today's lows could confirm is ~5 hours after they form)
-At 09:40 (first SCANNING bar with low < 24204.50), the sweep triggered
-Both engines behave identically here. Not a bug — the backtester would produce the same trade on the same data. The stale-looking swept level is a consequence of the large n_right=60 confirmation delay combined with sweep detection being restricted to the entry window.
