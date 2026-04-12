@@ -109,11 +109,22 @@ PARAM_COLUMNS: dict[str, str] = {
     "lsi_clean_path": "INTEGER",
     "lsi_be_swing_n_left": "INTEGER",
     "lsi_cancel_on_swing": "INTEGER",
+    "htf_level_tf_minutes": "INTEGER",
+    "htf_n_left": "INTEGER",
+    "htf_trade_max_per_session": "INTEGER",
+    "max_fvg_to_inversion_bars": "INTEGER",
+    "htf_lsi_include_htf_levels": "INTEGER",
+    "htf_lsi_reference_levels": "TEXT",
+    "data_sweep_min_daily_atr_pct": "REAL",
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)
 _GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length",
-                  "min_qty", "qty_step", "point_value"}
+                  "min_qty", "qty_step", "point_value",
+                  "htf_level_tf_minutes", "htf_n_left",
+                  "htf_trade_max_per_session", "max_fvg_to_inversion_bars",
+                  "htf_lsi_include_htf_levels", "htf_lsi_reference_levels",
+                  "data_sweep_min_daily_atr_pct"}
 
 # ---------------------------------------------------------------------------
 # Metric columns promoted from json_extract to dedicated columns.

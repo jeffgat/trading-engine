@@ -9,6 +9,7 @@ These gates intentionally mirror the backtesting research logic closely:
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Callable
 
@@ -26,6 +27,39 @@ _daily_history_provider: DailyHistoryProvider | None = None
 # Frozen pre-holdout tercile thresholds from regime research.
 _LOW_VOL_UPPER = 0.1252
 _MEDIUM_VOL_UPPER = 0.2040
+
+
+@dataclass(frozen=True)
+class RegimeGateEvaluation:
+    gate: str
+    date_key: str
+    allowed: bool
+    reason: str | None = None
+    regime: str | None = None
+    vol_regime: str | None = None
+    combined_regime: str | None = None
+    low_confidence: bool | None = None
+    warmup_ok: bool | None = None
+
+    def to_status_dict(self) -> dict[str, object]:
+        result: dict[str, object] = {
+            "gate": self.gate,
+            "date": self.date_key,
+            "allowed": self.allowed,
+        }
+        if self.reason:
+            result["reason"] = self.reason
+        if self.regime is not None:
+            result["regime"] = self.regime
+        if self.vol_regime is not None:
+            result["vol_regime"] = self.vol_regime
+        if self.combined_regime is not None:
+            result["combined_regime"] = self.combined_regime
+        if self.low_confidence is not None:
+            result["low_confidence"] = self.low_confidence
+        if self.warmup_ok is not None:
+            result["warmup_ok"] = self.warmup_ok
+        return result
 
 
 def _bars_to_frame(bars) -> pd.DataFrame:
@@ -267,17 +301,82 @@ def _calendar_row_for_date(
     return row_df.iloc[-1]
 
 
+def _optional_bool(value) -> bool | None:
+    if pd.isna(value):
+        return None
+    return bool(value)
+
+
+def _optional_str(value) -> str | None:
+    if pd.isna(value):
+        return None
+    text = str(value)
+    return text if text else None
+
+
+def _missing_gate_evaluation(name: str, date_key: str, reason: str) -> RegimeGateEvaluation:
+    return RegimeGateEvaluation(
+        gate=name,
+        date_key=date_key,
+        allowed=False,
+        reason=reason,
+    )
+
+
+def _evaluate_bull_no_low_confidence_gate(name: str, date_key: str) -> RegimeGateEvaluation:
+    daily = _load_nq_daily_history(name, date_key)
+    if daily is None:
+        return _missing_gate_evaluation(name, date_key, "missing_daily_history")
+
+    calendar = _build_nq_ny_regime_calendar(daily)
+    row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
+    if row is None:
+        return _missing_gate_evaluation(name, date_key, "missing_calendar_row")
+
+    regime = _optional_str(row.get("regime"))
+    low_confidence = _optional_bool(row.get("low_confidence"))
+    warmup_ok = _optional_bool(row.get("warmup_ok"))
+    allowed = regime == "bull" and not bool(low_confidence)
+    return RegimeGateEvaluation(
+        gate=name,
+        date_key=date_key,
+        allowed=allowed,
+        regime=regime,
+        low_confidence=low_confidence,
+        warmup_ok=warmup_ok,
+    )
+
+
+def _evaluate_combined_regime_block_gate(
+    name: str,
+    date_key: str,
+    blocked_buckets: frozenset[str],
+) -> RegimeGateEvaluation:
+    daily = _load_nq_daily_history(name, date_key)
+    if daily is None:
+        return _missing_gate_evaluation(name, date_key, "missing_daily_history")
+
+    calendar = _build_nq_ny_extended_regime_calendar(daily)
+    row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
+    if row is None:
+        return _missing_gate_evaluation(name, date_key, "missing_calendar_row")
+
+    combined_regime = _optional_str(row.get("combined_regime"))
+    return RegimeGateEvaluation(
+        gate=name,
+        date_key=date_key,
+        allowed=combined_regime not in blocked_buckets,
+        regime=_optional_str(row.get("regime")),
+        vol_regime=_optional_str(row.get("vol_regime")),
+        combined_regime=combined_regime,
+        low_confidence=_optional_bool(row.get("low_confidence")),
+        warmup_ok=_optional_bool(row.get("warmup_ok")),
+    )
+
+
 def _build_bull_no_low_confidence_gate(name: str) -> RegimeGateCheck:
     def _gate(date_key: str) -> bool:
-        daily = _load_nq_daily_history(name, date_key)
-        if daily is None:
-            return False
-
-        calendar = _build_nq_ny_regime_calendar(daily)
-        row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
-        if row is None:
-            return False
-        return str(row["regime"]) == "bull" and not bool(row["low_confidence"])
+        return _evaluate_bull_no_low_confidence_gate(name, date_key).allowed
 
     return _gate
 
@@ -287,15 +386,7 @@ def _build_combined_regime_block_gate(
     blocked_buckets: frozenset[str],
 ) -> RegimeGateCheck:
     def _gate(date_key: str) -> bool:
-        daily = _load_nq_daily_history(name, date_key)
-        if daily is None:
-            return False
-
-        calendar = _build_nq_ny_extended_regime_calendar(daily)
-        row = _calendar_row_for_date(calendar, name=name, date_key=date_key, daily=daily)
-        if row is None:
-            return False
-        return str(row["combined_regime"]) not in blocked_buckets
+        return _evaluate_combined_regime_block_gate(name, date_key, blocked_buckets).allowed
 
     return _gate
 
@@ -307,6 +398,30 @@ _REGIME_GATE_BUILDERS: dict[str, Callable[[str], RegimeGateCheck]] = {
     "block_sideways_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"sideways_medium_vol"})),
     "block_full_medium_vol": lambda name: _build_combined_regime_block_gate(
         name,
+        frozenset({"bull_medium_vol", "sideways_medium_vol"}),
+    ),
+}
+
+_REGIME_GATE_EVALUATORS: dict[str, Callable[[str, str], RegimeGateEvaluation]] = {
+    "bull_no_low_confidence": _evaluate_bull_no_low_confidence_gate,
+    "block_bull_low_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"bull_low_vol"}),
+    ),
+    "block_bull_medium_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"bull_medium_vol"}),
+    ),
+    "block_sideways_medium_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"sideways_medium_vol"}),
+    ),
+    "block_full_medium_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
         frozenset({"bull_medium_vol", "sideways_medium_vol"}),
     ),
 }
@@ -342,6 +457,43 @@ def build_regime_gate(name: str | None) -> RegimeGateCheck | None:
         return None
     compiled = build_regime_gates((name,))
     return compiled[0][1] if compiled else None
+
+
+def evaluate_regime_gate(name: str, date_key: str) -> RegimeGateEvaluation:
+    evaluator = _REGIME_GATE_EVALUATORS.get(name)
+    if evaluator is None:
+        raise ValueError(f"Unknown regime gate: {name}")
+    return evaluator(name, date_key)
+
+
+def evaluate_regime_gates(
+    names: list[str] | tuple[str, ...] | None,
+    date_key: str,
+) -> tuple[RegimeGateEvaluation, ...]:
+    return tuple(
+        evaluate_regime_gate(name, date_key)
+        for name in normalize_regime_gates(None, names)
+    )
+
+
+def format_regime_gate_detail(evaluation: RegimeGateEvaluation) -> str:
+    parts = [
+        f"gate={evaluation.gate}",
+        f"date={evaluation.date_key}",
+    ]
+    if evaluation.reason:
+        parts.append(f"reason={evaluation.reason}")
+    if evaluation.regime is not None:
+        parts.append(f"regime={evaluation.regime}")
+    if evaluation.vol_regime is not None:
+        parts.append(f"vol_regime={evaluation.vol_regime}")
+    if evaluation.combined_regime is not None:
+        parts.append(f"combined_regime={evaluation.combined_regime}")
+    if evaluation.low_confidence is not None:
+        parts.append(f"low_confidence={str(evaluation.low_confidence).lower()}")
+    if evaluation.warmup_ok is not None:
+        parts.append(f"warmup_ok={str(evaluation.warmup_ok).lower()}")
+    return " ".join(parts)
 
 
 def normalize_regime_gate_fields(

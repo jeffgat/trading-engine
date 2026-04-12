@@ -221,24 +221,35 @@ def results_to_dict(
         config_dict[f"{prefix}_entry_window"] = f"{sess.entry_start}-{sess.entry_end}"
         config_dict[f"{prefix}_flat_window"] = f"{sess.flat_start}-{sess.flat_end}"
 
-    # LSI params (only when strategy is LSI)
-    if config.strategy == "lsi":
-        config_dict["lsi_n_left"] = config.lsi_n_left
-        config_dict["lsi_n_right"] = config.lsi_n_right
+    # LSI params
+    if config.strategy in {"lsi", "htf_lsi"}:
         config_dict["lsi_fvg_window_left"] = config.lsi_fvg_window_left
         config_dict["lsi_fvg_window_right"] = config.lsi_fvg_window_right
         config_dict["lsi_stop_mode"] = config.lsi_stop_mode
         config_dict["lsi_entry_mode"] = config.lsi_entry_mode
+    if config.strategy == "lsi":
+        config_dict["lsi_n_left"] = config.lsi_n_left
+        config_dict["lsi_n_right"] = config.lsi_n_right
         config_dict["lsi_first_fvg_only"] = config.lsi_first_fvg_only
         config_dict["lsi_clean_path"] = config.lsi_clean_path
         config_dict["lsi_be_swing_n_left"] = config.lsi_be_swing_n_left
         config_dict["lsi_cancel_on_swing"] = config.lsi_cancel_on_swing
         config_dict["lsi_sweep_gate"] = config.lsi_sweep_gate
         config_dict["lsi_stale_breach_consumes_pivot"] = config.lsi_stale_breach_consumes_pivot
+    if config.strategy == "htf_lsi":
+        config_dict["htf_level_tf_minutes"] = config.htf_level_tf_minutes
+        config_dict["htf_n_left"] = config.htf_n_left
+        config_dict["htf_trade_max_per_session"] = config.htf_trade_max_per_session
+        config_dict["max_fvg_to_inversion_bars"] = config.max_fvg_to_inversion_bars
+        config_dict["htf_lsi_include_htf_levels"] = config.htf_lsi_include_htf_levels
+        config_dict["data_sweep_min_daily_atr_pct"] = config.data_sweep_min_daily_atr_pct
+        if config.htf_lsi_reference_levels:
+            config_dict["htf_lsi_reference_levels"] = ",".join(config.htf_lsi_reference_levels)
     if config.strategy == "reference_lsi":
         config_dict["ref_lsi_gap_lookback_bars"] = config.ref_lsi_gap_lookback_bars
         config_dict["ref_lsi_inversion_max_bars"] = config.ref_lsi_inversion_max_bars
         config_dict["ref_lsi_gap_entry_edge"] = config.ref_lsi_gap_entry_edge
+        config_dict["data_sweep_min_daily_atr_pct"] = config.data_sweep_min_daily_atr_pct
 
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
@@ -283,6 +294,12 @@ def results_to_dict(
                 "lsi_sweep_time": t.lsi_sweep_time if t.lsi_sweep_time else None,
                 "reference_level_name": t.reference_level_name if t.reference_level_name else None,
                 "reference_level_price": t.reference_level_price if t.reference_level_name else None,
+                "htf_level_time": t.htf_level_time if t.htf_level_time else None,
+                "htf_level_price": t.htf_level_price if t.htf_level_side else None,
+                "htf_level_side": t.htf_level_side if t.htf_level_side else None,
+                "htf_level_tf_minutes": t.htf_level_tf_minutes if t.htf_level_side else None,
+                "fvg_to_inversion_bars": t.fvg_to_inversion_bars if t.htf_level_side else None,
+                "sweep_to_inversion_bars": t.sweep_to_inversion_bars if t.htf_level_side else None,
             }
             for t in trades
         ]

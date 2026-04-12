@@ -15,6 +15,7 @@ import pytest
 
 from trader.broker import TradersPostClient, WebhookResult
 from trader.engine import Bar, ORBEngine, State, TradeRecord
+from trader.gates import build_regime_gate, set_daily_history_provider
 from tests.builders import build_bearish_fvg_bars, build_bullish_fvg_bars, build_orb_sequence, make_bar
 from tests.conftest import (
     advance_to_armed,
@@ -763,6 +764,32 @@ class TestCallbacks:
         assert r.direction == 1  # long
         assert r.entry_price > 0
         assert r.stop_price > 0
+
+
+class TestGateAudit:
+    async def test_status_dict_includes_regime_gate_verdict(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            regime_gate="bull_no_low_confidence",
+            regime_gate_check=build_regime_gate("bull_no_low_confidence"),
+        )
+
+        try:
+            set_daily_history_provider(
+                lambda _symbol: [
+                    (datetime(2024, 12, 1).date() + timedelta(days=i), 100.0 + i, 102.0 + i, 98.0 + i, 100.0 + i)
+                    for i in range(60)
+                ]
+            )
+            await advance_to_scanning(eng)
+
+            status = eng.status_dict()
+            assert status["regime_gate_status"]["allowed"] is True
+            assert status["regime_gate_status"]["evaluations"][0]["gate"] == "bull_no_low_confidence"
+            assert status["skip_reason"] is None
+            assert status["blocking_gate"] is None
+        finally:
+            set_daily_history_provider(None)
 
     async def test_trade_record_on_tp2_has_tp1_hit_true(self, engine, broker):
         records = []

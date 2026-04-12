@@ -107,3 +107,26 @@ Round two confirmed that SI wants the **full** medium-vol gate, not a lighter pa
 1. **Keep the full gate on both SI anchors.** The improvement remains strong enough that there is no reason to downgrade to a partial gate.
 2. **The key SI problem bucket is `sideways_medium_vol`.** `bull_medium_vol` was near flat, but keeping the full gate still wins on the combined holdout profile.
 3. **Asia-1 and Asia-3 remain the SI regime-gate promotion pair.**
+
+## NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — NO-GO
+
+- **Status**: **NO-GO** under the default funded-account phase-one model, despite the strongest pre-holdout transfer read outside NQ.
+- **Scripts**: `run_cross_asset_htf_lsi_anchor_explore.py`, `run_cross_asset_htf_lsi_broad_discovery.py`, `run_cross_asset_htf_lsi_stitched_followup.py`, `run_si_ny_htf_lsi_phase_one.py`
+- **Reports**: `SI_NY_HTF_LSI_ANCHOR_EXPLORE.md`, `SI_NY_HTF_LSI_BROAD_DISCOVERY.md`, `SI_NY_HTF_LSI_STITCHED_FOLLOWUP.md`, `SI_NY_HTF_LSI_PHASE_ONE.md`
+
+**Transfer / discovery path:**
+- The narrow NQ anchor packet was already promising on SI. `5m lag24 promoted` printed discovery PF `1.077`, avg R `0.030`, then validation PF `1.791`, avg R `0.280`, Calmar `4.10`. `3m lag0 diagnostic` also stayed alive.
+- Reopened broad discovery found a native SI family that was different from NQ, ES, RTY, and GC: `5m`, `both`, `fvg_limit`, `htf60`, `htf_n_left=5`, `gap=3.0`, `atr=14`, later cutoffs (`13:00-14:00`), `rr=3.0-3.5`, `tp1=0.5-0.6`, with `lag=0` or `30`.
+- The strongest stitched-OOS leader was `control_stage_b_end13_cap1`: `471` trades, PF `1.386`, avg R `0.157`, Calmar `4.41`. Other frozen `13:00` / `14:00` branches stayed close behind at PF `1.319-1.360` and avg R `0.134-0.147`.
+
+**Phase-one result (holdout opened once on `2025-04-01` to `2026-03-31`):**
+- Every frozen candidate failed the funded holdout.
+- Holdout samples were `55-66` trades per row.
+- Raw holdout quality was negative across the entire family: PF only `0.739-0.775`, avg R `-0.164` to `-0.132`, total R `-9.03R` to `-8.70R`.
+- Holdout funded payout was `0.0%` or `1.6%`, with funded EV/start `-$100.00` or `-$99.84` for every candidate.
+- Best stitched-OOS payout row was still `control_stage_b_end13_cap1` with OOS funded payout `56.3%` and funded EV/start `$107.31`, but its holdout still failed cleanly: `57` trades, PF `0.759`, avg R `-0.153`, funded payout `0.0%`, funded EV/start `-$100.00`.
+
+**Interpretation:**
+- SI HTF-LSI was a legitimate pre-holdout family, not a false alarm from the initial transfer packet.
+- But the untouched funded holdout rejected the whole frozen shortlist, so this branch is closed for promotion.
+- Keep this separate from SI's existing Asia ORB continuation / regime-gate winners; those remain the live SI research branches.

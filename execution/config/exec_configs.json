@@ -8,6 +8,9 @@
         "label": "Account 1"
       }
     ],
+    "portfolio_params": {
+      "r_amount_usd": 500
+    },
     "sessions": {
       "NQ_Asia": {
         "orb_start": "20:00",
@@ -72,25 +75,30 @@
     },
     "lsi_sessions": {
       "NQ_NY_LSI": {
-        "entry_start": "09:35",
-        "entry_end": "15:30",
+        "sweep_start": "08:30",
+        "sweep_end": "15:00",
+        "entry_start": "08:30",
+        "entry_end": "13:30",
         "flat_start": "15:50",
         "flat_end": "16:00",
-        "rr": 3.0,
-        "tp1_ratio": 0.34,
-        "min_gap_atr_pct": 5.0,
-        "atr_length": 10,
-        "risk_usd": 400,
-        "max_single_risk_usd": 500,
+        "rr": 3.5,
+        "tp1_ratio": 0.4,
+        "min_gap_atr_pct": 3.0,
+        "atr_length": 14,
+        "risk_usd": 300,
+        "max_single_risk_usd": 400,
         "qty_multiplier": 1.0,
         "min_stop_points": 0.0,
         "fvg_window_left": 20,
-        "fvg_window_right": 5,
+        "fvg_window_right": 2,
         "lsi_entry_mode": "fvg_limit",
-        "lsi_variant": "legacy-LSI",
-        "lsi_n_left": 8,
-        "lsi_n_right": 60,
-        "excluded_dow": [2, 3]
+        "lsi_variant": "htf-LSI",
+        "htf_level_tf_minutes": 60,
+        "htf_n_left": 3,
+        "htf_trade_max_per_session": 2,
+        "max_fvg_to_inversion_bars": 24,
+        "long_only": true,
+        "excluded_dow": null
       }
     }
   },
@@ -392,6 +400,40 @@
         "lsi_n_left": 5,
         "lsi_n_right": 60,
         "excluded_dow": [2, 3]
+      }
+    }
+  },
+  "HTF_LSI_5M_LAG24": {
+    "enabled": false,
+    "max_open_contracts": 20,
+    "webhooks": [],
+    "sessions": {},
+    "lsi_sessions": {
+      "NQ_NY_LSI": {
+        "sweep_start": "08:30",
+        "sweep_end": "15:00",
+        "entry_start": "08:30",
+        "entry_end": "13:30",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "rr": 3.5,
+        "tp1_ratio": 0.4,
+        "min_gap_atr_pct": 3.0,
+        "atr_length": 14,
+        "risk_usd": 400,
+        "max_single_risk_usd": 500,
+        "qty_multiplier": 1.0,
+        "min_stop_points": 0.0,
+        "fvg_window_left": 20,
+        "fvg_window_right": 2,
+        "lsi_entry_mode": "fvg_limit",
+        "lsi_variant": "htf-LSI",
+        "htf_level_tf_minutes": 60,
+        "htf_n_left": 3,
+        "htf_trade_max_per_session": 2,
+        "max_fvg_to_inversion_bars": 24,
+        "long_only": true,
+        "excluded_dow": null
       }
     }
   }

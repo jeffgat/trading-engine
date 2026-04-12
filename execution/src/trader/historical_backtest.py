@@ -184,6 +184,7 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             merged.get("regime_gate"),
             merged.get("regime_gates"),
         )
+        config_dict[f"{prefix}_sweep_window"] = f"{merged.get('sweep_start', merged['entry_start'])}-{merged.get('sweep_end', merged['entry_end'])}"
         config_dict[f"{prefix}_entry_window"] = f"{merged['entry_start']}-{merged['entry_end']}"
         config_dict[f"{prefix}_flat_window"] = f"{merged['flat_start']}-{merged['flat_end']}"
         for key in (
@@ -198,6 +199,10 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "lsi_variant",
             "lsi_n_left",
             "lsi_n_right",
+            "htf_level_tf_minutes",
+            "htf_n_left",
+            "htf_trade_max_per_session",
+            "max_fvg_to_inversion_bars",
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
@@ -470,6 +475,12 @@ class ReplayRecorder:
                 "lsi_swept_level": getattr(engine, "_swept_level", None),
                 "lsi_fvg_top": getattr(engine, "_fvg_top", None),
                 "lsi_fvg_bottom": getattr(engine, "_fvg_bottom", None),
+                "htf_level_time": getattr(engine, "_swept_level_time", None) if getattr(engine, "lsi_variant", "") == "htf-LSI" else None,
+                "htf_level_price": getattr(engine, "_swept_level", None) if getattr(engine, "lsi_variant", "") == "htf-LSI" else None,
+                "htf_level_side": getattr(engine, "_active_htf_level_side", "") if getattr(engine, "lsi_variant", "") == "htf-LSI" else None,
+                "htf_level_tf_minutes": getattr(engine, "htf_level_tf_minutes", None) if getattr(engine, "lsi_variant", "") == "htf-LSI" else None,
+                "fvg_to_inversion_bars": getattr(engine, "_fvg_to_inversion_bars", None),
+                "sweep_to_inversion_bars": getattr(engine, "_sweep_to_inversion_bars", None),
                 "lsi_fvg_time": None,
                 "lsi_sweep_time": None,
             }

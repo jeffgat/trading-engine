@@ -25,7 +25,7 @@ export function LogViewer({
   tradeTotal,
   tradeLoading,
   loadMoreTrade,
-  activeConfig,
+  activeConfig: _activeConfig,
 }: LogViewerProps) {
   const [tab, setTab] = useState<"main" | "trade">("main");
   const [search, setSearch] = useState("");

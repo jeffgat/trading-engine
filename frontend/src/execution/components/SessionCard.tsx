@@ -60,6 +60,11 @@ function isSkippedToday(engine: SessionStatus): boolean {
   return dows.includes(dow);
 }
 
+function getPrimaryRegimeEvaluation(engine: SessionStatus) {
+  const evaluations = engine.regime_gate_status?.evaluations ?? [];
+  return evaluations.find((evaluation) => !evaluation.allowed) ?? evaluations[0] ?? null;
+}
+
 const EXIT_LABELS: Record<string, string> = {
   sl: "SL Hit",
   tp1_be: "BE Hit",
@@ -110,10 +115,16 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
     : null;
   const isPaused = engine.paused ?? false;
   const skippedToday = isSkippedToday(engine);
-  const stateColor = skippedToday && engine.state === "idle"
+  const regimeBlocked = engine.skip_reason === "regime_gate" && engine.regime_gate_status?.allowed === false;
+  const regimeEval = getPrimaryRegimeEvaluation(engine);
+  const stateColor = regimeBlocked && engine.state === "flat"
+    ? "bg-amber-500/20 text-amber-300"
+    : skippedToday && engine.state === "idle"
     ? "bg-amber-500/20 text-amber-300"
     : (STATE_COLORS[engine.state] ?? "bg-text-muted/20 text-text-muted");
-  const stateLabel = skippedToday && engine.state === "idle"
+  const stateLabel = regimeBlocked && engine.state === "flat"
+    ? "Blocked Today"
+    : skippedToday && engine.state === "idle"
     ? "Skipped Today"
     : (STATE_LABELS[engine.state] ?? engine.state);
 
@@ -228,6 +239,49 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
           );
         })()}
 
+        {engine.regime_gate_status && (
+          <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-muted font-medium">Regime Gate</span>
+              <span className={`text-xs font-medium ${engine.regime_gate_status.allowed ? "text-profit" : "text-amber-300"}`}>
+                {engine.regime_gate_status.allowed ? "Passed" : "Blocked"}
+              </span>
+            </div>
+            {(engine.regime_gate_status.blocking_gate || regimeEval?.gate) && (
+              <div className="flex justify-between">
+                <span className="text-text-muted text-xs">Gate</span>
+                <span className="font-mono text-xs text-text-secondary">
+                  {engine.regime_gate_status.blocking_gate ?? regimeEval?.gate}
+                </span>
+              </div>
+            )}
+            {(regimeEval?.combined_regime || regimeEval?.regime) && (
+              <div className="flex justify-between">
+                <span className="text-text-muted text-xs">Bucket</span>
+                <span className="font-mono text-xs text-text-secondary">
+                  {regimeEval?.combined_regime ?? regimeEval?.regime}
+                </span>
+              </div>
+            )}
+            {regimeEval?.low_confidence != null && (
+              <div className="flex justify-between">
+                <span className="text-text-muted text-xs">Low Conf</span>
+                <span className="font-mono text-xs text-text-secondary">
+                  {regimeEval.low_confidence ? "Yes" : "No"}
+                </span>
+              </div>
+            )}
+            {regimeEval?.reason && (
+              <div className="flex justify-between">
+                <span className="text-text-muted text-xs">Reason</span>
+                <span className="font-mono text-xs text-text-secondary">
+                  {regimeEval.reason}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ORB levels (continuation strategies) */}
         {!isLsi && (engine.orb_high != null || engine.orb_low != null) && (
           <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
@@ -319,7 +373,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
         {/* Flat with no trade */}
         {engine.state === "flat" && !hasLevels && (
           <div className="text-center text-text-muted text-xs py-2">
-            No setup today
+            {regimeBlocked ? "Blocked by regime gate." : "No setup today"}
           </div>
         )}
 

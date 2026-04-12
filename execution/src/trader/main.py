@@ -418,6 +418,7 @@ class ExecutionConfig:
     enabled: bool = True
     max_open_contracts: float = 0.0
     webhooks: list[WebhookEntry] = field(default_factory=list)
+    portfolio_params: dict[str, object] = field(default_factory=dict)
     session_overrides: dict[str, dict] = field(default_factory=dict)
     lsi_session_overrides: dict[str, dict] = field(default_factory=dict)
 
@@ -464,6 +465,7 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
                 enabled=data.get("enabled", True),
                 max_open_contracts=float(data.get("max_open_contracts", 0.0)),
                 webhooks=_parse_webhooks(data),
+                portfolio_params=data.get("portfolio_params", {}),
                 session_overrides=data.get("sessions", {}),
                 lsi_session_overrides=data.get("lsi_sessions", {}),
             ))
@@ -493,6 +495,7 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
             "enabled": ec.enabled,
             "max_open_contracts": ec.max_open_contracts,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
+            "portfolio_params": ec.portfolio_params,
             "sessions": ec.session_overrides,
             "lsi_sessions": ec.lsi_session_overrides,
         }
@@ -743,6 +746,8 @@ def build_lsi_engines(
             config_name=config_name,
             entry_start=merged["entry_start"],
             entry_end=merged["entry_end"],
+            sweep_start=merged.get("sweep_start"),
+            sweep_end=merged.get("sweep_end"),
             flat_start=merged["flat_start"],
             flat_end=merged["flat_end"],
             rr=merged["rr"],
@@ -773,6 +778,10 @@ def build_lsi_engines(
             half_day_flat_end=merged.get("half_day_flat_end", config.get("dates", {}).get("half_day_flat_end", "13:00")),
             lsi_n_left=merged.get("lsi_n_left", 3),
             lsi_n_right=merged.get("lsi_n_right", 3),
+            htf_level_tf_minutes=merged.get("htf_level_tf_minutes", 60),
+            htf_n_left=merged.get("htf_n_left", 5),
+            htf_trade_max_per_session=merged.get("htf_trade_max_per_session", 1),
+            max_fvg_to_inversion_bars=merged.get("max_fvg_to_inversion_bars", 0),
         )
         engine.position_manager = position_manager
         engine.position_limit_key = f"{config_name or 'DEFAULT'}:{db_symbol}"

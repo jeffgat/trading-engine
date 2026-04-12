@@ -1,22 +1,16 @@
 # TODOS/NOTES
-- continue the short suite research in downside_research.md
-- LSI is somewhat broken in terms of sweep identification
-- all 8 bars before the low, and all 60 bars after the low must have lows above the pivot low itself
-- this holds true for 5+ hours
-- need to reset the pivot low every session? or at some given point
-- don't want to eliminate premarket sweeps that invert during NY session
-- but definitely don't want to be using levels from the previous session.
-- we also want to define a structural low
-- try concepts like "resting liquidity", which should require a certain amount of time elapsed
-- consider things like the open high or low? after a certain time? esentially using ORB levels as a sweep
-
 ## to test individually
-- equal highs, highs near each other within x amount of points
-- data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
-- max candles before inversion else invalidate the trade?
+- max candles before inversion else invalidate the trade? - done, to review
+- vwap/ema/sma? - done, not helpful
+- 1h high or low, minimum x (5) bars to the left and unswept? - done, 3 was best
+
+- define DOL. if it can be defined as a sweep, it can be defined as the DOL as well imo
+  - issue is, how old can this be?
+
 - define trendline liquidity on the way to the target
-- vwap/ema/sma?
-- 1h high or low, minimum x (5) bars to the left and unswept?
+
+- define equal highs, highs near each other within x amount of points
+- revisit data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
 
 ### params
 session times

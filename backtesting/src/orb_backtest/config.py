@@ -16,11 +16,20 @@ ENTRY_CONTEXT_TOKENS = frozenset(
 REF_LSI_LEVELS = (
     "previous_day_high",
     "previous_day_low",
+    "previous_week_high",
+    "previous_week_low",
     "asia_high",
     "asia_low",
     "london_high",
     "london_low",
+    "new_york_high",
+    "new_york_low",
 )
+DATA_REF_LSI_LEVELS = (
+    "data_high",
+    "data_low",
+)
+ALLOWED_REF_LSI_LEVELS = REF_LSI_LEVELS + DATA_REF_LSI_LEVELS
 
 
 @dataclass(frozen=True)
@@ -135,7 +144,7 @@ class StrategyConfig:
     excluded_days: tuple[int, ...] = field(default_factory=tuple)
 
     # Strategy type: "continuation", "reversal", "inversion", "cisd",
-    # "lsi", "reference_lsi", or "ib"
+    # "lsi", "htf_lsi", "reference_lsi", or "ib"
     strategy: str = "continuation"
 
     # Direction filter: "both", "long", or "short" — restricts which trade directions are taken
@@ -178,6 +187,15 @@ class StrategyConfig:
     # This reproduces the legacy/live-style behavior where a pre-entry breach can
     # still re-trigger later once the active scan window opens.
 
+    # HTF-LSI params
+    htf_level_tf_minutes: int = 60
+    htf_n_left: int = 5
+    htf_trade_max_per_session: int = 1  # 0 = uncapped
+    max_fvg_to_inversion_bars: int = 0
+    htf_lsi_include_htf_levels: bool = True
+    htf_lsi_reference_levels: tuple[str, ...] = ()
+    data_sweep_min_daily_atr_pct: float = 15.0
+
     # Reference-level LSI params
     ref_lsi_gap_lookback_bars: int = 12
     ref_lsi_inversion_max_bars: int = 18
@@ -206,18 +224,51 @@ class StrategyConfig:
                 "ref_lsi_gap_entry_edge must be either 'near' or 'far' "
                 f"(got {self.ref_lsi_gap_entry_edge!r})"
             )
-        invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(REF_LSI_LEVELS))
+        invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(ALLOWED_REF_LSI_LEVELS))
         if invalid_ref_levels:
             raise ValueError(
                 f"ref_lsi_reference_levels contains unsupported levels {invalid_ref_levels}; "
-                f"supported levels are {list(REF_LSI_LEVELS)}"
+                f"supported levels are {list(ALLOWED_REF_LSI_LEVELS)}"
             )
         if self.strategy == "reference_lsi" and not self.ref_lsi_reference_levels:
             raise ValueError("ref_lsi_reference_levels must contain at least one level for reference_lsi.")
+        invalid_htf_ref_levels = sorted(set(self.htf_lsi_reference_levels) - set(ALLOWED_REF_LSI_LEVELS))
+        if invalid_htf_ref_levels:
+            raise ValueError(
+                f"htf_lsi_reference_levels contains unsupported levels {invalid_htf_ref_levels}; "
+                f"supported levels are {list(ALLOWED_REF_LSI_LEVELS)}"
+            )
+        if self.strategy == "htf_lsi" and not self.htf_lsi_include_htf_levels and not self.htf_lsi_reference_levels:
+            raise ValueError(
+                "htf_lsi must enable at least one sweep source via "
+                "htf_lsi_include_htf_levels or htf_lsi_reference_levels."
+            )
+        if self.data_sweep_min_daily_atr_pct < 0:
+            raise ValueError(
+                "data_sweep_min_daily_atr_pct must be >= 0 "
+                f"(got {self.data_sweep_min_daily_atr_pct!r})"
+            )
         if self.lsi_sweep_gate not in {"sweep_window", "entry", "rth"}:
             raise ValueError(
                 "lsi_sweep_gate must be one of 'sweep_window', 'entry', or 'rth' "
                 f"(got {self.lsi_sweep_gate!r})"
+            )
+        if self.htf_level_tf_minutes not in {30, 60, 90}:
+            raise ValueError(
+                "htf_level_tf_minutes must be one of 30, 60, or 90 "
+                f"(got {self.htf_level_tf_minutes!r})"
+            )
+        if self.htf_n_left < 1:
+            raise ValueError(f"htf_n_left must be >= 1 (got {self.htf_n_left!r})")
+        if self.htf_trade_max_per_session not in {0, 1, 2, 3}:
+            raise ValueError(
+                "htf_trade_max_per_session must be one of 0, 1, 2, or 3 "
+                f"(got {self.htf_trade_max_per_session!r})"
+            )
+        if self.max_fvg_to_inversion_bars < 0:
+            raise ValueError(
+                "max_fvg_to_inversion_bars must be >= 0 "
+                f"(got {self.max_fvg_to_inversion_bars!r})"
             )
         if self.entry_context_gate:
             if not self.entry_context_gate.endswith("_aligned"):

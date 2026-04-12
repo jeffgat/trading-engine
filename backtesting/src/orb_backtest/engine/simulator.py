@@ -21,12 +21,21 @@ import pandas as pd
 
 from collections import defaultdict
 
-from ..config import StrategyConfig, SessionConfig, ASIA_SESSION, LDN_SESSION
+from ..config import (
+    StrategyConfig,
+    SessionConfig,
+    ASIA_SESSION,
+    LDN_SESSION,
+    NY_SESSION,
+    REF_LSI_LEVELS,
+    DATA_REF_LSI_LEVELS,
+)
 from ..signals.session import compute_session_masks, compute_trading_days, compute_session_days, compute_date_strings
 from ..signals.daily_atr import compute_daily_atr
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
-from ..signals.reference_levels import compute_reference_levels
+from ..signals.htf_levels import compute_htf_unswept_levels
+from ..signals.reference_levels import compute_reference_levels, compute_data_sweep_levels
 from ..signals.swing import detect_swing_highs, detect_swing_lows
 from ..signals.vwap import compute_session_vwap
 
@@ -86,6 +95,12 @@ class TradeResult(NamedTuple):
     lsi_sweep_time: str = ""       # ISO timestamp of the bar where the liquidity sweep occurred
     reference_level_name: str = ""  # completed-session / previous-day level used by reference_lsi
     reference_level_price: float = 0.0
+    htf_level_time: str = ""       # ISO timestamp of the HTF bar that supplied the swept level
+    htf_level_price: float = 0.0
+    htf_level_side: str = ""       # "high" or "low"
+    htf_level_tf_minutes: int = 0
+    fvg_to_inversion_bars: int = 0
+    sweep_to_inversion_bars: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1485,6 +1500,12 @@ class _SetupCandidate:
     lsi_internal_swing_level: float = 1e38  # sentinel: 1e38=disabled (longs), -1e38=disabled (shorts)
     reference_level_name: str = ""
     reference_level_price: float = 0.0
+    htf_level_time: str = ""
+    htf_level_price: float = 0.0
+    htf_level_side: str = ""
+    htf_level_tf_minutes: int = 0
+    fvg_to_inversion_bars: int = 0
+    sweep_to_inversion_bars: int = 0
 
 
 def _session_key(session: SessionConfig) -> tuple:
@@ -1518,6 +1539,16 @@ def _fvg_no_orb_key(session: SessionConfig, config: StrategyConfig) -> tuple:
     )
 
 
+def _htf_key(session: SessionConfig, config: StrategyConfig) -> tuple:
+    """Hashable key identifying a unique HTF level computation."""
+    return (
+        config.htf_level_tf_minutes,
+        config.htf_n_left,
+        session.sweep_start,
+        session.sweep_end,
+    )
+
+
 def _compute_previous_day_instance_ids(timestamps: pd.DatetimeIndex) -> np.ndarray:
     """Return a per-bar id for the currently published previous-day level."""
     return np.cumsum(compute_trading_days(timestamps)) - 1
@@ -1539,6 +1570,104 @@ def _compute_completed_session_instance_ids(
         instance_ids[i] = completed_count
 
     return instance_ids
+
+
+def _compute_previous_week_instance_ids(timestamps: pd.DatetimeIndex) -> np.ndarray:
+    """Return a per-bar id for the currently published previous-week level."""
+    localized = timestamps.tz_convert("America/New_York") if timestamps.tz is not None else timestamps.tz_localize("America/New_York")
+    week_periods = localized.tz_localize(None).to_period("W-SUN")
+    new_week = np.empty(len(timestamps), dtype=bool)
+    new_week[0] = True
+    new_week[1:] = week_periods[1:] != week_periods[:-1]
+    return np.cumsum(new_week) - 1
+
+
+def _reference_levels_need_data(level_names: tuple[str, ...] | None) -> bool:
+    return bool(level_names) and any(level_name in DATA_REF_LSI_LEVELS for level_name in level_names)
+
+
+def _build_static_reference_level_cache(
+    df: pd.DataFrame,
+    timestamps: pd.DatetimeIndex,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    levels = compute_reference_levels(df)
+    prev_day_ids = _compute_previous_day_instance_ids(timestamps)
+    prev_week_ids = _compute_previous_week_instance_ids(timestamps)
+    asia_ids = _compute_completed_session_instance_ids(timestamps, ASIA_SESSION)
+    london_ids = _compute_completed_session_instance_ids(timestamps, LDN_SESSION)
+    new_york_ids = _compute_completed_session_instance_ids(timestamps, NY_SESSION)
+    instance_ids = {
+        "previous_day_high": prev_day_ids,
+        "previous_day_low": prev_day_ids,
+        "previous_week_high": prev_week_ids,
+        "previous_week_low": prev_week_ids,
+        "asia_high": asia_ids,
+        "asia_low": asia_ids,
+        "london_high": london_ids,
+        "london_low": london_ids,
+        "new_york_high": new_york_ids,
+        "new_york_low": new_york_ids,
+    }
+    return levels, instance_ids
+
+
+def _resolve_reference_levels(
+    df: pd.DataFrame,
+    timestamps: pd.DatetimeIndex,
+    *,
+    selected_level_names: tuple[str, ...],
+    signal_df_1m: pd.DataFrame | None,
+    atr_length: int,
+    data_sweep_min_daily_atr_pct: float,
+    signal_cache: dict | None = None,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    if signal_cache is not None and "reference_levels" in signal_cache:
+        reference_levels = dict(signal_cache["reference_levels"])
+        reference_instance_ids = dict(signal_cache["reference_level_instance_ids"])
+    else:
+        reference_levels, reference_instance_ids = _build_static_reference_level_cache(df, timestamps)
+
+    if not _reference_levels_need_data(selected_level_names):
+        return reference_levels, reference_instance_ids
+
+    if signal_df_1m is None:
+        raise ValueError(
+            "signal_df_1m is required when data_high/data_low reference levels are enabled."
+        )
+
+    data_key = (int(atr_length), float(data_sweep_min_daily_atr_pct))
+    data_cache = signal_cache.get("data_reference_levels") if signal_cache is not None else None
+    cached_data = data_cache.get(data_key) if data_cache is not None else None
+    if cached_data is None:
+        data_levels, data_ids = compute_data_sweep_levels(
+            df,
+            signal_df_1m,
+            atr_length=atr_length,
+            min_daily_atr_pct=data_sweep_min_daily_atr_pct,
+        )
+    else:
+        data_levels = cached_data["levels"]
+        data_ids = cached_data["instance_ids"]
+
+    reference_levels.update(data_levels)
+    reference_instance_ids["data_high"] = data_ids
+    reference_instance_ids["data_low"] = data_ids
+    return reference_levels, reference_instance_ids
+
+
+def _select_recent_htf_sweep(
+    events: list[dict],
+    *,
+    side: str,
+) -> dict | None:
+    """Pick the freshest sweep event, preferring the outermost level on ties."""
+    if not events:
+        return None
+    latest_bar = max(int(event["sweep_bar"]) for event in events)
+    latest_events = [event for event in events if int(event["sweep_bar"]) == latest_bar]
+    if side == "high":
+        return max(latest_events, key=lambda event: (float(event["level_price"]), -int(event["source_rank"])))
+    return min(latest_events, key=lambda event: (float(event["level_price"]), int(event["source_rank"])))
 
 
 def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.ndarray:
@@ -1613,6 +1742,7 @@ def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
     config: StrategyConfig,
+    signal_df_1m: pd.DataFrame | None = None,
     _signal_cache: dict | None = None,
 ) -> list[_SetupCandidate]:
     """Extract first-FVG-per-day setup candidates for a session.
@@ -1621,6 +1751,8 @@ def _extract_setup_candidates(
     session-day and take the first valid FVG per direction.
 
     Args:
+        signal_df_1m: Optional raw 1-minute DataFrame used for HTF level
+            construction in ``htf_lsi`` mode.
         _signal_cache: Optional pre-computed signal cache from
             :func:`build_signal_cache`. When provided, all signal arrays
             are looked up instead of recomputed — critical for parameter
@@ -1777,6 +1909,80 @@ def _extract_setup_candidates(
             sweep_gate=config.lsi_sweep_gate,
             stale_breach_consumes_pivot=config.lsi_stale_breach_consumes_pivot,
         )
+    elif config.strategy == "htf_lsi":
+        from ..signals.fvg import detect_fvg_no_orb
+
+        if _signal_cache is not None and "fvg_no_orb" in _signal_cache:
+            fvg_htf = _signal_cache["fvg_no_orb"][_fvg_no_orb_key(session, config)]
+        else:
+            fvg_htf = detect_fvg_no_orb(
+                df["high"].values,
+                df["low"].values,
+                daily_atr,
+                session.min_gap_atr_pct,
+            )
+
+        valid_long_htf = fvg_htf["long_fvg"] & masks["in_entry"] & masks["in_rth"]
+        valid_short_htf = fvg_htf["short_fvg"] & masks["in_entry"] & masks["in_rth"]
+        if excluded:
+            _excl_arr = np.array(list(excluded))
+            _excl_mask = np.isin(date_strs, _excl_arr)
+            valid_long_htf &= ~_excl_mask
+            valid_short_htf &= ~_excl_mask
+
+        htf_levels = None
+        if config.htf_lsi_include_htf_levels:
+            if _signal_cache is not None and "htf_levels" in _signal_cache:
+                htf_levels = _signal_cache["htf_levels"][_htf_key(session, config)]
+            else:
+                if signal_df_1m is None:
+                    raise ValueError("htf_lsi requires signal_df_1m when HTF sweep levels are enabled and signal cache is not provided.")
+                htf_levels = compute_htf_unswept_levels(
+                    df,
+                    signal_df_1m,
+                    tf_minutes=config.htf_level_tf_minutes,
+                    n_left=config.htf_n_left,
+                )
+
+        reference_levels = None
+        reference_instance_ids = None
+        if config.htf_lsi_reference_levels:
+            reference_levels, reference_instance_ids = _resolve_reference_levels(
+                df,
+                timestamps,
+                selected_level_names=config.htf_lsi_reference_levels,
+                signal_df_1m=signal_df_1m,
+                atr_length=config.atr_length,
+                data_sweep_min_daily_atr_pct=config.data_sweep_min_daily_atr_pct,
+                signal_cache=_signal_cache,
+            )
+
+        candidates = _extract_htf_lsi_candidates(
+            df,
+            fvg_htf,
+            valid_long_htf,
+            valid_short_htf,
+            session_day_id,
+            masks["in_entry"],
+            masks["in_rth"],
+            masks["in_sweep"],
+            dates,
+            close,
+            daily_atr,
+            session,
+            htf_levels=htf_levels,
+            reference_levels=reference_levels,
+            reference_instance_ids=reference_instance_ids,
+            selected_reference_level_names=config.htf_lsi_reference_levels,
+            include_htf_levels=config.htf_lsi_include_htf_levels,
+            fvg_window_left=config.lsi_fvg_window_left,
+            fvg_window_right=config.lsi_fvg_window_right,
+            direction_filter=config.direction_filter,
+            stop_mode=config.lsi_stop_mode,
+            entry_mode=config.lsi_entry_mode,
+            max_fvg_to_inversion_bars=config.max_fvg_to_inversion_bars,
+            htf_level_tf_minutes=config.htf_level_tf_minutes,
+        )
     elif config.strategy == "reference_lsi":
         from ..signals.fvg import detect_fvg_no_orb
 
@@ -1798,22 +2004,15 @@ def _extract_setup_candidates(
             valid_long_ref &= ~_excl_mask
             valid_short_ref &= ~_excl_mask
 
-        if _signal_cache is not None and "reference_levels" in _signal_cache:
-            reference_levels = _signal_cache["reference_levels"]
-            reference_instance_ids = _signal_cache["reference_level_instance_ids"]
-        else:
-            reference_levels = compute_reference_levels(df)
-            prev_day_ids = _compute_previous_day_instance_ids(timestamps)
-            asia_ids = _compute_completed_session_instance_ids(timestamps, ASIA_SESSION)
-            london_ids = _compute_completed_session_instance_ids(timestamps, LDN_SESSION)
-            reference_instance_ids = {
-                "previous_day_high": prev_day_ids,
-                "previous_day_low": prev_day_ids,
-                "asia_high": asia_ids,
-                "asia_low": asia_ids,
-                "london_high": london_ids,
-                "london_low": london_ids,
-            }
+        reference_levels, reference_instance_ids = _resolve_reference_levels(
+            df,
+            timestamps,
+            selected_level_names=config.ref_lsi_reference_levels,
+            signal_df_1m=signal_df_1m,
+            atr_length=config.atr_length,
+            data_sweep_min_daily_atr_pct=config.data_sweep_min_daily_atr_pct,
+            signal_cache=_signal_cache,
+        )
 
         candidates = _extract_reference_lsi_candidates(
             df,
@@ -2653,6 +2852,423 @@ def _extract_lsi_candidates(
     return candidates
 
 
+def _dt64_to_iso(value: np.datetime64) -> str:
+    """Convert datetime64[ns] to ISO string, preserving missing values."""
+    if np.isnat(value):
+        return ""
+    return pd.Timestamp(value).isoformat()
+
+
+def _extract_htf_lsi_candidates(
+    df: pd.DataFrame,
+    fvg: dict[str, np.ndarray],
+    valid_long: np.ndarray,
+    valid_short: np.ndarray,
+    session_day_id: np.ndarray,
+    in_entry: np.ndarray,
+    in_rth: np.ndarray,
+    in_sweep: np.ndarray,
+    dates,
+    close: np.ndarray,
+    daily_atr: np.ndarray,
+    session,
+    *,
+    htf_levels: dict[str, np.ndarray] | None = None,
+    reference_levels: dict[str, np.ndarray] | None = None,
+    reference_instance_ids: dict[str, np.ndarray] | None = None,
+    selected_reference_level_names: tuple[str, ...] = (),
+    include_htf_levels: bool = True,
+    fvg_window_left: int = 10,
+    fvg_window_right: int = 10,
+    direction_filter: str = "both",
+    stop_mode: str = "absolute",
+    entry_mode: str = "close",
+    max_fvg_to_inversion_bars: int = 0,
+    htf_level_tf_minutes: int = 60,
+) -> list[_SetupCandidate]:
+    """Extract HTF-LSI candidates using HTF pivots and optional named reference levels."""
+    n = len(df)
+    high = df["high"].to_numpy(dtype=np.float64)
+    low = df["low"].to_numpy(dtype=np.float64)
+
+    take_shorts = direction_filter in ("both", "short")
+    take_longs = direction_filter in ("both", "long")
+
+    long_fvg_bottom = fvg["long_fvg_bottom"]
+    short_fvg_top = fvg["short_fvg_top"]
+    long_fvg_bool = fvg["long_fvg"]
+    short_fvg_bool = fvg["short_fvg"]
+    long_fvg_top_arr = fvg["long_entry_price"]
+    long_fvg_bot_arr = fvg["long_fvg_bottom"]
+    short_fvg_top_arr = fvg["short_fvg_top"]
+    short_fvg_bot_arr = fvg["short_entry_price"]
+
+    high_level_sources: list[dict] = []
+    low_level_sources: list[dict] = []
+    source_rank = 0
+
+    if include_htf_levels:
+        if htf_levels is None:
+            raise ValueError("htf_levels are required when include_htf_levels=True.")
+        high_level_sources.append(
+            {
+                "source_name": "htf_high",
+                "level_name": "",
+                "prices": htf_levels["active_high_price"],
+                "instance_ids": htf_levels["active_high_instance_id"],
+                "times": htf_levels["active_high_level_time"],
+                "tf_minutes": htf_level_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+        low_level_sources.append(
+            {
+                "source_name": "htf_low",
+                "level_name": "",
+                "prices": htf_levels["active_low_price"],
+                "instance_ids": htf_levels["active_low_instance_id"],
+                "times": htf_levels["active_low_level_time"],
+                "tf_minutes": htf_level_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+
+    if selected_reference_level_names:
+        if reference_levels is None or reference_instance_ids is None:
+            raise ValueError("reference_levels and reference_instance_ids are required when HTF-LSI reference levels are enabled.")
+        for level_name in selected_reference_level_names:
+            if level_name not in reference_levels or level_name not in reference_instance_ids:
+                raise ValueError(f"Missing cached HTF-LSI reference level arrays for {level_name!r}.")
+            source = {
+                "source_name": level_name,
+                "level_name": level_name,
+                "prices": reference_levels[level_name],
+                "instance_ids": reference_instance_ids[level_name],
+                "times": None,
+                "tf_minutes": 0,
+                "source_rank": source_rank,
+            }
+            source_rank += 1
+            if level_name.endswith("_high"):
+                high_level_sources.append(source)
+            else:
+                low_level_sources.append(source)
+
+    if not high_level_sources and not low_level_sources:
+        raise ValueError("htf_lsi requires at least one configured sweep source.")
+
+    detected_bullish_fvgs: list[dict] = []
+    detected_bearish_fvgs: list[dict] = []
+    active_for_short: list[dict] = []
+    active_for_long: list[dict] = []
+    recent_sweep_highs: list[dict] = []
+    recent_sweep_lows: list[dict] = []
+    armed_high_instances: set[tuple[str, int]] = set()
+    armed_low_instances: set[tuple[str, int]] = set()
+
+    level_state: dict[str, dict[str, int | bool]] = {
+        source["source_name"]: {"instance_id": -10_000_000, "consumed": False}
+        for source in (*high_level_sources, *low_level_sources)
+    }
+    candidates: list[_SetupCandidate] = []
+
+    for i in range(n):
+        sd = int(session_day_id[i])
+
+        new_sweep_highs: list[dict] = []
+        new_sweep_lows: list[dict] = []
+
+        for source in high_level_sources:
+            state = level_state[source["source_name"]]
+            instance_ids = source["instance_ids"]
+            instance_id = int(instance_ids[i]) if i < len(instance_ids) else -1
+            if instance_id != state["instance_id"]:
+                state["instance_id"] = instance_id
+                state["consumed"] = False
+
+            if not take_shorts or state["consumed"] or instance_id < 0:
+                continue
+
+            level_price = float(source["prices"][i])
+            if not np.isfinite(level_price) or high[i] <= level_price or not in_sweep[i]:
+                continue
+
+            state["consumed"] = True
+            level_key = (str(source["source_name"]), instance_id)
+            if not in_entry[i] or level_key in armed_high_instances:
+                continue
+
+            level_time_iso = ""
+            if source["times"] is not None:
+                level_time_iso = _dt64_to_iso(source["times"][i])
+            event = {
+                "sweep_bar": i,
+                "level_price": level_price,
+                "session_day": sd,
+                "level_key": level_key,
+                "level_name": str(source["level_name"]),
+                "level_time_iso": level_time_iso,
+                "tf_minutes": int(source["tf_minutes"]),
+                "source_rank": int(source["source_rank"]),
+            }
+            recent_sweep_highs.append(event)
+            new_sweep_highs.append(event)
+
+        for source in low_level_sources:
+            state = level_state[source["source_name"]]
+            instance_ids = source["instance_ids"]
+            instance_id = int(instance_ids[i]) if i < len(instance_ids) else -1
+            if instance_id != state["instance_id"]:
+                state["instance_id"] = instance_id
+                state["consumed"] = False
+
+            if not take_longs or state["consumed"] or instance_id < 0:
+                continue
+
+            level_price = float(source["prices"][i])
+            if not np.isfinite(level_price) or low[i] >= level_price or not in_sweep[i]:
+                continue
+
+            state["consumed"] = True
+            level_key = (str(source["source_name"]), instance_id)
+            if not in_entry[i] or level_key in armed_low_instances:
+                continue
+
+            level_time_iso = ""
+            if source["times"] is not None:
+                level_time_iso = _dt64_to_iso(source["times"][i])
+            event = {
+                "sweep_bar": i,
+                "level_price": level_price,
+                "session_day": sd,
+                "level_key": level_key,
+                "level_name": str(source["level_name"]),
+                "level_time_iso": level_time_iso,
+                "tf_minutes": int(source["tf_minutes"]),
+                "source_rank": int(source["source_rank"]),
+            }
+            recent_sweep_lows.append(event)
+            new_sweep_lows.append(event)
+
+        recent_sweep_highs = [
+            sweep for sweep in recent_sweep_highs
+            if sweep["session_day"] == sd
+            and (i - int(sweep["sweep_bar"])) <= fvg_window_right
+            and sweep["level_key"] not in armed_high_instances
+        ]
+        recent_sweep_lows = [
+            sweep for sweep in recent_sweep_lows
+            if sweep["session_day"] == sd
+            and (i - int(sweep["sweep_bar"])) <= fvg_window_right
+            and sweep["level_key"] not in armed_low_instances
+        ]
+
+        if valid_long[i] and take_shorts:
+            base_entry = {
+                "fvg_bar": i,
+                "inv_level": float(long_fvg_bottom[i]),
+                "gap_sz": float(fvg["long_gap_size"][i]),
+                "atr_v": float(daily_atr[i]),
+                "sd": sd,
+            }
+            selected_sweep = _select_recent_htf_sweep(recent_sweep_highs, side="high")
+            if selected_sweep is not None:
+                active_for_short.append(
+                    {
+                        **base_entry,
+                        "swept_level": float(selected_sweep["level_price"]),
+                        "fvg_other_bound": float(long_fvg_top_arr[i]),
+                        "sweep_bar": int(selected_sweep["sweep_bar"]),
+                        "level_key": selected_sweep["level_key"],
+                        "level_time_iso": str(selected_sweep["level_time_iso"]),
+                        "reference_level_name": str(selected_sweep["level_name"]),
+                        "level_tf_minutes": int(selected_sweep["tf_minutes"]),
+                    }
+                )
+            else:
+                detected_bullish_fvgs.append(base_entry)
+
+        if valid_short[i] and take_longs:
+            base_entry = {
+                "fvg_bar": i,
+                "inv_level": float(short_fvg_top[i]),
+                "gap_sz": float(fvg["short_gap_size"][i]),
+                "atr_v": float(daily_atr[i]),
+                "sd": sd,
+            }
+            selected_sweep = _select_recent_htf_sweep(recent_sweep_lows, side="low")
+            if selected_sweep is not None:
+                active_for_long.append(
+                    {
+                        **base_entry,
+                        "swept_level": float(selected_sweep["level_price"]),
+                        "fvg_other_bound": float(short_fvg_bot_arr[i]),
+                        "sweep_bar": int(selected_sweep["sweep_bar"]),
+                        "level_key": selected_sweep["level_key"],
+                        "level_time_iso": str(selected_sweep["level_time_iso"]),
+                        "reference_level_name": str(selected_sweep["level_name"]),
+                        "level_tf_minutes": int(selected_sweep["tf_minutes"]),
+                    }
+                )
+            else:
+                detected_bearish_fvgs.append(base_entry)
+
+        selected_new_high_sweep = _select_recent_htf_sweep(new_sweep_highs, side="high")
+        if selected_new_high_sweep is not None:
+            still_pending = []
+            to_promote: list[dict] = []
+            for pending in detected_bullish_fvgs:
+                if pending["sd"] == sd and abs(i - int(pending["fvg_bar"])) <= fvg_window_left:
+                    to_promote.append(
+                        {
+                            **pending,
+                            "swept_level": float(selected_new_high_sweep["level_price"]),
+                            "fvg_other_bound": float(long_fvg_top_arr[int(pending["fvg_bar"])]),
+                            "sweep_bar": int(selected_new_high_sweep["sweep_bar"]),
+                            "level_key": selected_new_high_sweep["level_key"],
+                            "level_time_iso": str(selected_new_high_sweep["level_time_iso"]),
+                            "reference_level_name": str(selected_new_high_sweep["level_name"]),
+                            "level_tf_minutes": int(selected_new_high_sweep["tf_minutes"]),
+                        }
+                    )
+                else:
+                    still_pending.append(pending)
+            active_for_short.extend(to_promote)
+            detected_bullish_fvgs = still_pending
+
+        selected_new_low_sweep = _select_recent_htf_sweep(new_sweep_lows, side="low")
+        if selected_new_low_sweep is not None:
+            still_pending = []
+            to_promote: list[dict] = []
+            for pending in detected_bearish_fvgs:
+                if pending["sd"] == sd and abs(i - int(pending["fvg_bar"])) <= fvg_window_left:
+                    to_promote.append(
+                        {
+                            **pending,
+                            "swept_level": float(selected_new_low_sweep["level_price"]),
+                            "fvg_other_bound": float(short_fvg_bot_arr[int(pending["fvg_bar"])]),
+                            "sweep_bar": int(selected_new_low_sweep["sweep_bar"]),
+                            "level_key": selected_new_low_sweep["level_key"],
+                            "level_time_iso": str(selected_new_low_sweep["level_time_iso"]),
+                            "reference_level_name": str(selected_new_low_sweep["level_name"]),
+                            "level_tf_minutes": int(selected_new_low_sweep["tf_minutes"]),
+                        }
+                    )
+                else:
+                    still_pending.append(pending)
+            active_for_long.extend(to_promote)
+            detected_bearish_fvgs = still_pending
+
+        remaining_short_active = []
+        for pending in active_for_short:
+            if pending["level_key"] in armed_high_instances:
+                continue
+            if pending["sd"] != sd or i <= int(pending["fvg_bar"]):
+                remaining_short_active.append(pending)
+                continue
+            if not in_entry[i]:
+                continue
+            if close[i] < float(pending["inv_level"]):
+                fvg_to_inversion = i - int(pending["fvg_bar"])
+                if max_fvg_to_inversion_bars > 0 and fvg_to_inversion > max_fvg_to_inversion_bars:
+                    continue
+                armed_high_instances.add(pending["level_key"])
+                fvg_bar = int(pending["fvg_bar"])
+                sweep_bar = int(pending["sweep_bar"])
+                swept_level = float(pending["swept_level"])
+                structural_stop = float(low[fvg_bar]) if stop_mode == "fvg" else float(np.max(high[fvg_bar:i + 1]))
+                entry_price = float(pending["inv_level"]) if entry_mode == "fvg_limit" else float(close[i])
+                signal_bar = i if entry_mode == "fvg_limit" else i - 1
+                candidates.append(
+                    _SetupCandidate(
+                        date_str=str(dates[i]),
+                        session=session.name,
+                        direction=-1,
+                        signal_bar=signal_bar,
+                        entry_price=entry_price,
+                        gap_size=float(pending["gap_sz"]),
+                        daily_atr=float(pending["atr_v"]),
+                        orb_range=0.0,
+                        structural_stop_price=structural_stop,
+                        lsi_swept_level=swept_level,
+                        lsi_fvg_bar=fvg_bar,
+                        lsi_sweep_bar=sweep_bar,
+                        lsi_fvg_top=float(pending["fvg_other_bound"]),
+                        lsi_fvg_bottom=float(pending["inv_level"]),
+                        reference_level_name=str(pending["reference_level_name"]),
+                        reference_level_price=swept_level if pending["reference_level_name"] else 0.0,
+                        htf_level_time=str(pending["level_time_iso"]),
+                        htf_level_price=swept_level,
+                        htf_level_side="high",
+                        htf_level_tf_minutes=int(pending["level_tf_minutes"]),
+                        fvg_to_inversion_bars=fvg_to_inversion,
+                        sweep_to_inversion_bars=i - sweep_bar,
+                    )
+                )
+                continue
+            remaining_short_active.append(pending)
+        active_for_short = remaining_short_active
+
+        remaining_long_active = []
+        for pending in active_for_long:
+            if pending["level_key"] in armed_low_instances:
+                continue
+            if pending["sd"] != sd or i <= int(pending["fvg_bar"]):
+                remaining_long_active.append(pending)
+                continue
+            if not in_entry[i]:
+                continue
+            if close[i] > float(pending["inv_level"]):
+                fvg_to_inversion = i - int(pending["fvg_bar"])
+                if max_fvg_to_inversion_bars > 0 and fvg_to_inversion > max_fvg_to_inversion_bars:
+                    continue
+                armed_low_instances.add(pending["level_key"])
+                fvg_bar = int(pending["fvg_bar"])
+                sweep_bar = int(pending["sweep_bar"])
+                swept_level = float(pending["swept_level"])
+                structural_stop = float(high[fvg_bar]) if stop_mode == "fvg" else float(np.min(low[fvg_bar:i + 1]))
+                entry_price = float(pending["inv_level"]) if entry_mode == "fvg_limit" else float(close[i])
+                signal_bar = i if entry_mode == "fvg_limit" else i - 1
+                candidates.append(
+                    _SetupCandidate(
+                        date_str=str(dates[i]),
+                        session=session.name,
+                        direction=1,
+                        signal_bar=signal_bar,
+                        entry_price=entry_price,
+                        gap_size=float(pending["gap_sz"]),
+                        daily_atr=float(pending["atr_v"]),
+                        orb_range=0.0,
+                        structural_stop_price=structural_stop,
+                        lsi_swept_level=swept_level,
+                        lsi_fvg_bar=fvg_bar,
+                        lsi_sweep_bar=sweep_bar,
+                        lsi_fvg_top=float(pending["inv_level"]),
+                        lsi_fvg_bottom=float(pending["fvg_other_bound"]),
+                        reference_level_name=str(pending["reference_level_name"]),
+                        reference_level_price=swept_level if pending["reference_level_name"] else 0.0,
+                        htf_level_time=str(pending["level_time_iso"]),
+                        htf_level_price=swept_level,
+                        htf_level_side="low",
+                        htf_level_tf_minutes=int(pending["level_tf_minutes"]),
+                        fvg_to_inversion_bars=fvg_to_inversion,
+                        sweep_to_inversion_bars=i - sweep_bar,
+                    )
+                )
+                continue
+            remaining_long_active.append(pending)
+        active_for_long = remaining_long_active
+
+        detected_bullish_fvgs = [p for p in detected_bullish_fvgs if p["sd"] >= sd]
+        detected_bearish_fvgs = [p for p in detected_bearish_fvgs if p["sd"] >= sd]
+        active_for_short = [p for p in active_for_short if p["sd"] >= sd and p["level_key"] not in armed_high_instances]
+        active_for_long = [p for p in active_for_long if p["sd"] >= sd and p["level_key"] not in armed_low_instances]
+
+    return candidates
+
+
 def _extract_reference_lsi_candidates(
     df: pd.DataFrame,
     fvg: dict[str, np.ndarray],
@@ -2700,14 +3316,7 @@ def _extract_reference_lsi_candidates(
     short_fvg_bottom = fvg["short_entry_price"]
 
     if selected_level_names is None:
-        selected_level_names = (
-            "previous_day_high",
-            "previous_day_low",
-            "asia_high",
-            "asia_low",
-            "london_high",
-            "london_low",
-        )
+        selected_level_names = REF_LSI_LEVELS
 
     high_side_levels = tuple(level for level in selected_level_names if level.endswith("_high"))
     low_side_levels = tuple(level for level in selected_level_names if level.endswith("_low"))
@@ -3047,6 +3656,7 @@ def build_maps(
 def build_signal_cache(
     df: pd.DataFrame,
     configs: list[StrategyConfig],
+    signal_df_1m: pd.DataFrame | None = None,
 ) -> dict:
     """Pre-compute all signal arrays needed by a set of configs.
 
@@ -3069,26 +3679,58 @@ def build_signal_cache(
     computations run in parallel (batch 2) since FVG depends on session + ATR.
     NumPy/Numba operations release the GIL, so threads achieve true parallelism.
     """
-    cache: dict = {"atr": {}, "session": {}, "fvg": {}, "fvg_no_orb": {}}
+    cache: dict = {"atr": {}, "session": {}, "fvg": {}, "fvg_no_orb": {}, "htf_levels": {}}
     timestamps = df.index
 
     # --- Date strings: config-independent, computed exactly once ---
     date_strs = compute_date_strings(timestamps)
 
-    needs_reference_levels = any(c.strategy == "reference_lsi" for c in configs)
+    needs_reference_levels = any(
+        c.strategy == "reference_lsi" or (c.strategy == "htf_lsi" and bool(c.htf_lsi_reference_levels))
+        for c in configs
+    )
+    needs_data_reference_levels = any(
+        (
+            c.strategy == "reference_lsi"
+            and _reference_levels_need_data(c.ref_lsi_reference_levels)
+        )
+        or (
+            c.strategy == "htf_lsi"
+            and _reference_levels_need_data(c.htf_lsi_reference_levels)
+        )
+        for c in configs
+    )
+    needs_htf_levels = any(c.strategy == "htf_lsi" and c.htf_lsi_include_htf_levels for c in configs)
     if needs_reference_levels:
-        cache["reference_levels"] = compute_reference_levels(df)
-        prev_day_ids = _compute_previous_day_instance_ids(timestamps)
-        asia_ids = _compute_completed_session_instance_ids(timestamps, ASIA_SESSION)
-        london_ids = _compute_completed_session_instance_ids(timestamps, LDN_SESSION)
-        cache["reference_level_instance_ids"] = {
-            "previous_day_high": prev_day_ids,
-            "previous_day_low": prev_day_ids,
-            "asia_high": asia_ids,
-            "asia_low": asia_ids,
-            "london_high": london_ids,
-            "london_low": london_ids,
+        cache["reference_levels"], cache["reference_level_instance_ids"] = _build_static_reference_level_cache(
+            df,
+            timestamps,
+        )
+    if (needs_htf_levels or needs_data_reference_levels) and signal_df_1m is None:
+        raise ValueError(
+            "build_signal_cache requires signal_df_1m when configs enable HTF-LSI pivot sweep levels or data_high/data_low."
+        )
+    if needs_data_reference_levels:
+        cache["data_reference_levels"] = {}
+        data_keys = {
+            (c.atr_length, float(c.data_sweep_min_daily_atr_pct))
+            for c in configs
+            if (
+                (c.strategy == "reference_lsi" and _reference_levels_need_data(c.ref_lsi_reference_levels))
+                or (c.strategy == "htf_lsi" and _reference_levels_need_data(c.htf_lsi_reference_levels))
+            )
         }
+        for atr_length, min_pct in data_keys:
+            data_levels, data_ids = compute_data_sweep_levels(
+                df,
+                signal_df_1m,
+                atr_length=atr_length,
+                min_daily_atr_pct=min_pct,
+            )
+            cache["data_reference_levels"][(int(atr_length), float(min_pct))] = {
+                "levels": data_levels,
+                "instance_ids": data_ids,
+            }
 
     # Collect unique keys
     atr_lengths = {c.atr_length for c in configs}
@@ -3169,11 +3811,15 @@ def build_signal_cache(
             if fkey not in seen_fvg:
                 seen_fvg.add(fkey)
                 unique_fvg_tasks.append((fkey, session, config))
-            if config.strategy in {"lsi", "reference_lsi"}:
+            if config.strategy in {"lsi", "htf_lsi", "reference_lsi"}:
                 no_orb_key = _fvg_no_orb_key(session, config)
                 if no_orb_key not in seen_no_orb_fvg:
                     seen_no_orb_fvg.add(no_orb_key)
                     unique_no_orb_fvg_tasks.append((no_orb_key, session, config))
+            if config.strategy == "htf_lsi" and config.htf_lsi_include_htf_levels:
+                htf_key = _htf_key(session, config)
+                if htf_key not in cache["htf_levels"]:
+                    cache["htf_levels"][htf_key] = None
 
     def _compute_fvg(fkey, session, config):
         skey = _session_key(session)
@@ -3203,6 +3849,28 @@ def build_signal_cache(
             session.min_gap_atr_pct,
         )
         return no_orb_key, fvg
+
+    unique_htf_tasks: list[tuple] = []
+    if needs_htf_levels:
+        seen_htf: set[tuple] = set()
+        for config in configs:
+            if config.strategy != "htf_lsi" or not config.htf_lsi_include_htf_levels:
+                continue
+            for session in config.sessions:
+                htf_key = _htf_key(session, config)
+                if htf_key in seen_htf:
+                    continue
+                seen_htf.add(htf_key)
+                unique_htf_tasks.append((htf_key, config))
+
+    def _compute_htf_levels(htf_key, config):
+        levels = compute_htf_unswept_levels(
+            df,
+            signal_df_1m,
+            tf_minutes=config.htf_level_tf_minutes,
+            n_left=config.htf_n_left,
+        )
+        return htf_key, levels
 
     n_fvg = len(unique_fvg_tasks)
     max_fvg_workers = min(n_fvg, (os.cpu_count() or 1))
@@ -3237,6 +3905,22 @@ def build_signal_cache(
         for no_orb_key, session, config in unique_no_orb_fvg_tasks:
             _, fvg = _compute_no_orb_fvg(no_orb_key, session, config)
             cache["fvg_no_orb"][no_orb_key] = fvg
+
+    n_htf = len(unique_htf_tasks)
+    max_htf_workers = min(n_htf, (os.cpu_count() or 1))
+    if max_htf_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_htf_workers) as executor:
+            futures = [
+                executor.submit(_compute_htf_levels, htf_key, config)
+                for htf_key, config in unique_htf_tasks
+            ]
+            for f in futures:
+                htf_key, levels = f.result()
+                cache["htf_levels"][htf_key] = levels
+    else:
+        for htf_key, config in unique_htf_tasks:
+            _, levels = _compute_htf_levels(htf_key, config)
+            cache["htf_levels"][htf_key] = levels
 
     return cache
 
@@ -3303,6 +3987,7 @@ def run_backtest(
     start_date: str | None = None,
     end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
+    signal_df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
     _maps: dict | None = None,
@@ -3322,6 +4007,9 @@ def run_backtest(
             Enables hierarchical drill-down mode: simulation runs at 5m, drilling
             to 1m only on ambiguous bars (where a single candle simultaneously
             touches two price objectives).
+        signal_df_1m: Optional raw 1-minute OHLCV DataFrame used to build
+            HTF structure for ``htf_lsi``. Kept separate from ``df_1m`` so HTF
+            signal construction does not depend on whether bar magnifier is used.
         df_30s: Optional 30-second OHLCV DataFrame.
             When provided alongside df_1m, adds a 30s tier between 1m and 1s:
             ambiguous 1m bars drill to 30s before going to 1s.
@@ -3470,7 +4158,13 @@ def run_backtest(
 
     for session in config.sessions:
         # Extract candidates (vectorized); reuses _signal_cache when provided
-        candidates = _extract_setup_candidates(df, session, config, _signal_cache=_signal_cache)
+        candidates = _extract_setup_candidates(
+            df,
+            session,
+            config,
+            signal_df_1m=signal_df_1m,
+            _signal_cache=_signal_cache,
+        )
 
         # Pre-simulation date filter: skip candidates outside the active window.
         # This avoids running expensive Numba simulation on dates that will be
@@ -3786,6 +4480,12 @@ def run_backtest(
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
                 reference_level_name=pc.cand.reference_level_name,
                 reference_level_price=pc.cand.reference_level_price,
+                htf_level_time=pc.cand.htf_level_time,
+                htf_level_price=pc.cand.htf_level_price,
+                htf_level_side=pc.cand.htf_level_side,
+                htf_level_tf_minutes=pc.cand.htf_level_tf_minutes,
+                fvg_to_inversion_bars=pc.cand.fvg_to_inversion_bars,
+                sweep_to_inversion_bars=pc.cand.sweep_to_inversion_bars,
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:
@@ -3806,6 +4506,12 @@ def run_backtest(
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
                 reference_level_name=pc.cand.reference_level_name,
                 reference_level_price=pc.cand.reference_level_price,
+                htf_level_time=pc.cand.htf_level_time,
+                htf_level_price=pc.cand.htf_level_price,
+                htf_level_side=pc.cand.htf_level_side,
+                htf_level_tf_minutes=pc.cand.htf_level_tf_minutes,
+                fvg_to_inversion_bars=pc.cand.fvg_to_inversion_bars,
+                sweep_to_inversion_bars=pc.cand.sweep_to_inversion_bars,
             ))
 
         is_ib = config.strategy == "ib"
@@ -3881,6 +4587,60 @@ def run_backtest(
                     )
                     _append_sim_result(winner_pc, *winner_sim)
                     current_exit_bar = max(current_exit_bar, winner_sim[2])
+
+                    next_pending = []
+                    for pc, sim in pending:
+                        if pc is winner_pc:
+                            continue
+                        if pc.cand.signal_bar <= current_exit_bar:
+                            _append_no_fill(pc)
+                        else:
+                            next_pending.append((pc, sim))
+                    pending = next_pending
+                continue
+            if config.strategy == "htf_lsi":
+                pending = [
+                    (pc, _simulate_candidate(pc))
+                    for pc in sorted(group, key=lambda pc: (pc.cand.signal_bar, pc.entry_bar_start))
+                ]
+                current_exit_bar = -1
+                filled_count = 0
+                direction_priority = {-1: -1, 1: 1}
+
+                while pending:
+                    blocked = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar <= current_exit_bar]
+                    if blocked:
+                        for pc, _ in blocked:
+                            _append_no_fill(pc)
+                        pending = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar > current_exit_bar]
+                        if not pending:
+                            break
+
+                    if (
+                        config.htf_trade_max_per_session > 0
+                        and filled_count >= config.htf_trade_max_per_session
+                    ):
+                        for pc, _ in pending:
+                            _append_no_fill(pc)
+                        break
+
+                    filled = [(pc, sim) for pc, sim in pending if sim[0] >= 0]
+                    if not filled:
+                        for pc, sim in pending:
+                            _append_sim_result(pc, *sim)
+                        break
+
+                    winner_pc, winner_sim = min(
+                        filled,
+                        key=lambda x: (
+                            x[1][0],
+                            x[0].cand.signal_bar,
+                            direction_priority.get(x[0].direction, 0),
+                        ),
+                    )
+                    _append_sim_result(winner_pc, *winner_sim)
+                    current_exit_bar = max(current_exit_bar, winner_sim[2])
+                    filled_count += 1
 
                     next_pending = []
                     for pc, sim in pending:

@@ -1,8 +1,8 @@
 # ALPHA_V1 Portfolio
 
-Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. The separate-account model generates 3-4x more lifetime value than combining legs on a single account ($1.66M vs $478K for NQ_NY_LSI alone) because single-leg accounts survive the extraction phase much longer.
+Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. As of 2026-04-12, the NQ NY leg has been swapped from the archived legacy `NQ_NY_LSI` branch to the current canonical `HTF_LSI_5M_LAG24` operating profile.
 
-Source: LLM Council sessions (2026-04-03), lifecycle simulation, OOS verification.
+Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and current HTF-LSI exact replay (updated 2026-04-12).
 
 ---
 
@@ -22,76 +22,74 @@ Source: LLM Council sessions (2026-04-03), lifecycle simulation, OOS verificatio
 
 ### Risk Sizing Per Leg
 
-Risk is differentiated per leg based on actual trade-level prop sim (2016-2026, 14 calendar day stagger, $2500 payout / -$2000 breach).
+Risk is differentiated per leg based on actual trade-level prop sims. For the new NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep; a full four-leg exact rerun on the tightened live row is still pending.
 
 | Leg | Sprint Risk | Pay% | PayD | MCBch | EV$/acct | Rationale |
 |-----|------------|------|------|-------|----------|-----------|
-| NQ NY LSI | $400 | 96.9% | 172d | 3 | +$2,360 | Flagship, already strong |
+| NQ NY HTF-LSI lag24 | $300 | 90.6% | 304d | 9 | +$2,076 | Canonical LSI swap-in; recent 2024-2026 packet stayed strong at 98.0% / 176d |
 | NQ Asia ORB | $300 | 96.9% | 132d | 2 | +$2,362 | $400 → 90.4% with 6 MCBch. $300 fixes it |
 | ES Asia Cont | $200 | 98.4% | 323d | 3 | +$2,430 | Weak R production. $400 → 85.4% with 6 MCBch |
 | ES NY Cont | $300 | 91.9% | 210d | 5 | +$2,137 | Lumpy wins. $400 → 82.7% with 7 MCBch |
 
-**Portfolio at adjusted risk (4 separate accounts):** 96.0% payout rate, 210d avg, 3 max consec breach, +$2,322 EV/acct.
+**Current combined-account exact packet with HTF swap (legacy `NQ_NY_LSI` replaced by `HTF_LSI_5M_LAG24` at `$300`; other legs unchanged):**
 
-**Combined single account at adjusted risk (LSI=$400, NQ Asia=$300, ES Asia=$200, ES NY=$300):**
+| Window | Pay% | Avg PayD | Payouts | Breaches | Open | Notes |
+|--------|------|----------|---------|----------|------|-------|
+| 10Y | 73.6% | 134d | 192 | 69 | 0 | Exact replacement packet |
+| 2024 | 84.2% | 110d | 16 | 3 | 7 | Strong replacement year |
+| 2025 | 84.6% | 96d | 22 | 4 | 0 | Best fully resolved recent year |
+| 2026 YTD | 100.0%* | 42d | 1 | 0 | 5 | Too open-heavy to lean on |
 
-| Metric | $400 Flat | Adjusted | Delta |
-|--------|-----------|----------|-------|
-| Payout rate | 79.7% | **92.4%** | +12.7% |
-| Breach rate | 20.3% | **7.6%** | -12.7% |
-| Avg days to payout | 28d | 45d | +17d |
-| Max consec breaches | 4 | **3** | -1 |
-| Max consec payouts | 17 | **52** | +35 |
-| Payouts (10yr) | 212 | **243** | +31 |
-| Breaches (10yr) | 54 | **20** | -34 |
-| EV$/acct | +$1,586 | **+$2,158** | +$572 |
-
-2025 adjusted: 96.2% payout, 31d avg, 1 max consec breach, +$2,327 EV/acct.
-
-Source: actual trade-level backtest simulation ([alpha_v1_combined_backtest.py](../scripts/alpha_v1_combined_backtest.py)), not Monte Carlo inference.
+\* Resolved accounts only. This portfolio packet was run on the immediately prior lag24 baseline (`08:30-15:00`, `rr=3.0`, `tp1=0.6`). The live `ALPHA_V1` leg is now the tighter `08:30-13:30`, `rr=3.5`, `tp1=0.4` version, so a fresh full four-leg exact rerun is still pending.
 
 ---
 
 ## Active Legs
 
-### Leg 1: LSI/NQ_NY-RR3
+### Leg 1: HTF_LSI/NQ_NY-L24
 
-**Tier 1 — Flagship**
+**Tier 1 — Canonical LSI Swap-In**
 
 | Param | Value |
 |-------|-------|
-| strategy | lsi |
+| strategy | htf_lsi |
 | entry_mode | fvg_limit |
-| session | NY (09:35-15:30, flat 15:50) |
+| sweep_window | 08:30-15:00 |
+| session | NY (08:30-13:30 entry, flat 15:50) |
 | direction | long only |
-| rr | 3.0 |
-| tp1_ratio | 0.34 |
-| atr_length | 10 |
-| min_gap_atr_pct | 5.0% |
-| lsi_n_left | 8 |
-| lsi_n_right | 60 |
-| fvg_window | 20 / 5 |
-| DOW exclusion | Wed + Thu |
+| rr | 3.5 |
+| tp1_ratio | 0.4 |
+| atr_length | 14 |
+| min_gap_atr_pct | 3.0% |
+| htf_level_tf_minutes | 60 |
+| htf_n_left | 3 |
+| htf_trade_max_per_session | 2 |
+| fvg_window | 20 / 2 |
+| max_fvg_to_inversion_bars | 24 |
+| DOW exclusion | None |
 | regime gate | None |
 | magnifier | 1s |
 
-| Metric | Full History | Holdout (2025-04+) |
+| Metric | Full History | Holdout (2025-04-01 to 2026-03-24) |
 |--------|-------------|-------------------|
-| Trades | 611 | 48 |
-| Win Rate | 59.2% | 66.7% |
-| PF | 1.61 | 2.16 |
-| Sharpe | 3.217 | 5.122 |
-| Net R | +120.1 | +16.2 |
-| Max DD | -6.6R | -5.4R |
-| Calmar | 18.10 | 2.99 |
-| Neg years | 0 | — |
+| Trades | 493 | 38 |
+| Win Rate | 52.1% | 57.9% |
+| PF | 1.43 | 1.96 |
+| Sharpe | 2.428 | 4.414 |
+| Net R | +86.6 | +13.0 |
+| Max DD | -10.0R | -3.0R |
+| Calmar | 8.63 | 4.33 |
+| Neg years | 1 | — |
 
-Payout sim (10yr): 92.7% success, +4.30R EV, 6 max consec breach, 126d avg payout.
-Lifecycle sim: **$1.66M net**, 1,135 days avg extraction, 81% reach extraction.
+Exact replay on the current live params: only `2016` was a negative full year; `2017-2025` were positive, and `2026 YTD` is still too immature to weigh heavily.
 
-R by year: 2016:+9.4 | 2017:+17.6 | 2018:+2.6 | 2019:+7.8 | 2020:+16.7 | 2021:+14.9 | 2022:+9.8 | 2023:+15.7 | 2024:+7.2 | 2025:+13.3 | 2026:+5.1
+Sizing reference at `$300` risk from the prior exact replacement packet: `10Y` prop payout `90.6%`, `304d` average payout, `9` max consecutive breaches, `+$2,076` EV/start. Recent `2024-2026` packet: `98.0%` payout, `176d` average payout, `+$2,410` EV/start.
 
-DB: FAST_V1.1 execution profile
+Combined swap-in reference on that same older lag24 baseline, with the other three legs unchanged: `10Y` combined payout `73.6%`, `134d` average payout.
+
+R by year: 2016:-2.3 | 2017:+5.7 | 2018:+9.8 | 2019:+2.7 | 2020:+12.1 | 2021:+7.8 | 2022:+3.5 | 2023:+15.3 | 2024:+18.6 | 2025:+13.6 | 2026:-0.4
+
+Execution: `ALPHA_V1` live `NQ_NY_LSI` override now mirrors this HTF-LSI profile.
 
 ---
 
@@ -206,12 +204,12 @@ DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
 ---
 
-## Dry Run — To Verify
+## Dry Run — Historical Reference
 
-### LSI/NQ_NY-RR2
-#### NQ NY LSI RR2/TP0.5 + Thu-only + Regime Gate
+### Legacy LSI/NQ_NY-RR2
+#### NQ NY Legacy LSI RR2/TP0.5 + Thu-only + Regime Gate
 
-**Shadow-run alongside FAST NQ_NY_LSI for 60 days before swapping live.**
+**Archived legacy alternate. No longer the active `ALPHA_V1` swap candidate after the HTF-LSI lag24 promotion.**
 
 The research variant has better per-trade quality on full history (higher WR, PF, Sharpe, DSR) and dramatically shallower holdout DD (-2.6R vs -5.4R). But FAST generated more raw holdout R (+16.2 vs +11.2) and higher holdout Sharpe (5.12 vs 4.27). The regime gate is a fitted parameter that needs live confirmation.
 
@@ -263,24 +261,24 @@ Holdout payout sim: 17 payouts, 0 breaches, 9 open = **100% success rate**.
 | Calmar | **4.33** | 2.99 | RR2 wins risk-adjusted |
 | PF | 1.92 | **2.16** | FAST wins efficiency |
 
-**Interpretation**: FAST is better for sprint phase (more R, faster to payout). RR2 Gated is better for extraction phase (shallower DD = longer survival). Consider running both as separate accounts.
+**Interpretation**: In the old legacy family, FAST was better for sprint phase (more R, faster to payout) while RR2 Gated was better for extraction phase (shallower DD = longer survival). Keep this as historical context only unless the legacy family is explicitly reopened.
 
 R by year: 2016:+10.6 | 2017:+28.5 | 2018:+10.7 | 2019:+17.2 | 2020:+23.4 | 2021:+10.5 | 2022:+5.0 | 2023:+5.2 | 2024:+1.2 | 2025:+11.2 | 2026:+2.8
 
 DB: `bt-nq-ny-lsi-rr2-tp0-5-thu-gated-2016-2026-174198`
 
-**Action**: Build regime gate infrastructure in execution engine. Shadow-run for 60 days. If live metrics confirm, either swap FAST or run both as separate accounts.
+**Action**: Archived reference only. Reopen only if the legacy LSI family is intentionally put back on the roadmap.
 
 ---
 
 ## Session Coverage
 
 ```
-20:00  21:00  22:00  ...  04:00  ...  09:30  10:00  ...  12:00  13:00  ...  15:50
+20:00  21:00  22:00  ...  04:00  ...  08:30  09:30  10:00  ...  12:00  13:00  ...  15:00  15:50
 |-- NQ Asia (entry 20:15-22:30) --|
 |-- ES Asia (entry 20:15-03:00) -----|
+                                    |-- NQ NY HTF-LSI (entry 08:30-13:30, sweep 08:30-15:00) -----|
                                             |-- ES NY (entry 09:45-13:00) --------|
-                                            |-- NQ NY LSI (entry 09:35-15:30) -----------|
 ```
 
 ---
@@ -289,11 +287,11 @@ DB: `bt-nq-ny-lsi-rr2-tp0-5-thu-gated-2016-2026-174198`
 
 | Phase | Timeline | Account | Leg | Status |
 |-------|----------|---------|-----|--------|
-| 1 | Now | Acct 1 | NQ NY LSI (FAST) | Already live |
+| 1 | Now | Acct 1 | NQ NY HTF-LSI lag24 | Live swap-in |
 | 2 | Week 1-2 | Acct 2 | NQ Asia ORB | Already live |
 | 3 | Month 1-2 | Acct 3 | ES Asia | New account application |
 | 4 | Month 2-3 | Acct 4 | ES NY | New account application |
-| DRY | Ongoing | Shadow | NQ NY LSI RR2 Gated | 60-day shadow run |
+| DRY | Historical | Archive | Legacy NQ NY LSI RR2 Gated | Archived reference only |
 
 ---
 
@@ -348,7 +346,7 @@ DB: `bt-gc-ny-cont-longs-r3-high-rr-final-fri-ex-692e90`
 | CL LDN-1 | 2025: +0R — no recent edge detected |
 | GC NY LSI | PF 2.29, Sharpe 4.79, but only 13 trades/year — below 30-trade OOS threshold |
 | GC Asia-1 | DSR 0.652 (strong), but GC banned on Apex — revisit if prop firm changes |
-| NQ Asia Discovery Asia-2 | Holdout +42.5R is exceptional, but requires regime gate build. Evaluate after RR2 gated shadow run |
+| NQ Asia Discovery Asia-2 | Holdout +42.5R is exceptional, but requires regime gate build. Evaluate after the HTF-LSI swap-in stabilizes |
 
 ---
 
@@ -357,6 +355,6 @@ DB: `bt-gc-ny-cont-longs-r3-high-rr-final-fri-ex-692e90`
 1. **Long-biased**: All 4 legs are long-only. No short-side hedge. A sustained bear market hits all legs simultaneously.
 2. **NQ + ES concentration**: All 4 legs trade equity index futures (NQ or ES). No commodity diversification — GC is paused due to Apex ban.
 3. **Equity correlation in stress**: NQ and ES co-drawdown during risk-off events (March 2020 type). Without GC as a partial decorrelator, all legs are exposed to the same macro risk.
-4. **Lifecycle projections are in-sample**: The $1.66M figure is a backtest-on-backtest projection. Direction is correct but magnitude is likely inflated.
-5. **Regime gate not yet live**: The RR2 Gated variant's improvement depends on a fitted parameter (medium-vol classification) that hasn't been confirmed in live trading.
+4. **Portfolio-level projections are mixed-vintage**: Older lifecycle-style legacy figures should be treated as historical context only. The active NQ NY leg is now HTF-LSI, and the full four-leg exact rerun on the tightened live row is still pending.
+5. **The new HTF swap is a live-policy update, not a fully rerun portfolio dossier yet**: The NQ NY leg is backed by exact single-leg replay and replacement sizing packets, but the complete `ALPHA_V1` stack has not yet been rerun end-to-end on the tighter `08:30-13:30 / rr3.5 / tp0.4` row.
 6. **Prop firm instrument restrictions**: Apex Trader Funding bans GC trading, removing the strongest non-equity diversifier from the portfolio. Monitor for policy changes or alternative prop firms that allow GC.

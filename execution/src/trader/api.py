@@ -314,6 +314,7 @@ def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
             "enabled": cfg.enabled,
             "max_open_contracts": getattr(cfg, "max_open_contracts", 0.0),
             "webhooks": webhooks,
+            "portfolio_params": getattr(cfg, "portfolio_params", {}),
             "sessions": list(cfg.session_overrides.keys()),
             "lsi_sessions": list(cfg.lsi_session_overrides.keys()),
         }
@@ -1261,6 +1262,8 @@ def _session_info(engine) -> dict:
         return {
             "type": "lsi",
             "config_name": engine.config_name,
+            "sweep_start": engine.sweep_start,
+            "sweep_end": engine.sweep_end,
             "entry_start": engine.entry_start,
             "entry_end": engine.entry_end,
             "flat_start": engine.flat_start,
@@ -1274,6 +1277,10 @@ def _session_info(engine) -> dict:
             "fvg_window_left": engine.fvg_window_left,
             "lsi_entry_mode": engine.lsi_entry_mode,
             "lsi_variant": engine.lsi_variant,
+            "htf_level_tf_minutes": engine.htf_level_tf_minutes,
+            "htf_n_left": engine.htf_n_left,
+            "htf_trade_max_per_session": engine.htf_trade_max_per_session,
+            "max_fvg_to_inversion_bars": engine.max_fvg_to_inversion_bars,
             "risk_usd": engine.risk_usd,
             "point_value": engine.point_value,
             "min_qty": engine.min_qty,

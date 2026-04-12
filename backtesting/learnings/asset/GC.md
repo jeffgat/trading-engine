@@ -300,6 +300,57 @@ R by year: 2016 +7.7 | 2017 +12.6 | 2018 +2.5 | 2019 +4.7 | 2020 +6.5 | 2021 +4.
 - **Hold-out 2025**: +5.7R in 2025 — strategy performing in-line with historical average. 2026 YTD +1.9R.
 - **Low frequency note**: Accept that some calendar years will underperform 6.0R target (e.g., 2018: +2.5R, 2019: +4.7R). These are statistical variance on 13 trades, not edge failure.
 
+### NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — NO-GO
+
+- **Status**: **NO-GO** (real pre-holdout family, but the opened funded holdout rejected the entire frozen shortlist)
+- **Scripts**: `run_cross_asset_htf_lsi_anchor_explore.py`, `run_cross_asset_htf_lsi_broad_discovery.py`, `run_cross_asset_htf_lsi_stitched_followup.py`, `run_gc_ny_htf_lsi_phase_one.py`
+- **Important separation**: this is a different thesis from the existing GC NY LSI `fvg_limit` branch above. Standard GC NY LSI remains a conditional GO; GC NY **HTF-LSI** does not.
+
+**Transfer packet result:**
+- Replayed the trusted NQ anchors on GC `1m / 3m / 5m` with the holdout still closed.
+- None of the transfer rows were promotable. `5m lag24` and `5m lag0` were constructive on discovery (`PF 1.346` / `1.333`) but both flipped negative in validation (`PF 0.894` / `0.887`). `3m lag0` was weak and `1m lag0` was dead.
+- Conclusion from the packet: GC does not accept the NQ HTF-LSI shapes unchanged.
+
+**Broad discovery result (GC-native reopen):**
+- Reopened discovery only on pre-holdout data and expanded the search to include GC’s earlier `10:30` cutoff, which the default packet would have under-explored.
+- A strong asset-native cluster emerged:
+  - `3m`
+  - `short`
+  - `fvg_limit`
+  - `htf60`
+  - `htf_n_left=5`
+  - `cap=2`
+  - `gap=3.0`
+  - `atr=14`
+  - `rr=3.5`
+  - `tp1=0.5`
+  - either `entry_end=10:30` with `lag0`, or `entry_end=11:00` with `lag24-30`
+- Stage B lead: `3m short fvg_limit 08:30-10:30 htf60 n5 cap2`, discovery PF `1.180`, validation PF `1.620`, validation avg R `0.256`, Calmar `2.705`.
+
+**Stitched follow-up (holdout still closed):**
+- `late_lag30_1100_r15` became the stitched leader:
+  - `3m`, `short`, `fvg_limit`, `08:30-11:00`
+  - `rr=3.5`, `tp1=0.5`, `gap=3.0`, `htf60`, `n5`, `cap=2`, `fvg=20/5`, `lag=30`
+  - stitched OOS: `220` trades, PF `1.266`, avg R `0.149`, Calmar `2.79`, DD `-11.77R`
+- Best early challenger:
+  - `balanced_lag0_1030_r9`
+  - stitched OOS: `178` trades, PF `1.277`, avg R `0.140`, Calmar `2.47`, DD `-10.12R`
+- Broad read: GC HTF-LSI looked legitimately alive pre-holdout and favored `3m short`, not the NQ-style `5m long` family.
+
+**Phase-one / opened holdout result (`2025-04-01` to `2026-03-30`):**
+- Every frozen candidate failed the funded-account holdout test.
+- `late_lag30_1100_r15`: `31` holdout trades, PF `0.234`, avg R `-0.573`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `quality_lag0_1030_r15`: `28` holdout trades, PF `0.291`, avg R `-0.505`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `balanced_lag0_1030_r9`: `26` holdout trades, PF `0.326`, avg R `-0.467`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `control_stage_b_1030`: `26` holdout trades, PF `0.330`, avg R `-0.464`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `late_lag24_1100_r15`: `29` holdout trades, PF `0.253`, avg R `-0.544`, funded payout `0.0%`, funded EV/start `-$100.00`
+
+**Conclusion:**
+- GC HTF-LSI was not a fake discovery; it produced a coherent pre-holdout `3m short` family.
+- But the untouched holdout was a full family-wide rejection under the default funded model.
+- Do **not** advance GC HTF-LSI to phase two, and do not keep tuning this frozen family.
+- If GC HTF-LSI is ever revisited, it needs a materially new thesis rather than more refinement of the `3m short / htf60 / n5` branch.
+
 ### NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO
 
 - **Status**: **NO-GO** (REJECT 2/5 pipeline phases — WF efficiency too low, prop constraints fail)

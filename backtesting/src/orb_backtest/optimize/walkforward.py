@@ -129,6 +129,7 @@ def run_walkforward(
     gate_fn: Callable[[list[TradeResult]], list[TradeResult]] | None = None,
     gate_factory: Callable[[pd.DataFrame], Callable[[list[TradeResult]], list[TradeResult]]] | None = None,
     df_1m: pd.DataFrame | None = None,
+    signal_df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
     max_dd_r: float | None = None,
@@ -204,7 +205,7 @@ def run_walkforward(
     # Saves ~120s x N_folds of redundant signal computation.
     print("[wf] Pre-building full-range signal cache and maps...")
     full_maps = build_maps(df, df_1m, df_30s, df_1s)
-    full_signal_cache = _load_or_build_signal_cache(df, configs)
+    full_signal_cache = _load_or_build_signal_cache(df, configs, signal_df_1m=signal_df_1m)
 
     for fold_idx, window in enumerate(windows):
         if progress_fn:
@@ -219,6 +220,7 @@ def run_walkforward(
 
         # 2. Run grid sweep on IS data.
         is_df_1m = df_1m.loc[warmup_start:window.is_end] if df_1m is not None else None
+        is_signal_df_1m = signal_df_1m.loc[warmup_start:window.is_end] if signal_df_1m is not None else None
         is_df_30s = df_30s.loc[warmup_start:window.is_end] if df_30s is not None else None
         is_df_1s = df_1s.loc[warmup_start:window.is_end] if df_1s is not None else None
         if gate_factory is not None:
@@ -228,7 +230,7 @@ def run_walkforward(
             # would look up the wrong rows. Fall back to IS-sliced sweep for safety.
             is_results = run_sweep(
                 is_df, configs, n_workers=n_workers, start_date=window.is_start,
-                df_1m=is_df_1m, df_30s=is_df_30s, df_1s=is_df_1s,
+                df_1m=is_df_1m, signal_df_1m=is_signal_df_1m, df_30s=is_df_30s, df_1s=is_df_1s,
             )
         else:
             # No gate_factory — safe to pass full df with pre-built caches.
@@ -236,7 +238,7 @@ def run_walkforward(
             is_results = run_sweep(
                 df, configs, n_workers=n_workers,
                 start_date=window.is_start, end_date=window.is_end,
-                df_1m=df_1m, df_30s=df_30s, df_1s=df_1s,
+                df_1m=df_1m, signal_df_1m=signal_df_1m, df_30s=df_30s, df_1s=df_1s,
                 _prebuilt_signal_cache=full_signal_cache, _prebuilt_maps=full_maps,
             )
 
@@ -288,7 +290,7 @@ def run_walkforward(
             oos_trades_all = run_backtest(
                 df, best_config,
                 start_date=window.oos_start, end_date=window.oos_end,
-                df_1m=df_1m, df_30s=df_30s, df_1s=df_1s,
+                df_1m=df_1m, signal_df_1m=signal_df_1m, df_30s=df_30s, df_1s=df_1s,
                 _maps=full_maps, _signal_cache=full_signal_cache,
             )
         else:
@@ -301,13 +303,14 @@ def run_walkforward(
             oos_df = df.loc[oos_warmup_start:window.oos_end]
 
             oos_df_1m = df_1m.loc[oos_warmup_start:window.oos_end] if df_1m is not None else None
+            oos_signal_df_1m = signal_df_1m.loc[oos_warmup_start:window.oos_end] if signal_df_1m is not None else None
             oos_df_30s = df_30s.loc[oos_warmup_start:window.oos_end] if df_30s is not None else None
             oos_df_1s = df_1s.loc[oos_warmup_start:window.oos_end] if df_1s is not None else None
             oos_maps = build_maps(oos_df, oos_df_1m, oos_df_30s, oos_df_1s)
-            oos_sig = build_signal_cache(oos_df, [best_config])
+            oos_sig = build_signal_cache(oos_df, [best_config], signal_df_1m=oos_signal_df_1m)
             oos_trades_all = run_backtest(
                 oos_df, best_config, start_date=window.oos_start,
-                df_1m=oos_df_1m, df_30s=oos_df_30s, df_1s=oos_df_1s,
+                df_1m=oos_df_1m, signal_df_1m=oos_signal_df_1m, df_30s=oos_df_30s, df_1s=oos_df_1s,
                 _maps=oos_maps, _signal_cache=oos_sig,
             )
 

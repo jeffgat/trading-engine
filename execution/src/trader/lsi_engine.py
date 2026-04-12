@@ -29,6 +29,7 @@ from typing import Callable
 
 from .broker import TradersPostClient
 from .engine import Bar, TradeRecord
+from .htf_levels import HtfLevelTracker
 from .position_limits import ContractCapManager, resize_trade_levels
 from .sizing import TradeLevels, compute_trade_levels
 from .swing import SweepEvent, SwingTracker
@@ -38,7 +39,8 @@ trade_logger = logging.getLogger("trader.trades")
 
 STANDARD_LSI_VARIANT = "standard"
 LEGACY_LSI_VARIANT = "legacy-LSI"
-VALID_LSI_VARIANTS = frozenset({STANDARD_LSI_VARIANT, LEGACY_LSI_VARIANT})
+HTF_LSI_VARIANT = "htf-LSI"
+VALID_LSI_VARIANTS = frozenset({STANDARD_LSI_VARIANT, LEGACY_LSI_VARIANT, HTF_LSI_VARIANT})
 
 
 class LSIState(enum.Enum):
@@ -81,6 +83,8 @@ class LSIEngine:
         entry_end: str,
         flat_start: str,
         flat_end: str,
+        sweep_start: str | None = None,
+        sweep_end: str | None = None,
         # Strategy params
         rr: float = 3.0,
         tp1_ratio: float = 0.3,
@@ -114,6 +118,11 @@ class LSIEngine:
         # Swing pivot detection
         lsi_n_left: int = 3,
         lsi_n_right: int = 3,
+        htf_level_tf_minutes: int = 60,
+        htf_n_left: int = 5,
+        htf_trade_max_per_session: int = 1,
+        max_fvg_to_inversion_bars: int = 0,
+        base_bar_minutes: int = 5,
         # Execution config name
         config_name: str = "",
         post_exit_cleanup_delay_s: float = 6.0,
@@ -130,10 +139,14 @@ class LSIEngine:
         # Time windows
         self.entry_start = entry_start
         self.entry_end = entry_end
+        self.sweep_start = sweep_start or entry_start
+        self.sweep_end = sweep_end or entry_end
         self.flat_start = flat_start
         self.flat_end = flat_end
         self._entry_start_t = _parse_time(entry_start)
         self._entry_end_t = _parse_time(entry_end)
+        self._sweep_start_t = _parse_time(self.sweep_start)
+        self._sweep_end_t = _parse_time(self.sweep_end)
         self._flat_start_t = _parse_time(flat_start)
         self._flat_end_t = _parse_time(flat_end)
 
@@ -152,6 +165,11 @@ class LSIEngine:
                 f"{sorted(VALID_LSI_VARIANTS)} (got {lsi_variant!r})"
             )
         self.lsi_variant = lsi_variant
+        self.htf_level_tf_minutes = htf_level_tf_minutes
+        self.htf_n_left = htf_n_left
+        self.htf_trade_max_per_session = htf_trade_max_per_session
+        self.max_fvg_to_inversion_bars = max_fvg_to_inversion_bars
+        self.base_bar_minutes = base_bar_minutes
 
         # Risk
         self.risk_usd = risk_usd
@@ -184,12 +202,24 @@ class LSIEngine:
 
         # Swing pivot tracker (replaces KZ/PDH/PDL liquidity tracking)
         self._swings = SwingTracker(n_left=lsi_n_left, n_right=lsi_n_right, long_only=long_only)
+        self._htf_levels = HtfLevelTracker(
+            tf_minutes=htf_level_tf_minutes,
+            n_left=htf_n_left,
+            base_bar_minutes=base_bar_minutes,
+        ) if self._is_htf_variant() else None
+        self._htf_high_state = {"instance_id": -1, "consumed": False}
+        self._htf_low_state = {"instance_id": -1, "consumed": False}
 
         # State
         self._state = LSIState.IDLE
         self._current_date = ""
+        self._skip_reason: str | None = None
+        self._blocking_gate: str | None = None
+        self._regime_gate_status: dict | None = None
+        self._last_regime_gate_audit: tuple[str, bool] | None = None
         self._daily_atr: float = 0.0
         self._bar_count: int = 0
+        self._session_filled_trades: int = 0
 
         # Bar history — keep enough for absolute stop computation
         # (FVG bar through inversion bar can span ~30 bars)
@@ -199,10 +229,15 @@ class LSIEngine:
         # Sweep + gap state
         self._active_sweep: SweepEvent | None = None
         self._active_gap: GapInfo | None = None
+        self._active_sweep_instance_id: int = -1
+        self._active_htf_level_side: str = ""
         self._sweep_bar_index: int = 0
+        self._pending_gaps: list[GapInfo] = []
         # Recent FVGs awaiting a sweep (for fvg_window_left lookback)
         # Each entry: (bar_index, GapInfo)
         self._recent_fvgs: list[tuple[int, GapInfo]] = []
+        self._fvg_to_inversion_bars: int | None = None
+        self._sweep_to_inversion_bars: int | None = None
 
         # Entry state
         self._entry_price: float = 0.0
@@ -231,6 +266,7 @@ class LSIEngine:
         self._tp1_bar_count: int = -1  # _bar_count when TP1 detected (guards 5m BE false trigger)
         self._fill_bar_count: int = -1  # _bar_count when fill detected (guards 5m fill-bar exits)
         self._fill_timestamp: datetime | None = None
+        self._last_market_bar: Bar | None = None
 
         # Callbacks
         self.on_state_change: Callable[[dict], None] | None = None
@@ -246,16 +282,130 @@ class LSIEngine:
     def _is_legacy_variant(self) -> bool:
         return self.lsi_variant == LEGACY_LSI_VARIANT
 
+    def _is_htf_variant(self) -> bool:
+        return self.lsi_variant == HTF_LSI_VARIANT
+
     def _clear_dashboard_overlay(self) -> None:
         """Clear the current LSI setup overlay shown on the dashboard."""
         self._swept_level = None
         self._swept_level_time = None
         self._fvg_top = None
         self._fvg_bottom = None
+        self._fvg_to_inversion_bars = None
+        self._sweep_to_inversion_bars = None
+
+    def _reset_active_setup(self) -> None:
+        """Drop the current sweep/gap chain while preserving session counters."""
+        self._active_sweep = None
+        self._active_gap = None
+        self._active_sweep_instance_id = -1
+        self._active_htf_level_side = ""
+        self._pending_gaps.clear()
+        self._clear_dashboard_overlay()
+
+    def _set_post_exit_state(self, exit_time: time) -> None:
+        """Mirror the research/live HTF behavior after a trade finishes."""
+        if (
+            self._is_htf_variant()
+            and (
+                self.htf_trade_max_per_session <= 0
+                or self._session_filled_trades < self.htf_trade_max_per_session
+            )
+            and self._in_entry(exit_time)
+        ):
+            self._state = LSIState.SCANNING
+            self._clear_dashboard_overlay()
+        else:
+            self._state = LSIState.FLAT
 
     def _blocking_regime_gate_name(self, date_key: str) -> str | None:
         from .gates import blocking_regime_gate_name
         return blocking_regime_gate_name(self.regime_gate_checks, date_key)
+
+    def _clear_gate_audit(self) -> None:
+        self._skip_reason = None
+        self._blocking_gate = None
+        self._regime_gate_status = None
+        self._last_regime_gate_audit = None
+
+    def _record_regime_gate_status(self, date_key: str, blocking_gate: str | None) -> None:
+        from .gates import evaluate_regime_gates
+
+        evaluations: list[dict[str, object]] = []
+        if self.regime_gates:
+            try:
+                evaluations = [
+                    evaluation.to_status_dict()
+                    for evaluation in evaluate_regime_gates(self.regime_gates, date_key)
+                ]
+            except ValueError:
+                evaluations = []
+
+        if evaluations and blocking_gate is not None:
+            for evaluation in evaluations:
+                evaluation["allowed"] = evaluation.get("gate") != blocking_gate
+
+        self._blocking_gate = blocking_gate
+        self._skip_reason = "regime_gate" if blocking_gate is not None else None
+        self._regime_gate_status = {
+            "date": date_key,
+            "allowed": blocking_gate is None,
+            "blocking_gate": blocking_gate,
+            "evaluations": evaluations,
+        } if (self.regime_gates or blocking_gate is not None) else None
+
+    def _maybe_log_regime_gate_audit(self) -> None:
+        from .gates import RegimeGateEvaluation, format_regime_gate_detail
+
+        status = self._regime_gate_status
+        if not status:
+            return
+
+        date_key = str(status.get("date") or self._current_date)
+        allowed = bool(status.get("allowed"))
+        marker = (date_key, allowed)
+        if self._last_regime_gate_audit == marker:
+            return
+
+        evaluations = status.get("evaluations") or []
+        primary_eval: RegimeGateEvaluation | None = None
+        if evaluations:
+            blocking_gate = status.get("blocking_gate")
+            for evaluation in evaluations:
+                if evaluation.get("gate") == blocking_gate or primary_eval is None:
+                    primary_eval = RegimeGateEvaluation(
+                        gate=str(evaluation.get("gate", "")),
+                        date_key=str(evaluation.get("date", date_key)),
+                        allowed=bool(evaluation.get("allowed")),
+                        reason=str(evaluation["reason"]) if evaluation.get("reason") else None,
+                        regime=str(evaluation["regime"]) if evaluation.get("regime") is not None else None,
+                        vol_regime=str(evaluation["vol_regime"]) if evaluation.get("vol_regime") is not None else None,
+                        combined_regime=(
+                            str(evaluation["combined_regime"])
+                            if evaluation.get("combined_regime") is not None else None
+                        ),
+                        low_confidence=(
+                            bool(evaluation["low_confidence"])
+                            if evaluation.get("low_confidence") is not None else None
+                        ),
+                        warmup_ok=(
+                            bool(evaluation["warmup_ok"])
+                            if evaluation.get("warmup_ok") is not None else None
+                        ),
+                    )
+                if evaluation.get("gate") == blocking_gate:
+                    break
+
+        if allowed:
+            if primary_eval is not None:
+                self._log_trade("REGIME_GATE_PASSED", format_regime_gate_detail(primary_eval))
+            else:
+                self._log_trade("REGIME_GATE_PASSED", f"date={date_key}")
+        else:
+            blocking_gate = status.get("blocking_gate") or self._blocking_gate
+            self._log_trade("REGIME_GATE_BLOCKED", f"gate={blocking_gate} date={date_key}")
+
+        self._last_regime_gate_audit = marker
 
     def _set_sweep_overlay(self, sweep: SweepEvent) -> None:
         """Persist the active swept level immediately after sweep detection."""
@@ -271,6 +421,87 @@ class LSIEngine:
             self._swept_level_time = self._active_sweep.pivot_time
         self._fvg_top = gap.top
         self._fvg_bottom = gap.bottom
+
+    def _sync_htf_level_state(self) -> None:
+        tracker = self._htf_levels
+        if tracker is None:
+            return
+
+        latest_high = tracker.latest_high
+        latest_low = tracker.latest_low
+
+        high_id = latest_high.instance_id if latest_high is not None else -1
+        if high_id != self._htf_high_state["instance_id"]:
+            self._htf_high_state["instance_id"] = high_id
+            self._htf_high_state["consumed"] = False
+
+        low_id = latest_low.instance_id if latest_low is not None else -1
+        if low_id != self._htf_low_state["instance_id"]:
+            self._htf_low_state["instance_id"] = low_id
+            self._htf_low_state["consumed"] = False
+
+    def _check_htf_sweep(self, bar: Bar, *, allow_arm: bool) -> SweepEvent | None:
+        tracker = self._htf_levels
+        if tracker is None:
+            return None
+
+        self._sync_htf_level_state()
+        sweep: SweepEvent | None = None
+        current_bar_ts = bar.timestamp
+
+        latest_low = tracker.latest_low
+        if (
+            latest_low is not None
+            and not self._htf_low_state["consumed"]
+            and datetime.fromisoformat(latest_low.publish_time) <= current_bar_ts
+            and bar.low < latest_low.price
+        ):
+            self._htf_low_state["consumed"] = True
+            if allow_arm:
+                sweep = SweepEvent(
+                    source="htf_low",
+                    level=latest_low.price,
+                    direction=1,
+                    bar_index=self._bar_count,
+                    pivot_time=latest_low.level_time,
+                )
+                self._active_sweep_instance_id = latest_low.instance_id
+                self._active_htf_level_side = "low"
+            else:
+                self._log_trade(
+                    "HTF_LEVEL_INVALIDATED",
+                    "side=low level=%.2f level_time=%s bar_time=%s"
+                    % (latest_low.price, latest_low.level_time, bar.timestamp),
+                )
+
+        latest_high = tracker.latest_high
+        if (
+            not self.long_only
+            and latest_high is not None
+            and not self._htf_high_state["consumed"]
+            and datetime.fromisoformat(latest_high.publish_time) <= current_bar_ts
+            and bar.high > latest_high.price
+            and sweep is None
+        ):
+            self._htf_high_state["consumed"] = True
+            if allow_arm:
+                sweep = SweepEvent(
+                    source="htf_high",
+                    level=latest_high.price,
+                    direction=-1,
+                    bar_index=self._bar_count,
+                    pivot_time=latest_high.level_time,
+                )
+                self._active_sweep_instance_id = latest_high.instance_id
+                self._active_htf_level_side = "high"
+            else:
+                self._log_trade(
+                    "HTF_LEVEL_INVALIDATED",
+                    "side=high level=%.2f level_time=%s bar_time=%s"
+                    % (latest_high.price, latest_high.level_time, bar.timestamp),
+                )
+
+        return sweep
 
     # ------------------------------------------------------------------
     # Checkpoint
@@ -445,6 +676,12 @@ class LSIEngine:
             return s <= bar_time < e
         return bar_time >= s or bar_time < e
 
+    def _in_sweep(self, bar_time: time) -> bool:
+        s, e = self._sweep_start_t, self._sweep_end_t
+        if s <= e:
+            return s <= bar_time < e
+        return bar_time >= s or bar_time < e
+
     @property
     def _crosses_midnight(self) -> bool:
         """true if this session spans midnight."""
@@ -467,13 +704,60 @@ class LSIEngine:
 
     def _in_flat(self, bar) -> bool:
         bar_time = bar.timestamp.time() if hasattr(bar.timestamp, "time") else bar.timestamp
-        s, e = self._flat_start_t, self._flat_end_t
-        # Half-day override
-        if self._current_date in self.half_days:
-            s, e = self._half_day_flat_start_t, self._half_day_flat_end_t
+        s, e = self._flat_window_for_date(self._current_date)
         if s <= e:
             return s <= bar_time <= e
         return bar_time >= s or bar_time <= e
+
+    def _flat_window_for_date(self, date_key: str) -> tuple[time, time]:
+        """Return the effective flat window for a session date."""
+        if date_key and date_key in self.half_days:
+            return self._half_day_flat_start_t, self._half_day_flat_end_t
+        return self._flat_start_t, self._flat_end_t
+
+    def _crossed_flat_gap(self, previous_ts: datetime, current_ts: datetime) -> bool:
+        """Detect when sparse data jumps over the configured flat window.
+
+        Research exits at the last observed intraday bar when no bars exist inside
+        the flat window (for example, CL days that jump from 14:29 to the evening
+        reopen). Mirror that behavior here so exact replay does not carry the
+        position into the next session just because no flat-window event arrived.
+        """
+        if self._crosses_midnight:
+            return False
+
+        date_key = previous_ts.strftime("%Y%m%d")
+        flat_start, flat_end = self._flat_window_for_date(date_key)
+        previous_time = previous_ts.time()
+        current_time = current_ts.time()
+
+        if previous_ts.date() != current_ts.date():
+            return previous_time < flat_start
+
+        return previous_time < flat_start and current_time > flat_end
+
+    async def _exit_on_gap_flat(self, previous_bar: Bar, current_ts: datetime) -> None:
+        """Force an EOD exit at the last observed price before a flat-window gap."""
+        levels = self._levels
+        dir_str = "long" if (levels and levels.direction == 1) else "short"
+        self._log_trade(
+            "EOD_GAP_FLAT",
+            "dir=%s last_seen=%s current=%s"
+            % (dir_str, previous_bar.timestamp, current_ts),
+        )
+        self._set_trade_overlap(False, notify=False)
+        self._release_position_cap()
+        if self._should_send:
+            await self.broker.send_flatten(ticker=self.exec_ticker)
+        self._emit_trade_record(
+            "tp1_eod" if self._tp1_hit else "eod",
+            exit_price=previous_bar.close,
+            exit_timestamp=previous_bar.timestamp,
+        )
+        self._reset_active_setup()
+        self._state = LSIState.FLAT
+        self._request_checkpoint()
+        self._notify_state_change()
 
     def _is_excluded_day(self, bar: Bar) -> bool:
         """Check DOW and date exclusions."""
@@ -513,6 +797,7 @@ class LSIEngine:
             date_str = now.strftime("%Y%m%d")
 
         self._current_date = date_str
+        self._clear_gate_audit()
 
         # Check exclusions
         dummy_bar = Bar(timestamp=now, open=0.0, high=0.0, low=0.0, close=0.0, volume=0)
@@ -522,30 +807,35 @@ class LSIEngine:
             logger.info("[%s] Session excluded for %s, set FLAT", self.name, date_str)
             return True
 
-        # Feed historical bars through swing tracker to warm pivot levels.
-        # For legacy-LSI day sessions, replay all supplied warmup bars so a
-        # carried swing from the prior day survives restart the same way it
-        # would during continuous runtime.
+        # Warm structure state from recent historical bars.
+        # Legacy-LSI and HTF-LSI both need broader warmup than same-day only
+        # because valid levels can survive across day boundaries.
         if self._crosses_midnight:
             valid_dates = {date_str, (datetime.strptime(date_str, "%Y%m%d") + _td(days=1)).strftime("%Y%m%d")}
             session_bars = [b for b in bars if b.timestamp <= now and b.timestamp.strftime("%Y%m%d") in valid_dates]
-        elif self._is_legacy_variant():
+        elif self._is_legacy_variant() or self._is_htf_variant():
             session_bars = [b for b in bars if b.timestamp <= now]
         else:
             session_bars = [b for b in bars if b.timestamp <= now and b.timestamp.strftime("%Y%m%d") == date_str]
 
         for b in session_bars:
-            self._swings.on_bar(b)
+            if self._is_htf_variant():
+                self._htf_levels.on_bar(b)
+                self._sync_htf_level_state()
+            else:
+                self._swings.on_bar(b)
         self._bar_count = len(session_bars)
         self._bars = session_bars[-self._MAX_BAR_HISTORY:] if session_bars else []
 
         # Determine state based on current time
         if self._in_entry(now_t):
             blocking_gate = self._blocking_regime_gate_name(date_str)
+            self._record_regime_gate_status(date_str, blocking_gate)
             if blocking_gate is not None:
-                self._log_trade("REGIME_GATE_BLOCKED", f"gate={blocking_gate} date={date_str}")
+                self._maybe_log_regime_gate_audit()
                 self._state = LSIState.FLAT
             else:
+                self._maybe_log_regime_gate_audit()
                 self._state = LSIState.SCANNING
         elif self._in_flat(dummy_bar):
             self._state = LSIState.FLAT
@@ -564,9 +854,21 @@ class LSIEngine:
 
         logger.info(
             "[%s] Session recovered: state=%s date=%s bars_fed=%d "
-            "swing_high=%.2f swing_low=%.2f",
-            self.name, self._state.value, date_str, len(session_bars),
-            self._swings.latest_swing_high, self._swings.latest_swing_low,
+            "structure=%s",
+            self.name,
+            self._state.value,
+            date_str,
+            len(session_bars),
+            (
+                "htf_high=%s htf_low=%s"
+                % (
+                    round(self._htf_levels.latest_high.price, 2) if self._htf_levels and self._htf_levels.latest_high else None,
+                    round(self._htf_levels.latest_low.price, 2) if self._htf_levels and self._htf_levels.latest_low else None,
+                )
+            ) if self._is_htf_variant() else (
+                "swing_high=%.2f swing_low=%.2f"
+                % (self._swings.latest_swing_high, self._swings.latest_swing_low)
+            ),
         )
         self._notify_state_change()
         return self._state != LSIState.IDLE
@@ -673,6 +975,8 @@ class LSIEngine:
         """Check last 3 bars for FVG. Returns (found, is_bullish, gap_info)."""
         if len(self._bars) < 3:
             return False, False, None
+        if not math.isfinite(daily_atr) or daily_atr <= 0.0:
+            return False, False, None
 
         bar0 = self._bars[-1]  # current (after candle)
         bar1 = self._bars[-2]  # impulse candle
@@ -720,11 +1024,23 @@ class LSIEngine:
         - FVGs formed before a sweep (within fvg_window_left) are promoted
         - FVGs formed after a sweep (within fvg_window_right) are promoted
         - Entry at inversion-bar close with absolute-range stop
-        - No max_inversion_bars limit (waits until entry window closes)
+        - Optional inversion-lag expiry for HTF-LSI
         """
         self._daily_atr = daily_atr
-        self._bar_count += 1
         self._refresh_trade_overlap()
+        previous_bar = self._last_market_bar
+        self._last_market_bar = bar
+
+        if (
+            self._state == LSIState.MANAGING
+            and self._levels is not None
+            and previous_bar is not None
+            and self._crossed_flat_gap(previous_bar.timestamp, bar.timestamp)
+        ):
+            await self._exit_on_gap_flat(previous_bar, bar.timestamp)
+            return
+
+        self._bar_count += 1
 
         # Store bar history (keep enough for absolute stop computation)
         self._bars.append(bar)
@@ -750,9 +1066,14 @@ class LSIEngine:
                     await self._exit_position(bar, "eod")
                 self._release_position_cap()
                 self._current_date = bar_date
+                self._clear_gate_audit()
                 self._state = LSIState.IDLE
+                self._session_filled_trades = 0
                 self._active_sweep = None
                 self._active_gap = None
+                self._active_sweep_instance_id = -1
+                self._active_htf_level_side = ""
+                self._pending_gaps.clear()
                 self._recent_fvgs.clear()
                 self._limit_price = 0.0
                 self._limit_direction = 0
@@ -769,38 +1090,47 @@ class LSIEngine:
                 self._clear_dashboard_overlay()
                 self._request_checkpoint()
 
-        # Feed swing tracker (pivot detection + sweep check)
-        sweep = self._swings.on_bar(bar)
+        if self._is_htf_variant():
+            self._htf_levels.on_bar(bar)
+            self._sync_htf_level_state()
+            if self._in_sweep(bar_time):
+                sweep = self._check_htf_sweep(bar, allow_arm=self._in_entry(bar_time))
+            else:
+                sweep = None
+        else:
+            sweep = self._swings.on_bar(bar)
 
         # State machine
         if self._state == LSIState.IDLE:
-            if self._in_entry(bar_time) and not self._is_excluded_day(bar):
+            if self._in_sweep(bar_time) and not self._is_excluded_day(bar):
                 blocking_gate = self._blocking_regime_gate_name(self._current_date)
+                self._record_regime_gate_status(self._current_date, blocking_gate)
                 if blocking_gate is not None:
-                    self._log_trade(
-                        "REGIME_GATE_BLOCKED",
-                        "gate=%s date=%s" % (blocking_gate, self._current_date),
-                    )
+                    self._maybe_log_regime_gate_audit()
                     self._state = LSIState.FLAT
                     self._request_checkpoint()
                     self._notify_state_change()
                     return
+                self._maybe_log_regime_gate_audit()
                 self._state = LSIState.SCANNING
                 self._request_checkpoint()
                 self._notify_state_change()
 
         if self._state == LSIState.SCANNING:
-            if not self._in_entry(bar_time):
-                self._log_trade("NO_SETUP", "entry window closed")
+            if not self._in_sweep(bar_time):
+                self._log_trade("NO_SETUP", "sweep window closed")
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
 
             # Register any new FVG into the recent buffer (for lookback pairing)
-            found, is_bullish, gap = self._check_fvg(daily_atr)
-            if found and gap is not None:
-                self._recent_fvgs.append((self._bar_count, gap))
+            current_bar_gap: GapInfo | None = None
+            if self._in_entry(bar_time):
+                found, is_bullish, gap = self._check_fvg(daily_atr)
+                if found and gap is not None:
+                    self._recent_fvgs.append((self._bar_count, gap))
+                    current_bar_gap = gap
 
             # Check for sweep events
             if sweep is not None:
@@ -814,22 +1144,31 @@ class LSIEngine:
                         % (sweep.source, sweep.level, "long" if sweep.direction == 1 else "short", self._bar_count),
                     )
 
-                    # Check if any recent FVG (within fvg_window_left) already qualifies
-                    promoted_gap = self._promote_recent_fvg(sweep)
-                    if promoted_gap is not None:
-                        self._active_gap = promoted_gap
-                        self._set_gap_overlay(promoted_gap)
+                    # Check if any recent FVGs (within fvg_window_left) already qualify
+                    promoted_gaps = self._promote_recent_fvgs(sweep)
+                    if (
+                        current_bar_gap is not None
+                        and self._gap_matches_sweep(current_bar_gap, sweep)
+                    ):
+                        # Research appends the same-bar/post-sweep gap first,
+                        # then extends with promoted pre-sweep gaps.
+                        promoted_gaps = self._prepend_unique_gap(current_bar_gap, promoted_gaps)
+                    if promoted_gaps:
+                        self._pending_gaps = promoted_gaps
+                        self._active_gap = promoted_gaps[0]
+                        self._set_gap_overlay(promoted_gaps[0])
                         self._state = LSIState.WAITING_FOR_INVERSION
                         self._request_checkpoint()
                         self._log_trade(
                             "GAP_DETECTED",
                             "type=%s top=%.2f bottom=%.2f size=%.2f (pre-sweep)"
-                            % ("bearish" if not promoted_gap.is_bullish else "bullish",
-                               promoted_gap.top, promoted_gap.bottom,
-                               promoted_gap.top - promoted_gap.bottom),
+                            % ("bearish" if not promoted_gaps[0].is_bullish else "bullish",
+                               promoted_gaps[0].top, promoted_gaps[0].bottom,
+                               promoted_gaps[0].top - promoted_gaps[0].bottom),
                         )
                         self._notify_state_change()
                     else:
+                        self._pending_gaps.clear()
                         self._state = LSIState.WAITING_FOR_GAP
                         self._request_checkpoint()
                         self._notify_state_change()
@@ -854,7 +1193,11 @@ class LSIEngine:
                 self._state = LSIState.SCANNING
                 self._active_sweep = None
                 self._active_gap = None
+                self._active_sweep_instance_id = -1
+                self._active_htf_level_side = ""
+                self._pending_gaps.clear()
                 self._clear_dashboard_overlay()
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -864,8 +1207,9 @@ class LSIEngine:
                 sweep_dir = self._active_sweep.direction
                 need_bearish = sweep_dir == 1
                 if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
-                    self._active_gap = gap
-                    self._set_gap_overlay(gap)
+                    self._pending_gaps.append(gap)
+                    self._active_gap = self._pending_gaps[0]
+                    self._set_gap_overlay(self._active_gap)
                     self._state = LSIState.WAITING_FOR_INVERSION
                     self._request_checkpoint()
                     self._log_trade(
@@ -883,31 +1227,117 @@ class LSIEngine:
                 self._notify_state_change()
                 return
 
-            gap = self._active_gap
-            # No max_inversion_bars limit — backtest waits until entry window closes
+            if self._active_gap is not None and not self._pending_gaps:
+                self._pending_gaps = [self._active_gap]
 
-            # Only check inversion on bars AFTER the gap formed
-            if self._bar_count <= gap.bar_index:
+            if not self._pending_gaps and self._active_gap is None:
+                self._state = LSIState.SCANNING
+                self._active_sweep = None
+                self._active_sweep_instance_id = -1
+                self._active_htf_level_side = ""
+                self._pending_gaps.clear()
+                self._clear_dashboard_overlay()
+                self._request_checkpoint()
+                self._notify_state_change()
                 return
 
-            # Price-close inversion detected
-            if gap.is_bullish and bar.close < gap.bottom:
-                if not self.long_only:
-                    if self._block_for_overlap(direction=-1):
-                        return
-                    if self.lsi_entry_mode == "fvg_limit":
-                        await self._arm_limit(bar, gap, direction=-1, daily_atr=daily_atr)
-                        return  # fill scan starts on the NEXT bar, not the inversion bar
-                    else:
-                        await self._enter_at_close(bar, gap, direction=-1, daily_atr=daily_atr)
-            elif not gap.is_bullish and bar.close > gap.top:
-                if self._block_for_overlap(direction=1):
-                    return
-                if self.lsi_entry_mode == "fvg_limit":
-                    await self._arm_limit(bar, gap, direction=1, daily_atr=daily_atr)
-                    return  # fill scan starts on the NEXT bar, not the inversion bar
+            bars_since_sweep = self._bar_count - self._sweep_bar_index
+            if bars_since_sweep <= self.fvg_window_right:
+                found, is_bullish, new_gap = self._check_fvg(daily_atr)
+                if found and new_gap is not None:
+                    sweep_dir = self._active_sweep.direction
+                    need_bearish = sweep_dir == 1
+                    if (need_bearish and not is_bullish) or (not need_bearish and is_bullish):
+                        if not any(self._same_gap(existing, new_gap) for existing in self._pending_gaps):
+                            self._pending_gaps.append(new_gap)
+                        if self._active_gap is None:
+                            self._active_gap = new_gap
+                            self._set_gap_overlay(new_gap)
+
+            if not self._pending_gaps and bars_since_sweep > self.fvg_window_right:
+                self._log_trade("SWEEP_EXPIRED", "bars_since=%d" % bars_since_sweep)
+                self._state = LSIState.SCANNING
+                self._active_sweep = None
+                self._active_gap = None
+                self._active_sweep_instance_id = -1
+                self._active_htf_level_side = ""
+                self._pending_gaps.clear()
+                self._clear_dashboard_overlay()
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+
+            gap = self._active_gap or (self._pending_gaps[0] if self._pending_gaps else None)
+            if gap is None:
+                return
+
+            # Only check inversion on bars AFTER the gap formed
+            surviving_gaps: list[GapInfo] = []
+            chosen_gap: GapInfo | None = None
+            for candidate_gap in self._pending_gaps:
+                if self._bar_count <= candidate_gap.bar_index:
+                    surviving_gaps.append(candidate_gap)
+                    continue
+                if self.max_fvg_to_inversion_bars > 0:
+                    fvg_to_inversion_bars = self._bar_count - candidate_gap.bar_index
+                    if fvg_to_inversion_bars > self.max_fvg_to_inversion_bars:
+                        continue
+                inverted = (
+                    candidate_gap.is_bullish and bar.close < candidate_gap.bottom
+                ) or (
+                    not candidate_gap.is_bullish and bar.close > candidate_gap.top
+                )
+                if chosen_gap is None and inverted:
+                    chosen_gap = candidate_gap
+                    continue
+                surviving_gaps.append(candidate_gap)
+
+            self._pending_gaps = surviving_gaps
+            self._active_gap = self._pending_gaps[0] if self._pending_gaps else None
+            if self._active_gap is not None:
+                self._set_gap_overlay(self._active_gap)
+            elif chosen_gap is None:
+                if self._active_sweep is not None and bars_since_sweep <= self.fvg_window_right:
+                    self._state = LSIState.WAITING_FOR_GAP
+                    self._set_sweep_overlay(self._active_sweep)
                 else:
-                    await self._enter_at_close(bar, gap, direction=1, daily_atr=daily_atr)
+                    self._state = LSIState.SCANNING
+                    self._active_sweep = None
+                    self._active_sweep_instance_id = -1
+                    self._active_htf_level_side = ""
+                    self._clear_dashboard_overlay()
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+
+            if chosen_gap is not None:
+                if chosen_gap.is_bullish:
+                    if not self.long_only:
+                        if self._block_for_overlap(direction=-1):
+                            self._pending_gaps.insert(0, chosen_gap)
+                            self._active_gap = chosen_gap
+                            return
+                        self._fvg_to_inversion_bars = self._bar_count - chosen_gap.bar_index
+                        self._sweep_to_inversion_bars = self._bar_count - self._sweep_bar_index
+                        self._active_gap = chosen_gap
+                        self._set_gap_overlay(chosen_gap)
+                        if self.lsi_entry_mode == "fvg_limit":
+                            await self._arm_limit(bar, chosen_gap, direction=-1, daily_atr=daily_atr)
+                            return
+                        await self._enter_at_close(bar, chosen_gap, direction=-1, daily_atr=daily_atr)
+                else:
+                    if self._block_for_overlap(direction=1):
+                        self._pending_gaps.insert(0, chosen_gap)
+                        self._active_gap = chosen_gap
+                        return
+                    self._fvg_to_inversion_bars = self._bar_count - chosen_gap.bar_index
+                    self._sweep_to_inversion_bars = self._bar_count - self._sweep_bar_index
+                    self._active_gap = chosen_gap
+                    self._set_gap_overlay(chosen_gap)
+                    if self.lsi_entry_mode == "fvg_limit":
+                        await self._arm_limit(bar, chosen_gap, direction=1, daily_atr=daily_atr)
+                        return
+                    await self._enter_at_close(bar, chosen_gap, direction=1, daily_atr=daily_atr)
 
         if self._state == LSIState.ARMED_LIMIT:
             if not self._in_entry(bar_time):
@@ -935,24 +1365,42 @@ class LSIEngine:
     # FVG lookback promotion (backtest's "FVG before sweep" pairing)
     # ------------------------------------------------------------------
 
-    def _promote_recent_fvg(self, sweep: SweepEvent) -> GapInfo | None:
-        """Check if any recently buffered FVG pairs with this sweep.
+    def _promote_recent_fvgs(self, sweep: SweepEvent) -> list[GapInfo]:
+        """Collect all recently buffered FVGs that pair with this sweep.
 
         Mirrors the backtester's phase C/D: when a sweep occurs, check
         detected FVGs within fvg_window_left bars for opposite-direction match.
-        Returns the first qualifying GapInfo, or None.
         """
         need_bearish = sweep.direction == 1  # low sweep → need bearish FVG
+        promoted: list[GapInfo] = []
         for fvg_idx, gap in self._recent_fvgs:
             bars_ago = self._bar_count - fvg_idx
             if bars_ago > self.fvg_window_left:
                 continue
             # Direction check: low sweep needs bearish FVG, high sweep needs bullish
             if need_bearish and not gap.is_bullish:
-                return gap
+                promoted.append(gap)
             if not need_bearish and gap.is_bullish:
-                return gap
-        return None
+                promoted.append(gap)
+        return promoted
+
+    @staticmethod
+    def _same_gap(left: GapInfo, right: GapInfo) -> bool:
+        return (
+            left.is_bullish == right.is_bullish
+            and left.bar_index == right.bar_index
+            and math.isclose(left.top, right.top, rel_tol=0.0, abs_tol=1e-9)
+            and math.isclose(left.bottom, right.bottom, rel_tol=0.0, abs_tol=1e-9)
+        )
+
+    @staticmethod
+    def _gap_matches_sweep(gap: GapInfo, sweep: SweepEvent) -> bool:
+        need_bearish = sweep.direction == 1
+        return (need_bearish and not gap.is_bullish) or (not need_bearish and gap.is_bullish)
+
+    def _prepend_unique_gap(self, gap: GapInfo, gaps: list[GapInfo]) -> list[GapInfo]:
+        deduped = [existing for existing in gaps if not self._same_gap(existing, gap)]
+        return [gap] + deduped
 
     # ------------------------------------------------------------------
     # fvg_limit entry mode: arm limit → fill on next bar touch
@@ -1074,6 +1522,11 @@ class LSIEngine:
                 self._state = LSIState.SCANNING
                 self._active_sweep = None
                 self._active_gap = None
+                self._active_sweep_instance_id = -1
+                self._active_htf_level_side = ""
+                self._pending_gaps.clear()
+                self._clear_dashboard_overlay()
+                self._request_checkpoint()
                 self._notify_state_change()
                 return
 
@@ -1106,6 +1559,11 @@ class LSIEngine:
             self._state = LSIState.SCANNING
             self._active_sweep = None
             self._active_gap = None
+            self._active_sweep_instance_id = -1
+            self._active_htf_level_side = ""
+            self._pending_gaps.clear()
+            self._clear_dashboard_overlay()
+            self._request_checkpoint()
             self._notify_state_change()
             return
 
@@ -1117,6 +1575,7 @@ class LSIEngine:
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
         self._fill_timestamp = bar.timestamp
+        self._session_filled_trades += 1
         self._state = LSIState.MANAGING
         self._request_checkpoint()
 
@@ -1246,7 +1705,8 @@ class LSIEngine:
             exit_price=exit_price,
             exit_timestamp=bar.timestamp,
         )
-        self._state = LSIState.FLAT
+        self._reset_active_setup()
+        self._set_post_exit_state(bar.timestamp.time())
         self._request_checkpoint()
         self._notify_state_change()
 
@@ -1258,9 +1718,18 @@ class LSIEngine:
         """Process a 1s bar for fine-grained exit management and limit fill detection."""
         self._daily_atr = daily_atr
         self._refresh_trade_overlap()
+        previous_bar = self._last_market_bar
+        self._last_market_bar = tick
 
         # ARMED_LIMIT: check for limit fill on tick data
         if self._state == LSIState.ARMED_LIMIT:
+            if not self._in_entry(tick.timestamp.time()):
+                self._log_trade("LIMIT_CANCELLED", "entry window closed (1s)")
+                self._set_trade_overlap(False, notify=False)
+                self._state = LSIState.FLAT
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
             is_long = self._limit_direction == 1
             filled = (is_long and tick.low <= self._limit_price) or (
                 not is_long and tick.high >= self._limit_price
@@ -1281,6 +1750,10 @@ class LSIEngine:
             self._request_checkpoint()
             return
 
+        if previous_bar is not None and self._crossed_flat_gap(previous_bar.timestamp, tick.timestamp):
+            await self._exit_on_gap_flat(previous_bar, tick.timestamp)
+            return
+
         is_long = levels.direction == 1
         dir_str = "long" if is_long else "short"
 
@@ -1296,6 +1769,7 @@ class LSIEngine:
                 exit_price=tick.close,
                 exit_timestamp=tick.timestamp,
             )
+            self._reset_active_setup()
             self._state = LSIState.FLAT
             self._request_checkpoint()
             self._notify_state_change()
@@ -1318,7 +1792,8 @@ class LSIEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
-                self._state = LSIState.FLAT
+                self._reset_active_setup()
+                self._set_post_exit_state(tick.timestamp.time())
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1331,7 +1806,8 @@ class LSIEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
-                self._state = LSIState.FLAT
+                self._reset_active_setup()
+                self._set_post_exit_state(tick.timestamp.time())
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1370,7 +1846,8 @@ class LSIEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
-                self._state = LSIState.FLAT
+                self._reset_active_setup()
+                self._set_post_exit_state(tick.timestamp.time())
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1385,7 +1862,8 @@ class LSIEngine:
                 self._set_trade_overlap(False, notify=False)
                 self._schedule_post_exit_cleanup(reason="be_hit_1s")
                 self._emit_trade_record("tp1_be", exit_timestamp=tick.timestamp)
-                self._state = LSIState.FLAT
+                self._reset_active_setup()
+                self._set_post_exit_state(tick.timestamp.time())
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1395,7 +1873,8 @@ class LSIEngine:
                 self._set_trade_overlap(False, notify=False)
                 self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
                 self._emit_trade_record("tp1_tp2", exit_timestamp=tick.timestamp)
-                self._state = LSIState.FLAT
+                self._reset_active_setup()
+                self._set_post_exit_state(tick.timestamp.time())
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1415,6 +1894,8 @@ class LSIEngine:
     def status_dict(self) -> dict:
         levels = self._levels
         sw = self._swings
+        latest_htf_high = self._htf_levels.latest_high if self._htf_levels is not None else None
+        latest_htf_low = self._htf_levels.latest_low if self._htf_levels is not None else None
         overlap_active = self._trade_overlap and self._state in {
             LSIState.WAITING_FOR_INVERSION,
             LSIState.ARMED_LIMIT,
@@ -1428,8 +1909,14 @@ class LSIEngine:
             "date": self._current_date,
             "daily_atr": round(self._daily_atr, 2) if self._daily_atr else None,
             "atr_length": self.atr_length,
+            "sweep_start": self.sweep_start,
+            "sweep_end": self.sweep_end,
             "latest_swing_high": round(sw.latest_swing_high, 2) if not math.isnan(sw.latest_swing_high) else None,
             "latest_swing_low": round(sw.latest_swing_low, 2) if not math.isnan(sw.latest_swing_low) else None,
+            "latest_htf_high": round(latest_htf_high.price, 2) if latest_htf_high is not None else None,
+            "latest_htf_high_time": latest_htf_high.level_time if latest_htf_high is not None else None,
+            "latest_htf_low": round(latest_htf_low.price, 2) if latest_htf_low is not None else None,
+            "latest_htf_low_time": latest_htf_low.level_time if latest_htf_low is not None else None,
             # Nested levels dict — matches ORB engine format for frontend
             "levels": {
                 "entry": round(levels.entry, 2),
@@ -1444,13 +1931,25 @@ class LSIEngine:
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
+            "skip_reason": self._skip_reason,
+            "blocking_gate": self._blocking_gate,
+            "regime_gate_status": self._regime_gate_status,
             "entry_mode": self.lsi_entry_mode,
+            "lsi_variant": self.lsi_variant,
+            "base_bar_minutes": self.base_bar_minutes,
+            "htf_level_tf_minutes": self.htf_level_tf_minutes if self._is_htf_variant() else None,
+            "htf_n_left": self.htf_n_left if self._is_htf_variant() else None,
+            "htf_trade_max_per_session": self.htf_trade_max_per_session if self._is_htf_variant() else None,
+            "max_fvg_to_inversion_bars": self.max_fvg_to_inversion_bars if self._is_htf_variant() else None,
+            "session_filled_trades": self._session_filled_trades,
             "trade_overlap": overlap_active,
             # LSI overlay — swept level + FVG zone (persists into FLAT)
             "swept_level": round(self._swept_level, 2) if self._swept_level is not None else None,
             "swept_level_time": self._swept_level_time,
             "fvg_top": round(self._fvg_top, 2) if self._fvg_top is not None else None,
             "fvg_bottom": round(self._fvg_bottom, 2) if self._fvg_bottom is not None else None,
+            "fvg_to_inversion_bars": self._fvg_to_inversion_bars,
+            "sweep_to_inversion_bars": self._sweep_to_inversion_bars,
         }
         if self._state == LSIState.ARMED_LIMIT:
             result["limit_price"] = round(self._limit_price, 2)

@@ -213,6 +213,13 @@ class BacktestRequest(BaseModel):
     lsi_clean_path: Optional[bool] = None
     lsi_be_swing_n_left: Optional[int] = None
     lsi_cancel_on_swing: Optional[bool] = None
+    htf_level_tf_minutes: Optional[int] = None
+    htf_n_left: Optional[int] = None
+    htf_trade_max_per_session: Optional[int] = None
+    max_fvg_to_inversion_bars: Optional[int] = None
+    htf_lsi_include_htf_levels: Optional[bool] = None
+    htf_lsi_reference_levels: Optional[list[str]] = None
+    data_sweep_min_daily_atr_pct: Optional[float] = None
 
 
 _DOW_NAME_MAP = {
@@ -510,6 +517,9 @@ def run_backtest_endpoint(req: BacktestRequest):
         "lsi_n_left", "lsi_n_right", "lsi_fvg_window_left", "lsi_fvg_window_right",
         "lsi_stop_mode", "lsi_entry_mode", "lsi_first_fvg_only", "lsi_clean_path",
         "lsi_be_swing_n_left", "lsi_cancel_on_swing",
+        "htf_level_tf_minutes", "htf_n_left", "htf_trade_max_per_session",
+        "max_fvg_to_inversion_bars", "htf_lsi_include_htf_levels",
+        "data_sweep_min_daily_atr_pct",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -529,6 +539,8 @@ def run_backtest_endpoint(req: BacktestRequest):
         overrides["half_days"] = tuple(req.half_days)
     if req.excluded_dates is not None:
         overrides["excluded_dates"] = tuple(req.excluded_dates)
+    if req.htf_lsi_reference_levels is not None:
+        overrides["htf_lsi_reference_levels"] = tuple(req.htf_lsi_reference_levels)
     parsed_excluded_days = _parse_dow_values(req.excluded_days)
     if parsed_excluded_days is not None:
         overrides["excluded_days"] = parsed_excluded_days
@@ -554,7 +566,17 @@ def run_backtest_endpoint(req: BacktestRequest):
         pass
 
     # Run backtest
-    trades = run_backtest(df, config, start_date=req.start, end_date=req.end, df_1m=df_1m)
+    if config.strategy == "htf_lsi":
+        trades = run_backtest(
+            df,
+            config,
+            start_date=req.start,
+            end_date=req.end,
+            df_1m=df_1m,
+            signal_df_1m=df_1m,
+        )
+    else:
+        trades = run_backtest(df, config, start_date=req.start, end_date=req.end, df_1m=df_1m)
 
     # Build response with equity curve
     result = results_to_dict(
@@ -705,8 +727,14 @@ def run_optimize_endpoint(req: OptimizeRequest):
     except FileNotFoundError as e:
         raise data_not_found(str(e))
 
+    df_1m = None
+    try:
+        df_1m = load_1m_for_5m(instrument.data_file, start=req.start, end=req.end)
+    except FileNotFoundError:
+        pass
+
     # Run sweep
-    results = run_sweep(df, configs, start_date=req.start)
+    results = run_sweep(df, configs, start_date=req.start, df_1m=df_1m, signal_df_1m=df_1m)
 
     # Build result dict
     result = grid_results_to_dict(results, swept_params=param_ranges)

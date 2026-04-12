@@ -12,6 +12,9 @@ from trader.gates import (
     blocking_regime_gate_name,
     build_regime_gate,
     build_regime_gates,
+    evaluate_regime_gate,
+    evaluate_regime_gates,
+    format_regime_gate_detail,
     normalize_regime_gate_fields,
     normalize_regime_gates,
     required_daily_history_symbols_for_regime_gates,
@@ -161,6 +164,52 @@ def test_build_lsi_engines_applies_legacy_lsi_variant_override():
     assert engines[0].lsi_variant == "legacy-LSI"
 
 
+def test_build_lsi_engines_applies_htf_lsi_overrides():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+    }
+
+    symbol_map: dict[str, list] = {}
+    atr_lengths: dict[str, int] = {}
+    engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name="HTF_TEST",
+        lsi_list=["NQ_NY_LSI"],
+        lsi_overrides={
+            "NQ_NY_LSI": {
+                "sweep_start": "08:30",
+                "sweep_end": "15:00",
+                "entry_start": "08:30",
+                "entry_end": "15:00",
+                "lsi_variant": "htf-LSI",
+                "htf_level_tf_minutes": 60,
+                "htf_n_left": 3,
+                "htf_trade_max_per_session": 2,
+                "max_fvg_to_inversion_bars": 24,
+            }
+        },
+    )
+
+    engine = engines[0]
+    assert engine.lsi_variant == "htf-LSI"
+    assert engine.sweep_start == "08:30"
+    assert engine.sweep_end == "15:00"
+    assert engine.htf_level_tf_minutes == 60
+    assert engine.htf_n_left == 3
+    assert engine.htf_trade_max_per_session == 2
+    assert engine.max_fvg_to_inversion_bars == 24
+
+
 def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
     class FakeWebhook:
         def __init__(self, url: str, label: str):
@@ -175,6 +224,7 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
             self.enabled = True
             self.max_open_contracts = 20
             self.webhooks = [FakeWebhook("https://example.test/hook", "Account 1")]
+            self.portfolio_params = {"r_amount_usd": 500}
             self.session_overrides = {"NQ_NY": {}}
             self.lsi_session_overrides = {"NQ_NY_LSI": {}}
 
@@ -199,6 +249,7 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
     meta = _build_exec_config_meta(state)
     assert list(meta) == ["FAST_V2"]
     assert meta["FAST_V2"]["max_open_contracts"] == 20
+    assert meta["FAST_V2"]["portfolio_params"] == {"r_amount_usd": 500}
     assert meta["FAST_V2"]["sessions"] == ["NQ_NY"]
     assert meta["FAST_V2"]["lsi_sessions"] == ["NQ_NY_LSI"]
     assert meta["FAST_V2"]["webhooks"][0]["paused"] is True
@@ -377,6 +428,8 @@ def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
 
     lsi_engine = LsiEngine()
     lsi_engine.config_name = "FAST"
+    lsi_engine.sweep_start = "09:45"
+    lsi_engine.sweep_end = "12:00"
     lsi_engine.entry_start = "09:45"
     lsi_engine.entry_end = "12:00"
     lsi_engine.flat_start = "15:50"
@@ -402,6 +455,10 @@ def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
     lsi_engine.regime_gates = ("block_full_medium_vol",)
     lsi_engine.qty_multiplier = 1.0
     lsi_engine.lsi_entry_mode = "close"
+    lsi_engine.htf_level_tf_minutes = 60
+    lsi_engine.htf_n_left = 5
+    lsi_engine.htf_trade_max_per_session = 1
+    lsi_engine.max_fvg_to_inversion_bars = 0
 
     cont_info = _session_info(cont_engine)
     lsi_info = _session_info(lsi_engine)
@@ -411,6 +468,8 @@ def test_session_info_exposes_regime_gates_for_continuation_and_lsi():
     assert lsi_info["regime_gate"] == "block_full_medium_vol"
     assert lsi_info["regime_gates"] == ["block_full_medium_vol"]
     assert lsi_info["lsi_variant"] == "legacy-LSI"
+    assert lsi_info["sweep_start"] == "09:45"
+    assert lsi_info["htf_level_tf_minutes"] == 60
 
 
 def test_apply_atr_values_updates_engines():
@@ -472,9 +531,11 @@ def test_apply_atr_values_uses_engine_specific_length():
 def test_fast_and_fast_v2_exec_configs_load_original_baseline_portfolios():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
+    alpha_v1 = configs["ALPHA_V1"]
     fast = configs["FAST"]
     fast_v2 = configs["FAST_V2"]
 
+    assert alpha_v1.portfolio_params == {"r_amount_usd": 500}
     assert set(fast.session_overrides) == {
         "NQ_NY",
         "NQ_Asia",
@@ -595,6 +656,63 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
     assert gates["block_bull_medium_vol"]("20250131") is False
     assert gates["block_sideways_medium_vol"]("20250131") is False
     assert gates["block_full_medium_vol"]("20250131") is True
+
+
+def test_evaluate_regime_gate_returns_bucket_context(monkeypatch):
+    daily = pd.DataFrame(
+        {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.0]},
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-31")]),
+    )
+
+    monkeypatch.setattr("trader.gates._load_nq_daily_history", lambda *_args, **_kwargs: daily)
+    monkeypatch.setattr(
+        "trader.gates._build_nq_ny_extended_regime_calendar",
+        lambda _daily: pd.DataFrame(
+            {
+                "date": [pd.Timestamp("2025-01-31")],
+                "regime": ["bull"],
+                "vol_regime": ["medium_vol"],
+                "combined_regime": ["bull_medium_vol"],
+                "low_confidence": [False],
+                "warmup_ok": [True],
+            }
+        ),
+    )
+
+    evaluation = evaluate_regime_gate("block_bull_medium_vol", "20250131")
+
+    assert evaluation.allowed is False
+    assert evaluation.combined_regime == "bull_medium_vol"
+    assert evaluation.regime == "bull"
+    assert evaluation.vol_regime == "medium_vol"
+    assert "combined_regime=bull_medium_vol" in format_regime_gate_detail(evaluation)
+
+
+def test_evaluate_regime_gates_returns_multiple_evaluations(monkeypatch):
+    daily = pd.DataFrame(
+        {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.0]},
+        index=pd.DatetimeIndex([pd.Timestamp("2025-01-31")]),
+    )
+
+    monkeypatch.setattr("trader.gates._load_nq_daily_history", lambda *_args, **_kwargs: daily)
+    monkeypatch.setattr(
+        "trader.gates._build_nq_ny_extended_regime_calendar",
+        lambda _daily: pd.DataFrame(
+            {
+                "date": [pd.Timestamp("2025-01-31")],
+                "regime": ["bear"],
+                "vol_regime": ["high_vol"],
+                "combined_regime": ["bear_high_vol"],
+                "low_confidence": [False],
+                "warmup_ok": [True],
+            }
+        ),
+    )
+
+    evaluations = evaluate_regime_gates(("block_bull_medium_vol", "block_full_medium_vol"), "20250131")
+
+    assert len(evaluations) == 2
+    assert [evaluation.allowed for evaluation in evaluations] == [True, True]
 
 
 def test_blocking_regime_gate_name_returns_first_failure():

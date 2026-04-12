@@ -1901,7 +1901,236 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
   - `run_nq_ny_lsi_discovery_step1_baseline.py` through `step7_phase_one.py` (full workflow)
   - `run_nq_ny_lsi_dow_analysis.py` (DOW significance analysis)
   - `run_nq_ny_lsi_dow_verify.py` (DOW filter verification — confirmed engine bug)
-  - `save_nq_ny_lsi_rr2_tp05_thu_gated_final.py` (final save script)
+- `save_nq_ny_lsi_rr2_tp05_thu_gated_final.py` (final save script)
+
+---
+
+### NY HTF-LSI (Unswept 60m Extremes, Patched Sweep Invalidation) — STRONG Phase One / CONDITIONAL Phase Two
+
+- **Status**: STRONG to first payout, CONDITIONAL as a post-first-payout extractor. The frozen `5m` long-only anchor passed discovery, holdout, and phase one cleanly, but default post-payout operation at `$250/R` was too jagged on stitched OOS continuity risk.
+- **Thesis**: replace same-timeframe `lsi_n_left / lsi_n_right` pivots with published unswept `60m` bar highs/lows, and allow pre-entry-window breaches to invalidate the level without counting as valid sweeps
+- **Discovery flow**: structural sweep → trade-cap sweep → one-at-a-time parameter sweeps → interaction sweep → lag test → regime-gate check → timeframe transfer → confluence check → frozen-candidate walk-forward tie-break
+
+- **Stage A structural result**:
+  - Only `htf60`, `long`, `fvg_limit` survived honestly
+  - Best window: `08:30-15:00`
+  - `08:30-14:00` stayed alive but weaker
+
+- **Trade-cap result**:
+  - `cap=2` beats `cap=1`
+  - `cap=3` ties `cap=2`, so `cap=2` is preferred
+
+- **Best balanced frozen anchor**:
+
+| Param | Value |
+|-------|-------|
+| strategy | htf_lsi |
+| session | NY |
+| entry_start | 08:30 |
+| entry_end | 15:00 |
+| direction | long only |
+| entry_mode | fvg_limit |
+| rr | 3.0 |
+| tp1_ratio | 0.6 |
+| min_gap_atr_pct | 3.0% |
+| atr_length | 14 |
+| htf_level_tf_minutes | 60 |
+| htf_n_left | 3 |
+| htf_trade_max_per_session | 2 |
+| lsi_fvg_window_left | 20 |
+| lsi_fvg_window_right | 2 |
+| max_fvg_to_inversion_bars | 0 |
+| magnifier | 1s |
+
+- **Balanced anchor metrics**:
+  - Discovery (`2016-01-01` to `2022-12-31`): `424` trades, PF `1.164`, avg R `0.072`
+  - Validation (`2023-01-01` to `2025-03-31`): `151` trades, PF `1.556`, avg R `0.224`, Calmar `6.208`
+
+- **Validation-led challenger**:
+  - Same family, but `htf_n_left=5` and `lsi_fvg_window_right=3`
+  - Discovery: `426` trades, PF `1.059`, avg R `0.022`
+  - Validation: `144` trades, PF `1.595`, avg R `0.246`, Calmar `6.556`
+
+- **Walk-forward tie-break** (`36m IS / 12m OOS / 12m step`, pre-holdout only):
+  - Balanced anchor: `376` stitched OOS trades, PF `1.298`, avg R `0.130`, Calmar `4.12`, DD `-11.83R`
+  - Validation-led challenger: `369` stitched OOS trades, PF `1.180`, avg R `0.084`, Calmar `2.18`, DD `-14.18R`
+  - **Adopt the balanced anchor as the frozen lead**
+
+- **What did not transfer**:
+  - Inversion-speed caps (`lag<=1/2/3`) crushed sample and did not improve the branch
+  - `skip bull_medium_vol + sideways_medium_vol` hurt validation Calmar versus ungated
+  - No single `VWAP/SMA/EMA` bounce or magnet overlay beat the ungated baseline on validation Calmar
+
+- **Extended lag-curve follow-up** (`0..30` bars, tested on each timeframe's best transfer anchor):
+  - `5m`: the early `<=8` study was too pessimistic. Validation kept improving into the low 20s, with the best meaningful region around `23-24` bars. `lag=24` beat the uncapped baseline on validation Calmar (`6.38` vs `6.21`) while keeping `84%` of validation trades.
+  - `3m`: uncapped stayed best on a meaningful sample. Long caps in the `25-30` area recovered much of the validation edge, but still did not beat `lag=0`, and discovery stayed negative across the capped curve.
+  - `2m`: the headline `lag=1` spike was a tiny-sample trap (`6` validation trades). On meaningful sample size, uncapped remained the best row; the curve recovered in the low-to-mid 20s but never overtook `lag=0`.
+  - `1m`: moderate caps around `9-12` bars improved validation materially. `lag=10` was the best meaningful validation row in this pass, but discovery degraded versus the uncapped baseline, so treat it as an interesting local challenger rather than an auto-promotion.
+
+- **Focused `5m` / `1m` follow-up clarified the fork between those two paths**:
+  - `5m`: stitched OOS confirmed that the late-lag idea is real, not just a split-specific validation bump. On the frozen `5m` long / `fvg_limit` / `cap2` anchor, `lag=24` improved stitched OOS PF from `1.298` to `1.347`, stitched OOS avg R from `0.130` to `0.162`, and stitched OOS Calmar from `4.12` to `4.85`, while validation also improved (`PF 1.597`, avg R `0.268`, Calmar `6.38`). `lag=20` was also strong, but `lag=24` was the best balanced late-lag row. This is the next honest `5m` promotion path.
+  - `1m`: the minute-normalized comparison correctly identified a different real-time optimum, but the stitched OOS follow-up rejected it as a promotion path. `lag=10` looked much better on the fixed validation split (`76` trades, PF `1.888`, avg R `0.420`, Calmar `4.91`) than uncapped `lag=0` (`219` trades, PF `1.263`, avg R `0.126`, Calmar `1.71`), but the broader stitched OOS read flipped the verdict: uncapped `lag=0` finished with `577` trades, PF `1.147`, avg R `0.073`, Calmar `2.17`, DD `-19.35R`, while `lag=10` shrank to `199` trades, PF `1.066`, avg R `0.046`, Calmar `0.33`, DD `-27.15R`. Conclusion: the `1m` capped branch was a validation-split mirage, so keep uncapped `1m` as the honest baseline and treat `lag=10` as closed rather than a live challenger.
+
+- **A downstream promotion test favored `5m lag=24` over the original uncapped lead as the better overall operating variant**:
+  - Head-to-head on the exact downstream path kept both rows alive: both were `STRONG` in phase one and `CONDITIONAL` in phase two.
+  - `lag=24` improved raw trade quality almost everywhere that matters for branch durability: pre-holdout PF `1.278` vs `1.250`, pre-holdout avg R `0.133` vs `0.112`, stitched OOS PF `1.347` vs `1.298`, stitched OOS avg R `0.162` vs `0.130`, holdout PF `2.200` vs `1.987`, and holdout avg R `0.430` vs `0.361`.
+  - The one real giveback was pure stitched-OOS funded phase-one EV per start, which slipped modestly to `$138.33` from `$158.58`. But payout rate actually improved slightly (`52.6%` vs `52.2%`), holdout funded EV improved (`$81.47` vs `$78.68`), and the prop-style payout scorecard also improved.
+  - Post-payout behavior was clearly better. At the default `$250/R`, `lag=24` lifted OOS withdrawals/start from `$4,140` to `$4,569`, holdout withdrawals/start from `$2,689` to `$2,815`, and MC survival from `6.8%` to `9.8%`.
+  - The best balanced post-payout size also stepped up. The old uncapped row preferred `$150/R` (`$4,431` OOS withdrawals/start, `$1,362` holdout withdrawals/start, `61.7%` MC survival). `lag=24` supported `$175/R` under the same `0%` OOS/holdout breach and `>=50%` MC survival filter, with `$6,037` OOS withdrawals/start, `$1,653` holdout withdrawals/start, and `54.6%` MC survival.
+  - Conclusion: if the goal is the best all-around `5m` HTF-LSI operating branch, promote `lag=24` over uncapped `lag=0`. Keep uncapped as the historical first-payout benchmark, but treat `lag=24` as the new preferred live research lead.
+
+- **A dedicated pre-holdout count-expansion sweep showed the `5m` HTF-LSI branch can reach the `60-80` trades/year band without changing timeframe, direction family, or entry style**:
+  - Targeted sweep: `5m`, `htf60`, `htf_n_left=3`, `long|both`, `fvg_limit|close`, `gap=2.0/2.5/3.0`, `right=2/3/5`, `lag=0/24/30`, `cap=2/3`, with holdout still frozen at `2025-04-01+`.
+  - The promoted operating lead (`long`, `fvg_limit`, `gap3.0`, `right2`, `lag24`, `cap2`) was slightly below the target band at `54.7` pre-holdout trades/year and `56.5` validation trades/year, though `2024` still printed `65` filled trades.
+  - The cleanest target-band compromise was `long`, `fvg_limit`, `gap2.5`, `right2`, `lag0`, `cap2`: `66.4` pre-holdout trades/year, `69.0` validation trades/year, validation PF `1.668`, validation avg R `0.265`, validation Calmar `7.33`, with `78` filled trades in calendar `2024`.
+  - The strongest lower-count target-band challenger was `gap2.5`, `right2`, `lag30`, `cap2`: `60.8` pre-holdout trades/year, `61.8` validation trades/year, validation PF `1.683`, validation avg R `0.294`, validation Calmar `6.59`.
+  - If the exact center of the desired count band matters more than absolute trade quality, `gap2.5`, `right3`, `lag0`, `cap2` landed almost exactly on the goal at `70.2` pre-holdout trades/year and `71.2` validation trades/year, though with softer validation PF / Calmar (`1.569` / `6.46`) than the `right2` row.
+  - The parameter map was clear. `both` direction and `close` entry mode massively overshot count and degraded quality (`both` averaged `122` trades/year with avg validation PF `1.16`; `close` averaged `102` trades/year with avg validation PF `1.15`). `right=5` also added too much count for the quality given, while `cap=3` tied `cap=2` and added no meaningful new flow.
+  - Practical conclusion: if the goal changes from “best all-around operating variant” to “roughly one trade a week with the same HTF-LSI thesis,” the honest first contender is not a new both-direction branch. It is still the same `5m` long / `fvg_limit` family, just loosened modestly toward `gap2.5` and either uncapped or late-capped on the inversion side. Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_COUNT_EXPANSION.md`.
+
+- **Adding a regime gate to the higher-count `5m` HTF-LSI candidates worked, but only one gate was real**:
+  - Fresh regime attribution on the promoted `5m lag24` long branch showed the real drag buckets were `bear_high_vol` and, secondarily, `bull_high_vol`. The older `skip bull_medium_vol + sideways_medium_vol` gate was still wrong for this family.
+  - The only gate worth carrying forward was `skip bear_high_vol`. On the promoted `lag24` lead it improved validation PF / avg R / Calmar (`1.644 / 0.289 / 8.14`) but cut count too much for the new “one trade a week” goal.
+  - The best gated count challenger was `gap2.5`, `right2`, `lag0`, `cap2`, `skip bear_high_vol`: fixed-split count stayed close enough to the target (`58.0` pre-holdout trades/year, `66.3` validation trades/year), validation improved to PF `1.713`, avg R `0.283`, Calmar `8.12`, and the stitched `36m IS / 12m OOS / 12m step` OOS tie-break beat the current `lag24` lead on every major quality metric: `339` OOS trades, PF `1.408`, avg R `0.176`, Calmar `6.33`, DD `-9.44R`, total R `+59.81`, versus `330`, `1.347`, `0.162`, `4.85`, `-11.01R`, `+53.39` for ungated `lag24`.
+  - The count-preserving sibling was `gap2.5`, `right3`, `lag0`, `cap2`, `skip bear_high_vol`: `61.5` pre-holdout trades/year, `68.5` validation trades/year, stitched OOS `359` trades, PF `1.347`, avg R `0.155`, Calmar `5.43`, DD `-10.23R`, total R `+55.50`. It kept the weekly-trade target more cleanly, but it was weaker than the `right2` gated row on the stitched OOS tie-break.
+  - Practical conclusion: if we want more flow without giving up trade quality, the first gated mini-shortlist should be `gap2.5/right2/lag0/skip bear_high_vol` and `gap2.5/right3/lag0/skip bear_high_vol`, with the `right2` row as the current pre-holdout favorite. Holdout should stay closed until one of those is explicitly frozen against the old `lag24` operating lead. Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_GATED_COUNT_TIEBREAK.md`.
+
+- **The one-time holdout read kept ungated `lag24` as the overall operating lead, even though the gated count challengers stayed alive**:
+  - Holdout comparison window: `2025-04-01` to `2026-03-24`, opened once only after freezing the mini-shortlist.
+  - The current operating lead, ungated `lag24`, still won on holdout raw quality and payout conversion: `42` trades, PF `2.20`, avg R `0.430`, total R `+18.07`, Calmar `6.02`, prop payout `71.2%`, funded payout `71.2%`, funded EV/start `$81.47`. It was positive in both holdout subperiods: `2025-04-01` to `2025-12-31` (`32` trades, PF `2.46`, avg R `0.487`) and `2026-01-01` to `2026-03-24` (`10` trades, PF `1.56`, avg R `0.249`).
+  - The quality-oriented gated challenger, `gap2.5/right2/lag0/skip bear_high_vol`, remained constructive but did not beat the lead on holdout: `46` trades, PF `1.90`, avg R `0.347`, total R `+15.94`, Calmar `5.11`, prop payout `65.7%`, funded payout `65.7%`, funded EV/start `$59.67`. It was positive in both `2025` and `2026 YTD`, so it stays alive as a count-focused alternative, but not as the new lead.
+  - The count-preserving gated challenger, `gap2.5/right3/lag0/skip bear_high_vol`, printed the most holdout trades (`54`) and nearly matched the lead’s total holdout R (`+17.54`), with funded EV/start actually higher at `$94.00`. But its holdout quality was weaker overall (PF `1.92`, avg R `0.325`, Calmar `4.68`, payout `65.4%`) and, more importantly, it split sharply by year: strong in `2025` (`44` trades, PF `2.30`, avg R `0.412`) but negative in `2026 YTD` (`10` trades, PF `0.98`, avg R `-0.057`).
+  - Practical conclusion: do not replace ungated `lag24` as the main HTF-LSI operating branch. If we want a secondary “more trades” variant, `gap2.5/right2/lag0/skip bear_high_vol` is the cleaner alternate branch because it stayed positive across both holdout subperiods. `right3` remains the higher-count but less stable side branch. Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_GATED_COUNT_HOLDOUT.md`.
+
+- **A direct exact single-leg comparison says the legacy `ALPHA_V1` NQ NY LSI leg is still the stronger all-weather branch, while `HTF_LSI_5M_LAG24` is the more selective alternate**:
+  - exact replay latest common end: `2026-03-24`
+  - same legacy leg used as a true single-leg exact replay: `legacy-LSI`, `09:35-15:30`, `rr=3.0`, `tp1=0.34`, `gap=5.0`, `n_left=8`, `n_right=60`, `fvg=20/5`, `Wed+Thu` excluded
+  - same HTF branch used in that exact comparison: `htf-LSI`, `08:30-15:00`, `rr=3.0`, `tp1=0.6`, `gap=3.0`, `htf60`, `n_left=3`, `cap=2`, `fvg=20/2`, `lag=24`, all days
+  - same payout models used for both:
+    - funded first-payout model: start `$50k`, trailing DD `$2k`, first payout floor `$52.5k`, challenge fee `$100`, risk `$500/R`
+    - prop model: `+5R / -4R`, daily `-2R`, min `5` trading days, account fee `$50`, reset fee `$50`, risk `$400/R`
+  - on the exact `10y` window `2016-01-01` to `2025-12-31`, legacy did `427` trades, PF `1.595`, avg R `0.189`, total R `+80.67`, DD `-6.36R`, Calmar `12.68`, funded payout `81.6%`, prop payout `93.9%`; HTF lag24 did `530` trades, PF `1.357`, avg R `0.165`, total R `+87.20`, DD `-12.97R`, Calmar `6.72`, funded payout `52.0%`, prop payout `68.3%`
+  - `2024` was the clearest year in HTF lag24’s favor: legacy was almost flat to slightly negative (`43` trades, `-0.58R`, funded payout `8.6%`), while HTF lag24 stayed clearly profitable (`64` trades, `+18.28R`, funded payout `33.6%`)
+  - `2025` split the result: legacy had the better raw PF (`2.44` vs `1.50`) and lower DD (`-4.40R` vs `-7.08R`), but HTF lag24 had more trades (`42` vs `33`), higher total R (`+15.94` vs `+11.69`), and better funded payout conversion (`64.1%` vs `50.0%`)
+  - `2026 YTD` (`2026-01-01` to `2026-03-24`) is too thin to lean on: legacy raw quality is better (`7` trades, `+3.58R`, PF `3.01`), but neither branch has enough 2026 history yet to make the payout model stable
+  - practical conclusion: do not treat `HTF_LSI_5M_LAG24` as a replacement for the legacy `ALPHA_V1` leg. Legacy remains the stronger account-farming branch on long-run robustness and payout rate, while HTF lag24 is the newer alternate that handled `2024-2025` better than legacy’s 2024 slump.
+  - important classification note: `HTF_LSI_5M_LAG24` is still the best **true / canonical LSI** candidate tested so far. The only branch that beats it overall is `legacy-LSI`, and that branch depends on the old broken entry-gated, non-consumptive sweep semantics, so it should be treated as a separate non-canonical strategy bucket rather than the benchmark for “real” LSI.
+  - uncapped rerun note: a fresh cross-timeframe rerun disabled the research-side session trade cap with `htf_trade_max_per_session=0` and re-ran the `1m/2m/3m/5m` transfer + lag packet. That did **not** dethrone `5m lag24`. `5m` stayed exactly the same winner, `long / fvg_limit / lag24`, with the same validation PF / avg R / Calmar (`1.597 / 0.268 / 6.38`) as the capped study. The lower timeframes got noisier instead of cleaner: uncapped `3m` shifted to `lag19` but stayed discovery-negative and still had lower validation Calmar than the capped `3m lag0` row; uncapped `2m` surfaced a both-direction `lag1` pop on only `12` validation trades; uncapped `1m` broadened to `both / fvg_limit / lag0`, but the capped `long / close / lag10` row still had materially better validation PF / avg R / Calmar (`1.888 / 0.420 / 4.91` vs `1.279 / 0.132 / 3.76`). Practical implication: removing session trade caps strengthens the case that `HTF_LSI_5M_LAG24` is the cleanest real HTF-LSI branch, because it was unchanged while the lower-timeframe variants became more sample-fragile. Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md`.
+  - exact live-cap note: the execution-side `max_open_contracts=1` cap was materially suppressing size and should not be treated as representative of the branch. A direct exact replay comparison on the same trade stream (`540` trades through `2026-03-24`) showed `cap=1` forced every trade to `1` MNQ and produced `10Y` PF `1.357`, total R `+87.20`, DD `-12.97R`. Raising the cap to `20` lifted average size to `6.84` MNQ over the `10Y` window and changed the long-run profile to PF `1.365`, total R `+85.33`, DD `-10.75R`; more importantly, it was effectively uncapped for the recent years that matter: in `2024`, `2025`, and `2026 YTD`, the `cap=20` and true uncapped (`cap=0`) exact replays had the same trade counts and the same raw metrics, because recent desired size never exceeded `10` MNQ. Practical implication: for current HTF-LSI exact/live research, `max_open_contracts=20` is a reasonable “effectively uncapped” default, while `1` is an artificial choke collar. Reference: `backtesting/data/results/nq_ny_htf_lsi_exact_cap_compare.json`.
+  - replacement sizing note: if `HTF_LSI_5M_LAG24` is force-fit as the `ALPHA_V1` NQ NY LSI replacement and `2024-2026` is weighted more heavily than the older years, the best sprint-risk compromise is **`$300/trade`**, not `$400`. On the exact recent window `2024-01-01` to `2026-03-24`, `$300` printed `98.0%` prop payout, `2.0%` breach, `176d` average payout, and `+$2410` EV/start; `$250` was even safer (`100%` payout, `0%` breach, `193d`) but too slow to be the clean replacement choice, while `$350+` degraded too quickly (`$350`: `94.1%` / `5.9%` / `159d`; `$400`: `92.2%` / `7.8%` / `144d`). The long-run sanity check still favored lower risk, but with much slower payout cadence (`10Y` at `$250`: `94.5%` payout, `392d`; `$300`: `90.6%`, `304d`; `$400`: `76.8%`, `158d`). Practical implication: for an `ALPHA_V1`-style sprint account, use `risk_usd=300` if the goal is to preserve strong recent-year payout quality without dragging payout speed out as much as `$250`; treat `$250` as the extra-conservative alternate and avoid `$350+` unless faster payout is worth the noticeably worse breach profile. References: `backtesting/data/results/nq_ny_htf_lsi_replacement_risk_recent.json`, `backtesting/data/results/nq_ny_htf_lsi_replacement_risk_10y.json`.
+  - portfolio decision update (`2026-04-12`): `ALPHA_V1` now intentionally uses `HTF_LSI_5M_LAG24` as the live NQ NY leg, on the tightened operating row `08:30-13:30`, `rr=3.5`, `tp1=0.4`, at `risk_usd=300`. Treat this as a deliberate canonical-LSI / recency-weighted roster decision, not as a revision of the older head-to-head evidence that legacy `ALPHA_V1` LSI was stronger on long-run all-weather payout farming.
+  - combined portfolio replacement note: in the exact combined `ALPHA_V1` profile, replacing the legacy `NQ_NY_LSI` leg with `HTF_LSI_5M_LAG24` at the recommended `$300` risk and leaving the other legs unchanged produced a workable but clearly slower payout engine. On the exact combined single-account model with `+$2500 / -$2000` thresholds and a `14`-day stagger, the `10Y` window `2016-01-01` to `2025-12-31` printed `73.6%` payout with `134d` average payout time, fastest `3d`, slowest `493d`. The strongest individual replacement years were `2024` (`84.2%`, `110d`, fastest `20d`, slowest `189d`) and `2025` (`84.6%`, `96d`, fastest `8d`, slowest `287d`). `2026 YTD` (`2026-01-01` to `2026-03-24`) is still unresolved-heavy: `1` payout, `0` breaches, `5` open, so the displayed `100%` payout rate only reflects the single resolved account. Practical implication: the HTF swap can keep the combined portfolio alive, but it should be treated as a recency-motivated replacement, not as evidence that the combined portfolio got broadly stronger than the legacy mix. Reference: `backtesting/data/results/alpha_v1_htf_lsi_replacement_combined_exact.json`.
+  - combined `2024-2025` payout-speed frontier note: a focused exact sweep on the swapped portfolio (`ALPHA_V1` with HTF-LSI replacing legacy LSI) showed the `2024-2025` combined-account tradeoff is not monotonic. Relative to the initial `$300` replacement (`82.7%` payout, `100.3d` avg payout), the cleanest improvement was actually **`$350`**, which improved both metrics at once: `84.6%` payout and `86.9d` average payout. `$325` was the low-drama trim (`82.7%`, `93.2d`), and `$400` was the fastest row that still preserved the same payout rate as `$300` (`82.7%`, `72.9d`). Beyond that, the curve turns meaningfully worse on success: `$450` fell to `78.8%`, `$500` to `75.0%`. Practical implication: if the only goal is to cut average payout time on the `2024-2025` swapped portfolio without giving up too much success rate, the honest menu is `$325` for a mild improvement, `$350` for the best balanced improvement, and `$400` for a faster-but-still-acceptable aggressive setting. Reference: `backtesting/data/results/alpha_v1_htf_lsi_replacement_combined_2024_2025_risk_sweep.json`.
+  - full four-leg `2024-2025` portfolio frontier note: an exact all-legs grid then varied the swapped HTF leg plus `NQ_Asia`, `ES_Asia`, and `ES_NY` together. The important finding was that the blended daily-PnL frontier materially overstated payout quality; only the exact combined-profile verify should be trusted. On the exact verify, the **highest-quality** swapped mix remained the baseline-style portfolio `HTF_LSI=300 / NQ_Asia=300 / ES_Asia=200 / ES_NY=300`, which printed `84.3%` payout, `109.5d` average payout, fastest `20d`, slowest `274d`. The fastest mix that still stayed around an `80%` payout rate was `HTF_LSI=400 / NQ_Asia=250 / ES_Asia=250 / ES_NY=350`, which cut average payout to `66.0d` with `80.8%` payout, fastest `8d`, slowest `198d`. Pushing harder kept reducing payout time but degraded success too quickly: `400 / 300 / 250 / 400` reached `63.8d` at `78.8%`, `400 / 250 / 300 / 400` reached `57.3d` at `73.1%`, and the absolute-fastest verified mix `400 / 400 / 300 / 400` reached `54.1d` at only `73.1%`. Practical implication: for the swapped `ALPHA_V1` portfolio, use the baseline-style mix if payout percentage is the priority, and use `400 / 250 / 250 / 350` only if cutting payout time to roughly two months is worth giving up a few points of payout rate. Reference: `backtesting/data/results/alpha_v1_htf_portfolio_frontier_2024_2025.json`.
+  - stagger-policy note: a second exact portfolio-layer study then asked whether the swapped `ALPHA_V1` portfolio should stagger new accounts by time or by realized account-R moves. Time-based staggers were tested at `7d / 10d / 14d / 21d`; R-triggered starts were tested whenever the master combined stream moved by `2R / 3R / 4R / 5R`, using **`1R = $500`** so the trigger language stayed aligned with the same `+$2500 / -$2000` (`+5R / -4R`) payout model. The clean result was that **R-triggered staggering dominated fixed calendar staggering** on the exact verified shortlist. The best time-based rows still clustered around the same aggressive mix and topped out near `80-81%` payout with roughly `60-64d` average payout: `time_14d` with `400 / 250 / 250 / 400` printed `80.8%` and `60.0d`, `time_7d` printed `80.8%` and `61.1d`, and `time_10d` printed `80.8%` and `62.2d` with a slightly lighter `ES_NY=350`. By contrast, the R-triggered family kept payout quality materially higher while still being faster: the same core aggressive mix `HTF_LSI=400 / NQ_Asia=250 / ES_Asia=250 / ES_NY=400` printed `86.5%` payout and `55.8d` average payout at `2R`, `86.4%` and `56.0d` at `3R`, `86.7%` and `58.8d` at `4R`, and `84.6%` and `50.6d` at `5R`. Practical implication: if the goal is the fastest payout engine that still keeps a strong payout percentage, the honest new default is **R-triggered staggering, not a fixed 2-week clock**. The best balanced row is `r_trigger_2R` on `400 / 250 / 250 / 400`; `r_trigger_5R` is the faster aggressive version if you are willing to accept fewer starts and a bit more variance. Reference: `backtesting/data/results/alpha_v1_htf_stagger_policy_frontier_2024_2025.json`.
+  - hybrid stagger note: a follow-up exact test then asked whether `r_trigger_2R` should be softened with a minimum calendar spacing floor before allowing another account start. The tested hybrids were `2R + min 3d / 5d / 7d / 10d`, evaluated on the practical mixes already on the table rather than on a new broad grid. The result was nuanced but not decisive: **small spacing floors (`3d` or `5d`) can shave a fraction of a day off the aggressive mixes, but they do not improve the frontier enough to replace plain `2R` as the default**. On the current aggressive leader `400 / 250 / 250 / 400`, plain `2R` printed `83.0%` payout and `56.0d` average payout, while `2R + min 3d` nudged that to the same `83.0%` payout and a slightly faster `55.2d`; `min 5d` was similar at `55.6d`. The larger floors were not helpful: `min 7d` slipped to `82.6%` and `56.3d`, and `min 10d` fell to `79.5%` and `60.9d`. On the safer baseline-style mix `300 / 300 / 200 / 300`, `min 7d` did lift payout rate from `85.7%` to `87.9%`, but average payout slowed from `86.7d` to `89.3d`, so it was a quality-first tweak rather than a speed upgrade. Practical implication: keep plain `r_trigger_2R` as the honest operating default; if clustering turns out to matter in live ops, the only hybrid worth revisiting is a very light `min 3d` or `min 5d` floor on the aggressive `400 / 250 / 250 / 400` mix. Reference: `backtesting/data/results/alpha_v1_htf_hybrid_2r_min_spacing_test_2024_2025.json`.
+  - Reference: `backtesting/learnings/reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md`.
+
+- **A later local window/exit retune improved the active `5m lag24` operating point inside the same HTF-LSI branch**:
+  - Held structure fixed to `5m`, `long`, `fvg_limit`, `gap3.0`, `htf60`, `n3`, `cap2`, `fvgL20`, `fvgR2`, `lag24`.
+  - Best entry cutoff inside the prior `08:30-15:00` range was `13:30`; extending entries later added little or slightly hurt validation Calmar, and later starts were clearly worse.
+  - On `08:30-13:30`, both ungated and `skip bear_high_vol` preferred `rr=3.5`, `tp1=0.4`. Ungated validation Calmar improved from `6.60` to `6.83`; gated improved from `8.27` to `8.52`.
+  - The nuance is holdout hygiene: the already-opened holdout still slightly favored the older `08:30-15:00 / rr3.0 / tp0.6` baseline on raw holdout Calmar, even though the new `08:30-13:30 / rr3.5 / tp0.4` row was better on stitched OOS.
+  - Practical conclusion: if we are updating the current operating lead rather than reopening the frozen holdout packet, use `08:30-13:30`, `rr=3.5`, `tp1=0.4` on the same lag24 structure and keep `skip bear_high_vol` as the only gate that still looks genuinely useful.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md`
+
+- **The promoted `5m lag=24` HTF-LSI branch is much closer to exact research parity than the first replay suggested**:
+  - The sparse exact replay turned out to be mostly a config leak, not a structural strategy mismatch. The execution profile `HTF_LSI_5M_LAG24` was unintentionally inheriting the legacy `NQ_NY_LSI` weekday exclusion `excluded_dow=[2,3]` even though HTF-LSI discovery and validation were run with no weekday exclusions.
+  - A single-day trace on `2025-04-23` showed the exact engine stayed `idle` all day only because that Wednesday was being excluded before the sweep window could arm. After explicitly overriding the profile to `excluded_dow=null`, the exact replay restored the same trade the research branch took: long at `18883.75`, sourced from the `2025-04-23 06:00 ET` HTF low `18839.0`, with `fvg_to_inversion_bars=13` and `sweep_to_inversion_bars=14`.
+  - Practical implication: the earlier `42 vs 28` holdout mismatch is obsolete and should not be treated as evidence that the promoted HTF-LSI branch fails live-alignment.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2025_04_23.md`
+
+- **After removing the inherited Wed/Thu exclusion, holdout parity for `HTF_LSI_5M_LAG24` became exact at the trade level**:
+  - The direct research export still prints `602` rows because it includes `54` `no_fill` setups; the honest research filled count remains `548` (`506` pre-holdout, `42` holdout).
+  - With the weekday leak fixed, exact replay now prints `553` trades overall, `511` pre-holdout, and `42` holdout.
+  - On the untouched holdout `2025-04-01` to `2026-03-24`, fuzzy same-trade matching now maps all `42` exact fills to the `42` research fills under the key `(date, entry_price, htf_level_price, fvg_to_inversion_bars)`, with `0` research-only and `0` exact-only holdout trades.
+  - The only holdout mismatch left is benign timestamp drift on limit fills: exact entries land `0-4` minutes after the research bar timestamp. Pre-holdout parity also tightened sharply from `506 vs 307` to `506 vs 511`, leaving only `16` research-only and `21` exact-only trades across the full long history.
+  - Practical implication: `5m lag=24` remains the right HTF-LSI research lead, and the remaining exact-alignment work is now a small pre-holdout residual rather than a holdout failure or a trade-cap sequencing issue.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_PARITY_DIFF.md`
+
+- **Two exact-engine boundary fixes removed most of the remaining pre-holdout replay mismatch without changing holdout parity**:
+  - The exact engine was still doing two things research did not: allowing HTF-LSI FVG detection when `daily_atr` was unavailable and allowing `fvg_limit` orders to fill on `1s` ticks after the `15:00` entry cutoff. Both behaviors were fixed in `execution/src/trader/lsi_engine.py`.
+  - Re-running the full parity diff after those fixes left holdout unchanged at exact parity (`42` research fills vs `42` exact, `0` research-only, `0` exact-only) but reduced exact replay from `553` total trades to `540`, with pre-holdout exact shrinking from `511` to `498`.
+  - That collapsed the pre-holdout residual from `16` research-only / `21` exact-only down to `16` research-only / `8` exact-only. In other words, the boundary fixes removed `13` exact-only trades without creating new research-only misses.
+  - The representative broken days now behave correctly: `2016-01-05` no longer produces the two null-ATR exact-only fills, and `2023-06-05` now arms at `14:55` then cancels at the entry boundary instead of filling at `15:00:03`.
+  - Practical implication: the remaining mismatch is now mostly a narrower pending-gap selection / ordering problem, not an ATR-readiness bug, not a post-window fill bug, and not a holdout integrity issue.
+  - References: `backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_PARITY_DIFF.md`, `backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2016_01_05.md`, `backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_DAY_TRACE_2023_06_05.md`
+
+- **Timeframe transfer**:
+  - **5m is best**
+  - `2m` is alive but weaker
+  - `1m` is positive but much weaker
+  - `3m` looks good on validation but fails the discovery filter, so it is not promotable
+
+- **Focused `2m` / `3m` stitched-OOS follow-up** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_3m_followup.py`):
+  - `2m`: uncapped `lag=0` long / `fvg_limit` / `cap1` remains the honest winner. Pre-holdout: `747` trades, PF `1.206`, discovery PF `1.186` / avg R `0.094`, validation PF `1.275` / avg R `0.127` / Calmar `2.06`. Stitched OOS (`36m IS / 12m OOS / 12m step`): `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`, DD `-13.41R`. The late-lag `lag=26` challenger improved PF / avg R slightly but worsened stitched-OOS Calmar to `2.19` and DD to `-19.93R`. Conclusion: `2m` is still weaker than `5m`, but it is alive enough to justify a narrow secondary pre-holdout packet if we want one lower-timeframe side branch.
+  - `3m`: validation still looks better than the underlying structure deserves. Uncapped `lag=0` stitched OOS was `444` trades, PF `1.155`, avg R `0.078`, Calmar `2.64`, DD `-13.07R`; `lag=30` was only a lateral move (`364` trades, PF `1.146`, avg R `0.084`, Calmar `2.66`, DD `-11.43R`) and discovery stayed negative either way. Conclusion: keep `3m` closed for this thesis.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_3M_FOLLOWUP.md`
+
+- **Narrow `2m` secondary packet** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_secondary_packet.py`):
+  - Held the viable branch shape fixed: `long`, `fvg_limit`, `cap1`, `lag=0`, `08:30-15:00`.
+  - Swept a tight local neighborhood: `gap={3,4}`, `htf_n_left={3,5}`, `left={40,50,60}`, `right={3,5,8}`, `rr={2.5,3.0,3.5}`, `tp1={0.5,0.6,0.7}` (`324` configs, holdout still closed).
+  - The prettiest pre-holdout rows all widened `lsi_fvg_window_right` from `5 -> 8`. Best fixed-split row: `gap3 n3 left50 right8 rr3.0 tp0.6` with discovery PF `1.135`, avg R `0.070`; validation PF `1.310`, avg R `0.148`, Calmar `3.30`.
+  - But stitched OOS rejected those challengers. The original anchor, `gap3 n3 left50 right5 rr3.0 tp0.6`, still ranked first on the honest tie-break: `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`, DD `-13.41R`. The best `right=8` challenger fell to `529` trades, PF `1.177`, avg R `0.088`, Calmar `2.76`, DD `-16.94R`.
+  - Conclusion: `2m` does have a real local plateau, but the current anchor is already the best-balanced row in that plateau. Keep `2m lag0 / right5 / rr3 / tp0.6` as the secondary branch if we want one, and do not promote the validation-led `right=8` variants.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_SECONDARY_PACKET.md`
+
+- **Broadening the `2m` anchor’s HTF-LSI sweep concept to include completed session / day / week reference levels increased trade count but did not improve the branch** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_sweep_source_compare.py`):
+  - Compared three frozen pre-holdout variants on the same `2m` anchor with holdout still closed: `htf_only`, `reference_only`, and `htf_plus_reference`.
+  - The original `htf_only` anchor remained best on the honest stitched-OOS tie-break: `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`, DD `-13.41R`.
+  - `htf_plus_reference` materially increased sample, but the added trades were weaker than the base edge: pre-holdout filled trades rose `747 -> 1175`, stitched OOS trades `486 -> 768`, yet stitched OOS PF slipped to `1.199`, avg R to `0.100`, Calmar to `3.56`, and DD widened to `-21.46R`.
+  - `reference_only` also raised count relative to `htf_only` (`678` stitched-OOS trades), but it was clearly worse on quality: PF `1.165`, avg R `0.082`, Calmar `3.02`, DD `-18.39R`, with a negative `2022` walk-forward fold.
+  - Important structural read: on this frozen `long` branch, only the **low-side** published levels actually contributed trades. The mixed / reference branches were driven mainly by `asia_low`, `london_low`, and `new_york_low`, with smaller help from `previous_day_low` and `previous_week_low`; the added high-side levels were irrelevant on the long-only branch.
+  - Practical conclusion: do not replace the honest `2m` anchor with the broadened sweep-source versions. If the goal is the strongest base for future confluence testing, keep `htf_only`. If the goal later shifts to a secondary higher-count side branch, `htf_plus_reference` is the only variant worth keeping alive, but treat it as a count-expansion branch with weaker quality and wider drawdown, not as an improved core candidate.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_SWEEP_SOURCE_COMPARE.md`
+
+- **Downstream `2m` vs `5m` promotion comparison** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_vs_5m_promotion.py`):
+  - Compared the `2m` anchor directly against the current `5m lag24` operating lead on the same downstream path: pre-holdout structural read, stitched OOS, opened holdout, phase-one payout modeling, phase-two continuity, and post-payout risk sweep.
+  - `5m lag24` stayed clearly ahead on stitched OOS raw quality: `330` trades, PF `1.347`, avg R `0.162`, Calmar `4.85`, versus `2m` at `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`.
+  - Holdout made the separation decisive. `5m` held PF `2.200`, avg R `0.430`, DD `-3.0R`; `2m` nearly flatlined at PF `1.040`, avg R `0.004`, DD `-10.78R`.
+  - Phase-one funded EV/start favored `5m` strongly on stitched OOS (`$138.33` vs `$53.48`). `2m` did print a slightly higher holdout funded EV/start (`$89.36` vs `$81.47`), but that came on much weaker raw holdout trade quality and does not change the promotion verdict.
+  - Phase two was the real deal-breaker. At the default `$250/R`, `5m` produced OOS withdrawals/start `$4,568.60` and holdout withdrawals/start `$2,815.14`, versus `2m` at `$2,962.98` and `$870.93`; MC survival at the true monetized threshold was `9.8%` for `5m` and only `0.2%` for `2m`.
+  - The best balanced post-payout size for `2m` had to drop to `$125/R`, still yielding only `$3,592.51` OOS withdrawals/start and `$400.37` holdout withdrawals/start, while `5m` supported `$175/R` with materially better extraction.
+  - Conclusion: keep `2m` as a secondary exploratory branch only. It does not deserve promotion over `5m lag24`, and it should not be treated as a co-lead.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_VS_5M_PROMOTION.md`
+
+- **Phase-one payout evaluation** (`2019-01-01` to `2025-03-31` stitched OOS stream, holdout `2025-04-01` to `2026-03-24`):
+  - OOS prop model: `1,945` starts, payout `70.9%`, breach `22.7%`, open `6.4%`, EV / attempt `$14,108.30`, avg days to payout `118.8`
+  - OOS funded model: payout `52.2%`, breach `41.3%`, open `6.4%`, EV / start `$158.58`, median days to payout `75`
+  - Holdout prop model: `306` starts, payout `71.2%`, breach `3.3%`, open `25.5%`, EV / attempt `$14,196.73`, avg days to payout `78.9`
+  - Holdout funded model: payout `71.2%`, breach `3.3%`, open `25.5%`, EV / start `$78.68`, median days to payout `75.5`
+  - Verdict: **STRONG**
+
+- **Phase-two post-payout continuity** (weekly withdrawals above `$52.5k` back to `$52.0k`, default post-payout risk `$250/R`):
+  - Stitched OOS continuity: withdrawal `88.7%`, breach `48.2%`, avg withdrawals / start `$4,140`, avg payout count / start `5.44`
+  - Holdout continuity: withdrawal `91.5%`, breach `0.0%`, avg withdrawals / start `$2,689`, avg payout count / start `3.96`
+  - Monte Carlo at the true monetized-account threshold (`8R` at `$250/R`): survival only `6.8%`, ruin `93.2%`
+  - Verdict: **CONDITIONAL**
+
+- **Focused post-payout risk sweep**:
+  - Best balanced operating size was **`$150/R` post-payout**
+  - At `$150/R`: OOS withdrawals / start `$4,431`, OOS breach `0.0%`, holdout withdrawals / start `$1,362`, holdout breach `0.0%`, MC survival `61.7%` at `13.3R`
+  - Safer but lighter variant: `$125/R` gave MC survival `80.3%` with OOS withdrawals / start `$3,693`
+  - Conclusion: `$250/R` is too aggressive after first payout for steady extraction; if this branch is used on monetized accounts, step down to roughly `$150/R` and treat it as a conditional extractor, not a set-and-forget one.
+
+- **Conclusion**:
+  - This is no longer just a discovery-alive branch. The frozen `5m` balanced anchor is a real first-payout candidate.
+  - Do not reopen broad parameter discovery. Exact-execution live-alignment is now partially in place, and the next clean step is tightening research-versus-execution parity plus the operating playbook around the reduced post-payout risk size.
+
+- **PSR / DSR promotion check**:
+  - Trial basis from the actual `5m` discovery path: `144` raw unique configs, `8` effective trials by trade-date clustering
+  - Full pre-holdout candidate (`2016-01-01` to `2025-03-31`): `575` trades, PF `1.250`, avg R `0.112`, total R `+64.37`, Calmar `5.27`, DD `-12.21R`, Sharpe `1.53`
+  - Full pre-holdout PSR / DSR: **`0.9914 / 0.8092`**
+  - Stitched walk-forward OOS (`36m IS / 12m OOS / 12m step`): `376` trades, PF `1.298`, avg R `0.130`, total R `+48.70`, Calmar `4.12`, DD `-11.83R`, Sharpe `1.75`
+  - Walk-forward OOS PSR / DSR: **`0.9869 / 0.7606`**
+  - **Interpretation**: the branch survives multiple-testing deflation cleanly
+
+- **Holdout open** (`2025-04-01+`):
+  - `46` trades, PF `1.987`, avg R `0.361`, total R `+16.61`, Calmar `5.54`, DD `-3.0R`, Sharpe `4.66`
+  - `2025`: `35` trades, PF `2.205`, avg R `0.414`, total R `+14.50`
+  - `2026 YTD`: `11` trades, PF `1.437`, avg R `0.192`, total R `+2.11`
+
+- **Conclusion**: This is still the strongest NQ NY HTF-structure LSI branch tested so far. Keep `5m lag=24` as the preferred research lead, do not reopen broad discovery, and focus next on tightening the small residual pre-holdout exact-replay parity mismatch plus the live operating playbook before treating it as a fully live-ready branch.
 
 ---
 

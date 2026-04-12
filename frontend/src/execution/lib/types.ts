@@ -7,6 +7,25 @@ export interface TradeLevels {
   direction: number; // 1 = long, -1 = short
 }
 
+export interface RegimeGateEvaluation {
+  gate: string;
+  date: string;
+  allowed: boolean;
+  reason?: string;
+  regime?: string;
+  vol_regime?: string;
+  combined_regime?: string;
+  low_confidence?: boolean;
+  warmup_ok?: boolean;
+}
+
+export interface RegimeGateStatus {
+  date: string;
+  allowed: boolean;
+  blocking_gate?: string | null;
+  evaluations: RegimeGateEvaluation[];
+}
+
 export interface SessionStatus {
   session: string;
   state: string;
@@ -20,6 +39,9 @@ export interface SessionStatus {
   paused?: boolean;
   excluded_dow?: number | number[] | null;
   fomc_exclusion?: boolean;
+  skip_reason?: string | null;
+  blocking_gate?: string | null;
+  regime_gate_status?: RegimeGateStatus | null;
   // Engine type — absent for continuation, may be "ifvg" or "lsi" for LSI
   type?: "ifvg" | "lsi";
   // ORB fields (continuation only)
@@ -136,10 +158,16 @@ export interface WebhookEntry {
   multiplier?: number;
 }
 
+export interface ExecConfigPortfolioParams {
+  r_amount_usd?: number;
+  [key: string]: string | number | boolean | null | undefined;
+}
+
 export interface ExecConfigMeta {
   enabled: boolean;
   /** New multi-webhook format */
   webhooks: WebhookEntry[];
+  portfolio_params?: ExecConfigPortfolioParams;
   sessions: string[];
   lsi_sessions: string[];
 }

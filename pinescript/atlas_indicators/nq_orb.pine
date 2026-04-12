@@ -24,7 +24,7 @@ groupRisk = "Risk"
 groupLeg = "ALPHA_V1 NQ Asia ORB"
 
 i_riskUsd = input.float(300.0, "Risk per Trade ($)", minval=1.0, step=50.0, group=groupRisk)
-i_pointValue = input.float(syminfo.pointvalue, "Point Value ($)", minval=0.01, step=0.25, group=groupRisk)
+i_pointValue = input.float(20.0, "Point Value ($)", minval=0.01, step=0.25, group=groupRisk)
 i_minQty = input.float(1.0, "Min Qty", minval=0.0, step=1.0, group=groupRisk)
 i_qtyStep = input.float(1.0, "Qty Step", minval=0.01, step=1.0, group=groupRisk)
 i_useBreakeven = input.bool(true, "Move Runner To Breakeven After TP1", group=groupRisk)

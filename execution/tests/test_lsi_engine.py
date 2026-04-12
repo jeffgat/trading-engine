@@ -19,7 +19,10 @@ import pytest
 
 from trader.broker import TradersPostClient, WebhookResult
 from trader.engine import Bar
+from trader.gates import build_regime_gate, set_daily_history_provider
 from trader.lsi_engine import GapInfo, LSIEngine, LSIState
+from trader.sizing import TradeLevels
+from trader.swing import SweepEvent
 
 ET = ZoneInfo("America/New_York")
 
@@ -389,6 +392,18 @@ class TestWaitingForGapToInversion:
         await eng.on_bar(bar0, 300.0)
         assert eng._state == LSIState.WAITING_FOR_GAP
 
+    def test_check_fvg_requires_positive_finite_atr(self):
+        eng = make_lsi_engine()
+        eng._bars = [
+            make_bar("2025-01-15 09:40", 19490, 19500, 19450, 19460),
+            make_bar("2025-01-15 09:45", 19460, 19500, 19350, 19380),
+            make_bar("2025-01-15 09:50", 19380, 19430, 19350, 19400),
+        ]
+        eng._bar_count = 3
+
+        assert eng._check_fvg(0.0) == (False, False, None)
+        assert eng._check_fvg(float("nan")) == (False, False, None)
+
 
 # =============================================================================
 # FVG-before-sweep lookback (fvg_window_left)
@@ -688,6 +703,28 @@ class TestManagingExits:
         assert records[0].exit_type == "tp1_eod"
         assert records[0].r_result == pytest.approx(expected_r)
 
+    async def test_gap_over_flat_window_exits_at_last_seen_bar(self):
+        records = []
+        eng = make_lsi_engine()
+        eng.on_trade_exit = records.append
+        eng, _entry_price = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+
+        previous_bar = make_bar("2025-01-15 14:29", 19440, 19460, 19430, 19455)
+        eng._last_market_bar = previous_bar
+
+        next_session_bar = make_bar("2025-01-15 20:00", 19380, 19390, 19370, 19375)
+        await eng.on_bar(next_session_bar, 300.0)
+
+        expected_r = eng._price_to_r(previous_bar.close)
+        eng.broker.send_flatten.assert_called()
+        assert eng._state == LSIState.FLAT
+        assert eng._r_result == pytest.approx(expected_r)
+        assert records[0].exit_type == "eod"
+        assert records[0].timestamp == previous_bar.timestamp.isoformat()
+        assert records[0].r_result == pytest.approx(expected_r)
+
 
 # =============================================================================
 # Fill-bar and TP1-bar guards
@@ -765,6 +802,30 @@ class TestTP1BarGuard:
 
 
 class TestDashboardOverlay:
+    async def test_status_includes_regime_gate_verdict(self):
+        eng = make_lsi_engine(
+            regime_gate="bull_no_low_confidence",
+            regime_gate_check=build_regime_gate("bull_no_low_confidence"),
+        )
+
+        try:
+            set_daily_history_provider(
+                lambda _symbol: [
+                    (datetime(2024, 12, 1).date() + timedelta(days=i), 100.0 + i, 102.0 + i, 98.0 + i, 100.0 + i)
+                    for i in range(60)
+                ]
+            )
+            bar = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
+            await eng.on_bar(bar, 300.0)
+
+            status = eng.status_dict()
+            assert status["regime_gate_status"]["allowed"] is True
+            assert status["regime_gate_status"]["evaluations"][0]["gate"] == "bull_no_low_confidence"
+            assert status["skip_reason"] is None
+            assert status["blocking_gate"] is None
+        finally:
+            set_daily_history_provider(None)
+
     async def test_waiting_for_gap_status_includes_swept_level(self):
         eng = make_lsi_engine()
         await feed_swing_low_and_sweep(eng, swing_low=19400.0)
@@ -871,6 +932,37 @@ class TestTradeOverlap:
 # =============================================================================
 
 class TestTickPath:
+    async def test_armed_limit_tick_after_entry_window_is_cancelled(self):
+        eng = make_lsi_engine(lsi_entry_mode="fvg_limit", entry_end="10:00")
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+
+        gap = eng._active_gap
+        inversion_bar = make_bar(
+            "2025-01-15 09:55",
+            gap.top + 2,
+            gap.top + 10,
+            gap.top - 2,
+            gap.top + 1,
+        )
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+
+        tick = Bar(
+            timestamp=datetime(2025, 1, 15, 10, 0, 1, tzinfo=ET),
+            open=eng._limit_price + 3,
+            high=eng._limit_price + 5,
+            low=eng._limit_price - 1,
+            close=eng._limit_price + 2,
+            volume=10,
+        )
+        await eng.on_tick(tick, 300.0)
+
+        assert eng._state == LSIState.FLAT
+        assert eng.broker.send_entry.await_count == 0
+
     async def test_tick_sl_in_managing(self):
         eng = make_lsi_engine()
         eng, entry_price = await _advance_to_managing(eng)
@@ -1059,3 +1151,208 @@ class TestSwingPersistenceAcrossDays:
 
         # Swing level should persist across day boundary
         assert eng._swings.latest_swing_low == pytest.approx(swing_low)
+
+
+class TestHtfLsiVariant:
+    async def test_htf_level_publishes_for_next_bar_without_same_bar_lookahead(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="08:30",
+            sweep_end="15:00",
+            entry_start="08:30",
+            entry_end="15:00",
+            htf_level_tf_minutes=60,
+            htf_n_left=1,
+            min_gap_atr_pct=0.0,
+        )
+
+        for minute in range(0, 60, 5):
+            low = 100.0 if minute == 25 else 101.0
+            await eng.on_bar(
+                make_bar(f"2025-01-15 08:{minute:02d}", 105.0, 106.0, low, 105.0),
+                300.0,
+            )
+        for minute in range(0, 60, 5):
+            await eng.on_bar(
+                make_bar(f"2025-01-15 09:{minute:02d}", 105.0, 106.0, 102.0, 105.0),
+                300.0,
+            )
+
+        assert eng._state == LSIState.SCANNING
+        assert eng._active_sweep is None
+        assert eng._htf_levels.latest_low is not None
+        assert eng._htf_levels.latest_low.price == pytest.approx(100.0)
+
+        await eng.on_bar(make_bar("2025-01-15 10:00", 105.0, 106.0, 99.0, 104.0), 300.0)
+
+        assert eng._state == LSIState.WAITING_FOR_GAP
+        assert eng._active_sweep is not None
+        assert eng._active_sweep.source == "htf_low"
+        assert eng._active_sweep.level == pytest.approx(100.0)
+
+    async def test_htf_pre_entry_breach_invalidates_without_arming(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="08:30",
+            sweep_end="15:00",
+            entry_start="09:00",
+            entry_end="15:00",
+            htf_level_tf_minutes=60,
+            htf_n_left=1,
+            min_gap_atr_pct=0.0,
+        )
+
+        for hour in ("06", "07"):
+            for minute in range(0, 60, 5):
+                low = 100.0 if (hour == "06" and minute == 25) else 102.0
+                await eng.on_bar(
+                    make_bar(f"2025-01-15 {hour}:{minute:02d}", 105.0, 106.0, low, 105.0),
+                    300.0,
+                )
+
+        await eng.on_bar(make_bar("2025-01-15 08:30", 105.0, 106.0, 99.0, 104.0), 300.0)
+
+        assert eng._state == LSIState.SCANNING
+        assert eng._active_sweep is None
+        assert eng._htf_low_state["consumed"] is True
+
+    async def test_htf_inversion_lag_expiry_falls_back_to_waiting_for_gap(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="09:30",
+            sweep_end="15:00",
+            entry_start="09:30",
+            entry_end="15:00",
+            max_fvg_to_inversion_bars=2,
+        )
+        eng._current_date = "20250115"
+        eng._state = LSIState.WAITING_FOR_INVERSION
+        eng._bar_count = 4
+        eng._sweep_bar_index = 2
+        eng._active_sweep = SweepEvent(source="htf_low", level=100.0, direction=1, bar_index=2, pivot_time="2025-01-15T06:00:00")
+        eng._active_gap = GapInfo(
+            top=105.0,
+            bottom=104.0,
+            is_bullish=False,
+            impulse_high=106.0,
+            impulse_low=103.0,
+            bar_index=1,
+        )
+
+        await eng.on_bar(make_bar("2025-01-15 09:35", 104.5, 104.8, 104.1, 104.6), 300.0)
+
+        assert eng._state == LSIState.WAITING_FOR_GAP
+        assert eng._active_sweep is not None
+        assert eng._active_gap is None
+        assert eng._fvg_to_inversion_bars is None
+
+    async def test_htf_exit_rearms_only_when_trade_cap_remains(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="08:30",
+            sweep_end="15:00",
+            entry_start="08:30",
+            entry_end="15:00",
+            htf_trade_max_per_session=2,
+        )
+        eng._current_date = "20250115"
+        eng._state = LSIState.MANAGING
+        eng._session_filled_trades = 1
+        eng._levels = TradeLevels(
+            entry=100.0,
+            stop=99.0,
+            tp1=101.5,
+            tp2=103.0,
+            be=100.0,
+            qty=1.0,
+            half_qty=1.0,
+            is_single_contract=True,
+            risk_pts=1.0,
+            direction=1,
+            gap_size=1.0,
+        )
+
+        await eng._exit_position(make_bar("2025-01-15 10:00", 100.5, 101.0, 100.0, 100.8), "tp2_direct")
+        assert eng._state == LSIState.SCANNING
+
+        eng._state = LSIState.MANAGING
+        eng._session_filled_trades = 2
+        eng._levels = TradeLevels(
+            entry=100.0,
+            stop=99.0,
+            tp1=101.5,
+            tp2=103.0,
+            be=100.0,
+            qty=1.0,
+            half_qty=1.0,
+            is_single_contract=True,
+            risk_pts=1.0,
+            direction=1,
+            gap_size=1.0,
+        )
+
+        await eng._exit_position(make_bar("2025-01-15 10:05", 100.5, 101.0, 100.0, 100.8), "tp2_direct")
+        assert eng._state == LSIState.FLAT
+
+    async def test_htf_exit_rearms_when_trade_cap_is_uncapped(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="08:30",
+            sweep_end="15:00",
+            entry_start="08:30",
+            entry_end="15:00",
+            htf_trade_max_per_session=0,
+        )
+        eng._current_date = "20250115"
+        eng._state = LSIState.MANAGING
+        eng._session_filled_trades = 99
+        eng._levels = TradeLevels(
+            entry=100.0,
+            stop=99.0,
+            tp1=101.5,
+            tp2=103.0,
+            be=100.0,
+            qty=1.0,
+            half_qty=1.0,
+            is_single_contract=True,
+            risk_pts=1.0,
+            direction=1,
+            gap_size=1.0,
+        )
+
+        await eng._exit_position(make_bar("2025-01-15 10:10", 100.5, 101.0, 100.0, 100.8), "tp2_direct")
+
+        assert eng._state == LSIState.SCANNING
+
+    async def test_htf_tick_exit_rearms_only_when_trade_cap_remains(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="08:30",
+            sweep_end="15:00",
+            entry_start="08:30",
+            entry_end="15:00",
+            htf_trade_max_per_session=2,
+        )
+        eng._current_date = "20250115"
+        eng._state = LSIState.MANAGING
+        eng._session_filled_trades = 1
+        eng._fill_timestamp = make_bar("2025-01-15 09:59", 100.0, 100.0, 100.0, 100.0).timestamp
+        eng._tp1_hit = True
+        eng._levels = TradeLevels(
+            entry=100.0,
+            stop=99.0,
+            tp1=101.5,
+            tp2=103.0,
+            be=100.0,
+            qty=1.0,
+            half_qty=1.0,
+            is_single_contract=True,
+            risk_pts=1.0,
+            direction=1,
+            gap_size=1.0,
+        )
+
+        await eng.on_tick(make_bar("2025-01-15 10:00", 102.5, 103.2, 102.4, 103.0), 300.0)
+
+        assert eng._state == LSIState.SCANNING
+        await _flush_cleanup_tasks()

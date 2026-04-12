@@ -4,7 +4,7 @@
 - **Point value**: $50/point
 - **Min tick**: 0.10 ($5/tick)
 - **Commission**: $0.05/contract/side
-- **Data**: 2016-01 to 2026-02 (~10 years, 5m + 1m + 1s)
+- **Data**: 2016-01 to 2026-03 (~10 years, 5m + 1m + 1s)
 - **Roll**: Calendar roll `.c.0` (index future — standard)
 - **Liquidity**: Asia session has sufficient bar density for 15m ORB
 
@@ -115,7 +115,7 @@
 - **Bimodal stop**: Fine-tune grid top 30 had bimodal stop distribution (3.0 and 5.5 both strong).
 
 ## Overall Assessment (updated 2026-04)
-**RTY NY ORB continuation with ORB-range stops is a validated GO strategy.** The prior NO-GO verdict was specific to longs-only + ATR stops, which produced WFE <0.30. The 3-session discovery (1,296 configs/session) found that 10m ORB + ORB-range stops (75-100%) + both directions produces walk-forward Calmars 4.7-7.2, DSR 0.31-0.59 (survives deflation), and PSR >=0.998. Three configs survived holdout with positive R and payout rates 40-52%. NY-4 (ORB 100%, RR 3.0, TP1 0.4, both) earned STRONG verdict. Recommended next step: variable sweep optimization on the NY-4/NY-1/NY-2 anchors to further refine.
+**RTY NY ORB continuation with ORB-range stops is a validated GO strategy.** The prior NO-GO verdict was specific to longs-only + ATR stops, which produced WFE <0.30. The 3-session discovery (1,296 configs/session) found that 10m ORB + ORB-range stops (75-100%) + both directions produces walk-forward Calmars 4.7-7.2, DSR 0.31-0.59 (survives deflation), and PSR >=0.998. Three configs survived holdout with positive R and payout rates 40-52%. NY-4 (ORB 100%, RR 3.0, TP1 0.4, both) earned STRONG verdict. Recommended next step: variable sweep optimization on the NY-4/NY-1/NY-2 anchors to further refine. Separate caution: the later RTY HTF-LSI thesis did not transfer into a funded-holdout survivor, so keep that branch distinct and closed.
 
 ### 3. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO
 - **Status**: **NO-GO** (definitive — losing strategy, no edge)
@@ -169,6 +169,35 @@
 - **NY-4** (STRONG): 10m ORB, ORB 100%, RR 3.0, TP1 0.4, both — best payout rate and EV
 - **NY-1** (CONDITIONAL): 10m ORB, ORB 75%, RR 3.5, TP1 0.6, both — highest raw R and DSR
 - **NY-2** (CONDITIONAL): 10m ORB, ORB 100%, RR 3.5, TP1 0.6, both — best holdout PR
+
+---
+
+### 5. NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — NO-GO
+- **Status**: **NO-GO** (pre-holdout family was alive, but the opened funded holdout failed across the frozen shortlist)
+- **Scripts**: `run_cross_asset_htf_lsi_anchor_explore.py`, `run_cross_asset_htf_lsi_broad_discovery.py`, `run_cross_asset_htf_lsi_stitched_followup.py`, `run_rty_ny_htf_lsi_phase_one.py`
+- **Holdout**: frozen until phase one, then opened once on `2025-04-01` to `2026-03-31`
+
+**What was tested:**
+- First replayed the trusted NQ transfer anchors on RTY `1m / 3m / 5m`. All four transfer rows were dead. Best anchor was still negative on both pre-holdout and validation quality (`1m lag0`: pre PF `0.947`, validation PF `0.855`).
+- Reopened RTY-specific broad discovery after the failed transfer. The live cluster was very RTY-specific: `5m`, `short`, `fvg_limit`, `htf90`, `cap=2`, later entry cutoffs (`14:00-15:00`), `gap=2.0`, `rr=3.0-4.0`, `tp1=0.4-0.5`, and lag `12-30`.
+
+**Best pre-holdout stitched candidates:**
+- `rr4_lag20_atr14_l100`: stitched OOS `316` trades, PF `1.251`, avg R `0.131`, funded payout `42.3%`, funded EV/start `$105.12`
+- `control_stage_b_end15`: stitched OOS `318` trades, PF `1.256`, avg R `0.116`, funded payout `47.9%`, funded EV/start `$100.37`
+- `rr4_lag30_atr10_l60`: stitched OOS `343` trades, PF `1.221`, avg R `0.111`, funded payout `42.6%`, funded EV/start `$107.82`
+- `quality_lag12_n5`: slower but clean pre-holdout quality branch, stitched OOS `216` trades, PF `1.228`, avg R `0.108`, funded payout `35.0%`, funded EV/start `$50.16`
+
+**Opened holdout result:**
+- All four frozen candidates were negative on raw holdout trade quality and negative on funded EV/start.
+- `rr4_lag30_atr10_l60`: `55` holdout trades, PF `0.507`, avg R `-0.290`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `rr4_lag20_atr14_l100`: `54` holdout trades, PF `0.482`, avg R `-0.318`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `control_stage_b_end15`: `48` holdout trades, PF `0.472`, avg R `-0.268`, funded payout `0.0%`, funded EV/start `-$100.00`
+- `quality_lag12_n5`: `38` holdout trades, PF `0.584`, avg R `-0.229`, funded payout `1.9%`, funded EV/start `-$97.82`
+
+**Conclusion:**
+- RTY HTF-LSI does have a real pre-holdout `5m short` family, so this was not a fake discovery.
+- But the untouched phase-one holdout rejected the entire branch under the default funded-account model.
+- Do **not** advance RTY HTF-LSI to phase two, and do not restart from the NQ transfer anchors. If RTY HTF-LSI is ever revisited, it needs a materially different RTY-native thesis rather than more tuning on this frozen family.
 
 ---
 

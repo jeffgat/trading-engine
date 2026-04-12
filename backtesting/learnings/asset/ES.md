@@ -603,6 +603,167 @@ R by year: 2016:+18  2017:+25  2018:+4  2019:+11  2020:+16  2021:+20  2022:+15  
 
 ---
 
+### NY HTF-LSI (NQ Anchor Transfer Packet) — EXPLORATORY / NOT ALIVE YET
+
+- **Status**: EXPLORATORY — all anchors were diagnostic-only; none cleared the discovery gate
+- **Tested**: 2026-04-11 with `run_cross_asset_htf_lsi_anchor_explore.py`
+- **Policy**: Kept the `2025-04-01+` holdout closed; this was a pre-holdout transfer packet only
+- **Session floors**: `min_stop_points=3.0`, `min_tp1_points=3.0` (same ES LSI safety rule as the earlier NY/LDN work)
+- **Objective**: Test whether the NQ NY HTF-LSI anchor family transfers to ES before opening any ES-specific discovery sweep
+
+#### Packet Results
+
+| Anchor | Timeframe | Verdict | Pre-holdout | Discovery | Validation |
+|--------|-----------|---------|-------------|-----------|------------|
+| `3m lag0 diagnostic` | 3m | **diagnostic_only** | 669 trades, PF 1.04, Calmar 0.32 | PF 0.95, avg R -0.025 | **170 trades, PF 1.32, avg R 0.141, Calmar 2.53** |
+| `5m lag0 control` | 5m | diagnostic_only | 608 trades, PF 1.03, Calmar 0.30 | PF 0.96, avg R -0.019 | 163 trades, PF 1.24, avg R 0.102, Calmar 1.81 |
+| `5m lag24 promoted` | 5m | diagnostic_only | 507 trades, PF 1.03, Calmar 0.29 | PF 0.98, avg R -0.014 | 133 trades, PF 1.20, avg R 0.094, Calmar 1.36 |
+| `1m lag0 honest` | 1m | diagnostic_only | 846 trades, PF 0.98, Calmar -0.16 | PF 0.97, avg R -0.014 | 210 trades, PF 1.03, avg R 0.017, Calmar 0.26 |
+
+#### Read
+
+1. **No anchor cleared discovery** — all four rows stayed below the repo’s alive bar because discovery PF / avg R were negative or near-flat. This is the important headline.
+2. **`3m lag0` is the only shape worth remembering** — it had the cleanest validation (`PF 1.32`, `Calmar 2.53`, 0 negative validation years), but it still carried 5 negative pre-holdout years and discovery PF only `0.95`. Treat it as a diagnostic branch, not a promoted candidate.
+3. **`5m lag24` did not port** — the promoted NQ lead was not better than the ES `5m lag0` control on this first transfer packet. ES did not reward the late-lag cap the way NQ did.
+4. **HTF structure did not rescue ES on first contact** — these rows are materially weaker than the earlier ES NY LSI v2 branch (`Calmar 9.52`, PF 1.25, both directions). So HTF-LSI should not automatically replace prior ES LSI work.
+
+#### Conclusion
+
+The trusted NQ HTF-LSI anchors do **not** transfer cleanly to ES NY out of the box. That transfer conclusion was later **superseded** by a separate ES-specific broad discovery pass, which did uncover a viable `3m` family. The important lesson from this packet is narrower: **do not assume the NQ `5m lag24` lead is portable to ES without reopening ES discovery.**
+
+- **Script**: `backtesting/scripts/run_cross_asset_htf_lsi_anchor_explore.py`
+- **Report**: `backtesting/learnings/reports/ES_NY_HTF_LSI_ANCHOR_EXPLORE.md`
+- **Results**: `backtesting/data/results/es_ny_htf_lsi_anchor_explore/summary.json`
+
+---
+
+### NY HTF-LSI (ES Broad Discovery + Stitched Follow-Up) — ALIVE / PRE-HOLDOUT LEAD
+
+- **Status**: ALIVE pre-holdout; promoted to downstream phase-one evaluation
+- **Tested**: 2026-04-11 with `run_cross_asset_htf_lsi_broad_discovery.py` followed by `run_cross_asset_htf_lsi_stitched_followup.py`
+- **Policy**: Holdout remained closed from `2025-04-01` onward during both steps
+- **Session floors**: `min_stop_points=3.0`, `min_tp1_points=3.0`
+- **Objective**: Reopen ES discovery honestly after the failed NQ transfer packet and determine whether ES has its own viable HTF-LSI family
+
+#### Broad Discovery Family Read
+
+Broad discovery changed the ES read materially. The live family is not the transplanted NQ `5m lag24` branch. It clusters around:
+
+- `3m`
+- `long`
+- `fvg_limit`
+- `htf_level_tf_minutes=90`
+- `htf_n_left=3`
+- `entry_end=14:00`
+- `htf_trade_max_per_session=2`
+
+The strongest challengers all stayed inside that same family, with variation mainly in:
+
+- `rr=2.5-3.0`
+- `tp1_ratio=0.5-0.6`
+- `min_gap_atr_pct=2.0-3.0`
+- `lsi_fvg_window_left=20 or 33`
+- `lsi_fvg_window_right=3 or 5`
+- `max_fvg_to_inversion_bars=0, 16, or 24`
+
+#### Fixed Stitched Follow-Up
+
+The stitched tie-break used `36m IS / 12m OOS / 12m step` over `2016-01-01` to `2025-04-01` and ranked six curated `3m` candidates on combined OOS behavior.
+
+| Candidate | Shape | Discovery | Validation | Stitched OOS |
+|-----------|-------|-----------|------------|--------------|
+| **Lead: `control_stage_b`** | `rr=3.0`, `tp1=0.6`, `gap=3.0`, `left/right=99/9`, `lag=0` | 380 trades, PF 1.055, avg R 0.025 | 129 trades, PF 1.434, avg R 0.191, Calmar 2.45 | **350 trades, PF 1.253, avg R 0.115, Calmar 3.66, DD -11.0R** |
+| `balanced_lag0_gap3` | `rr=2.5`, `tp1=0.5`, `gap=3.0`, `left/right=60/9`, `lag=0` | 379 trades, PF 1.074, avg R 0.030 | 128 trades, PF 1.449, avg R 0.175, Calmar 2.36 | 348 trades, PF 1.243, avg R 0.097, Calmar 3.56, DD -9.5R |
+| `count_lag0_gap2_r15` | `rr=2.5`, `tp1=0.5`, `gap=2.0`, `left/right=60/15`, `lag=0` | 535 trades, PF 1.056, avg R 0.024 | 165 trades, PF 1.396, avg R 0.168, Calmar 2.51 | 478 trades, PF 1.220, avg R 0.095, Calmar 3.00, DD -15.1R |
+| `discovery_lag0_gap2_r9` | `rr=2.5`, `tp1=0.5`, `gap=2.0`, `left/right=60/9`, `lag=0` | **490 trades, PF 1.085, avg R 0.036** | 154 trades, PF 1.339, avg R 0.138, Calmar 2.21 | 440 trades, PF 1.214, avg R 0.088, Calmar 2.93, DD -13.3R |
+| `late_lag24_gap3` | `rr=2.5`, `tp1=0.5`, `gap=3.0`, `left/right=60/9`, `lag=24` | 284 trades, PF 1.057, avg R 0.027 | 90 trades, PF 1.407, avg R 0.179, Calmar 2.17 | 257 trades, PF 1.220, avg R 0.102, Calmar 2.88, DD -9.1R |
+| `quality_lag16_gap2` | `rr=2.5`, `tp1=0.5`, `gap=2.0`, `left/right=60/9`, `lag=16` | 320 trades, PF 1.055, avg R 0.028 | 86 trades, PF 1.421, avg R 0.188, Calmar 2.52 | 271 trades, PF 1.191, avg R 0.093, Calmar 2.47, DD -10.2R |
+
+#### Read
+
+1. **ES HTF-LSI is real, but it is an ES-shaped `3m` family** — reopening discovery was worth it. The alive cluster is `3m / long / fvg_limit / htf90 / n_left3 / cap2`, not the NQ `5m` lead.
+2. **The original Stage B control won the stitched tie-break** — even though several lower-`RR` challengers looked slightly better on fixed validation, the `rr=3.0 / tp1=0.6 / gap=3.0 / lag=0` control held up best on combined rolling OOS (`PF 1.253`, `avg R 0.115`, `Calmar 3.66`).
+3. **Lower-`RR` challengers are valid, but secondary** — `balanced_lag0_gap3` is the cleanest challenger and traded nearly the same stitched sample with slightly lower return quality but better OOS drawdown (`-9.5R` vs `-11.0R`).
+4. **Late-lag variants did not beat lag0 once sample honesty mattered** — `lag=16` and `lag=24` produced attractive validation rows, but both lost the stitched comparison to the uncapped/lag0 control.
+5. **`2022` is the persistent weak fold** — every candidate had a negative stitched OOS slice in `2022-01-01` to `2023-01-01`, so this family is alive but not regime-proof.
+6. **Bailey-style deflation was not rerun on this ES packet yet** — this is a heuristic pre-holdout promotion result, not a final statistically-deflated approval.
+
+#### Conclusion
+
+ES NY HTF-LSI deserves to continue. Freeze the current lead as:
+
+- `3m`
+- `long`
+- `fvg_limit`
+- `08:30-14:00`
+- `rr=3.0`
+- `tp1_ratio=0.6`
+- `min_gap_atr_pct=3.0`
+- `atr_length=14`
+- `htf_level_tf_minutes=90`
+- `htf_n_left=3`
+- `htf_trade_max_per_session=2`
+- `lsi_fvg_window_left/right=33/3`
+- `max_fvg_to_inversion_bars=0`
+
+Carry `balanced_lag0_gap3` as the main challenger and optionally `late_lag24_gap3` as a thinner secondary challenger. The next clean step is downstream phase-one style evaluation on this frozen shortlist, with the `2025-04-01+` holdout still unopened until that workflow actually needs it.
+
+- **Scripts**: `backtesting/scripts/run_cross_asset_htf_lsi_broad_discovery.py`, `backtesting/scripts/run_cross_asset_htf_lsi_stitched_followup.py`
+- **Reports**: `backtesting/learnings/reports/ES_NY_HTF_LSI_BROAD_DISCOVERY.md`, `backtesting/learnings/reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md`
+- **Results**: `backtesting/data/results/es_ny_htf_lsi_broad_discovery/summary.json`, `backtesting/data/results/es_ny_htf_lsi_stitched_followup/summary.json`
+
+---
+
+### NY HTF-LSI Phase One — CONDITIONAL / HOLDOUT WEAK
+
+- **Status**: CONDITIONAL at best; not promoted to phase two
+- **Tested**: 2026-04-11 with `run_es_ny_htf_lsi_phase_one.py`
+- **Holdout**: Opened once on `2025-04-01` to `2026-03-24`
+- **Packet**: `control_stage_b`, `balanced_lag0_gap3`, `late_lag24_gap3`
+- **Note**: Bailey-style PSR / DSR was not rerun on this ES packet, so this is a downstream scorecard read on the frozen shortlist, not a deflated-statistics approval
+
+#### Phase-One Summary
+
+| Candidate | Verdict | OOS prop payout | OOS funded payout | OOS funded EV/start | Holdout PF | Holdout avg R | Holdout prop payout | Holdout funded payout | Holdout funded EV/start |
+|-----------|---------|----------------:|------------------:|--------------------:|-----------:|--------------:|--------------------:|----------------------:|------------------------:|
+| `balanced_lag0_gap3` | CONDITIONAL | 63.7% | 42.8% | $62.67 | 0.918 | -0.046 | 21.9% | 21.9% | -$38.76 |
+| `late_lag24_gap3` | CONDITIONAL | 60.0% | 47.9% | $46.48 | 0.831 | -0.098 | 5.2% | 5.2% | -$96.00 |
+| `control_stage_b` | CONDITIONAL | 48.2% | 39.0% | $72.96 | 0.827 | -0.097 | 12.4% | 12.4% | -$58.29 |
+
+#### Read
+
+1. **All three frozen candidates failed the raw holdout test** — every row was negative on `2025-04-01` to `2026-03-24`, with holdout PF only `0.83-0.92` and total R below zero on `42-47` trades. This is the key reason the branch stopped at conditional.
+2. **The payout-sprint winner was not the stitched raw-quality winner** — the stitched-OOS control (`rr=3.0 / tp1=0.6`) kept the best raw OOS avg R / total R, but `balanced_lag0_gap3` converted better on phase-one payout scorecards because the lower-`RR` shape reached payout more often.
+3. **`balanced_lag0_gap3` is the best conditional branch if ES HTF-LSI is kept open** — it led the packet on OOS prop payout (`63.7%`) and also had the least-damaging holdout (`PF 0.918`, avg R `-0.046`, funded payout `21.9%`).
+4. **`lag24` did not survive downstream promotion on ES** — unlike NQ, the late-lag ES challenger was not the right branch once payout conversion and opened holdout mattered. It kept decent OOS payout rates, but holdout funded payout fell to only `5.2%`.
+5. **None of these rows deserves phase-two work yet** — under the default funded-account model, all holdout funded EV/start values were negative. That is too weak for a confident first-payout business.
+
+#### Conclusion
+
+ES NY HTF-LSI stays alive only as a **conditional research branch**, not a promoted funded-account candidate. If it is revisited, the best restart point is now the **`balanced_lag0_gap3` phase-one branch**:
+
+- `3m`
+- `long`
+- `fvg_limit`
+- `08:30-14:00`
+- `rr=2.5`
+- `tp1_ratio=0.5`
+- `min_gap_atr_pct=3.0`
+- `atr_length=14`
+- `htf_level_tf_minutes=90`
+- `htf_n_left=3`
+- `htf_trade_max_per_session=2`
+- `lsi_fvg_window_left/right=20/3`
+- `max_fvg_to_inversion_bars=0`
+
+But the honest posture is cautious: the opened holdout was weak across the full shortlist, so ES HTF-LSI should **not** advance to phase two or live funding priority right now.
+
+- **Script**: `backtesting/scripts/run_es_ny_htf_lsi_phase_one.py`
+- **Report**: `backtesting/learnings/reports/ES_NY_HTF_LSI_PHASE_ONE.md`
+- **Results**: `backtesting/data/results/es_ny_htf_lsi_phase_one/phase_one_results.json`
+
+---
+
 ### ES ORB 3-Session Discovery (Regime-Gated) — Phase-One Complete (2026-04-01)
 
 New discovery sweep with regime research framework (medium-vol avoidance gate). 3,888 configs swept across NY, Asia, LDN. 8 candidates through walk-forward. PSR/DSR validation. Phase-one prop simulation.

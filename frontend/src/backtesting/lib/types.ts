@@ -166,6 +166,14 @@ export interface BacktestHistoryItem {
   lsi_clean_path?: number;
   lsi_be_swing_n_left?: number;
   lsi_cancel_on_swing?: number;
+  // HTF-LSI params
+  htf_level_tf_minutes?: number;
+  htf_n_left?: number;
+  htf_trade_max_per_session?: number;
+  max_fvg_to_inversion_bars?: number;
+  htf_lsi_include_htf_levels?: number;
+  htf_lsi_reference_levels?: string;
+  data_sweep_min_daily_atr_pct?: number;
   // Metrics (dedicated columns)
   total_pnl_usd: number;
   total_r: number;

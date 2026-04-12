@@ -263,6 +263,10 @@ class ORBEngine:
     _long_fvg_found: bool = field(default=False, init=False)
     _short_fvg_found: bool = field(default=False, init=False)
     _current_date: str = field(default="", init=False)
+    _skip_reason: str | None = field(default=None, init=False)
+    _blocking_gate: str | None = field(default=None, init=False)
+    _regime_gate_status: dict | None = field(default=None, init=False)
+    _last_regime_gate_audit: tuple[str, bool] | None = field(default=None, init=False)
     _daily_atr: float = field(default=0.0, init=False)
     _asset_tag: str = field(default="", init=False)
     _exit_type: str | None = field(default=None, init=False)
@@ -322,6 +326,91 @@ class ORBEngine:
     def _blocking_regime_gate_name(self, date_key: str) -> str | None:
         from .gates import blocking_regime_gate_name
         return blocking_regime_gate_name(self.regime_gate_checks, date_key)
+
+    def _clear_gate_audit(self) -> None:
+        self._skip_reason = None
+        self._blocking_gate = None
+        self._regime_gate_status = None
+        self._last_regime_gate_audit = None
+
+    def _record_regime_gate_status(self, date_key: str, blocking_gate: str | None) -> None:
+        from .gates import evaluate_regime_gates
+
+        evaluations: list[dict[str, object]] = []
+        if self.regime_gates:
+            try:
+                evaluations = [
+                    evaluation.to_status_dict()
+                    for evaluation in evaluate_regime_gates(self.regime_gates, date_key)
+                ]
+            except ValueError:
+                evaluations = []
+
+        if evaluations and blocking_gate is not None:
+            for evaluation in evaluations:
+                evaluation["allowed"] = evaluation.get("gate") != blocking_gate
+
+        self._blocking_gate = blocking_gate
+        self._skip_reason = "regime_gate" if blocking_gate is not None else None
+        self._regime_gate_status = {
+            "date": date_key,
+            "allowed": blocking_gate is None,
+            "blocking_gate": blocking_gate,
+            "evaluations": evaluations,
+        } if (self.regime_gates or blocking_gate is not None) else None
+
+    def _maybe_log_regime_gate_audit(self) -> None:
+        from .gates import RegimeGateEvaluation, format_regime_gate_detail
+
+        status = self._regime_gate_status
+        if not status:
+            return
+
+        date_key = str(status.get("date") or self._current_date)
+        allowed = bool(status.get("allowed"))
+        marker = (date_key, allowed)
+        if self._last_regime_gate_audit == marker:
+            return
+
+        evaluations = status.get("evaluations") or []
+        primary_eval: RegimeGateEvaluation | None = None
+        if evaluations:
+            blocking_gate = status.get("blocking_gate")
+            for evaluation in evaluations:
+                if evaluation.get("gate") == blocking_gate or primary_eval is None:
+                    primary_eval = RegimeGateEvaluation(
+                        gate=str(evaluation.get("gate", "")),
+                        date_key=str(evaluation.get("date", date_key)),
+                        allowed=bool(evaluation.get("allowed")),
+                        reason=str(evaluation["reason"]) if evaluation.get("reason") else None,
+                        regime=str(evaluation["regime"]) if evaluation.get("regime") is not None else None,
+                        vol_regime=str(evaluation["vol_regime"]) if evaluation.get("vol_regime") is not None else None,
+                        combined_regime=(
+                            str(evaluation["combined_regime"])
+                            if evaluation.get("combined_regime") is not None else None
+                        ),
+                        low_confidence=(
+                            bool(evaluation["low_confidence"])
+                            if evaluation.get("low_confidence") is not None else None
+                        ),
+                        warmup_ok=(
+                            bool(evaluation["warmup_ok"])
+                            if evaluation.get("warmup_ok") is not None else None
+                        ),
+                    )
+                if evaluation.get("gate") == blocking_gate:
+                    break
+
+        if allowed:
+            if primary_eval is not None:
+                self._log_trade("REGIME_GATE_PASSED", format_regime_gate_detail(primary_eval))
+            else:
+                self._log_trade("REGIME_GATE_PASSED", f"date={date_key}")
+        else:
+            blocking_gate = status.get("blocking_gate") or self._blocking_gate
+            self._log_trade("REGIME_GATE_BLOCKED", f"gate={blocking_gate} date={date_key}")
+
+        self._last_regime_gate_audit = marker
 
     def _request_checkpoint(self) -> None:
         """Request a state checkpoint to disk for crash recovery."""
@@ -627,6 +716,7 @@ class ORBEngine:
         self._exit_type = None
         self._r_result = None
         self._current_date = date_str
+        self._clear_gate_audit()
         logger.info("[%s] New session day: %s", self.name, date_str)
         if notify:
             self._notify_state_change()
@@ -711,13 +801,12 @@ class ORBEngine:
                 self._state = State.FLAT
             else:
                 blocking_gate = self._blocking_regime_gate_name(self._current_date)
+                self._record_regime_gate_status(self._current_date, blocking_gate)
                 if blocking_gate is not None:
-                    self._log_trade(
-                        "REGIME_GATE_BLOCKED",
-                        "gate=%s date=%s" % (blocking_gate, self._current_date),
-                    )
+                    self._maybe_log_regime_gate_audit()
                     self._state = State.FLAT
                 else:
+                    self._maybe_log_regime_gate_audit()
                     self._state = State.WAITING_FOR_GAP
         elif self._in_flat(now_bar):
             self._state = State.FLAT
@@ -960,17 +1049,16 @@ class ORBEngine:
                 self._notify_state_change()
                 return
             blocking_gate = self._blocking_regime_gate_name(self._current_date)
+            self._record_regime_gate_status(self._current_date, blocking_gate)
             if blocking_gate is not None:
-                self._log_trade(
-                    "REGIME_GATE_BLOCKED",
-                    "gate=%s date=%s" % (blocking_gate, self._current_date),
-                )
+                self._maybe_log_regime_gate_audit()
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
 
             # Ready to scan
+            self._maybe_log_regime_gate_audit()
             self._state = State.WAITING_FOR_GAP
             self._request_checkpoint()
             self._log_trade(
@@ -1672,4 +1760,7 @@ class ORBEngine:
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "fomc_exclusion": self.fomc_exclusion,
+            "skip_reason": self._skip_reason,
+            "blocking_gate": self._blocking_gate,
+            "regime_gate_status": self._regime_gate_status,
         }

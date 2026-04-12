@@ -12,7 +12,10 @@ import logging
 import time
 from dataclasses import dataclass
 
-import aiohttp
+try:
+    import aiohttp
+except ModuleNotFoundError:  # pragma: no cover - optional in research-only envs
+    aiohttp = None
 
 logger = logging.getLogger(__name__)
 webhook_logger = logging.getLogger("trader.webhooks")
@@ -47,12 +50,14 @@ class TradersPostClient:
         self.ticker = ticker
         self.dry_run = not webhook_url or "dry-run" in webhook_url
         self.config_name = config_name
-        self.timeout = aiohttp.ClientTimeout(total=timeout_s)
+        self.timeout = aiohttp.ClientTimeout(total=timeout_s) if aiohttp is not None else timeout_s
         self._session: aiohttp.ClientSession | None = None
         self.paused: bool = False
         self.multiplier: float = 1.0
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
+        if aiohttp is None:
+            raise RuntimeError("aiohttp is required for live webhook delivery; use dry-run mode in research envs.")
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(timeout=self.timeout)
         return self._session

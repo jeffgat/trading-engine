@@ -74,18 +74,30 @@ def _reference_arrays(
     levels = {
         "previous_day_high": np.full(n, high_level, dtype=float) if high_level is not None else nan_arr.copy(),
         "previous_day_low": np.full(n, low_level, dtype=float) if low_level is not None else nan_arr.copy(),
+        "previous_week_high": nan_arr.copy(),
+        "previous_week_low": nan_arr.copy(),
         "asia_high": nan_arr.copy(),
         "asia_low": nan_arr.copy(),
         "london_high": nan_arr.copy(),
         "london_low": nan_arr.copy(),
+        "new_york_high": nan_arr.copy(),
+        "new_york_low": nan_arr.copy(),
+        "data_high": nan_arr.copy(),
+        "data_low": nan_arr.copy(),
     }
     ids = {
         "previous_day_high": np.full(n, instance_id, dtype=np.int64) if high_level is not None else neg_arr.copy(),
         "previous_day_low": np.full(n, instance_id, dtype=np.int64) if low_level is not None else neg_arr.copy(),
+        "previous_week_high": neg_arr.copy(),
+        "previous_week_low": neg_arr.copy(),
         "asia_high": neg_arr.copy(),
         "asia_low": neg_arr.copy(),
         "london_high": neg_arr.copy(),
         "london_low": neg_arr.copy(),
+        "new_york_high": neg_arr.copy(),
+        "new_york_low": neg_arr.copy(),
+        "data_high": neg_arr.copy(),
+        "data_low": neg_arr.copy(),
     }
     return levels, ids
 
@@ -314,18 +326,26 @@ def test_reference_lsi_respects_selected_reference_level_subset() -> None:
     reference_levels = {
         "previous_day_high": nan_arr.copy(),
         "previous_day_low": nan_arr.copy(),
+        "previous_week_high": nan_arr.copy(),
+        "previous_week_low": nan_arr.copy(),
         "asia_high": np.full(len(df), 100.0, dtype=float),
         "asia_low": nan_arr.copy(),
         "london_high": np.full(len(df), 100.0, dtype=float),
         "london_low": nan_arr.copy(),
+        "new_york_high": nan_arr.copy(),
+        "new_york_low": nan_arr.copy(),
     }
     reference_ids = {
         "previous_day_high": neg_arr.copy(),
         "previous_day_low": neg_arr.copy(),
+        "previous_week_high": neg_arr.copy(),
+        "previous_week_low": neg_arr.copy(),
         "asia_high": np.full(len(df), 1, dtype=np.int64),
         "asia_low": neg_arr.copy(),
         "london_high": np.full(len(df), 2, dtype=np.int64),
         "london_low": neg_arr.copy(),
+        "new_york_high": neg_arr.copy(),
+        "new_york_low": neg_arr.copy(),
     }
 
     candidates = _extract_reference_lsi_candidates(

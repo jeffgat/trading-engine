@@ -113,7 +113,11 @@ def _run_single(args: tuple) -> tuple[dict, list[TradeResult]]:
     return config, trades
 
 
-def _signal_cache_path(df: pd.DataFrame, configs: list[StrategyConfig]) -> Path:
+def _signal_cache_path(
+    df: pd.DataFrame,
+    configs: list[StrategyConfig],
+    signal_df_1m: pd.DataFrame | None = None,
+) -> Path:
     """Stable disk cache key for signal cache.
 
     Uses content-based hashes for both the input data and configs so cached
@@ -127,24 +131,28 @@ def _signal_cache_path(df: pd.DataFrame, configs: list[StrategyConfig]) -> Path:
     })
     param_key = hashlib.md5(json.dumps(unique_keys).encode()).hexdigest()[:8]
     # Store in data/cache/ — go up from optimize/ -> orb_backtest/ -> src/ -> python/ -> data/cache/
+    signal_hash = ""
+    if signal_df_1m is not None:
+        signal_hash = f"_{_dataframe_cache_fingerprint(signal_df_1m)[:12]}"
     cache_dir = Path(__file__).parent.parent.parent.parent / "data" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / f"sigcache_{data_hash}_{param_key}.pkl"
+    return cache_dir / f"sigcache_{data_hash}{signal_hash}_{param_key}.pkl"
 
 
 def _load_or_build_signal_cache(
     df: pd.DataFrame,
     configs: list[StrategyConfig],
+    signal_df_1m: pd.DataFrame | None = None,
 ) -> object:
     """Load signal cache from disk if available, otherwise build and save it."""
-    cache_path = _signal_cache_path(df, configs)
+    cache_path = _signal_cache_path(df, configs, signal_df_1m=signal_df_1m)
     if cache_path.exists():
         print(f"[cache] Signal cache loaded from disk: {cache_path.name}")
         with open(cache_path, "rb") as f:
             return pickle.load(f)
     print("[cache] Building signal cache...")
     t0 = time.time()
-    signal_cache = build_signal_cache(df, configs)
+    signal_cache = build_signal_cache(df, configs, signal_df_1m=signal_df_1m)
     print(f"[cache] Signal cache built in {time.time()-t0:.1f}s — saving to disk")
     # Atomic write: write to temp file then rename so concurrent readers never see a partial file
     tmp_fd, tmp_path = tempfile.mkstemp(dir=cache_path.parent, suffix=".pkl.tmp")
@@ -183,6 +191,7 @@ def run_sweep(
     start_date: str | None = None,
     end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
+    signal_df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
     _prebuilt_signal_cache: object | None = None,
@@ -222,7 +231,11 @@ def run_sweep(
     # Maps: saves ~4s/config for GC full-history (~67 min per 1000-config sweep).
     # Signal cache: saves ~650ms/config (~11 min per 1000-config sweep).
     maps = _prebuilt_maps if _prebuilt_maps is not None else build_maps(df, df_1m, df_30s, df_1s)
-    signal_cache = _prebuilt_signal_cache if _prebuilt_signal_cache is not None else _load_or_build_signal_cache(df, configs)
+    signal_cache = (
+        _prebuilt_signal_cache
+        if _prebuilt_signal_cache is not None
+        else _load_or_build_signal_cache(df, configs, signal_df_1m=signal_df_1m)
+    )
 
     if n_workers <= 1 or len(configs) <= 1:
         # Sequential execution — pass pre-built caches on every call
@@ -286,12 +299,13 @@ def run_sweep_sequential(
     start_date: str | None = None,
     end_date: str | None = None,
     df_1m: pd.DataFrame | None = None,
+    signal_df_1m: pd.DataFrame | None = None,
     df_30s: pd.DataFrame | None = None,
     df_1s: pd.DataFrame | None = None,
 ) -> list[tuple[StrategyConfig, list[TradeResult]]]:
     """Run backtests sequentially (useful for debugging or when numba cache is cold)."""
     maps = build_maps(df, df_1m, df_30s, df_1s)
-    signal_cache = _load_or_build_signal_cache(df, configs)
+    signal_cache = _load_or_build_signal_cache(df, configs, signal_df_1m=signal_df_1m)
     results = []
     for i, config in enumerate(configs):
         trades = run_backtest(

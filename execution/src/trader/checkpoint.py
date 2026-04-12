@@ -317,8 +317,12 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "current_date": engine._current_date,
         "daily_atr": engine._daily_atr,
         "bar_count": engine._bar_count,
+        "session_filled_trades": engine._session_filled_trades,
         "active_sweep": _serialize_sweep(engine._active_sweep),
         "active_gap": _serialize_gap(engine._active_gap),
+        "pending_gaps": [_serialize_gap(gap) for gap in getattr(engine, "_pending_gaps", [])],
+        "active_sweep_instance_id": engine._active_sweep_instance_id,
+        "active_htf_level_side": engine._active_htf_level_side,
         "sweep_bar_index": engine._sweep_bar_index,
         "entry_price": engine._entry_price,
         "entry_direction": engine._entry_direction,
@@ -330,9 +334,14 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "bars": [_serialize_bar(b) for b in engine._bars],
         "swing_tracker": engine._swings.to_dict(),
+        "htf_levels": engine._htf_levels.to_dict() if getattr(engine, "_htf_levels", None) is not None else None,
+        "htf_high_state": dict(getattr(engine, "_htf_high_state", {})),
+        "htf_low_state": dict(getattr(engine, "_htf_low_state", {})),
         "paused": engine.paused,
         "exit_type": engine._exit_type,
         "r_result": engine._r_result,
+        "fvg_to_inversion_bars": engine._fvg_to_inversion_bars,
+        "sweep_to_inversion_bars": engine._sweep_to_inversion_bars,
     }
 
 
@@ -370,8 +379,14 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     engine._current_date = data.get("current_date", "")
     engine._daily_atr = data.get("daily_atr", 0.0)
     engine._bar_count = data.get("bar_count", 0)
+    engine._session_filled_trades = data.get("session_filled_trades", 0)
     engine._active_sweep = _deserialize_sweep(data.get("active_sweep"))
     engine._active_gap = _deserialize_gap(data.get("active_gap"))
+    engine._pending_gaps = [
+        gap for gap in (_deserialize_gap(item) for item in data.get("pending_gaps", [])) if gap is not None
+    ]
+    engine._active_sweep_instance_id = data.get("active_sweep_instance_id", -1)
+    engine._active_htf_level_side = data.get("active_htf_level_side", "")
     engine._sweep_bar_index = data.get("sweep_bar_index", 0)
     # Backward compat: old checkpoints have limit_price/direction/stop, new have entry_*
     engine._entry_price = data.get("entry_price", data.get("limit_price", 0.0))
@@ -391,9 +406,17 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     if swing_data:
         engine._swings.restore(swing_data)
 
+    htf_data = data.get("htf_levels")
+    if htf_data and getattr(engine, "_htf_levels", None) is not None:
+        engine._htf_levels.restore(htf_data)
+    engine._htf_high_state = dict(data.get("htf_high_state", getattr(engine, "_htf_high_state", {})))
+    engine._htf_low_state = dict(data.get("htf_low_state", getattr(engine, "_htf_low_state", {})))
+
     engine.paused = data.get("paused", False)
     engine._exit_type = data.get("exit_type")
     engine._r_result = data.get("r_result")
+    engine._fvg_to_inversion_bars = data.get("fvg_to_inversion_bars")
+    engine._sweep_to_inversion_bars = data.get("sweep_to_inversion_bars")
 
     # Time-validate: ensure the restored state is still appropriate
     now = datetime.now(tz=ET)
@@ -461,7 +484,15 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
                 engine.name,
             )
             return LSIState.IDLE
-        if engine._in_entry(now_t) and engine._levels is None:
+        if (
+            engine._in_entry(now_t)
+            and engine._levels is None
+            and (
+                not getattr(engine, "_is_htf_variant", lambda: False)()
+                or engine.htf_trade_max_per_session <= 0
+                or engine._session_filled_trades < engine.htf_trade_max_per_session
+            )
+        ):
             logger.info(
                 "[%s] Checkpoint was FLAT with no trade during open entry window — setting SCANNING",
                 engine.name,
