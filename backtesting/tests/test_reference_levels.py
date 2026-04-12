@@ -234,7 +234,7 @@ def test_data_sweep_levels_publish_on_first_eligible_base_bar_and_reset_next_day
         base,
         raw,
         atr_length=14,
-        min_daily_atr_pct=15.0,
+        min_daily_atr_pct=200.0,
     )
 
     assert math.isnan(levels["data_high"][0])
@@ -285,7 +285,7 @@ def test_data_sweep_levels_keep_latest_same_day_qualifying_candle() -> None:
         base,
         raw,
         atr_length=14,
-        min_daily_atr_pct=15.0,
+        min_daily_atr_pct=200.0,
     )
 
     assert levels["data_high"][1] == 120.0

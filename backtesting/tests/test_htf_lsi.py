@@ -318,9 +318,9 @@ def test_htf_lsi_can_arm_from_named_reference_level_without_htf_pivots() -> None
 def test_htf_lsi_can_arm_from_data_low_without_htf_pivots() -> None:
     df = _df(
         [101.0, 101.0, 101.0],
-        [102.0, 101.5, 102.0],
+        [102.0, 101.5, 103.0],
         [100.5, 100.8, 98.5],
-        [101.5, 101.0, 99.0],
+        [101.5, 101.0, 102.0],
         start="08:35",
     )
     fvg = _empty_lsi_fvg(len(df))

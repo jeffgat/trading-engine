@@ -190,7 +190,7 @@ def compute_data_sweep_levels(
     if len(base_index) == 0:
         return {"data_high": active_high, "data_low": active_low}, active_ids
 
-    raw = signal_df_1m[["high", "low"]].copy().sort_index()
+    raw = signal_df_1m[["open", "high", "low", "close"]].copy().sort_index()
     raw_high = raw["high"].to_numpy(dtype=np.float64)
     raw_low = raw["low"].to_numpy(dtype=np.float64)
     raw_ts = raw.index.values.astype("datetime64[ns]")

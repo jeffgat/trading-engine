@@ -2084,6 +2084,16 @@ All tests below run post-hoc or as additional sweeps against the R1 final anchor
   - Practical conclusion: do not replace the honest `2m` anchor with the broadened sweep-source versions. If the goal is the strongest base for future confluence testing, keep `htf_only`. If the goal later shifts to a secondary higher-count side branch, `htf_plus_reference` is the only variant worth keeping alive, but treat it as a count-expansion branch with weaker quality and wider drawdown, not as an improved core candidate.
   - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_SWEEP_SOURCE_COMPARE.md`
 
+- **Adding same-day `data_high/data_low` news-spike levels to the `2m` HTF-LSI anchor hurt the branch even more than the completed session/day/week basket** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_data_sweep_compare.py`):
+  - Tested a new data-candle liquidity concept on the same frozen `2m` anchor: a completed `1m` candle whose range is at least `15%` of previous-day ATR. Its high/low become valid on the first eligible base bar after the `1m` close and stay active for the rest of that day.
+  - Compared three pre-holdout variants: `htf_only`, `data_only`, and `htf_plus_data`.
+  - The untouched `htf_only` anchor again remained the clear winner on stitched OOS: `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`, DD `-13.41R`.
+  - `data_only` failed outright as a base branch: `585` stitched-OOS trades, PF `0.984`, avg R `-0.010`, Calmar `-0.21`, DD `-25.98R`. Validation was already weak at PF `0.941`, avg R `-0.038`, Calmar `-0.42`.
+  - `htf_plus_data` did increase sample, but it degraded the honest edge badly: `797` stitched-OOS trades, PF `1.087`, avg R `0.043`, Calmar `1.52`, DD `-22.74R`, with validation already effectively dead at PF `0.994`, avg R `-0.003`, Calmar `-0.06`.
+  - Structural read: on the long-only branch, the new source contributed **only** `data_low` trades. `data_high` never mattered, and the added `data_low` traffic was low-quality enough to overwhelm the cleaner HTF pivot edge.
+  - Practical conclusion: keep `data_high/data_low` closed for this `2m` HTF-LSI branch. They do not help as a replacement source and they do not help as a count-expansion add-on.
+  - Reference: `backtesting/learnings/reports/NQ_NY_HTF_LSI_2M_DATA_SWEEP_COMPARE.md`
+
 - **Downstream `2m` vs `5m` promotion comparison** (`backtesting/scripts/run_nq_ny_htf_lsi_2m_vs_5m_promotion.py`):
   - Compared the `2m` anchor directly against the current `5m lag24` operating lead on the same downstream path: pre-holdout structural read, stitched OOS, opened holdout, phase-one payout modeling, phase-two continuity, and post-payout risk sweep.
   - `5m lag24` stayed clearly ahead on stitched OOS raw quality: `330` trades, PF `1.347`, avg R `0.162`, Calmar `4.85`, versus `2m` at `486` trades, PF `1.212`, avg R `0.104`, Calmar `3.76`.

@@ -1630,14 +1630,13 @@ def _resolve_reference_levels(
     if not _reference_levels_need_data(selected_level_names):
         return reference_levels, reference_instance_ids
 
-    if signal_df_1m is None:
-        raise ValueError(
-            "signal_df_1m is required when data_high/data_low reference levels are enabled."
-        )
-
     data_key = (int(atr_length), float(data_sweep_min_daily_atr_pct))
     data_cache = signal_cache.get("data_reference_levels") if signal_cache is not None else None
     cached_data = data_cache.get(data_key) if data_cache is not None else None
+    if cached_data is None and signal_df_1m is None:
+        raise ValueError(
+            "signal_df_1m is required when data_high/data_low reference levels are enabled."
+        )
     if cached_data is None:
         data_levels, data_ids = compute_data_sweep_levels(
             df,
