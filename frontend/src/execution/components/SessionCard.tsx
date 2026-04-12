@@ -105,6 +105,7 @@ function PriceRow({ label, value }: { label: string; value: number | null | unde
 export function SessionCard({ engine, strategyType, onPause, onResume }: SessionCardProps) {
   const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
+  const isLsiTag = (label: string | null | undefined) => label?.includes("LSI") ?? false;
   const hasLevels = engine.levels != null && engine.levels.entry != null;
   const dirLabel = hasLevels
     ? engine.levels!.direction === 1
@@ -157,7 +158,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
                   <CardTitle className="text-base font-semibold">{body}</CardTitle>
                   {prefix && (
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                      prefix === "LSI"
+                      isLsiTag(prefix)
                         ? "text-violet-400 bg-violet-400/10"
                         : "text-emerald-400 bg-emerald-400/10"
                     }`}>

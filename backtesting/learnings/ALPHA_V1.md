@@ -1,6 +1,6 @@
 # ALPHA_V1 Portfolio
 
-Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. As of 2026-04-12, the NQ NY leg has been swapped from the archived legacy `NQ_NY_LSI` branch to the current canonical `HTF_LSI_5M_LAG24` operating profile.
+Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. As of 2026-04-12, the NQ NY leg has been swapped from the archived legacy `NQ_NY_LSI` branch to the current preferred **live / discretionary** NQ NY LSI profile: the `ALPHA_V1` HTF-LSI override (`08:30-13:30`, `rr=3.5`, `tp1=0.4`, `risk_usd=400`). This should be treated as the active operating profile. The standalone `HTF_LSI_5M_LAG24` block remains the frozen canonical research anchor for the underlying HTF-LSI thesis.
 
 Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and current HTF-LSI exact replay (updated 2026-04-12).
 

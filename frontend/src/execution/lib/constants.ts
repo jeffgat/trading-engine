@@ -67,7 +67,7 @@ export const SESSION_COLORS: Record<string, string> = {
 /** Map engine session names to research leg names (strategy/ASSET_SESSION-RR). */
 export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
   ALPHA_V1: {
-    NQ_NY_LSI: "HTF_LSI/NQ_NY-L24",
+    NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
     NQ_Asia: "ORB/NQ_ASIA-RR6",
     ES_Asia: "ORB/ES_ASIA-RR1.5",
     ES_NY: "ORB/ES_NY-RR5",
