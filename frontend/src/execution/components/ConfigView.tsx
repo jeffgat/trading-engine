@@ -1469,7 +1469,10 @@ export function ConfigView({
                                         CONFIG_COLORS[name] ??
                                         'bg-text-muted/20 text-text-muted border-text-muted/30';
                                     const isActive =
-                                        name === 'ALPHA_V1' || name === 'TESTING';
+                                        name === 'ALPHA_V1' ||
+                                        name === 'ALPHA_V1-A' ||
+                                        name === 'ALPHA_V1-C' ||
+                                        name === 'TESTING';
                                     return (
                                         <Card
                                             key={name}

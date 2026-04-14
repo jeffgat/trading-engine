@@ -72,6 +72,18 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
     ES_Asia: "ORB/ES_ASIA-RR1.5",
     ES_NY: "ORB/ES_NY-RR5",
   },
+  "ALPHA_V1-A": {
+    NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
+    NQ_Asia: "ORB/NQ_ASIA-RR6",
+    ES_Asia: "ORB/ES_ASIA-RR1.5",
+    ES_NY: "ORB/ES_NY-RR5",
+  },
+  "ALPHA_V1-C": {
+    NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
+    NQ_Asia: "ORB/NQ_ASIA-RR6",
+    ES_Asia: "ORB/ES_ASIA-RR1.5",
+    ES_NY: "ORB/ES_NY-RR5",
+  },
   TESTING: {
     NQ_NY_LSI: "LSI/NQ_NY-RR2",
     GC_Asia: "ORB/GC_ASIA-RR2.5",
@@ -80,6 +92,8 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
 
 export const CONFIG_COLORS: Record<string, string> = {
   ALPHA_V1: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+  "ALPHA_V1-A": "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
+  "ALPHA_V1-C": "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
   TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",
   FAST: "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
   "FAST_V1.1": "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",

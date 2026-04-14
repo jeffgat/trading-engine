@@ -34,6 +34,9 @@ _EXPERIMENTS_DB_URL = "http://143.110.148.234:8100"
 
 
 _LOG_TYPE_MAP = {"trade_log": "trades", "log": "main", "webhook_log": "webhooks"}
+_CONFIG_NAME_ALIASES = {
+    "ALPHA_V1": "ALPHA_V1-A",
+}
 
 
 # Buffered log writer — collects entries and flushes in batches via a single
@@ -97,7 +100,63 @@ def _write_log_to_db(log_type: str, entry: dict) -> None:
         pass  # Drop silently if queue is full — local files are the fallback
 
 
-def _fetch_logs_from_db(
+def _normalize_config_name(name: str | None) -> str:
+    """Map legacy config names to their canonical display/query names."""
+    if not name:
+        return ""
+    base, bracket, suffix = name.partition("[")
+    normalized_base = _CONFIG_NAME_ALIASES.get(base, base)
+    return f"{normalized_base}[{suffix}" if bracket else normalized_base
+
+
+def _config_query_names(name: str | None) -> tuple[str, ...]:
+    """Return all DB/query names that should be treated as one config bucket."""
+    normalized = _normalize_config_name(name)
+    if not normalized:
+        return ()
+    aliases = [normalized]
+    if normalized == "ALPHA_V1-A":
+        aliases.append("ALPHA_V1")
+    return tuple(dict.fromkeys(aliases))
+
+
+def _normalize_trade_log_entry(entry: dict) -> dict:
+    normalized = dict(entry)
+    config = normalized.get("config")
+    if config:
+        normalized["config"] = _normalize_config_name(str(config))
+    return normalized
+
+
+def _normalize_live_trade(trade: dict) -> dict:
+    normalized = dict(trade)
+    config_name = normalized.get("config_name")
+    if config_name:
+        normalized["config_name"] = _normalize_config_name(str(config_name))
+    return normalized
+
+
+def _trade_log_sort_key(entry: dict) -> tuple:
+    details = entry.get("details") or {}
+    return (
+        str(entry.get("timestamp") or ""),
+        str(entry.get("config") or ""),
+        str(entry.get("asset") or ""),
+        str(entry.get("session") or ""),
+        str(entry.get("event") or ""),
+        tuple(sorted((str(k), str(v)) for k, v in details.items())),
+    )
+
+
+def _live_trade_sort_key(trade: dict) -> tuple:
+    return (
+        str(trade.get("timestamp") or ""),
+        str(trade.get("exit_timestamp") or ""),
+        int(trade.get("id") or 0),
+    )
+
+
+def _fetch_logs_from_db_raw(
     log_type: str,
     limit: int = 500,
     offset: int = 0,
@@ -126,6 +185,48 @@ def _fetch_logs_from_db(
             "offset": data.get("offset", offset),
         }
     return {"entries": [], "total": 0, "limit": limit, "offset": offset}
+
+
+def _fetch_logs_from_db(
+    log_type: str,
+    limit: int = 500,
+    offset: int = 0,
+    **filters,
+) -> dict:
+    """Fetch execution logs from the experiments DB API with config alias support."""
+    config_filter = filters.get("config", "")
+    if log_type == "trades" and config_filter:
+        query_names = _config_query_names(str(config_filter))
+        if len(query_names) > 1:
+            merged: list[dict] = []
+            seen: set[tuple] = set()
+            fetch_limit = limit + offset
+            for query_name in query_names:
+                raw = _fetch_logs_from_db_raw(
+                    log_type,
+                    limit=fetch_limit,
+                    offset=0,
+                    **{**filters, "config": query_name},
+                )
+                for entry in raw["entries"]:
+                    normalized = _normalize_trade_log_entry(entry)
+                    key = _trade_log_sort_key(normalized)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    merged.append(normalized)
+            merged.sort(key=lambda entry: str(entry.get("timestamp") or ""), reverse=True)
+            return {
+                "entries": merged[offset:offset + limit],
+                "total": len(merged),
+                "limit": limit,
+                "offset": offset,
+            }
+
+    raw = _fetch_logs_from_db_raw(log_type, limit=limit, offset=offset, **filters)
+    if log_type == "trades":
+        raw["entries"] = [_normalize_trade_log_entry(entry) for entry in raw["entries"]]
+    return raw
 
 
 def _write_trade_to_db(record: "TradeRecord") -> None:
@@ -184,20 +285,39 @@ def _fetch_trades_from_db(
     import urllib.request
     from urllib.parse import urlencode
 
-    params = {k: v for k, v in {
-        "session": session,
-        "config": config,
-        "date_from": date_from,
-        "date_to": date_to,
-        "limit": str(limit),
-    }.items() if v}
-    url = f"{_EXPERIMENTS_DB_URL}/api/live-trades?{urlencode(params)}"
-    req = urllib.request.Request(url, method="GET")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        result = json.loads(resp.read().decode())
-    if result.get("success"):
-        return result.get("result", [])
-    return []
+    def _fetch_once(config_name: str = "") -> list[dict]:
+        params = {k: v for k, v in {
+            "session": session,
+            "config": config_name,
+            "date_from": date_from,
+            "date_to": date_to,
+            "limit": str(limit),
+        }.items() if v}
+        url = f"{_EXPERIMENTS_DB_URL}/api/live-trades?{urlencode(params)}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+        if result.get("success"):
+            return result.get("result", [])
+        return []
+
+    query_names = _config_query_names(config) if config else ()
+    if len(query_names) > 1:
+        merged: list[dict] = []
+        seen: set[tuple] = set()
+        for query_name in query_names:
+            for trade in _fetch_once(query_name):
+                normalized = _normalize_live_trade(trade)
+                key = _live_trade_sort_key(normalized)
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(normalized)
+        merged.sort(key=lambda trade: _live_trade_sort_key(trade), reverse=True)
+        return merged[:limit]
+
+    trades = _fetch_once(config)
+    return [_normalize_live_trade(trade) for trade in trades]
 
 # Known execution config names (used to distinguish config tag from asset tag in log parsing)
 _KNOWN_CONFIGS: set[str] = set()
@@ -262,7 +382,7 @@ class DashboardState:
         """
         for r in self.trade_history:
             if r.date == date and r.tp1_hit and r.session in ("NQ_Asia", "ES_Asia"):
-                if config_name and r.config_name != config_name:
+                if config_name and _normalize_config_name(r.config_name) != _normalize_config_name(config_name):
                     continue
                 return True
         return False
@@ -391,7 +511,7 @@ def parse_trade_log_line(line: str) -> dict | None:
 
     return {
         "timestamp": timestamp,
-        "config": config,
+        "config": _normalize_config_name(config),
         "asset": asset or None,
         "session": session,
         "event": event,
@@ -479,8 +599,10 @@ def _read_log_lines(
 
     # Filter by config name (trade log only)
     if config_filter:
-        config_upper = config_filter.upper()
-        entries = [e for e in entries if e.get("config", "").upper() == config_upper]
+        config_names = {name.upper() for name in _config_query_names(config_filter)}
+        if not config_names:
+            config_names = {_normalize_config_name(config_filter).upper()}
+        entries = [e for e in entries if str(e.get("config", "")).upper() in config_names]
 
     # Filter by level (main log only)
     if level:
@@ -712,12 +834,18 @@ def create_app(state: DashboardState) -> FastAPI:
             # Legacy: return in-memory trade history (JSON-backed, 7-day window)
             records = state.trade_history
             if config:
-                records = [r for r in records if r.config_name == config]
+                records = [
+                    r for r in records
+                    if _normalize_config_name(r.config_name) == _normalize_config_name(config)
+                ]
             if session:
                 records = [r for r in records if r.session == session]
             records = list(reversed(records))[:limit]
             from dataclasses import asdict
-            return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+            return {
+                "trades": [_normalize_live_trade(asdict(r)) for r in records],
+                "total": len(state.trade_history),
+            }
 
         # Default: read from experiments DB
         try:
@@ -730,12 +858,18 @@ def create_app(state: DashboardState) -> FastAPI:
             logger.warning("DB trade fetch failed, falling back to memory: %s", exc)
             records = state.trade_history
             if config:
-                records = [r for r in records if r.config_name == config]
+                records = [
+                    r for r in records
+                    if _normalize_config_name(r.config_name) == _normalize_config_name(config)
+                ]
             if session:
                 records = [r for r in records if r.session == session]
             records = list(reversed(records))[:limit]
             from dataclasses import asdict
-            return {"trades": [asdict(r) for r in records], "total": len(state.trade_history)}
+            return {
+                "trades": [_normalize_live_trade(asdict(r)) for r in records],
+                "total": len(state.trade_history),
+            }
 
     class ManualTradeRequest(BaseModel):
         session: str
@@ -756,6 +890,7 @@ def create_app(state: DashboardState) -> FastAPI:
     async def create_manual_trade(req: ManualTradeRequest):
         """Manually log a trade (retroactive or missed)."""
         trade_dict = req.model_dump()
+        trade_dict["config_name"] = _normalize_config_name(trade_dict.get("config_name"))
         try:
             import json
             import urllib.request
