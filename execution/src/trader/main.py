@@ -418,7 +418,6 @@ class ExecutionConfig:
     enabled: bool = True
     max_open_contracts: float = 0.0
     webhooks: list[WebhookEntry] = field(default_factory=list)
-    portfolio_params: dict[str, object] = field(default_factory=dict)
     session_overrides: dict[str, dict] = field(default_factory=dict)
     lsi_session_overrides: dict[str, dict] = field(default_factory=dict)
 
@@ -465,7 +464,6 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
                 enabled=data.get("enabled", True),
                 max_open_contracts=float(data.get("max_open_contracts", 0.0)),
                 webhooks=_parse_webhooks(data),
-                portfolio_params=data.get("portfolio_params", {}),
                 session_overrides=data.get("sessions", {}),
                 lsi_session_overrides=data.get("lsi_sessions", {}),
             ))
@@ -495,7 +493,6 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
             "enabled": ec.enabled,
             "max_open_contracts": ec.max_open_contracts,
             "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
-            "portfolio_params": ec.portfolio_params,
             "sessions": ec.session_overrides,
             "lsi_sessions": ec.lsi_session_overrides,
         }

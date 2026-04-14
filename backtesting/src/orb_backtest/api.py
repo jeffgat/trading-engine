@@ -209,6 +209,7 @@ class BacktestRequest(BaseModel):
     lsi_fvg_window_right: Optional[int] = None
     lsi_stop_mode: Optional[str] = None
     lsi_entry_mode: Optional[str] = None
+    lsi_close_on_sweep_to_inversion_minutes: Optional[int] = None
     lsi_first_fvg_only: Optional[bool] = None
     lsi_clean_path: Optional[bool] = None
     lsi_be_swing_n_left: Optional[int] = None
@@ -218,8 +219,17 @@ class BacktestRequest(BaseModel):
     htf_trade_max_per_session: Optional[int] = None
     max_fvg_to_inversion_bars: Optional[int] = None
     htf_lsi_include_htf_levels: Optional[bool] = None
+    htf_lsi_include_eqhl_levels: Optional[bool] = None
     htf_lsi_reference_levels: Optional[list[str]] = None
+    eqhl_level_tf_minutes: Optional[int] = None
+    eqhl_n_left: Optional[int] = None
+    eqhl_tolerance_ticks: Optional[int] = None
+    eqhl_min_touches: Optional[int] = None
+    eqhl_lookback_bars: Optional[int] = None
     data_sweep_min_daily_atr_pct: Optional[float] = None
+    data_sweep_require_session_extreme: Optional[bool] = None
+    data_sweep_event_types: Optional[list[str]] = None
+    data_sweep_release_window_minutes: Optional[int] = None
 
 
 _DOW_NAME_MAP = {
@@ -515,11 +525,16 @@ def run_backtest_endpoint(req: BacktestRequest):
         "ldn_stop_atr_pct", "ldn_min_gap_atr_pct", "ldn_stop_orb_pct", "ldn_min_gap_orb_pct",
         "ldn_qualifying_move_atr_pct", "ldn_min_stop_points", "ldn_min_tp1_points", "ldn_rth_start",
         "lsi_n_left", "lsi_n_right", "lsi_fvg_window_left", "lsi_fvg_window_right",
-        "lsi_stop_mode", "lsi_entry_mode", "lsi_first_fvg_only", "lsi_clean_path",
+        "lsi_stop_mode", "lsi_entry_mode", "lsi_close_on_sweep_to_inversion_minutes",
+        "lsi_first_fvg_only", "lsi_clean_path",
         "lsi_be_swing_n_left", "lsi_cancel_on_swing",
         "htf_level_tf_minutes", "htf_n_left", "htf_trade_max_per_session",
         "max_fvg_to_inversion_bars", "htf_lsi_include_htf_levels",
-        "data_sweep_min_daily_atr_pct",
+        "htf_lsi_include_eqhl_levels",
+        "eqhl_level_tf_minutes", "eqhl_n_left", "eqhl_tolerance_ticks",
+        "eqhl_min_touches", "eqhl_lookback_bars",
+        "data_sweep_min_daily_atr_pct", "data_sweep_require_session_extreme",
+        "data_sweep_release_window_minutes",
     ):
         val = getattr(req, field)
         if val is not None:
@@ -541,6 +556,8 @@ def run_backtest_endpoint(req: BacktestRequest):
         overrides["excluded_dates"] = tuple(req.excluded_dates)
     if req.htf_lsi_reference_levels is not None:
         overrides["htf_lsi_reference_levels"] = tuple(req.htf_lsi_reference_levels)
+    if req.data_sweep_event_types is not None:
+        overrides["data_sweep_event_types"] = tuple(req.data_sweep_event_types)
     parsed_excluded_days = _parse_dow_values(req.excluded_days)
     if parsed_excluded_days is not None:
         overrides["excluded_days"] = parsed_excluded_days

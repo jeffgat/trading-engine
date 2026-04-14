@@ -1,17 +1,11 @@
 # TODOS/NOTES
 ## to test individually
-- max candles before inversion else invalidate the trade? - done, to review
-- vwap/ema/sma? - done, not helpful
-- 1h high or low, minimum x (5) bars to the left and unswept? - done, 3 was best
-
-- revisit data candle, 8:30am ET candle of more than X (10%?) ATR, sweep one side and target the other. 30s, 1m, 2m.
-
 - define trendline liquidity on the way to the target
-
-- define equal highs, highs near each other within x amount of points
+- define and test equal highs
 
 - define DOL. if it can be defined as a sweep, it can be defined as the DOL as well imo
   - issue is, how old can this be for the DOL to remain valid?
+  - need to use DOL at the end as we ideally want the end variants of all the liq levels
 
 ### params
 session times

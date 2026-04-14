@@ -35,6 +35,7 @@ export interface SessionStatus {
   tp1_hit: boolean;
   exit_type: string | null;
   r_result: number | null;
+  risk_usd?: number;
   config_name?: string;
   paused?: boolean;
   excluded_dow?: number | number[] | null;
@@ -167,17 +168,11 @@ export interface WebhookEntry {
   multiplier?: number;
 }
 
-export interface ExecConfigPortfolioParams {
-  r_amount_usd?: number;
-  [key: string]: string | number | boolean | null | undefined;
-}
-
 export interface ExecConfigMeta {
   enabled: boolean;
   max_open_contracts?: number;
   /** New multi-webhook format */
   webhooks: WebhookEntry[];
-  portfolio_params?: ExecConfigPortfolioParams;
   sessions: string[];
   lsi_sessions: string[];
 }

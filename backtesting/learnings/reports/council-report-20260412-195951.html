@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Council Report: ORB/LSI Next-Step Allocation</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d9dee8;
+      --accent: #1f4b99;
+      --good: #e9f5ec;
+      --warn: #fff4e5;
+      --blue: #eaf2ff;
+      --red: #fceeee;
+      --green: #eaf8ef;
+      --purple: #f4efff;
+      --orange: #fff3e8;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    .hero, .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    h1, h2, h3 {
+      margin: 0 0 12px;
+      line-height: 1.2;
+    }
+    h1 { font-size: 32px; }
+    h2 { font-size: 22px; }
+    h3 { font-size: 18px; }
+    p { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    .question {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-radius: 12px;
+      background: #f9fbff;
+      border: 1px solid #dbe8ff;
+    }
+    .grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      margin: 20px 0;
+    }
+    .card {
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .verdict {
+      background: linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+      border-left: 6px solid var(--accent);
+    }
+    .pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+    }
+    .pill-main { background: var(--blue); color: #28497a; border-color: #c9dafc; }
+    .pill-side { background: var(--warn); color: #8a5a10; border-color: #f2d29b; }
+    .pill-stop { background: var(--red); color: #8f2f2f; border-color: #efc3c3; }
+    .visual {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-top: 14px;
+    }
+    .lane {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+    .lane h3 { margin-bottom: 8px; font-size: 16px; }
+    .advisor {
+      padding: 9px 10px;
+      border-radius: 10px;
+      margin-top: 8px;
+      font-size: 14px;
+      border: 1px solid transparent;
+    }
+    .contrarian { background: var(--red); border-color: #efcaca; }
+    .first { background: var(--blue); border-color: #cedefc; }
+    .expansionist { background: var(--green); border-color: #cde9d7; }
+    .outsider { background: var(--purple); border-color: #ddd2ff; }
+    .executor { background: var(--orange); border-color: #f4d3b8; }
+    details {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0 14px;
+      background: #fff;
+      margin-top: 12px;
+    }
+    summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 14px 0;
+      font-weight: 600;
+    }
+    summary::-webkit-details-marker { display: none; }
+    .details-body {
+      padding: 0 0 16px;
+      color: var(--text);
+    }
+    ul {
+      margin: 8px 0 0 18px;
+      padding: 0;
+    }
+    li { margin: 6px 0; }
+    footer {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px 2px 0;
+    }
+    @media (max-width: 700px) {
+      body { padding: 18px; }
+      h1 { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <p class="muted">LLM Council Report • 2026-04-12 19:59:51</p>
+      <h1>ORB/LSI Next-Step Allocation</h1>
+      <p class="muted">Should research effort stay focused on codifying discretionary LSI, or widen into broader strategy discovery?</p>
+      <div class="question">
+        <strong>Question</strong>
+        <p>The repo has extracted solid results from ORB and LSI and now powers a long-biased `ALPHA_V1` portfolio, but the user feels progress has plateaued. They still believe their discretionary LSI edge is stronger than what the repo captures, yet do not know how to translate that discretion into code. The decision is whether to keep mining that known edge, broaden into new strategy families, or run some hybrid path.</p>
+      </div>
+    </section>
+
+    <section class="card verdict">
+      <span class="pill pill-main">Main Call</span>
+      <span class="pill pill-side">Keep One Hedge Lane</span>
+      <span class="pill pill-stop">No Broad Discovery Yet</span>
+      <h2>The Recommendation</h2>
+      <p>Run a timeboxed LSI codification sprint as the main research priority, with a small parallel lane for short-side hedge candidates only.</p>
+      <p>Your highest-probability improvement is still sitting inside an edge you already trade and trust. Do not open broad multi-family discovery yet. But do not let LSI codification become open-ended either: put it on a hard clock, freeze the holdout, work only on pre-holdout data, and judge it by whether replay capture and systematic expectancy materially improve.</p>
+      <h3 style="margin-top:18px;">The One Thing to Do First</h3>
+      <p>Build a trade-by-trade LSI gap log comparing your real discretionary trades against the current repo's HTF-LSI signals, and record the exact context, trigger, veto, and management cue that your discretion used but the code does not.</p>
+    </section>
+
+    <section class="card">
+      <h2>Agreement / Disagreement Visual</h2>
+      <p class="muted">The council mostly converged on “LSI-first, but keep one narrow hedge lane open.” The real disagreement was whether diversification should become a first-class objective immediately.</p>
+      <div class="visual">
+        <div class="lane">
+          <h3>LSI-First</h3>
+          <div class="advisor contrarian"><strong>Contrarian</strong><br>Freeze expansion and run an LSI translation sprint first.</div>
+          <div class="advisor first"><strong>First Principles</strong><br>Treat the problem as edge extraction, not new-strategy search.</div>
+        </div>
+        <div class="lane">
+          <h3>LSI-First + Narrow Hedge Lane</h3>
+          <div class="advisor executor"><strong>Executor</strong><br>Codify LSI now; keep one narrow short-side hedge lane open.</div>
+        </div>
+        <div class="lane">
+          <h3>Bounded Sprint Then Broaden</h3>
+          <div class="advisor outsider"><strong>Outsider</strong><br>Run one bounded sprint, then shift center of gravity if no uplift appears.</div>
+        </div>
+        <div class="lane">
+          <h3>Diversify Sooner</h3>
+          <div class="advisor expansionist"><strong>Expansionist</strong><br>Preserve LSI, but elevate expansion because portfolio architecture is the bigger upside.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h2>Where the Council Agrees</h2>
+        <ul>
+          <li>The highest-value unanswered question is still the discretionary-to-systematic LSI gap.</li>
+          <li>Broad discovery right now would likely be a distraction while the best known edge remains undertranslated.</li>
+          <li>The portfolio's long bias is real, which justifies one narrow short-side hedge lane.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Where the Council Clashes</h2>
+        <ul>
+          <li>One camp optimizes for highest-confidence edge capture: translate LSI first.</li>
+          <li>The other camp optimizes for portfolio resilience: diversify sooner because concentration is the bigger bottleneck.</li>
+          <li>The chairman sided with LSI-first because it is the cleaner, less noisy path to improvement.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Blind Spots the Council Caught</h2>
+        <ul>
+          <li>The original advisor set lacked a hard sequencing rule.</li>
+          <li>The real fix is a timeboxed stage-gate: run the sprint, measure replay uplift, then reallocate only if the uplift is not material.</li>
+          <li>The compromise is not “do everything.” It is “LSI-first, plus one narrow hedge lane, and nothing broader.”</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Advisor Responses</h2>
+
+      <details>
+        <summary>Contrarian</summary>
+        <div class="details-body">
+          <p>The next move should be to freeze expansion and run an LSI translation sprint. Do not open a broad discovery track yet. That's the trap: once you widen the search space, you start burning attention on mediocre candidates because they are easy to test, not because they are real edges.</p>
+          <p>The strongest clue in your setup is not that ORB/LSI is exhausted. It is that you already have live discretionary confidence plus partial systematic capture. That gap is the highest-ROI problem in the whole repo. If you don't solve it, any new strategy family you add will just dilute the book and hide the fact that the best edge is still underexpressed.</p>
+          <p>Build a strict discretionary replay audit, extract the missing cues, turn only the highest-frequency patterns into rules, and only then revisit broader discovery.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>First Principles Thinker</summary>
+        <div class="details-body">
+          <p>Do not open a broad discovery front yet. That would be optimizing for novelty instead of edge capture.</p>
+          <p>The real problem is not what other strategies exist. The real problem is why the system is still failing to express a discretionary edge you already know is real. Treat discretionary LSI as an extraction problem, not a strategy-search problem.</p>
+          <p>Reconstruct the trade as a state machine: regime, sweep quality, displacement quality, invalidation, and management logic. Until that is encoded, LSI performance is underfit by definition.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Expansionist</summary>
+        <div class="details-body">
+          <p>Stop treating ORB/LSI as the whole game. The biggest upside is turning the current portfolio into a platform with a real short-side hedge and at least one orthogonal edge source.</p>
+          <p>Freeze the current LSI/ORB core, then give the majority of research effort to discovery that can solve what the current book cannot: short-side coverage, regime orthogonality, and lower correlation.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Outsider</summary>
+        <div class="details-body">
+          <p>The wall is a signal that the easy edge has been harvested, and the remaining work is translation work plus diversification.</p>
+          <p>Run one bounded LSI codification sprint with a hard exit condition. If it improves live-like replay materially, keep going. If not, shift toward broader discovery without sentimentality.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Executor</summary>
+        <div class="details-body">
+          <p>Do not open a broad discovery track yet. Build a trade-by-trade gap log of your live discretionary LSI trades versus the repo's current HTF-LSI logic.</p>
+          <p>For each mismatch, record trigger, context, veto, and management. Sort cues into: codify now, proxy needed, or probably non-codifiable. Keep only one narrow short-side hedge lane open in parallel.</p>
+        </div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Peer Review Highlights</h2>
+      <details>
+        <summary>Open Peer Review Highlights</summary>
+        <div class="details-body">
+          <p><strong>Consistent pick for strongest response:</strong> Response A was selected repeatedly because it balanced the highest-confidence move with a narrow hedge lane.</p>
+          <p><strong>Main blind spot flagged:</strong> The diversification-heavy response was seen as moving too early before the discretionary LSI gap was properly measured.</p>
+          <p><strong>What all reviewers added:</strong> the council needed a hard sequencing rule. The recurring suggestion was a timeboxed LSI extraction sprint with explicit success metrics and a stop/go threshold.</p>
+        </div>
+      </details>
+    </section>
+
+    <footer>
+      Saved as <code>backtesting/learnings/reports/council-report-20260412-195951.html</code> • Generated by the repo's LLM Council workflow on 2026-04-12 19:59:51
+    </footer>
+  </div>
+</body>
+</html>

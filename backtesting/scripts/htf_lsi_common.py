@@ -43,6 +43,7 @@ CURRENT_NQ_NY_HTF_LSI_LAG24 = {
     "htf_level_tf_minutes": 60,
     "htf_n_left": 3,
     "htf_trade_max_per_session": 2,
+    "htf_lsi_inversion_ordinal": 1,
     "lsi_fvg_window_left": 20,
     "lsi_fvg_window_right": 2,
     "max_fvg_to_inversion_bars": 24,
@@ -129,9 +130,13 @@ def build_config(
     htf_level_tf_minutes: int = 60,
     htf_n_left: int = 5,
     htf_trade_max_per_session: int = 1,
+    htf_lsi_inversion_ordinal: int = 1,
     htf_lsi_include_htf_levels: bool = True,
     htf_lsi_reference_levels: tuple[str, ...] = (),
     data_sweep_min_daily_atr_pct: float = 15.0,
+    data_sweep_require_session_extreme: bool = False,
+    data_sweep_event_types: tuple[str, ...] = (),
+    data_sweep_release_window_minutes: int = 0,
     lsi_fvg_window_left: int = 20,
     lsi_fvg_window_right: int = 5,
     max_fvg_to_inversion_bars: int = 0,
@@ -167,9 +172,13 @@ def build_config(
         htf_level_tf_minutes=htf_level_tf_minutes,
         htf_n_left=htf_n_left,
         htf_trade_max_per_session=htf_trade_max_per_session,
+        htf_lsi_inversion_ordinal=htf_lsi_inversion_ordinal,
         htf_lsi_include_htf_levels=htf_lsi_include_htf_levels,
         htf_lsi_reference_levels=htf_lsi_reference_levels,
         data_sweep_min_daily_atr_pct=data_sweep_min_daily_atr_pct,
+        data_sweep_require_session_extreme=data_sweep_require_session_extreme,
+        data_sweep_event_types=data_sweep_event_types,
+        data_sweep_release_window_minutes=data_sweep_release_window_minutes,
         max_fvg_to_inversion_bars=max_fvg_to_inversion_bars,
         entry_context_gate=entry_context_gate,
         entry_context_min_atr=entry_context_min_atr,
@@ -221,9 +230,13 @@ def result_row(label: str, config: StrategyConfig, trades, *, gate_label: str = 
         "htf_level_tf_minutes": config.htf_level_tf_minutes,
         "htf_n_left": config.htf_n_left,
         "htf_trade_max_per_session": config.htf_trade_max_per_session,
+        "htf_lsi_inversion_ordinal": config.htf_lsi_inversion_ordinal,
         "htf_lsi_include_htf_levels": config.htf_lsi_include_htf_levels,
         "htf_lsi_reference_levels": ",".join(config.htf_lsi_reference_levels),
         "data_sweep_min_daily_atr_pct": config.data_sweep_min_daily_atr_pct,
+        "data_sweep_require_session_extreme": config.data_sweep_require_session_extreme,
+        "data_sweep_event_types": ",".join(config.data_sweep_event_types),
+        "data_sweep_release_window_minutes": config.data_sweep_release_window_minutes,
         "lsi_fvg_window_left": config.lsi_fvg_window_left,
         "lsi_fvg_window_right": config.lsi_fvg_window_right,
         "max_fvg_to_inversion_bars": config.max_fvg_to_inversion_bars,
@@ -309,6 +322,16 @@ def load_shortlist_config(path: Path | None) -> StrategyConfig:
         include_htf_levels = raw_include_htf.strip().lower() not in {"", "0", "false", "no"}
     else:
         include_htf_levels = bool(raw_include_htf)
+    raw_require_session_extreme = row.get("data_sweep_require_session_extreme", False)
+    if isinstance(raw_require_session_extreme, str):
+        require_session_extreme = raw_require_session_extreme.strip().lower() not in {"", "0", "false", "no"}
+    else:
+        require_session_extreme = bool(raw_require_session_extreme)
+    raw_data_sweep_event_types = row.get("data_sweep_event_types", ())
+    if isinstance(raw_data_sweep_event_types, str):
+        data_sweep_event_types = tuple(event_type for event_type in raw_data_sweep_event_types.split(",") if event_type)
+    else:
+        data_sweep_event_types = tuple(raw_data_sweep_event_types)
     return build_config(
         direction_filter=row.get("direction_filter", "both"),
         entry_mode=row.get("entry_mode", "fvg_limit"),
@@ -321,8 +344,13 @@ def load_shortlist_config(path: Path | None) -> StrategyConfig:
         htf_level_tf_minutes=int(row.get("htf_level_tf_minutes", 60)),
         htf_n_left=int(row.get("htf_n_left", 5)),
         htf_trade_max_per_session=int(row.get("htf_trade_max_per_session", 1)),
+        htf_lsi_inversion_ordinal=int(row.get("htf_lsi_inversion_ordinal", 1)),
         htf_lsi_include_htf_levels=include_htf_levels,
         htf_lsi_reference_levels=htf_ref_levels,
+        data_sweep_min_daily_atr_pct=float(row.get("data_sweep_min_daily_atr_pct", 15.0)),
+        data_sweep_require_session_extreme=require_session_extreme,
+        data_sweep_event_types=data_sweep_event_types,
+        data_sweep_release_window_minutes=int(row.get("data_sweep_release_window_minutes", 0)),
         lsi_fvg_window_left=int(row.get("lsi_fvg_window_left", 20)),
         lsi_fvg_window_right=int(row.get("lsi_fvg_window_right", 5)),
         max_fvg_to_inversion_bars=int(row.get("max_fvg_to_inversion_bars", 0)),

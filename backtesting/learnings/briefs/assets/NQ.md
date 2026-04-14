@@ -10,10 +10,10 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 37
-- Related reports indexed: 45
-- Related result directories indexed: 70
-- Status mix: CONDITIONAL: 11, GO: 3, INVALIDATED_OR_CORRUPT: 3, NO-GO: 5, OPTIMIZATION_COMPLETE: 1, SUPERSEDED: 2, UNSPECIFIED: 12
+- Strategy sections indexed: 38
+- Related reports indexed: 72
+- Related result directories indexed: 100
+- Status mix: CONDITIONAL: 11, GO: 3, INVALIDATED_OR_CORRUPT: 3, NO-GO: 5, OPTIMIZATION_COMPLETE: 1, SUPERSEDED: 2, UNSPECIFIED: 13
 
 ## Strategy Snapshot
 - `Asia Continuation (magnifier) — low R:R / high WR` -> `NO-GO (robust pipeline failed Phases 3 + 5)`
@@ -28,4 +28,4 @@ This is the short entrypoint for agent and LLM context loading.
 - `NY Continuation Short v2 (25m ORB, short-only, 1s magnifier, dual floors) — CONDITIONAL` -> `CONDITIONAL — 4/5 pipeline phases pass. Phase 3 annual R FAIL (12R/yr threshold too aggressive for short-only ~33 trades/yr). All other phases pass strongly.`
 - `NY Continuation R20 (20m ORB, both, 1s magnifier) — CORRUPT (was GO)` -> `CORRUPT — all metrics pre-date TP1+BE same-bar exit bug fix (commit 6079ad4). tp1=0.3 makes this config heavily affected.`
 - `NY Continuation Long 30m ICF — CORRUPT + INVALIDATED` -> `CORRUPT + INVALIDATED — pre-dates TP1+BE bug fix AND original data (2015-2026) no longer available. Rerun on current data (2016-2026) shows degraded performance.`
-- ... plus 25 more entries in the [full NQ index](../../indexes/assets/NQ.md).
+- ... plus 26 more entries in the [full NQ index](../../indexes/assets/NQ.md).

@@ -225,8 +225,28 @@ def results_to_dict(
     if config.strategy in {"lsi", "htf_lsi"}:
         config_dict["lsi_fvg_window_left"] = config.lsi_fvg_window_left
         config_dict["lsi_fvg_window_right"] = config.lsi_fvg_window_right
+    if config.strategy in {"lsi", "htf_lsi", "reference_lsi"}:
         config_dict["lsi_stop_mode"] = config.lsi_stop_mode
+        config_dict["lsi_target_mode"] = config.lsi_target_mode
         config_dict["lsi_entry_mode"] = config.lsi_entry_mode
+        if config.lsi_close_on_sweep_to_inversion_minutes > 0:
+            config_dict["lsi_close_on_sweep_to_inversion_minutes"] = (
+                config.lsi_close_on_sweep_to_inversion_minutes
+            )
+    if config.strategy in {"lsi", "htf_lsi", "reference_lsi"}:
+        config_dict["lsi_lrlr_enabled"] = config.lsi_lrlr_enabled
+        config_dict["lsi_lrlr_gate"] = config.lsi_lrlr_gate
+        config_dict["lsi_lrlr_swing_n_left"] = config.lsi_lrlr_swing_n_left
+        config_dict["lsi_lrlr_swing_n_right"] = config.lsi_lrlr_swing_n_right
+        config_dict["lsi_lrlr_min_pivots"] = config.lsi_lrlr_min_pivots
+        config_dict["lsi_lrlr_lookback_minutes"] = config.lsi_lrlr_lookback_minutes
+        config_dict["lsi_lrlr_max_pivot_gap_minutes"] = config.lsi_lrlr_max_pivot_gap_minutes
+        config_dict["lsi_lrlr_max_cluster_span_minutes"] = config.lsi_lrlr_max_cluster_span_minutes
+        config_dict["lsi_lrlr_max_price_span_atr"] = config.lsi_lrlr_max_price_span_atr
+        config_dict["lsi_lrlr_monotonic_tolerance_atr"] = config.lsi_lrlr_monotonic_tolerance_atr
+        config_dict["lsi_lrlr_line_tolerance_atr"] = config.lsi_lrlr_line_tolerance_atr
+        config_dict["lsi_lrlr_tp1_path_enabled"] = config.lsi_lrlr_tp1_path_enabled
+        config_dict["lsi_lrlr_tp1_buffer_atr"] = config.lsi_lrlr_tp1_buffer_atr
     if config.strategy == "lsi":
         config_dict["lsi_n_left"] = config.lsi_n_left
         config_dict["lsi_n_right"] = config.lsi_n_right
@@ -240,16 +260,31 @@ def results_to_dict(
         config_dict["htf_level_tf_minutes"] = config.htf_level_tf_minutes
         config_dict["htf_n_left"] = config.htf_n_left
         config_dict["htf_trade_max_per_session"] = config.htf_trade_max_per_session
+        config_dict["htf_lsi_inversion_ordinal"] = config.htf_lsi_inversion_ordinal
         config_dict["max_fvg_to_inversion_bars"] = config.max_fvg_to_inversion_bars
         config_dict["htf_lsi_include_htf_levels"] = config.htf_lsi_include_htf_levels
+        config_dict["htf_lsi_include_eqhl_levels"] = config.htf_lsi_include_eqhl_levels
+        config_dict["eqhl_level_tf_minutes"] = config.eqhl_level_tf_minutes
+        config_dict["eqhl_n_left"] = config.eqhl_n_left
+        config_dict["eqhl_tolerance_ticks"] = config.eqhl_tolerance_ticks
+        config_dict["eqhl_min_touches"] = config.eqhl_min_touches
+        config_dict["eqhl_lookback_bars"] = config.eqhl_lookback_bars
         config_dict["data_sweep_min_daily_atr_pct"] = config.data_sweep_min_daily_atr_pct
+        config_dict["data_sweep_require_session_extreme"] = config.data_sweep_require_session_extreme
+        config_dict["data_sweep_release_window_minutes"] = config.data_sweep_release_window_minutes
         if config.htf_lsi_reference_levels:
             config_dict["htf_lsi_reference_levels"] = ",".join(config.htf_lsi_reference_levels)
+        if config.data_sweep_event_types:
+            config_dict["data_sweep_event_types"] = ",".join(config.data_sweep_event_types)
     if config.strategy == "reference_lsi":
         config_dict["ref_lsi_gap_lookback_bars"] = config.ref_lsi_gap_lookback_bars
         config_dict["ref_lsi_inversion_max_bars"] = config.ref_lsi_inversion_max_bars
         config_dict["ref_lsi_gap_entry_edge"] = config.ref_lsi_gap_entry_edge
         config_dict["data_sweep_min_daily_atr_pct"] = config.data_sweep_min_daily_atr_pct
+        config_dict["data_sweep_require_session_extreme"] = config.data_sweep_require_session_extreme
+        config_dict["data_sweep_release_window_minutes"] = config.data_sweep_release_window_minutes
+        if config.data_sweep_event_types:
+            config_dict["data_sweep_event_types"] = ",".join(config.data_sweep_event_types)
 
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
@@ -300,6 +335,17 @@ def results_to_dict(
                 "htf_level_tf_minutes": t.htf_level_tf_minutes if t.htf_level_side else None,
                 "fvg_to_inversion_bars": t.fvg_to_inversion_bars if t.htf_level_side else None,
                 "sweep_to_inversion_bars": t.sweep_to_inversion_bars if t.htf_level_side else None,
+                "inversion_ordinal": t.inversion_ordinal if t.htf_level_side else None,
+                "lsi_lrlr_present": t.lsi_lrlr_present,
+                "lsi_lrlr_level_count": t.lsi_lrlr_level_count if t.lsi_lrlr_present else None,
+                "lsi_lrlr_nearest_level_price": t.lsi_lrlr_nearest_level_price if t.lsi_lrlr_present else None,
+                "lsi_lrlr_farthest_level_price": t.lsi_lrlr_farthest_level_price if t.lsi_lrlr_present else None,
+                "lsi_lrlr_span_bars": t.lsi_lrlr_span_bars if t.lsi_lrlr_present else None,
+                "lsi_lrlr_price_span_atr": round(t.lsi_lrlr_price_span_atr, 4) if t.lsi_lrlr_present else None,
+                "lsi_lrlr_slope_atr_per_bar": round(t.lsi_lrlr_slope_atr_per_bar, 6) if t.lsi_lrlr_present else None,
+                "lsi_lrlr_fit_error_atr": round(t.lsi_lrlr_fit_error_atr, 6) if t.lsi_lrlr_present else None,
+                "lsi_lrlr_tp1_path_present": t.lsi_lrlr_tp1_path_present if t.lsi_lrlr_present else None,
+                "lsi_lrlr_nearest_tp1_gap_atr": round(t.lsi_lrlr_nearest_tp1_gap_atr, 6) if t.lsi_lrlr_present else None,
             }
             for t in trades
         ]

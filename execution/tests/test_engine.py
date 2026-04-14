@@ -324,6 +324,24 @@ class TestArmedToManaging:
 # =============================================================================
 
 class TestManagingExits5m:
+    async def test_same_time_flat_window_exits_exact_bar(self, broker):
+        eng = _make_orb_engine(broker, flat_start="10:10", flat_end="10:10")
+        eng, entry_price = await advance_to_managing(eng, orb_high=19530.0)
+        bar = make_bar("2025-01-15 10:10", entry_price, entry_price + 5, entry_price - 5, entry_price + 2)
+        await eng.on_bar(bar, 300.0)
+        broker.send_flatten.assert_called_once()
+        assert eng._state == State.FLAT
+        assert eng._exit_type == "eod"
+
+    async def test_post_flat_bar_fallback_flattens_open_position(self, broker):
+        eng = _make_orb_engine(broker, flat_start="10:06", flat_end="10:06")
+        eng, entry_price = await advance_to_managing(eng, orb_high=19530.0)
+        bar = make_bar("2025-01-15 10:10", entry_price, entry_price + 5, entry_price - 5, entry_price + 2)
+        await eng.on_bar(bar, 300.0)
+        broker.send_flatten.assert_called_once()
+        assert eng._state == State.FLAT
+        assert eng._exit_type == "eod"
+
     async def test_sl_hit_sends_flatten(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
         stop = eng._levels.stop
@@ -531,6 +549,40 @@ class TestManagingExits5m:
 # =============================================================================
 
 class TestTickPath:
+    async def test_tick_same_time_flat_window_exits_exact_tick(self, broker):
+        eng = _make_orb_engine(broker, flat_start="10:06", flat_end="10:06")
+        eng, entry_price = await advance_to_managing(eng, orb_high=19530.0)
+        fill_ts = eng._fill_timestamp
+        tick = Bar(
+            timestamp=fill_ts + timedelta(minutes=1),
+            open=entry_price,
+            high=entry_price + 5,
+            low=entry_price - 5,
+            close=entry_price + 1,
+            volume=10,
+        )
+        await eng.on_tick(tick, 300.0)
+        broker.send_flatten.assert_called_once()
+        assert eng._state == State.FLAT
+        assert eng._exit_type == "eod"
+
+    async def test_post_flat_tick_fallback_flattens_open_position(self, broker):
+        eng = _make_orb_engine(broker, flat_start="10:06", flat_end="10:06")
+        eng, entry_price = await advance_to_managing(eng, orb_high=19530.0)
+        fill_ts = eng._fill_timestamp
+        tick = Bar(
+            timestamp=fill_ts + timedelta(minutes=1, seconds=1),
+            open=entry_price,
+            high=entry_price + 5,
+            low=entry_price - 5,
+            close=entry_price + 1,
+            volume=10,
+        )
+        await eng.on_tick(tick, 300.0)
+        broker.send_flatten.assert_called_once()
+        assert eng._state == State.FLAT
+        assert eng._exit_type == "eod"
+
     async def test_tick_ignored_in_idle(self, engine, broker):
         tick = make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500)
         await engine.on_tick(tick, 300.0)

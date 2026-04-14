@@ -1929,6 +1929,7 @@ class LSIEngine:
             "tp1_hit": self._tp1_hit,
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
+            "risk_usd": self.risk_usd,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "skip_reason": self._skip_reason,

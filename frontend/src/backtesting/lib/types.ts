@@ -174,6 +174,9 @@ export interface BacktestHistoryItem {
   htf_lsi_include_htf_levels?: number;
   htf_lsi_reference_levels?: string;
   data_sweep_min_daily_atr_pct?: number;
+  data_sweep_require_session_extreme?: number;
+  data_sweep_event_types?: string;
+  data_sweep_release_window_minutes?: number;
   // Metrics (dedicated columns)
   total_pnl_usd: number;
   total_r: number;

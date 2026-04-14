@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { SessionCard } from "./SessionCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import type { ConfigResponse, SessionStatus } from "@/execution/lib/types";
+import type { ConfigResponse, SessionConfig, SessionStatus } from "@/execution/lib/types";
 
 interface StatusPanelProps {
   configEngines: Record<string, SessionStatus[]>;
@@ -28,6 +28,15 @@ function buildStrategyLookup(config: ConfigResponse | null): Record<string, "con
   return map;
 }
 
+function buildSessionConfigLookup(config: ConfigResponse | null): Record<string, SessionConfig> {
+  const map: Record<string, SessionConfig> = {};
+  if (!config?.sessions) return map;
+  for (const [key, cfg] of Object.entries(config.sessions)) {
+    map[key] = cfg as SessionConfig;
+  }
+  return map;
+}
+
 /** Check if an exec config is live (has webhooks) or dry-run */
 function isLiveConfig(configName: string, config: ConfigResponse | null): boolean {
   const meta = config?.exec_configs?.[configName];
@@ -37,6 +46,7 @@ function isLiveConfig(configName: string, config: ConfigResponse | null): boolea
 
 export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, onPause, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
+  const sessionCfgLookup = buildSessionConfigLookup(config);
 
   // Compute which configs are live vs dry-run
   const configNames = Object.keys(configEngines);
@@ -129,7 +139,14 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {displayEngines.map((engine) => (
-          <SessionCard key={`${engine.config_name}-${engine.session}`} engine={engine} strategyType={stratLookup[engine.session]} onPause={onPause} onResume={onResume} />
+          <SessionCard
+            key={`${engine.config_name}-${engine.session}`}
+            engine={engine}
+            strategyType={stratLookup[engine.session]}
+            sessionConfig={sessionCfgLookup[`${engine.config_name}:${engine.session}`] ?? sessionCfgLookup[engine.session]}
+            onPause={onPause}
+            onResume={onResume}
+          />
         ))}
       </div>
     </div>

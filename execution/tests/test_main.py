@@ -224,7 +224,6 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
             self.enabled = True
             self.max_open_contracts = 20
             self.webhooks = [FakeWebhook("https://example.test/hook", "Account 1")]
-            self.portfolio_params = {"r_amount_usd": 500}
             self.session_overrides = {"NQ_NY": {}}
             self.lsi_session_overrides = {"NQ_NY_LSI": {}}
 
@@ -249,7 +248,6 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
     meta = _build_exec_config_meta(state)
     assert list(meta) == ["FAST_V2"]
     assert meta["FAST_V2"]["max_open_contracts"] == 20
-    assert meta["FAST_V2"]["portfolio_params"] == {"r_amount_usd": 500}
     assert meta["FAST_V2"]["sessions"] == ["NQ_NY"]
     assert meta["FAST_V2"]["lsi_sessions"] == ["NQ_NY_LSI"]
     assert meta["FAST_V2"]["webhooks"][0]["paused"] is True
@@ -531,11 +529,9 @@ def test_apply_atr_values_uses_engine_specific_length():
 def test_fast_and_fast_v2_exec_configs_load_original_baseline_portfolios():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
-    alpha_v1 = configs["ALPHA_V1"]
     fast = configs["FAST"]
     fast_v2 = configs["FAST_V2"]
 
-    assert alpha_v1.portfolio_params == {"r_amount_usd": 500}
     assert set(fast.session_overrides) == {
         "NQ_NY",
         "NQ_Asia",
@@ -578,6 +574,36 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     assert all(override["risk_usd"] == 400 for override in fast_v2.session_overrides.values())
     assert all(override["risk_usd"] == 400 for override in fast_v2.lsi_session_overrides.values())
     assert fast_v2.webhook_url == ""
+
+
+def test_alpha_v1_a_and_alpha_v1_c_only_differ_by_risk_sizes():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    aggressive = configs["ALPHA_V1-A"]
+    conservative = configs["ALPHA_V1-C"]
+
+    def _without_risk(overrides: dict[str, dict]) -> dict[str, dict]:
+        return {
+            name: {key: value for key, value in values.items() if key != "risk_usd"}
+            for name, values in overrides.items()
+        }
+
+    assert aggressive.enabled is True
+    assert conservative.enabled is False
+    assert aggressive.max_open_contracts == conservative.max_open_contracts
+    assert aggressive.webhooks[0].label == conservative.webhooks[0].label == "Account 1"
+    assert _without_risk(aggressive.session_overrides) == _without_risk(conservative.session_overrides)
+    assert _without_risk(aggressive.lsi_session_overrides) == _without_risk(conservative.lsi_session_overrides)
+    assert aggressive.session_overrides["NQ_Asia"]["risk_usd"] == 250
+    assert aggressive.session_overrides["ES_Asia"]["risk_usd"] == 250
+    assert aggressive.session_overrides["ES_NY"]["risk_usd"] == 400
+    assert aggressive.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
+    assert set(conservative.session_overrides) == {"NQ_Asia", "ES_Asia", "ES_NY"}
+    assert set(conservative.lsi_session_overrides) == {"NQ_NY_LSI"}
+    assert conservative.session_overrides["NQ_Asia"]["risk_usd"] == 150
+    assert conservative.session_overrides["ES_Asia"]["risk_usd"] == 200
+    assert conservative.session_overrides["ES_NY"]["risk_usd"] == 200
+    assert conservative.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 150
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():

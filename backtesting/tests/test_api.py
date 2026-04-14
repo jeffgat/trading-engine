@@ -241,7 +241,8 @@ def test_run_backtest_endpoint_parses_saved_config_shape(client, monkeypatch):
             "lsi_fvg_window_left": 20,
             "lsi_fvg_window_right": 5,
             "lsi_stop_mode": "absolute",
-            "lsi_entry_mode": "fvg_limit",
+            "lsi_entry_mode": "timed_hybrid",
+            "lsi_close_on_sweep_to_inversion_minutes": 5,
         },
     )
     assert res.status_code == 200
@@ -260,7 +261,8 @@ def test_run_backtest_endpoint_parses_saved_config_shape(client, monkeypatch):
     assert cfg.lsi_fvg_window_left == 20
     assert cfg.lsi_fvg_window_right == 5
     assert cfg.lsi_stop_mode == "absolute"
-    assert cfg.lsi_entry_mode == "fvg_limit"
+    assert cfg.lsi_entry_mode == "timed_hybrid"
+    assert cfg.lsi_close_on_sweep_to_inversion_minutes == 5
     assert cfg.sessions[0].rth_start == "09:30"
     assert cfg.sessions[0].entry_start == "09:35"
     assert cfg.sessions[0].entry_end == "15:30"

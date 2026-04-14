@@ -1,5 +1,5 @@
 import { CONFIG_COLORS, SESSION_DISPLAY_NAMES, STATE_COLORS, STATE_LABELS } from "@/execution/lib/constants";
-import type { SessionStatus } from "@/execution/lib/types";
+import type { SessionConfig, SessionStatus } from "@/execution/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,11 +83,29 @@ const EXIT_COLORS: Record<string, { dot: string; text: string }> = {
   eod: { dot: "bg-text-muted", text: "text-text-muted" },
 };
 
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
+
 interface SessionCardProps {
   engine: SessionStatus;
   strategyType?: "continuation" | "lsi";
+  sessionConfig?: SessionConfig;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
+}
+
+function formatResult(value: number, riskUsd?: number) {
+  const rLabel = `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
+  if (riskUsd == null) return rLabel;
+  return `${rLabel} (${USD_FORMATTER.format(value * riskUsd)})`;
+}
+
+function getTp1HitResult(sessionConfig?: SessionConfig) {
+  if (!sessionConfig?.rr || sessionConfig.tp1_ratio == null) return null;
+  return 0.5 * sessionConfig.rr * sessionConfig.tp1_ratio;
 }
 
 function PriceRow({ label, value }: { label: string; value: number | null | undefined }) {
@@ -102,7 +120,7 @@ function PriceRow({ label, value }: { label: string; value: number | null | unde
   );
 }
 
-export function SessionCard({ engine, strategyType, onPause, onResume }: SessionCardProps) {
+export function SessionCard({ engine, strategyType, sessionConfig, onPause, onResume }: SessionCardProps) {
   const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
   const isLsiTag = (label: string | null | undefined) => label?.includes("LSI") ?? false;
@@ -118,6 +136,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
   const skippedToday = isSkippedToday(engine);
   const regimeBlocked = engine.skip_reason === "regime_gate" && engine.regime_gate_status?.allowed === false;
   const regimeEval = getPrimaryRegimeEvaluation(engine);
+  const tp1HitResult = getTp1HitResult(sessionConfig);
   const stateColor = regimeBlocked && engine.state === "flat"
     ? "bg-amber-500/20 text-amber-300"
     : skippedToday && engine.state === "idle"
@@ -347,9 +366,16 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
             <PriceRow label="TP2" value={engine.levels!.tp2} />
             {/* TP1 Hit indicator (shown while managing AND on resolved trades where TP1 was hit) */}
             {engine.tp1_hit && (
-              <div className="flex items-center gap-1 mt-1">
-                <div className="h-1.5 w-1.5 rounded-full bg-profit" />
-                <span className="text-xs text-profit">TP1 Hit</span>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <div className="flex items-center gap-1">
+                  <div className="h-1.5 w-1.5 rounded-full bg-profit" />
+                  <span className="text-xs text-profit">TP1 Hit</span>
+                </div>
+                {tp1HitResult != null && (
+                  <span className="font-mono text-xs font-medium text-profit">
+                    {formatResult(tp1HitResult, sessionConfig?.risk_usd ?? engine.risk_usd)}
+                  </span>
+                )}
               </div>
             )}
             {/* Resolved trade: show exit type + R result */}
@@ -363,7 +389,7 @@ export function SessionCard({ engine, strategyType, onPause, onResume }: Session
                 </div>
                 {engine.r_result != null && (
                   <span className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}>
-                    {engine.r_result > 0 ? "+" : ""}{engine.r_result.toFixed(2)}R
+                    {formatResult(engine.r_result, sessionConfig?.risk_usd ?? engine.risk_usd)}
                   </span>
                 )}
               </div>

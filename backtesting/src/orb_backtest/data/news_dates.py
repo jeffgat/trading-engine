@@ -151,3 +151,39 @@ NFP_SET = frozenset(NFP_DATES)
 CPI_SET = frozenset(CPI_DATES)
 PPI_SET = frozenset(PPI_DATES)
 ALL_EVENT_SET = frozenset(ALL_EVENT_DATES)
+
+MACRO_EVENT_DATE_SETS = {
+    "NFP": NFP_SET,
+    "CPI": CPI_SET,
+    "PPI": PPI_SET,
+    "FOMC": FOMC_SET,
+}
+MACRO_EVENT_RELEASE_TIMES = {
+    "NFP": (8, 30),
+    "CPI": (8, 30),
+    "PPI": (8, 30),
+    "FOMC": (14, 0),
+}
+MACRO_EVENT_TYPES = tuple(MACRO_EVENT_DATE_SETS.keys())
+
+
+def get_macro_event_dates(event_type: str) -> frozenset[str]:
+    """Return the canonical date set for a supported scheduled macro event."""
+    upper = event_type.strip().upper()
+    if upper not in MACRO_EVENT_DATE_SETS:
+        raise ValueError(
+            f"Unsupported macro event type {event_type!r}; "
+            f"supported types are {list(MACRO_EVENT_TYPES)}"
+        )
+    return MACRO_EVENT_DATE_SETS[upper]
+
+
+def get_macro_event_release_time(event_type: str) -> tuple[int, int]:
+    """Return the ET scheduled release time for a supported macro event."""
+    upper = event_type.strip().upper()
+    if upper not in MACRO_EVENT_RELEASE_TIMES:
+        raise ValueError(
+            f"Unsupported macro event type {event_type!r}; "
+            f"supported types are {list(MACRO_EVENT_TYPES)}"
+        )
+    return MACRO_EVENT_RELEASE_TIMES[upper]

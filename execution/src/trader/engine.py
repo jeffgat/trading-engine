@@ -620,6 +620,26 @@ class ORBEngine:
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
         return 0.0
 
+    async def _flatten_position(self, bar: Bar, *, resolution: str, reason: str) -> None:
+        """Force a market flatten and record it as an EOD-style exit."""
+        levels = self._levels
+        direction_str = "long" if (levels and levels.direction == 1) else "short"
+        self._log_trade(
+            "EOD_FLAT",
+            f"dir={direction_str} {reason}={bar.timestamp} resolution={resolution}",
+        )
+        self._release_position_cap()
+        if self._should_send:
+            await self.broker.send_flatten(ticker=self.exec_ticker)
+        self._emit_trade_record(
+            "tp1_eod" if self._tp1_hit else "eod",
+            exit_price=bar.close,
+            exit_timestamp=bar.timestamp,
+        )
+        self._state = State.FLAT
+        self._request_checkpoint()
+        self._notify_state_change()
+
     # ------------------------------------------------------------------
     # Time checks
     # ------------------------------------------------------------------
@@ -638,14 +658,18 @@ class ORBEngine:
     def _in_rth(self, t: time) -> bool:
         return _time_in_range(t, self._orb_start_t, self._flat_end_t)
 
+    def _flat_window_for_date(self, date_str: str) -> tuple[time, time]:
+        if date_str in self.half_days:
+            return _parse_time(self.half_day_flat_start), _parse_time(self.half_day_flat_end)
+        return self._flat_start_t, self._flat_end_t
+
     def _in_flat(self, bar: Bar) -> bool:
         t = bar.timestamp.time()
         date_str = bar.timestamp.strftime("%Y%m%d")
-        if date_str in self.half_days:
-            hd_start = _parse_time(self.half_day_flat_start)
-            hd_end = _parse_time(self.half_day_flat_end)
-            return _time_in_range(t, hd_start, hd_end)
-        return _time_in_range(t, self._flat_start_t, self._flat_end_t)
+        flat_start, flat_end = self._flat_window_for_date(date_str)
+        if flat_start == flat_end:
+            return t == flat_start
+        return _time_in_range(t, flat_start, flat_end)
 
     def _is_same_session_night(self, date_str: str, bar_time: time) -> bool:
         """Check if a post-midnight bar belongs to the current session night.
@@ -947,6 +971,13 @@ class ORBEngine:
                     self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
                     if self._should_send:
                         await self.broker.send_cancel(ticker=self.exec_ticker)
+                elif self._state in (State.FILLED, State.MANAGING):
+                    await self._flatten_position(
+                        bar,
+                        resolution="5m",
+                        reason="bar_time" if self._in_flat(bar) else "outside_rth_time",
+                    )
+                    return
                 else:
                     self._log_trade("NO_SETUP", f"outside RTH state={self._state.value}")
                 self._state = State.FLAT
@@ -1296,26 +1327,12 @@ class ORBEngine:
             self._request_checkpoint()
             return
 
-        direction_str = "long" if levels.direction == 1 else "short"
-
         # EOD flat check (takes priority)
         if self._in_flat(bar):
-            self._log_trade(
-                "EOD_FLAT",
-                f"dir={direction_str} bar_time={bar.timestamp} resolution=5m",
-            )
-            self._release_position_cap()
-            if self._should_send:
-                await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record(
-                "tp1_eod" if self._tp1_hit else "eod",
-                exit_price=bar.close,
-                exit_timestamp=bar.timestamp,
-            )
-            self._state = State.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
+            await self._flatten_position(bar, resolution="5m", reason="bar_time")
             return
+
+        direction_str = "long" if levels.direction == 1 else "short"
 
         # Gate: don't check exits on the fill bar itself (same-bar prevention)
         if self._bar_count <= self._fill_bar_idx:
@@ -1555,26 +1572,16 @@ class ORBEngine:
             self._request_checkpoint()
             return
 
-        direction_str = "long" if levels.direction == 1 else "short"
-
         # EOD flat check (highest priority)
         if self._in_flat(tick):
-            self._log_trade(
-                "EOD_FLAT",
-                f"dir={direction_str} tick_time={tick.timestamp} resolution=1s",
-            )
-            self._release_position_cap()
-            if self._should_send:
-                await self.broker.send_flatten(ticker=self.exec_ticker)
-            self._emit_trade_record(
-                "tp1_eod" if self._tp1_hit else "eod",
-                exit_price=tick.close,
-                exit_timestamp=tick.timestamp,
-            )
-            self._state = State.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
+            await self._flatten_position(tick, resolution="1s", reason="tick_time")
             return
+
+        if not self._in_rth(tick.timestamp.time()):
+            await self._flatten_position(tick, resolution="1s", reason="outside_rth_tick")
+            return
+
+        direction_str = "long" if levels.direction == 1 else "short"
 
         # Same-tick guard: skip the fill tick itself
         if self._fill_timestamp is not None and tick.timestamp <= self._fill_timestamp:
@@ -1753,6 +1760,7 @@ class ORBEngine:
             "tp1_hit": self._tp1_hit,
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
+            "risk_usd": self.risk_usd,
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,

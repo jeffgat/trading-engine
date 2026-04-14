@@ -3,7 +3,6 @@ import { CONFIG_COLORS, SESSION_DISPLAY_NAMES } from '@/execution/lib/constants'
 import type {
   ConfigResponse,
   ExecConfigMeta,
-  ExecConfigPortfolioParams,
   SessionConfig,
   WebhookEntry,
 } from '@/execution/lib/types';
@@ -79,12 +78,6 @@ interface GlobalRiskDefaults {
 
 type DraftValues = Record<string, string | number | boolean | number[] | null>;
 
-const USD_FORMATTER = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-});
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -146,29 +139,6 @@ function ConfigItem({
     );
 }
 
-function formatPortfolioParamLabel(key: string): string {
-    if (key === 'r_amount_usd') return 'R Amount';
-    return key
-        .split('_')
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-}
-
-function formatPortfolioParamValue(
-    key: string,
-    value: string | number | boolean | null | undefined,
-): string {
-    if (value == null) return '—';
-    if (typeof value === 'number' && key.endsWith('_usd')) {
-        return USD_FORMATTER.format(value);
-    }
-    if (typeof value === 'boolean') {
-        return value ? 'Yes' : 'No';
-    }
-    return String(value);
-}
-
 function formatLsiVariant(value: string | null | undefined): string {
     if (!value) return '—';
     if (value === 'htf-LSI') return 'HTF LSI';
@@ -191,48 +161,6 @@ function formatBars(value: number | null | undefined, suffix = 'bars'): string {
 function formatMinutes(value: number | null | undefined): string {
     if (value == null) return '—';
     return `${value} min`;
-}
-
-function PortfolioParametersCard({
-    configName,
-    params,
-}: {
-    configName: string;
-    params?: ExecConfigPortfolioParams;
-}) {
-    const entries = Object.entries(params ?? {}).filter(([, value]) => value != null);
-
-    return (
-        <div className="space-y-3">
-            <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text-secondary">
-                    Portfolio Parameters
-                </h3>
-                <span className="text-[11px] uppercase tracking-[0.18em] text-text-muted">
-                    {configName}
-                </span>
-            </div>
-
-            <Card className="border-border bg-bg-card/90 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]">
-                <CardContent className="space-y-1">
-                    {entries.length > 0 ? (
-                        entries.map(([key, value]) => (
-                            <ConfigItem
-                                key={key}
-                                label={formatPortfolioParamLabel(key)}
-                                value={formatPortfolioParamValue(key, value)}
-                            />
-                        ))
-                    ) : (
-                        <p className="text-xs text-text-muted">
-                            No portfolio-wide parameters are set for this execution config
-                            yet.
-                        </p>
-                    )}
-                </CardContent>
-            </Card>
-        </div>
-    );
 }
 
 function EditableField({
@@ -1384,11 +1312,6 @@ function SessionConfigsSection({
 
     return (
         <div className="space-y-6">
-            <PortfolioParametersCard
-                configName={validConfig}
-                params={activeMeta?.portfolio_params}
-            />
-
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-text-secondary">
                     Strategy Parameters

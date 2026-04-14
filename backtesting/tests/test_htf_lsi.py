@@ -127,10 +127,14 @@ def _extract_candidates(
     fvg: dict[str, np.ndarray],
     htf_levels: dict[str, np.ndarray] | None = None,
     *,
+    eqhl_levels: dict[str, np.ndarray] | None = None,
     reference_levels: dict[str, np.ndarray] | None = None,
     reference_ids: dict[str, np.ndarray] | None = None,
     selected_reference_level_names: tuple[str, ...] = (),
     include_htf_levels: bool = True,
+    include_eqhl_levels: bool = False,
+    entry_mode: str = "close",
+    close_on_sweep_to_inversion_minutes: int = 0,
 ) -> list[_SetupCandidate]:
     timestamps = df.index
     hour = timestamps.hour.values
@@ -152,15 +156,18 @@ def _extract_candidates(
         np.full(len(df), 10.0, dtype=float),
         HTF_SESSION,
         htf_levels=htf_levels,
+        eqhl_levels=eqhl_levels,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
         selected_reference_level_names=selected_reference_level_names,
         include_htf_levels=include_htf_levels,
+        include_eqhl_levels=include_eqhl_levels,
         fvg_window_left=20,
         fvg_window_right=5,
         direction_filter="both",
         stop_mode="absolute",
-        entry_mode="close",
+        entry_mode=entry_mode,
+        close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
         htf_level_tf_minutes=60,
     )
 
@@ -278,6 +285,46 @@ def test_htf_lsi_breach_outside_broad_scan_does_not_consume() -> None:
     assert candidates[0].sweep_to_inversion_bars == 1
 
 
+def test_htf_lsi_timed_hybrid_switches_entry_mode_at_threshold() -> None:
+    df = _df(
+        [99.0, 99.0, 100.0, 100.0, 100.0],
+        [101.0, 99.5, 100.0, 101.5, 100.5],
+        [98.5, 98.5, 99.5, 99.5, 97.0],
+        [100.0, 99.0, 100.0, 100.0, 97.0],
+        start="08:25",
+    )
+    fvg = _empty_lsi_fvg(len(df))
+    fvg["long_fvg"][2] = True
+    fvg["long_fvg_bottom"][2] = 98.0
+    fvg["long_entry_price"][2] = 101.0
+    fvg["long_gap_size"][2] = 3.0
+
+    htf_levels = _htf_level_arrays(len(df), high_price=100.0)
+
+    limit_candidates = _extract_candidates(
+        df,
+        fvg,
+        htf_levels,
+        entry_mode="timed_hybrid",
+        close_on_sweep_to_inversion_minutes=4,
+    )
+    close_candidates = _extract_candidates(
+        df,
+        fvg,
+        htf_levels,
+        entry_mode="timed_hybrid",
+        close_on_sweep_to_inversion_minutes=5,
+    )
+
+    assert len(limit_candidates) == 1
+    assert limit_candidates[0].signal_bar == 4
+    assert limit_candidates[0].entry_price == pytest.approx(98.0)
+
+    assert len(close_candidates) == 1
+    assert close_candidates[0].signal_bar == 3
+    assert close_candidates[0].entry_price == pytest.approx(97.0)
+
+
 def test_htf_lsi_can_arm_from_named_reference_level_without_htf_pivots() -> None:
     df = _df(
         [99.0, 99.0, 100.0],
@@ -313,6 +360,39 @@ def test_htf_lsi_can_arm_from_named_reference_level_without_htf_pivots() -> None
     assert candidates[0].reference_level_price == 100.0
     assert candidates[0].htf_level_side == "high"
     assert candidates[0].htf_level_tf_minutes == 0
+
+
+def test_htf_lsi_can_arm_from_equal_high_level_without_other_sources() -> None:
+    df = _df(
+        [99.0, 99.0, 100.0],
+        [99.5, 99.8, 101.5],
+        [98.5, 99.0, 97.0],
+        [99.0, 100.0, 97.0],
+        start="08:35",
+    )
+    fvg = _empty_lsi_fvg(len(df))
+    fvg["long_fvg"][1] = True
+    fvg["long_fvg_bottom"][1] = 98.0
+    fvg["long_entry_price"][1] = 101.0
+    fvg["long_gap_size"][1] = 3.0
+
+    eqhl_levels = _htf_level_arrays(len(df), high_price=100.0)
+    eqhl_levels["tf_minutes"] = 15
+    candidates = _extract_candidates(
+        df,
+        fvg,
+        None,
+        eqhl_levels=eqhl_levels,
+        include_htf_levels=False,
+        include_eqhl_levels=True,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].direction == -1
+    assert candidates[0].reference_level_name == "equal_high_15m"
+    assert candidates[0].reference_level_price == 100.0
+    assert candidates[0].htf_level_side == "high"
+    assert candidates[0].htf_level_tf_minutes == 15
 
 
 def test_htf_lsi_can_arm_from_data_low_without_htf_pivots() -> None:
@@ -563,5 +643,19 @@ def test_htf_lsi_requires_at_least_one_sweep_source() -> None:
             sessions=(HTF_SESSION,),
             strategy="htf_lsi",
             htf_lsi_include_htf_levels=False,
+            htf_lsi_include_eqhl_levels=False,
             htf_lsi_reference_levels=(),
         )
+
+
+def test_htf_lsi_equal_levels_satisfy_source_requirement() -> None:
+    config = StrategyConfig(
+        instrument=NQ,
+        sessions=(HTF_SESSION,),
+        strategy="htf_lsi",
+        htf_lsi_include_htf_levels=False,
+        htf_lsi_include_eqhl_levels=True,
+        htf_lsi_reference_levels=(),
+    )
+
+    assert config.htf_lsi_include_eqhl_levels is True

@@ -314,7 +314,6 @@ def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
             "enabled": cfg.enabled,
             "max_open_contracts": getattr(cfg, "max_open_contracts", 0.0),
             "webhooks": webhooks,
-            "portfolio_params": getattr(cfg, "portfolio_params", {}),
             "sessions": list(cfg.session_overrides.keys()),
             "lsi_sessions": list(cfg.lsi_session_overrides.keys()),
         }

@@ -44,12 +44,18 @@ interface PerfRow {
   config: string;
   direction: "Long" | "Short";
   rValue: number | null;
+  usdValue: number | null;
   strategy: string;
   notes: string;
   sortTs: string;
 }
 
 const EXIT_EVENTS = new Set(["SL_HIT", "BE_HIT", "TP2_HIT", "TP2_DIRECT", "EOD_FLAT"]);
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 0,
+});
 
 function splitTs(ts: string): { date: string; time: string } {
   const [date = "\u2014", time = "\u2014"] = ts.split(" ");
@@ -72,27 +78,31 @@ function sessionLabel(session: string): string {
 function getRValue(
   event: string,
   cfg: SessionCfg | undefined,
-  baselineR: number,
 ): number | null {
   const rr = cfg?.rr;
   const tp1 = cfg?.tp1_ratio;
-  const riskUsd = cfg?.risk_usd ?? baselineR;
-  const scale = baselineR > 0 ? riskUsd / baselineR : 1;
 
-  if (event === "SL_HIT") return -1 * scale;
+  if (event === "SL_HIT") return -1;
   if (event === "BE_HIT") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * tp1 * scale;
+    return 0.5 * rr * tp1;
   }
   if (event === "TP2_DIRECT") {
     if (rr == null) return null;
-    return rr * scale;
+    return rr;
   }
   if (event === "TP2_HIT") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * (1 + tp1) * scale;
+    return 0.5 * rr * (1 + tp1);
   }
   return null;
+}
+
+function getUsdValue(rValue: number | null, cfg: SessionCfg | undefined): number | null {
+  if (rValue == null) return null;
+  const riskUsd = cfg?.risk_usd;
+  if (riskUsd == null) return null;
+  return rValue * riskUsd;
 }
 
 /** Build lookups by both "CONFIG:session" compound key and short session name.
@@ -121,7 +131,6 @@ function buildSessionLookups(config: ConfigResponse | null) {
 
 function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): PerfRow[] {
   const { cfgByKey, cfgByShort, typeByShort } = buildSessionLookups(config);
-  const baselineR = config?.baseline_r ?? 250;
   const ordered = [...entries].reverse();
   // Key open trades by config:session to handle multiple configs
   const openByKey = new Map<string, OpenTrade>();
@@ -153,7 +162,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
     const entryParts = splitTs(open.entryTs);
     const exitParts = splitTs(entry.timestamp);
     const sessionCfg = cfgByKey[`${open.config}:${open.session}`] ?? cfgByShort[open.session] ?? {};
-    const rValue = getRValue(entry.event, sessionCfg, baselineR);
+    const rValue = getRValue(entry.event, sessionCfg);
 
     const stratType = typeByShort[open.session];
     rows.push({
@@ -167,6 +176,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       config: open.config,
       direction: open.direction,
       rValue,
+      usdValue: getUsdValue(rValue, sessionCfg),
       strategy: stratType === "lsi" ? "LSI" : "ORB",
       notes: "",
       sortTs: entry.timestamp,
@@ -188,6 +198,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       config: open.config,
       direction: open.direction,
       rValue: null,
+      usdValue: null,
       strategy: openStratType === "lsi" ? "LSI" : "ORB",
       notes: "active",
       sortTs: open.entryTs,
@@ -205,36 +216,32 @@ function getDbRValue(trade: LiveTrade, config: ConfigResponse | null): number | 
 
   // Otherwise compute from exit_type + config rr/tp1_ratio
   const sessionKey = trade.session; // e.g. "NQ_NY"
-  const baselineR = config?.baseline_r ?? 250;
 
   // Find matching session config
   let rr: number | undefined;
   let tp1: number | undefined;
-  let riskUsd = baselineR;
   if (config?.sessions) {
     // Try compound key first (CONFIG:session), then short key
     const compoundKey = `${trade.config_name}:${sessionKey}`;
     const cfg = (config.sessions[compoundKey] ?? config.sessions[sessionKey]) as SessionCfg | undefined;
     rr = cfg?.rr;
     tp1 = cfg?.tp1_ratio;
-    riskUsd = cfg?.risk_usd ?? baselineR;
   }
 
-  const scale = baselineR > 0 ? riskUsd / baselineR : 1;
   const et = trade.exit_type;
 
-  if (et === "sl") return -1 * scale;
+  if (et === "sl") return -1;
   if (et === "tp1_be" || et === "tp1_eod") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * tp1 * scale;
+    return 0.5 * rr * tp1;
   }
   if (et === "tp2_direct") {
     if (rr == null) return null;
-    return rr * scale;
+    return rr;
   }
   if (et === "tp2" || et === "tp1_tp2") {
     if (rr == null || tp1 == null) return null;
-    return 0.5 * rr * (1 + tp1) * scale;
+    return 0.5 * rr * (1 + tp1);
   }
   if (et === "eod") return 0;
   return null;
@@ -258,6 +265,9 @@ function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null): Pe
     const sessionParts = t.session.split("_");
     const sessionLabel = sessionParts[1] ?? t.session;
     const stratType = t.session.toLowerCase().includes("lsi") ? "LSI" : "ORB";
+    const compoundKey = `${t.config_name}:${t.session}`;
+    const sessionCfg = (config?.sessions?.[compoundKey] ?? config?.sessions?.[t.session]) as SessionCfg | undefined;
+    const rValue = getDbRValue(t, config);
 
     return {
       id: `db-${t.id}`,
@@ -269,12 +279,18 @@ function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null): Pe
       session: sessionLabel,
       config: t.config_name,
       direction: t.direction === 1 ? "Long" as const : "Short" as const,
-      rValue: getDbRValue(t, config),
+      rValue,
+      usdValue: getUsdValue(rValue, sessionCfg),
       strategy: stratType,
       notes: t.notes ?? "",
       sortTs: t.exit_timestamp,
     };
   }).sort((a, b) => b.sortTs.localeCompare(a.sortTs));
+}
+
+function formatUsdValue(value: number | null): string {
+  if (value == null) return "\u2014";
+  return USD_FORMATTER.format(value);
 }
 
 function Pill({
@@ -615,7 +631,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
       </div>
 
       <div className="overflow-x-auto overflow-y-auto max-h-[800px] rounded-md border border-border bg-bg-card">
-        <table className="min-w-[1160px] w-full border-collapse text-sm">
+        <table className="min-w-[1260px] w-full border-collapse text-sm">
           <thead className="bg-[#24242b] text-text-primary sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2 border-r border-border/80">Entry Date</th>
@@ -627,13 +643,14 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
               <th className="px-3 py-2 border-r border-border/80">Session</th>
               <th className="px-3 py-2 border-r border-border/80">Direction</th>
               <th className="px-3 py-2 border-r border-border/80">R</th>
+              <th className="px-3 py-2 border-r border-border/80">$</th>
               <th className="px-3 py-2">Strategy</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-text-muted">
+                <td colSpan={11} className="px-4 py-10 text-center text-text-muted">
                   No completed trades yet
                 </td>
               </tr>
@@ -690,6 +707,9 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
                       ) : (
                         <Pill label={row.rValue.toFixed(1)} tone={rTone} />
                       )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-text-secondary">
+                      {formatUsdValue(row.usdValue)}
                     </td>
                     <td className="px-3 py-2"><Pill label={row.strategy} tone={row.strategy === "LSI" ? "strat-lsi" : "strat-orb"} /></td>
                   </tr>

@@ -30,6 +30,7 @@ DATA_REF_LSI_LEVELS = (
     "data_low",
 )
 ALLOWED_REF_LSI_LEVELS = REF_LSI_LEVELS + DATA_REF_LSI_LEVELS
+ALLOWED_DATA_SWEEP_EVENT_TYPES = ("NFP", "CPI", "PPI", "FOMC")
 
 
 @dataclass(frozen=True)
@@ -167,8 +168,34 @@ class StrategyConfig:
     lsi_n_right: int = 3      # swing right bars (also the confirmation lag)
     lsi_fvg_window_left: int = 10   # bars BEFORE sweep where FVG can have formed (FVG → sweep)
     lsi_fvg_window_right: int = 10  # bars AFTER sweep where FVG can form (sweep → FVG)
-    lsi_stop_mode: str = "absolute"  # "absolute" (full setup range) or "fvg" (FVG boundary)
-    lsi_entry_mode: str = "close"    # "close" (inversion bar close) or "fvg_limit" (limit at FVG boundary)
+    lsi_stop_mode: str = "absolute"
+    # Supported values:
+    #   "absolute"     -> full setup structural extreme
+    #   "fvg"          -> FVG boundary
+    #   "gap_1x"...    -> stop distance = N * inverted gap size, capped at the structural stop
+    #   "struct_50pct" -> halfway to the structural stop
+    #   "struct_75pct" -> 75% of the way to the structural stop
+    #   "atr_pct"      -> session stop_atr_pct distance, capped at the structural stop
+    #   "orb_pct"      -> session stop_orb_pct distance, capped at the structural stop
+    lsi_target_mode: str = "risk"
+    # Supported values:
+    #   "risk"       -> TP1/TP2 use the actual realized stop distance (current behavior)
+    #   "structural" -> TP1/TP2 use the full structural stop distance as the target basis,
+    #                   with TP1 >= 1.0R and TP2 >= 1.5R on the actual stop distance
+    #   "left_structure" -> TP1/TP2 use unswept swing pivots to the left of the setup.
+    #                       Longs target left-side highs, shorts target left-side lows.
+    #                       TP1 uses the nearest eligible pivot at or beyond 1.0R;
+    #                       TP2 uses the next eligible pivot at or beyond 1.5R.
+    lsi_entry_mode: str = "close"
+    # Supported values:
+    #   "close"        -> enter on the inversion bar close
+    #   "fvg_limit"    -> wait for a retest at the inverted FVG boundary
+    #   "timed_hybrid" -> use "close" only when sweep->inversion time is fast enough,
+    #                     otherwise fall back to "fvg_limit"
+    lsi_close_on_sweep_to_inversion_minutes: int = 0
+    # Only used when lsi_entry_mode == "timed_hybrid". If sweep->inversion time
+    # in minutes is <= this threshold, the engine enters at the inversion close.
+    # Otherwise it behaves like "fvg_limit". 0 = disabled.
     lsi_first_fvg_only: bool = False
     # When True: per session-day, only keep the first (chronologically earliest)
     # FVG in active_for_long/active_for_short. Prevents entering on the last
@@ -186,15 +213,38 @@ class StrategyConfig:
     # When False, a breach outside the active sweep gate does not retire the pivot.
     # This reproduces the legacy/live-style behavior where a pre-entry breach can
     # still re-trigger later once the active scan window opens.
+    lsi_lrlr_enabled: bool = False
+    lsi_lrlr_gate: str = ""  # "", "require", or "exclude"
+    lsi_lrlr_swing_n_left: int = 2
+    lsi_lrlr_swing_n_right: int = 2
+    lsi_lrlr_min_pivots: int = 3
+    lsi_lrlr_lookback_minutes: int = 120
+    lsi_lrlr_max_pivot_gap_minutes: int = 30
+    lsi_lrlr_max_cluster_span_minutes: int = 120
+    lsi_lrlr_max_price_span_atr: float = 0.18
+    lsi_lrlr_monotonic_tolerance_atr: float = 0.03
+    lsi_lrlr_line_tolerance_atr: float = 0.04
+    lsi_lrlr_tp1_path_enabled: bool = False
+    lsi_lrlr_tp1_buffer_atr: float = 0.0
 
     # HTF-LSI params
     htf_level_tf_minutes: int = 60
     htf_n_left: int = 5
     htf_trade_max_per_session: int = 1  # 0 = uncapped
+    htf_lsi_inversion_ordinal: int = 1
     max_fvg_to_inversion_bars: int = 0
     htf_lsi_include_htf_levels: bool = True
+    htf_lsi_include_eqhl_levels: bool = False
     htf_lsi_reference_levels: tuple[str, ...] = ()
+    eqhl_level_tf_minutes: int = 15
+    eqhl_n_left: int = 2
+    eqhl_tolerance_ticks: int = 1
+    eqhl_min_touches: int = 2
+    eqhl_lookback_bars: int = 48  # 0 = unbounded
     data_sweep_min_daily_atr_pct: float = 15.0
+    data_sweep_require_session_extreme: bool = False
+    data_sweep_event_types: tuple[str, ...] = ()
+    data_sweep_release_window_minutes: int = 0
 
     # Reference-level LSI params
     ref_lsi_gap_lookback_bars: int = 12
@@ -238,20 +288,141 @@ class StrategyConfig:
                 f"htf_lsi_reference_levels contains unsupported levels {invalid_htf_ref_levels}; "
                 f"supported levels are {list(ALLOWED_REF_LSI_LEVELS)}"
             )
-        if self.strategy == "htf_lsi" and not self.htf_lsi_include_htf_levels and not self.htf_lsi_reference_levels:
+        if (
+            self.strategy == "htf_lsi"
+            and not self.htf_lsi_include_htf_levels
+            and not self.htf_lsi_include_eqhl_levels
+            and not self.htf_lsi_reference_levels
+        ):
             raise ValueError(
                 "htf_lsi must enable at least one sweep source via "
-                "htf_lsi_include_htf_levels or htf_lsi_reference_levels."
+                "htf_lsi_include_htf_levels, htf_lsi_include_eqhl_levels, "
+                "or htf_lsi_reference_levels."
             )
         if self.data_sweep_min_daily_atr_pct < 0:
             raise ValueError(
                 "data_sweep_min_daily_atr_pct must be >= 0 "
                 f"(got {self.data_sweep_min_daily_atr_pct!r})"
             )
+        invalid_data_sweep_event_types = sorted(
+            {
+                str(event_type).strip().upper()
+                for event_type in self.data_sweep_event_types
+                if str(event_type).strip()
+            }
+            - set(ALLOWED_DATA_SWEEP_EVENT_TYPES)
+        )
+        if invalid_data_sweep_event_types:
+            raise ValueError(
+                "data_sweep_event_types contains unsupported values "
+                f"{invalid_data_sweep_event_types}; supported types are "
+                f"{list(ALLOWED_DATA_SWEEP_EVENT_TYPES)}"
+            )
+        if self.data_sweep_release_window_minutes < 0:
+            raise ValueError(
+                "data_sweep_release_window_minutes must be >= 0 "
+                f"(got {self.data_sweep_release_window_minutes!r})"
+            )
         if self.lsi_sweep_gate not in {"sweep_window", "entry", "rth"}:
             raise ValueError(
                 "lsi_sweep_gate must be one of 'sweep_window', 'entry', or 'rth' "
                 f"(got {self.lsi_sweep_gate!r})"
+            )
+        if self.lsi_stop_mode not in {
+            "absolute",
+            "fvg",
+            "gap_1x",
+            "gap_2x",
+            "gap_3x",
+            "gap_4x",
+            "struct_50pct",
+            "struct_75pct",
+            "atr_pct",
+            "orb_pct",
+        }:
+            raise ValueError(
+                "lsi_stop_mode must be one of 'absolute', 'fvg', 'gap_1x', "
+                "'gap_2x', 'gap_3x', 'gap_4x', 'struct_50pct', 'struct_75pct', "
+                "'atr_pct', or 'orb_pct' "
+                f"(got {self.lsi_stop_mode!r})"
+            )
+        if self.lsi_target_mode not in {"risk", "structural", "left_structure"}:
+            raise ValueError(
+                "lsi_target_mode must be one of 'risk', 'structural', or 'left_structure' "
+                f"(got {self.lsi_target_mode!r})"
+            )
+        if self.lsi_entry_mode not in {"close", "fvg_limit", "timed_hybrid"}:
+            raise ValueError(
+                "lsi_entry_mode must be one of 'close', 'fvg_limit', or 'timed_hybrid' "
+                f"(got {self.lsi_entry_mode!r})"
+            )
+        if self.lsi_close_on_sweep_to_inversion_minutes < 0:
+            raise ValueError(
+                "lsi_close_on_sweep_to_inversion_minutes must be >= 0 "
+                f"(got {self.lsi_close_on_sweep_to_inversion_minutes!r})"
+            )
+        if (
+            self.lsi_entry_mode == "timed_hybrid"
+            and self.lsi_close_on_sweep_to_inversion_minutes <= 0
+        ):
+            raise ValueError(
+                "lsi_close_on_sweep_to_inversion_minutes must be > 0 when "
+                "lsi_entry_mode == 'timed_hybrid'"
+            )
+        if self.lsi_lrlr_gate not in {"", "require", "exclude"}:
+            raise ValueError(
+                "lsi_lrlr_gate must be one of '', 'require', or 'exclude' "
+                f"(got {self.lsi_lrlr_gate!r})"
+            )
+        if self.lsi_lrlr_swing_n_left < 1:
+            raise ValueError(
+                "lsi_lrlr_swing_n_left must be >= 1 "
+                f"(got {self.lsi_lrlr_swing_n_left!r})"
+            )
+        if self.lsi_lrlr_swing_n_right < 1:
+            raise ValueError(
+                "lsi_lrlr_swing_n_right must be >= 1 "
+                f"(got {self.lsi_lrlr_swing_n_right!r})"
+            )
+        if self.lsi_lrlr_min_pivots < 1:
+            raise ValueError(
+                "lsi_lrlr_min_pivots must be >= 1 "
+                f"(got {self.lsi_lrlr_min_pivots!r})"
+            )
+        if self.lsi_lrlr_lookback_minutes < 1:
+            raise ValueError(
+                "lsi_lrlr_lookback_minutes must be >= 1 "
+                f"(got {self.lsi_lrlr_lookback_minutes!r})"
+            )
+        if self.lsi_lrlr_max_pivot_gap_minutes < 1:
+            raise ValueError(
+                "lsi_lrlr_max_pivot_gap_minutes must be >= 1 "
+                f"(got {self.lsi_lrlr_max_pivot_gap_minutes!r})"
+            )
+        if self.lsi_lrlr_max_cluster_span_minutes < self.lsi_lrlr_max_pivot_gap_minutes:
+            raise ValueError(
+                "lsi_lrlr_max_cluster_span_minutes must be >= "
+                "lsi_lrlr_max_pivot_gap_minutes"
+            )
+        if self.lsi_lrlr_max_price_span_atr <= 0.0:
+            raise ValueError(
+                "lsi_lrlr_max_price_span_atr must be > 0 "
+                f"(got {self.lsi_lrlr_max_price_span_atr!r})"
+            )
+        if self.lsi_lrlr_monotonic_tolerance_atr < 0.0:
+            raise ValueError(
+                "lsi_lrlr_monotonic_tolerance_atr must be >= 0 "
+                f"(got {self.lsi_lrlr_monotonic_tolerance_atr!r})"
+            )
+        if self.lsi_lrlr_line_tolerance_atr < 0.0:
+            raise ValueError(
+                "lsi_lrlr_line_tolerance_atr must be >= 0 "
+                f"(got {self.lsi_lrlr_line_tolerance_atr!r})"
+            )
+        if self.lsi_lrlr_tp1_buffer_atr < 0.0:
+            raise ValueError(
+                "lsi_lrlr_tp1_buffer_atr must be >= 0 "
+                f"(got {self.lsi_lrlr_tp1_buffer_atr!r})"
             )
         if self.htf_level_tf_minutes not in {30, 60, 90}:
             raise ValueError(
@@ -264,6 +435,33 @@ class StrategyConfig:
             raise ValueError(
                 "htf_trade_max_per_session must be one of 0, 1, 2, or 3 "
                 f"(got {self.htf_trade_max_per_session!r})"
+            )
+        if self.htf_lsi_inversion_ordinal < 1:
+            raise ValueError(
+                "htf_lsi_inversion_ordinal must be >= 1 "
+                f"(got {self.htf_lsi_inversion_ordinal!r})"
+            )
+        if self.eqhl_level_tf_minutes not in {5, 15, 60}:
+            raise ValueError(
+                "eqhl_level_tf_minutes must be one of 5, 15, or 60 "
+                f"(got {self.eqhl_level_tf_minutes!r})"
+            )
+        if self.eqhl_n_left < 1:
+            raise ValueError(f"eqhl_n_left must be >= 1 (got {self.eqhl_n_left!r})")
+        if self.eqhl_tolerance_ticks < 0:
+            raise ValueError(
+                "eqhl_tolerance_ticks must be >= 0 "
+                f"(got {self.eqhl_tolerance_ticks!r})"
+            )
+        if self.eqhl_min_touches < 2:
+            raise ValueError(
+                "eqhl_min_touches must be >= 2 "
+                f"(got {self.eqhl_min_touches!r})"
+            )
+        if self.eqhl_lookback_bars < 0:
+            raise ValueError(
+                "eqhl_lookback_bars must be >= 0 "
+                f"(got {self.eqhl_lookback_bars!r})"
             )
         if self.max_fvg_to_inversion_bars < 0:
             raise ValueError(

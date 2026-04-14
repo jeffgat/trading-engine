@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from orb_backtest.config import ASIA_SESSION, LDN_SESSION, NY_SESSION
+from orb_backtest.config import ASIA_SESSION, LDN_SESSION, NY_SESSION, SessionConfig
 from orb_backtest.signals.reference_levels import (
     compute_completed_session_levels,
     compute_data_sweep_levels,
@@ -244,9 +244,12 @@ def test_data_sweep_levels_publish_on_first_eligible_base_bar_and_reset_next_day
     assert levels["data_low"][2] == 80.0
     assert math.isnan(levels["data_high"][3])
     assert math.isnan(levels["data_low"][3])
-    assert instance_ids[1] == 0
-    assert instance_ids[2] == 0
-    assert instance_ids[3] == -1
+    assert instance_ids["data_high"][1] == 0
+    assert instance_ids["data_low"][1] == 0
+    assert instance_ids["data_high"][2] == 0
+    assert instance_ids["data_low"][2] == 0
+    assert instance_ids["data_high"][3] == -1
+    assert instance_ids["data_low"][3] == -1
 
 
 def test_data_sweep_levels_keep_latest_same_day_qualifying_candle() -> None:
@@ -292,5 +295,206 @@ def test_data_sweep_levels_keep_latest_same_day_qualifying_candle() -> None:
     assert levels["data_low"][1] == 80.0
     assert levels["data_high"][3] == 118.0
     assert levels["data_low"][3] == 82.0
-    assert instance_ids[1] == 0
-    assert instance_ids[3] == 1
+    assert instance_ids["data_high"][1] == 0
+    assert instance_ids["data_low"][1] == 0
+    assert instance_ids["data_high"][3] == 1
+    assert instance_ids["data_low"][3] == 1
+
+
+def test_data_sweep_session_extreme_mode_tracks_highs_and_lows_independently() -> None:
+    session = SessionConfig(
+        name="NY",
+        rth_start="08:30",
+        entry_start="08:30",
+        entry_end="15:00",
+        flat_start="15:50",
+        flat_end="16:00",
+    )
+    base_idx = pd.DatetimeIndex(
+        [
+            "2025-01-22 08:30",
+            "2025-01-22 08:32",
+            "2025-01-22 08:34",
+            "2025-01-22 08:36",
+        ],
+        tz="America/New_York",
+    )
+    base = pd.DataFrame(
+        {
+            "high": [101.0, 102.0, 103.0, 104.0],
+            "low": [99.0, 98.0, 97.0, 96.0],
+        },
+        index=base_idx,
+    )
+
+    raw_idx = pd.date_range("2025-01-01 08:28", "2025-01-22 08:36", freq="1min", tz="America/New_York")
+    raw = pd.DataFrame(
+        {
+            "open": np.full(len(raw_idx), 100.0, dtype=float),
+            "high": np.full(len(raw_idx), 101.0, dtype=float),
+            "low": np.full(len(raw_idx), 100.0, dtype=float),
+            "close": np.full(len(raw_idx), 100.5, dtype=float),
+            "volume": np.ones(len(raw_idx), dtype=float),
+        },
+        index=raw_idx,
+    )
+    raw.loc["2025-01-22 08:30", ["high", "low"]] = [120.0, 119.0]
+    raw.loc["2025-01-22 08:29", ["high", "low"]] = [120.0, 80.0]
+    raw.loc["2025-01-22 08:31", ["high", "low"]] = [110.0, 85.0]
+    raw.loc["2025-01-22 08:34", ["high", "low"]] = [125.0, 88.0]
+
+    levels, instance_ids = compute_data_sweep_levels(
+        base,
+        raw,
+        atr_length=14,
+        min_daily_atr_pct=200.0,
+        session=session,
+        require_session_extreme=True,
+    )
+
+    assert math.isnan(levels["data_high"][0])
+    assert math.isnan(levels["data_low"][0])
+    assert math.isnan(levels["data_high"][1])
+    assert levels["data_low"][1] == 85.0
+    assert instance_ids["data_low"][1] == 0
+    assert instance_ids["data_high"][1] == -1
+    assert levels["data_low"][2] == 85.0
+    assert levels["data_high"][3] == 125.0
+    assert levels["data_low"][3] == 85.0
+    assert instance_ids["data_high"][3] == 0
+    assert instance_ids["data_low"][3] == 0
+
+
+def test_data_sweep_macro_release_window_filters_to_scheduled_event_minutes() -> None:
+    base_idx = pd.DatetimeIndex(
+        [
+            "2025-02-07 08:30",
+            "2025-02-07 08:31",
+            "2025-02-07 08:32",
+            "2025-02-07 08:33",
+            "2025-02-07 08:34",
+            "2025-02-07 08:35",
+            "2025-02-07 08:36",
+        ],
+        tz="America/New_York",
+    )
+    base = pd.DataFrame(
+        {
+            "high": np.linspace(101.0, 107.0, len(base_idx)),
+            "low": np.linspace(99.0, 93.0, len(base_idx)),
+        },
+        index=base_idx,
+    )
+
+    raw_idx = pd.date_range("2025-01-01 08:28", "2025-02-07 08:36", freq="1min", tz="America/New_York")
+    raw = pd.DataFrame(
+        {
+            "open": np.full(len(raw_idx), 100.0, dtype=float),
+            "high": np.full(len(raw_idx), 101.0, dtype=float),
+            "low": np.full(len(raw_idx), 100.0, dtype=float),
+            "close": np.full(len(raw_idx), 100.5, dtype=float),
+            "volume": np.ones(len(raw_idx), dtype=float),
+        },
+        index=raw_idx,
+    )
+    raw.loc["2025-02-07 08:30", ["high", "low"]] = [120.0, 80.0]
+    raw.loc["2025-02-07 08:32", ["high", "low"]] = [118.0, 82.0]
+    raw.loc["2025-02-07 08:35", ["high", "low"]] = [125.0, 75.0]
+
+    exact_levels, _ = compute_data_sweep_levels(
+        base,
+        raw,
+        atr_length=14,
+        min_daily_atr_pct=200.0,
+        event_types=("nfp",),
+        release_window_minutes=0,
+    )
+    wide_levels, _ = compute_data_sweep_levels(
+        base,
+        raw,
+        atr_length=14,
+        min_daily_atr_pct=200.0,
+        event_types=("NFP",),
+        release_window_minutes=2,
+    )
+
+    assert math.isnan(exact_levels["data_high"][0])
+    assert exact_levels["data_high"][1] == 120.0
+    assert exact_levels["data_low"][1] == 80.0
+    assert exact_levels["data_high"][6] == 120.0
+    assert exact_levels["data_low"][6] == 80.0
+
+    assert wide_levels["data_high"][1] == 120.0
+    assert wide_levels["data_low"][1] == 80.0
+    assert wide_levels["data_high"][3] == 118.0
+    assert wide_levels["data_low"][3] == 82.0
+    assert wide_levels["data_high"][6] == 118.0
+    assert wide_levels["data_low"][6] == 82.0
+
+
+def test_data_sweep_macro_release_window_composes_with_session_extremes() -> None:
+    session = SessionConfig(
+        name="NY",
+        rth_start="08:29",
+        entry_start="08:29",
+        entry_end="15:00",
+        flat_start="15:50",
+        flat_end="16:00",
+    )
+    base_idx = pd.DatetimeIndex(
+        [
+            "2025-02-07 08:29",
+            "2025-02-07 08:30",
+            "2025-02-07 08:31",
+            "2025-02-07 08:32",
+            "2025-02-07 08:33",
+        ],
+        tz="America/New_York",
+    )
+    base = pd.DataFrame(
+        {
+            "high": [101.0, 102.0, 103.0, 104.0, 105.0],
+            "low": [99.0, 98.0, 97.0, 96.0, 95.0],
+        },
+        index=base_idx,
+    )
+
+    raw_idx = pd.date_range("2025-01-01 08:28", "2025-02-07 08:33", freq="1min", tz="America/New_York")
+    raw = pd.DataFrame(
+        {
+            "open": np.full(len(raw_idx), 100.0, dtype=float),
+            "high": np.full(len(raw_idx), 101.0, dtype=float),
+            "low": np.full(len(raw_idx), 100.0, dtype=float),
+            "close": np.full(len(raw_idx), 100.5, dtype=float),
+            "volume": np.ones(len(raw_idx), dtype=float),
+        },
+        index=raw_idx,
+    )
+    raw.loc["2025-02-07 08:29", ["high", "low"]] = [105.0, 90.0]
+    raw.loc["2025-02-07 08:30", ["high", "low"]] = [140.0, 119.0]
+    raw.loc["2025-02-07 08:31", ["high", "low"]] = [110.0, 85.0]
+    raw.loc["2025-02-07 08:32", ["high", "low"]] = [125.0, 90.0]
+
+    levels, instance_ids = compute_data_sweep_levels(
+        base,
+        raw,
+        atr_length=14,
+        min_daily_atr_pct=200.0,
+        session=session,
+        require_session_extreme=True,
+        event_types=("NFP",),
+        release_window_minutes=1,
+    )
+
+    assert math.isnan(levels["data_high"][0])
+    assert math.isnan(levels["data_low"][0])
+    assert math.isnan(levels["data_high"][1])
+    assert math.isnan(levels["data_low"][1])
+    assert levels["data_high"][2] == 140.0
+    assert math.isnan(levels["data_low"][2])
+    assert levels["data_high"][3] == 140.0
+    assert levels["data_low"][3] == 85.0
+    assert levels["data_high"][4] == 140.0
+    assert levels["data_low"][4] == 85.0
+    assert instance_ids["data_high"][2] == 0
+    assert instance_ids["data_low"][3] == 0
