@@ -43,9 +43,12 @@
 - `Implementation` -> `UNSPECIFIED`
 - `Asia Continuation Discovery (Regime-Gated, ORB 100% Stop) — Phase-One Complete (2026-04-01)` -> `CONDITIONAL (phase-one) — holdout performance strong, recommended for paper trading`
 - `Entry Mode vs Inversion Timing Diagnostic (Apr 2026)` -> `**DIAGNOSTIC ONLY — do not reopen discovery yet**`
+- `Eval-Pass Fit 1s Read (Apr 2026)` -> `**DIAGNOSTIC ONLY — operating fit read for eval passes, not a new promotion workflow**`
+- `HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)` -> `**DIAGNOSTIC ONLY — keep the current HTF-LSI lead unchanged**`
 
-## Reports (72)
+## Reports (74)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
+- [NQ_EVAL_FIT_1S_READ.md](../../reports/NQ_EVAL_FIT_1S_READ.md) -> [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read)
 - [NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep)
 - [NQ_HTF_LSI_LOWER_TF_STRUCTURAL_STOP_TARGET_SWEEP.md](../../reports/NQ_HTF_LSI_LOWER_TF_STRUCTURAL_STOP_TARGET_SWEEP.md) -> [nq_htf_lsi_lower_tf_structural_stop_target_sweep](../../../data/results/nq_htf_lsi_lower_tf_structural_stop_target_sweep)
 - [NQ_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_lsi_atr_orb_stop_sweep](../../../data/results/nq_lsi_atr_orb_stop_sweep)
@@ -95,6 +98,7 @@
 - [NQ_NY_HTF_LSI_PHASE_ONE.md](../../reports/NQ_NY_HTF_LSI_PHASE_ONE.md) -> [nq_ny_htf_lsi_phase_one](../../../data/results/nq_ny_htf_lsi_phase_one)
 - [NQ_NY_HTF_LSI_PHASE_TWO.md](../../reports/NQ_NY_HTF_LSI_PHASE_TWO.md) -> [nq_ny_htf_lsi_phase_two](../../../data/results/nq_ny_htf_lsi_phase_two)
 - [NQ_NY_HTF_LSI_PHASE_TWO_RISK_SWEEP.md](../../reports/NQ_NY_HTF_LSI_PHASE_TWO_RISK_SWEEP.md) -> [nq_ny_htf_lsi_phase_two_risk_sweep](../../../data/results/nq_ny_htf_lsi_phase_two_risk_sweep)
+- [NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md](../../reports/NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md)
 - [NQ_NY_HTF_LSI_UNCAPPED_RERUN.md](../../reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md)
 - [NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md](../../reports/NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md) -> [nq_ny_htf_lsi_window_exit_local_sweep](../../../data/results/nq_ny_htf_lsi_window_exit_local_sweep)
 - [NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md](../../reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md)
@@ -118,7 +122,8 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (100)
+## Result Directories (103)
+- [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [nq_asia_4leg_combo_sweep](../../../data/results/nq_asia_4leg_combo_sweep) (4 files; primary: summary.md, asia_combo_details.json, asia_combo_ranking.csv, asia_combo_ranking_practical.csv)
 - [nq_asia_lsi_4leg_combo_sweep](../../../data/results/nq_asia_lsi_4leg_combo_sweep) (4 files; primary: summary.md, asia_lsi_combo_details.json, asia_lsi_combo_ranking.csv, asia_lsi_combo_ranking_practical.csv)
 - [nq_bear_specialist_v1](../../../data/results/nq_bear_specialist_v1) (7 files; primary: summary.md, candidate_ranking.csv, regime_confusion_log.csv, selected_candidate_regime_attribution.csv, selected_candidate_specialist_readout.json)
@@ -135,8 +140,10 @@
 - [nq_bull_specialist_v1](../../../data/results/nq_bull_specialist_v1) (7 files; primary: summary.md, candidate_ranking.csv, regime_confusion_log.csv, selected_candidate_regime_attribution.csv, selected_candidate_specialist_readout.json)
 - [nq_combo_with_es_candidates](../../../data/results/nq_combo_with_es_candidates) (3 files; primary: summary.md, combo_es_candidate_details.json, combo_es_candidate_ranking.csv)
 - [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read) (1 files; primary: summary.json)
+- [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read) (3 files; primary: summary.json, candidate_summary.csv, trade_path_summary.csv)
 - [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep) (1 files; primary: summary.json)
 - [nq_htf_lsi_lower_tf_structural_stop_target_sweep](../../../data/results/nq_htf_lsi_lower_tf_structural_stop_target_sweep) (1 files; primary: summary.json)
+- [nq_htf_lsi_pre_entry_tp2_sweep_cancel_20260417](../../../data/results/nq_htf_lsi_pre_entry_tp2_sweep_cancel_20260417) (1 files; primary: summary.json)
 - [nq_lsi_atr_orb_stop_sweep](../../../data/results/nq_lsi_atr_orb_stop_sweep) (1 files; primary: summary.json)
 - [nq_lsi_structural_stop_target_sweep](../../../data/results/nq_lsi_structural_stop_target_sweep) (1 files; primary: summary.json)
 - [nq_ny_eqhl_lsi_broad_discovery](../../../data/results/nq_ny_eqhl_lsi_broad_discovery) (6 files; primary: summary.md, summary.json, ranking.csv, ranking_1m_focus.csv, summary_1m_focus.json)

@@ -31,6 +31,13 @@ DATA_REF_LSI_LEVELS = (
 )
 ALLOWED_REF_LSI_LEVELS = REF_LSI_LEVELS + DATA_REF_LSI_LEVELS
 ALLOWED_DATA_SWEEP_EVENT_TYPES = ("NFP", "CPI", "PPI", "FOMC")
+ALLOWED_ORB_REENTRY_POLICIES = (
+    "any_reentry",
+    "after_positive_first",
+    "after_nonpositive_first",
+    "after_sl_first",
+    "after_full_target_first",
+)
 
 
 @dataclass(frozen=True)
@@ -157,8 +164,38 @@ class StrategyConfig:
     # Allow FVGs inside ORB range when the impulse candle (bar[1]) closes outside
     impulse_close_filter: bool = False
 
+    # Continuation/reversal same-day FVG selection.
+    # Supported values:
+    #   "first"   -> keep the first valid same-direction FVG of the session-day
+    #                (current/default behavior)
+    #   "extreme" -> long-side FVGs ratchet to the highest entry price seen that
+    #                day; short-side FVGs ratchet to the lowest entry price
+    #                (a "chasing" entry)
+    continuation_fvg_selection: str = "first"
+    # Max filled continuation/reversal trades per session-day.
+    # 1 preserves the current one-trade-per-day behavior.
+    # 0 removes the cap and allows sequential re-entries on fresh post-exit gaps.
+    orb_trade_max_per_session: int = 1
+    # Optional continuation/reversal re-entry gate once a prior filled ORB trade
+    # has exited. Only active when orb_trade_max_per_session != 1.
+    # Supported values:
+    #   "any_reentry"             -> always allow the next fresh setup
+    #   "after_positive_first"    -> only re-arm after a > 0R prior trade
+    #   "after_nonpositive_first" -> only re-arm after a <= 0R prior trade
+    #   "after_sl_first"          -> only re-arm after a stop-loss prior trade
+    #   "after_full_target_first" -> only re-arm after a full-target prior trade
+    orb_reentry_policy: str = "any_reentry"
+
     # Bar magnifier: use 1m sub-bars for fill/exit simulation
     use_bar_magnifier: bool = True
+
+    # Cancel still-open limit orders if price reaches the selected target
+    # before the entry price is touched. "" disables; "tp1" and "tp2" use
+    # the candidate's computed TP1/TP2 price as the invalidation threshold.
+    limit_cancel_on_pre_entry_target_touch: str = ""
+    # HTF-LSI only. When True, a pre-entry TP-touch cancel requires a fresh
+    # post-signal HTF-LSI sweep event before the pending limit order is canceled.
+    limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep: bool = False
 
     # n-bar swing pivot width for liquidity sweep detection (10 = 10 bars left + 10 bars right)
     swing_n_bars: int = 10
@@ -273,6 +310,27 @@ class StrategyConfig:
             raise ValueError(
                 "ref_lsi_gap_entry_edge must be either 'near' or 'far' "
                 f"(got {self.ref_lsi_gap_entry_edge!r})"
+            )
+        if self.limit_cancel_on_pre_entry_target_touch not in {"", "tp1", "tp2"}:
+            raise ValueError(
+                "limit_cancel_on_pre_entry_target_touch must be one of '', 'tp1', or 'tp2' "
+                f"(got {self.limit_cancel_on_pre_entry_target_touch!r})"
+            )
+        if self.continuation_fvg_selection not in {"first", "extreme"}:
+            raise ValueError(
+                "continuation_fvg_selection must be one of 'first' or 'extreme' "
+                f"(got {self.continuation_fvg_selection!r})"
+            )
+        if self.orb_trade_max_per_session < 0:
+            raise ValueError(
+                "orb_trade_max_per_session must be >= 0 "
+                f"(got {self.orb_trade_max_per_session!r})"
+            )
+        if self.orb_reentry_policy not in ALLOWED_ORB_REENTRY_POLICIES:
+            raise ValueError(
+                "orb_reentry_policy must be one of "
+                f"{list(ALLOWED_ORB_REENTRY_POLICIES)} "
+                f"(got {self.orb_reentry_policy!r})"
             )
         invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(ALLOWED_REF_LSI_LEVELS))
         if invalid_ref_levels:

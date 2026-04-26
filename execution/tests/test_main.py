@@ -606,6 +606,17 @@ def test_alpha_v1_a_and_alpha_v1_c_only_differ_by_risk_sizes():
     assert conservative.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 150
 
 
+def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    testing = configs["TESTING"]
+
+    assert testing.webhook_url == ""
+    assert "HUNTER_ORB" in testing.session_overrides
+    assert testing.session_overrides["HUNTER_ORB"]["risk_usd"] == 350
+    assert testing.session_overrides["HUNTER_ORB"]["max_contracts"] == 20
+
+
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():
     cleanup_task = MagicMock()
     cleanup_task.done.return_value = False

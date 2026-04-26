@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-13T23:43:52.955055Z",
+  "generated_at": "2026-04-26T14:16:27.859800Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,9 +8,9 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 135,
-    "result_directories": 160,
-    "result_loose_files": 43
+    "report_files": 154,
+    "result_directories": 178,
+    "result_loose_files": 44
   },
   "assets": {
     "6B": {
@@ -1205,6 +1205,16 @@
           "title": "Entry Mode vs Inversion Timing Diagnostic (Apr 2026)",
           "status": "**DIAGNOSTIC ONLY \u2014 do not reopen discovery yet**",
           "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Eval-Pass Fit 1s Read (Apr 2026)",
+          "status": "**DIAGNOSTIC ONLY \u2014 operating fit read for eval passes, not a new promotion workflow**",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)",
+          "status": "**DIAGNOSTIC ONLY \u2014 keep the current HTF-LSI lead unchanged**",
+          "status_bucket": "UNSPECIFIED"
         }
       ],
       "status_counts": {
@@ -1213,7 +1223,7 @@
         "SUPERSEDED": 2,
         "OPTIMIZATION_COMPLETE": 1,
         "GO": 3,
-        "UNSPECIFIED": 13,
+        "UNSPECIFIED": 15,
         "INVALIDATED_OR_CORRUPT": 3
       },
       "reports": [
@@ -1223,6 +1233,13 @@
           "slug": "nq_entry_mode_inversion_timing_read",
           "mtime_utc": "2026-04-13T20:10:32.753001Z",
           "matched_result_directory": "backtesting/data/results/nq_entry_mode_inversion_timing_read"
+        },
+        {
+          "name": "NQ_EVAL_FIT_1S_READ.md",
+          "path": "backtesting/learnings/reports/NQ_EVAL_FIT_1S_READ.md",
+          "slug": "nq_eval_fit_1s_read",
+          "mtime_utc": "2026-04-16T23:53:24.039142Z",
+          "matched_result_directory": "backtesting/data/results/nq_eval_fit_1s_read"
         },
         {
           "name": "NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md",
@@ -1568,6 +1585,13 @@
           "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_phase_two_risk_sweep"
         },
         {
+          "name": "NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md",
+          "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md",
+          "slug": "nq_ny_htf_lsi_pre_entry_tp2_sweep_cancel",
+          "mtime_utc": "2026-04-17T15:20:13.469133Z",
+          "matched_result_directory": null
+        },
+        {
           "name": "NQ_NY_HTF_LSI_UNCAPPED_RERUN.md",
           "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md",
           "slug": "nq_ny_htf_lsi_uncapped_rerun",
@@ -1723,6 +1747,22 @@
         }
       ],
       "result_directories": [
+        {
+          "name": "alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423",
+          "path": "backtesting/data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423",
+          "mtime_utc": "2026-04-23T15:47:21.526340Z",
+          "file_count": 5,
+          "primary_files": [
+            "summary.json",
+            "fixed_profile_scorecards.csv",
+            "holdout_frozen_risk_scorecards.csv",
+            "metrics_by_window.csv",
+            "pre_holdout_risk_sweep.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
         {
           "name": "nq_asia_4leg_combo_sweep",
           "path": "backtesting/data/results/nq_asia_4leg_combo_sweep",
@@ -1971,6 +2011,20 @@
           ]
         },
         {
+          "name": "nq_eval_fit_1s_read",
+          "path": "backtesting/data/results/nq_eval_fit_1s_read",
+          "mtime_utc": "2026-04-16T23:53:24.038656Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "candidate_summary.csv",
+            "trade_path_summary.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
           "name": "nq_htf_lsi_atr_orb_stop_sweep",
           "path": "backtesting/data/results/nq_htf_lsi_atr_orb_stop_sweep",
           "mtime_utc": "2026-04-13T22:22:21.966714Z",
@@ -1986,6 +2040,18 @@
           "name": "nq_htf_lsi_lower_tf_structural_stop_target_sweep",
           "path": "backtesting/data/results/nq_htf_lsi_lower_tf_structural_stop_target_sweep",
           "mtime_utc": "2026-04-13T20:17:23.444793Z",
+          "file_count": 1,
+          "primary_files": [
+            "summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_htf_lsi_pre_entry_tp2_sweep_cancel_20260417",
+          "path": "backtesting/data/results/nq_htf_lsi_pre_entry_tp2_sweep_cancel_20260417",
+          "mtime_utc": "2026-04-17T15:17:44.709076Z",
           "file_count": 1,
           "primary_files": [
             "summary.json"
@@ -3550,6 +3616,118 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_eqhl_additive_portfolio_proxy"
         },
         {
+          "name": "ALPHA_V1_EXIT_STRUCTURE_ANALYSIS.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_EXIT_STRUCTURE_ANALYSIS.md",
+          "slug": "alpha_v1_exit_structure_analysis",
+          "mtime_utc": "2026-04-23T15:29:49.514089Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ALPHA_V1_FINAL_TARGET_EXACT_SWEEP.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_FINAL_TARGET_EXACT_SWEEP.md",
+          "slug": "alpha_v1_final_target_exact_sweep",
+          "mtime_utc": "2026-04-23T15:36:12.761852Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ALPHA_V1_NQ_NY_HTF_LSI_FUNDED_TARGET_COMPARE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_NQ_NY_HTF_LSI_FUNDED_TARGET_COMPARE.md",
+          "slug": "alpha_v1_nq_ny_htf_lsi_funded_target_compare",
+          "mtime_utc": "2026-04-23T15:47:21.527108Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ALPHA_V1_ORB_CAP2_CONDITIONED_10Y_VALIDATION.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_CAP2_CONDITIONED_10Y_VALIDATION.md",
+          "slug": "alpha_v1_orb_cap2_conditioned_10y_validation",
+          "mtime_utc": "2026-04-18T15:51:05.887057Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_cap2_conditioned_10y_validation"
+        },
+        {
+          "name": "ALPHA_V1_ORB_CAP2_CONDITIONED_2Y.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_CAP2_CONDITIONED_2Y.md",
+          "slug": "alpha_v1_orb_cap2_conditioned_2y",
+          "mtime_utc": "2026-04-18T15:29:45.556492Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_cap2_conditioned_2y"
+        },
+        {
+          "name": "ALPHA_V1_ORB_CAP2_FRONTIER.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_CAP2_FRONTIER.md",
+          "slug": "alpha_v1_orb_cap2_frontier",
+          "mtime_utc": "2026-04-18T15:17:57.051150Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_cap2_frontier"
+        },
+        {
+          "name": "ALPHA_V1_ORB_CLOSE_ENTRY_PROBE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_CLOSE_ENTRY_PROBE.md",
+          "slug": "alpha_v1_orb_close_entry_probe",
+          "mtime_utc": "2026-04-25T15:41:01.844797Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_close_entry_probe"
+        },
+        {
+          "name": "ALPHA_V1_ORB_ESNY_RISK_EXPLORE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_ESNY_RISK_EXPLORE.md",
+          "slug": "alpha_v1_orb_esny_risk_explore",
+          "mtime_utc": "2026-04-19T15:05:41.463132Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_esny_risk_explore"
+        },
+        {
+          "name": "ALPHA_V1_ORB_GAP_CHASE_20240417_20260324.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_GAP_CHASE_20240417_20260324.md",
+          "slug": "alpha_v1_orb_gap_chase_20240417_20260324",
+          "mtime_utc": "2026-04-17T15:26:17.436869Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ALPHA_V1_ORB_HTF_HIGH_FILTERS.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_HTF_HIGH_FILTERS.md",
+          "slug": "alpha_v1_orb_htf_high_filters",
+          "mtime_utc": "2026-04-17T15:30:40.233352Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "ALPHA_V1_ORB_OPTIMIZED_VS_SINGLE_TRADE_PROP_COMPARE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_OPTIMIZED_VS_SINGLE_TRADE_PROP_COMPARE.md",
+          "slug": "alpha_v1_orb_optimized_vs_single_trade_prop_compare",
+          "mtime_utc": "2026-04-18T16:07:06.737098Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_optimized_vs_single_trade_prop_compare"
+        },
+        {
+          "name": "ALPHA_V1_ORB_PAYOUT_OPTIMIZED_RISK_COMPARE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_PAYOUT_OPTIMIZED_RISK_COMPARE.md",
+          "slug": "alpha_v1_orb_payout_optimized_risk_compare",
+          "mtime_utc": "2026-04-18T16:39:50.803584Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_payout_optimized_risk_compare"
+        },
+        {
+          "name": "ALPHA_V1_ORB_PORTFOLIO_COOLDOWN_COMPARE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_PORTFOLIO_COOLDOWN_COMPARE.md",
+          "slug": "alpha_v1_orb_portfolio_cooldown_compare",
+          "mtime_utc": "2026-04-19T14:44:23.908010Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_portfolio_cooldown_compare"
+        },
+        {
+          "name": "ALPHA_V1_ORB_REENTRY_2Y.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_REENTRY_2Y.md",
+          "slug": "alpha_v1_orb_reentry_2y",
+          "mtime_utc": "2026-04-17T15:28:57.584642Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_reentry_2y"
+        },
+        {
+          "name": "ALPHA_V1_ORB_R_TRIGGER_STAGGER_COMPARE.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_R_TRIGGER_STAGGER_COMPARE.md",
+          "slug": "alpha_v1_orb_r_trigger_stagger_compare",
+          "mtime_utc": "2026-04-18T17:10:03.307716Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_r_trigger_stagger_compare"
+        },
+        {
+          "name": "ALPHA_V1_PRE_ENTRY_TARGET_CANCEL.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_PRE_ENTRY_TARGET_CANCEL.md",
+          "slug": "alpha_v1_pre_entry_target_cancel",
+          "mtime_utc": "2026-04-17T15:30:40.233757Z",
+          "matched_result_directory": null
+        },
+        {
           "name": "FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
           "path": "backtesting/learnings/reports/FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
           "slug": "fast_phase1_robust_pipeline_report",
@@ -3653,6 +3831,13 @@
           "slug": "orb_indicator_long_ma_walkforward",
           "mtime_utc": "2026-04-07T18:13:49.234512Z",
           "matched_result_directory": "backtesting/data/results/orb_indicator_long_ma_walkforward"
+        },
+        {
+          "name": "PROMISING_ORB_CLOSE_ENTRY_PROBE.md",
+          "path": "backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md",
+          "slug": "promising_orb_close_entry_probe",
+          "mtime_utc": "2026-04-26T14:15:41.030314Z",
+          "matched_result_directory": "backtesting/data/results/promising_orb_close_entry_probe"
         },
         {
           "name": "TOP_CANDIDATES_PER_ASSET_REPORT.md",
@@ -3817,6 +4002,140 @@
         "assets": []
       },
       {
+        "name": "alpha_v1_exit_structure_analysis_20260423",
+        "path": "backtesting/data/results/alpha_v1_exit_structure_analysis_20260423",
+        "mtime_utc": "2026-04-23T15:36:12.761502Z",
+        "file_count": 5,
+        "primary_files": [
+          "summary.json",
+          "exact_target_frontier.csv",
+          "exact_target_frontier.json",
+          "policy_trade_analysis.csv",
+          "target_frontier.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_cap2_conditioned_10y_validation",
+        "path": "backtesting/data/results/alpha_v1_orb_cap2_conditioned_10y_validation",
+        "mtime_utc": "2026-04-18T15:51:05.887683Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_cap2_conditioned_2y",
+        "path": "backtesting/data/results/alpha_v1_orb_cap2_conditioned_2y",
+        "mtime_utc": "2026-04-18T15:29:45.556695Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_cap2_frontier",
+        "path": "backtesting/data/results/alpha_v1_orb_cap2_frontier",
+        "mtime_utc": "2026-04-18T15:17:57.051409Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_close_entry_probe",
+        "path": "backtesting/data/results/alpha_v1_orb_close_entry_probe",
+        "mtime_utc": "2026-04-25T15:40:06.774420Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_esny_risk_explore",
+        "path": "backtesting/data/results/alpha_v1_orb_esny_risk_explore",
+        "mtime_utc": "2026-04-19T15:05:41.462745Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_htf_high_filters_20260417",
+        "path": "backtesting/data/results/alpha_v1_orb_htf_high_filters_20260417",
+        "mtime_utc": "2026-04-17T15:29:31.552930Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_optimized_vs_single_trade_prop_compare",
+        "path": "backtesting/data/results/alpha_v1_orb_optimized_vs_single_trade_prop_compare",
+        "mtime_utc": "2026-04-18T16:07:06.737614Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_payout_optimized_risk_compare",
+        "path": "backtesting/data/results/alpha_v1_orb_payout_optimized_risk_compare",
+        "mtime_utc": "2026-04-18T16:39:50.801217Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_portfolio_cooldown_compare",
+        "path": "backtesting/data/results/alpha_v1_orb_portfolio_cooldown_compare",
+        "mtime_utc": "2026-04-19T14:44:23.907262Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_r_trigger_stagger_compare",
+        "path": "backtesting/data/results/alpha_v1_orb_r_trigger_stagger_compare",
+        "mtime_utc": "2026-04-18T17:05:05.753081Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_reentry_2y",
+        "path": "backtesting/data/results/alpha_v1_orb_reentry_2y",
+        "mtime_utc": "2026-04-17T15:27:35.345402Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_pre_entry_target_cancel_20260417",
+        "path": "backtesting/data/results/alpha_v1_pre_entry_target_cancel_20260417",
+        "mtime_utc": "2026-04-17T14:43:45.092784Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
         "name": "cross_asset_regime_gate_research",
         "path": "backtesting/data/results/cross_asset_regime_gate_research",
         "mtime_utc": "2026-04-02T00:08:42.797709Z",
@@ -3970,6 +4289,28 @@
           "portfolio_results.json"
         ],
         "assets": []
+      },
+      {
+        "name": "promising_orb_close_entry_probe",
+        "path": "backtesting/data/results/promising_orb_close_entry_probe",
+        "mtime_utc": "2026-04-26T14:15:03.807430Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "tradingview_orb_reverse_engineer_20260426",
+        "path": "backtesting/data/results/tradingview_orb_reverse_engineer_20260426",
+        "mtime_utc": "2026-04-26T14:10:35.027786Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "candidate_diagnostics.csv",
+          "trade_diagnostics.csv"
+        ],
+        "assets": []
       }
     ],
     "result_loose_files": [
@@ -4019,6 +4360,11 @@
         "mtime_utc": "2026-04-04T16:34:23.256181Z"
       },
       {
+        "name": "alpha_v1_orb_gap_chase_20240417_20260324.json",
+        "path": "backtesting/data/results/alpha_v1_orb_gap_chase_20240417_20260324.json",
+        "mtime_utc": "2026-04-17T15:26:17.436716Z"
+      },
+      {
         "name": "alpha_v1_regime_heatmap.png",
         "path": "backtesting/data/results/alpha_v1_regime_heatmap.png",
         "mtime_utc": "2026-04-04T16:34:23.989974Z"
@@ -4056,7 +4402,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-04-13T20:06:22.950827Z"
+        "mtime_utc": "2026-04-17T15:21:08.493523Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",

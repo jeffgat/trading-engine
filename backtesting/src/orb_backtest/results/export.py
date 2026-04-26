@@ -182,6 +182,9 @@ def results_to_dict(
         config_dict["direction_filter"] = config.direction_filter
     config_dict["reverse_direction"] = config.reverse_direction
     config_dict["swing_n_bars"] = config.swing_n_bars
+    if config.strategy in {"continuation", "reversal"}:
+        config_dict["orb_trade_max_per_session"] = config.orb_trade_max_per_session
+        config_dict["orb_reentry_policy"] = config.orb_reentry_policy
     if config.use_bar_magnifier:
         config_dict["bar_magnifier"] = "ON"
     else:

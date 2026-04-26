@@ -310,6 +310,58 @@ SESSION_CONFIGS = {
         "risk_usd": 200,
         "max_single_risk_usd": 300,
     },
+    # --- NQ Hunter ORB (TradingView Hunter/classic parity leg, MNQ execution) ---
+    "HUNTER_ORB": {
+        "engine_type": "hunter_orb",
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "11:00",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "instrument": "NQ",
+        "exec_ticker": "MNQ",
+        "atr_length": 14,
+        "risk_usd": 350,
+        "max_single_risk_usd": 350,
+        "max_contracts": 20,
+        "long_only": False,
+        "short_only": False,
+        "excluded_dow": [1],
+        "body_min_pct": 55.0,
+        "rejection_wick_max_pct": 20.0,
+        "sl_buffer_points": 1.0,
+        "hunter_target_rr": 2.0,
+        "large_sl_threshold_points": 50.0,
+        "reduced_target_rr": 1.0,
+        "max_hold_minutes": 270,
+        "ema15_length": 14,
+        "ema15_source": "close",
+        "ema15_tolerance_points": 2.0,
+        "ema15_max_distance": None,
+        "reentry_policy": "after_each_loss",
+        "allow_same_bar_win_reentry": True,
+        "same_bar_win_reentry_max_minutes": 5.0,
+        "reentry_max_extension_pct": 100.0,
+        "enable_fast_reentry_exhaustion_filter": True,
+        "fast_reentry_exhaustion_max_minutes": 10.1,
+        "fast_reentry_exhaustion_max_extension_pct": 12.0,
+        "fast_reentry_exhaustion_min_ema15_distance": 50.0,
+        # Compatibility fields for dashboard/reset paths shared with ORBEngine.
+        "stop_atr_pct": 0.0,
+        "stop_basis": "hunter",
+        "stop_orb_pct": 0.0,
+        "min_gap_atr_pct": 0.0,
+        "max_gap_atr_pct": 0.0,
+        "gap_filter_basis": "hunter",
+        "min_gap_orb_pct": 0.0,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "icf_enabled": False,
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+    },
 }
 
 
@@ -618,7 +670,7 @@ def build_engines(
         sess_atr_length = merged.get("atr_length", 14)
         atr_lengths.setdefault(db_symbol, set()).add(sess_atr_length)
 
-        engine = ORBEngine(
+        common_kwargs = dict(
             name=sess_name,
             broker=broker,
             exec_ticker=exec_ticker,
@@ -667,11 +719,41 @@ def build_engines(
             position_manager=position_manager,
             position_limit_key=f"{config_name or 'DEFAULT'}:{db_symbol}",
         )
+        if merged.get("engine_type") == "hunter_orb":
+            from .hunter_orb_engine import HunterORBEngine
+
+            engine = HunterORBEngine(
+                **common_kwargs,
+                engine_type=merged.get("engine_type", "hunter_orb"),
+                body_min_pct=merged.get("body_min_pct", 55.0),
+                rejection_wick_max_pct=merged.get("rejection_wick_max_pct", 20.0),
+                sl_buffer_points=merged.get("sl_buffer_points", 1.0),
+                hunter_target_rr=merged.get("hunter_target_rr", 2.0),
+                large_sl_threshold_points=merged.get("large_sl_threshold_points", 50.0),
+                reduced_target_rr=merged.get("reduced_target_rr", 1.0),
+                max_hold_minutes=merged.get("max_hold_minutes", 270),
+                max_contracts=merged.get("max_contracts", 20.0),
+                ema15_length=merged.get("ema15_length", 14),
+                ema15_source=merged.get("ema15_source", "close"),
+                ema15_tolerance_points=merged.get("ema15_tolerance_points", 2.0),
+                ema15_max_distance=merged.get("ema15_max_distance"),
+                reentry_policy=merged.get("reentry_policy", "after_each_loss"),
+                allow_same_bar_win_reentry=merged.get("allow_same_bar_win_reentry", True),
+                same_bar_win_reentry_max_minutes=merged.get("same_bar_win_reentry_max_minutes", 5.0),
+                reentry_max_extension_pct=merged.get("reentry_max_extension_pct", 100.0),
+                enable_fast_reentry_exhaustion_filter=merged.get("enable_fast_reentry_exhaustion_filter", True),
+                fast_reentry_exhaustion_max_minutes=merged.get("fast_reentry_exhaustion_max_minutes", 10.1),
+                fast_reentry_exhaustion_max_extension_pct=merged.get("fast_reentry_exhaustion_max_extension_pct", 12.0),
+                fast_reentry_exhaustion_min_ema15_distance=merged.get("fast_reentry_exhaustion_min_ema15_distance", 50.0),
+            )
+        else:
+            engine = ORBEngine(**common_kwargs)
         engines.append(engine)
         symbol_map.setdefault(db_symbol, []).append(engine)
         logger.info(
-            "[%s] Session engine created: %s (signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s, regime_gates=%s, structure_gate=%s)",
-            config_name or "DEFAULT", sess_name, sess_instrument, exec_ticker, db_symbol,
+            "[%s] Session engine created: %s (type=%s, signal=%s, exec=%s, feed=%s, stop=%s, atr=%d, risk=$%s, regime_gates=%s, structure_gate=%s)",
+            config_name or "DEFAULT", sess_name, merged.get("engine_type", "orb"),
+            sess_instrument, exec_ticker, db_symbol,
             merged.get("stop_basis", "atr"), sess_atr_length, merged.get("risk_usd", "?"),
             ",".join(regime_gates) if regime_gates else "-",
             merged.get("structure_gate") or "-",

@@ -154,6 +154,8 @@ def _extract_candidates(
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.full(len(df), 110.0, dtype=float),
+        np.full(len(df), 90.0, dtype=float),
         HTF_SESSION,
         htf_levels=htf_levels,
         eqhl_levels=eqhl_levels,
@@ -178,6 +180,8 @@ def _run_backtest_with_candidates(
     candidates: list[_SetupCandidate],
     *,
     trade_cap: int,
+    limit_cancel_on_pre_entry_target_touch: str = "",
+    limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep: bool = False,
 ) -> list[simulator.TradeResult]:
     monkeypatch.setattr(simulator, "_extract_setup_candidates", lambda *_args, **_kwargs: list(candidates))
     config = StrategyConfig(
@@ -202,6 +206,10 @@ def _run_backtest_with_candidates(
         qty_step=1.0,
         rr=2.0,
         tp1_ratio=0.5,
+        limit_cancel_on_pre_entry_target_touch=limit_cancel_on_pre_entry_target_touch,
+        limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep=(
+            limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep
+        ),
     )
     return simulator.run_backtest(df, config)
 
@@ -607,6 +615,166 @@ def test_htf_lsi_no_fill_does_not_use_trade_slot(monkeypatch) -> None:
     assert len(trades) == 2
     assert sum(trade.exit_type == simulator.EXIT_NO_FILL for trade in trades) == 1
     assert sum(trade.exit_type != simulator.EXIT_NO_FILL for trade in trades) == 1
+
+
+def test_htf_lsi_pre_entry_tp1_touch_can_cancel_pending_limit(monkeypatch) -> None:
+    df = _df(
+        [100.2, 100.8, 100.4, 100.0],
+        [100.8, 101.1, 101.5, 102.2],
+        [100.2, 100.4, 99.8, 100.8],
+        [100.6, 100.9, 101.2, 102.0],
+        start="08:30",
+    )
+    candidates = [
+        _SetupCandidate(
+            date_str="2025-01-03",
+            session="NY",
+            direction=1,
+            signal_bar=0,
+            entry_price=100.0,
+            gap_size=1.0,
+            daily_atr=10.0,
+            orb_range=0.0,
+            structural_stop_price=99.0,
+        ),
+    ]
+
+    baseline = _run_backtest_with_candidates(monkeypatch, df, candidates, trade_cap=1)
+    tp1_cancel = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        limit_cancel_on_pre_entry_target_touch="tp1",
+    )
+
+    assert baseline[0].exit_type != simulator.EXIT_NO_FILL
+    assert tp1_cancel[0].exit_type == simulator.EXIT_NO_FILL
+
+
+def test_htf_lsi_pre_entry_tp2_touch_waits_for_full_target(monkeypatch) -> None:
+    df = _df(
+        [100.2, 100.8, 100.4, 100.0, 100.0],
+        [100.8, 101.1, 101.8, 102.2, 102.4],
+        [100.2, 100.4, 99.8, 99.8, 100.9],
+        [100.6, 100.9, 101.4, 102.0, 102.1],
+        start="08:30",
+    )
+    candidates = [
+        _SetupCandidate(
+            date_str="2025-01-03",
+            session="NY",
+            direction=1,
+            signal_bar=0,
+            entry_price=100.0,
+            gap_size=1.0,
+            daily_atr=10.0,
+            orb_range=0.0,
+            structural_stop_price=99.0,
+        ),
+    ]
+
+    tp1_cancel = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        limit_cancel_on_pre_entry_target_touch="tp1",
+    )
+    tp2_cancel = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        limit_cancel_on_pre_entry_target_touch="tp2",
+    )
+
+    assert tp1_cancel[0].exit_type == simulator.EXIT_NO_FILL
+    assert tp2_cancel[0].exit_type != simulator.EXIT_NO_FILL
+
+
+def test_htf_lsi_pre_entry_tp2_touch_plus_sweep_requires_both_conditions(monkeypatch) -> None:
+    df = _df(
+        [100.2, 100.8, 100.8, 100.0],
+        [100.8, 102.2, 101.0, 101.5],
+        [100.2, 100.4, 100.4, 99.8],
+        [100.6, 101.9, 100.9, 101.2],
+        start="08:30",
+    )
+    candidates = [
+        _SetupCandidate(
+            date_str="2025-01-03",
+            session="NY",
+            direction=1,
+            signal_bar=0,
+            entry_price=100.0,
+            gap_size=1.0,
+            daily_atr=10.0,
+            orb_range=0.0,
+            structural_stop_price=99.0,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        simulator,
+        "_build_htf_lsi_pre_entry_cancel_sweep_flags",
+        lambda **_kwargs: (
+            np.zeros(len(df), dtype=bool),
+            np.zeros(len(df), dtype=bool),
+        ),
+    )
+    no_sweep_cancel = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        limit_cancel_on_pre_entry_target_touch="tp2",
+        limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep=True,
+    )
+
+    assert no_sweep_cancel[0].exit_type != simulator.EXIT_NO_FILL
+
+
+def test_htf_lsi_pre_entry_tp2_touch_plus_sweep_cancels_on_later_fresh_sweep(monkeypatch) -> None:
+    df = _df(
+        [100.2, 100.8, 100.8, 100.0],
+        [100.8, 102.2, 101.0, 101.5],
+        [100.2, 100.4, 100.4, 99.8],
+        [100.6, 101.9, 100.9, 101.2],
+        start="08:30",
+    )
+    candidates = [
+        _SetupCandidate(
+            date_str="2025-01-03",
+            session="NY",
+            direction=1,
+            signal_bar=0,
+            entry_price=100.0,
+            gap_size=1.0,
+            daily_atr=10.0,
+            orb_range=0.0,
+            structural_stop_price=99.0,
+        ),
+    ]
+
+    monkeypatch.setattr(
+        simulator,
+        "_build_htf_lsi_pre_entry_cancel_sweep_flags",
+        lambda **_kwargs: (
+            np.zeros(len(df), dtype=bool),
+            np.array([False, False, True, False], dtype=bool),
+        ),
+    )
+    sweep_cancel = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        limit_cancel_on_pre_entry_target_touch="tp2",
+        limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep=True,
+    )
+
+    assert sweep_cancel[0].exit_type == simulator.EXIT_NO_FILL
 
 
 def test_htf_lsi_transfer_alignment_uses_raw_1m_for_2m_3m_5m() -> None:

@@ -108,6 +108,13 @@ class TestConstraintCombinations:
         with pytest.raises(ValueError, match="tp1_ratio .* rr must be >= 1.0"):
             with_overrides(base, tp1_ratio=0.1)  # 0.1 * 2.0 = 0.2 < 1.0
 
+    def test_invalid_pre_entry_target_touch_cancel_mode_rejected(self):
+        with pytest.raises(
+            ValueError,
+            match="limit_cancel_on_pre_entry_target_touch must be one of '', 'tp1', or 'tp2'",
+        ):
+            StrategyConfig(limit_cancel_on_pre_entry_target_touch="tp3")
+
 
 # ─── Engine-level enforcement ───────────────────────────────────────────
 

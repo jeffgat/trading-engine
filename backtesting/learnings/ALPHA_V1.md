@@ -169,6 +169,8 @@ DB: `bt-es-asia-cont-long-2016-2026-final-6f79d8`
 
 **Tier 2 — Most parameter-stable leg in the portfolio**
 
+Execution note: this `ES_NY ORB` leg was backtested with the hierarchical bar magnifier enabled, so ambiguous fills/exits were resolved using `5m -> 1m -> 1s` execution data rather than 5-minute bars alone.
+
 | Param | Value |
 |-------|-------|
 | strategy | continuation |
@@ -347,6 +349,29 @@ DB: `bt-gc-ny-cont-longs-r3-high-rr-final-fri-ex-692e90`
 | GC NY LSI | PF 2.29, Sharpe 4.79, but only 13 trades/year — below 30-trade OOS threshold |
 | GC Asia-1 | DSR 0.652 (strong), but GC banned on Apex — revisit if prop firm changes |
 | NQ Asia Discovery Asia-2 | Holdout +42.5R is exceptional, but requires regime gate build. Evaluate after the HTF-LSI swap-in stabilizes |
+
+---
+
+## ORB Entry Research Notes
+
+### Close-Entry Probe (2026-04-25)
+
+**NO-GO for ALPHA_V1 ORB replacement.** Tested two broad variants against the three active ORB legs (`NQ Asia`, `ES Asia`, `ES NY`) over `2016-04-17` to `2026-03-24`:
+
+1. `fvg_close`: keep the valid FVG requirement but enter at the 5m FVG confirmation close instead of waiting for retest.
+2. `breakout_close`: enter on the first 5m close outside ORB with no FVG requirement.
+
+Result: the retest remains an important quality/liquidity filter. ORB sleeve baseline was `+359.5R / -21.2R DD`; `fvg_close` fell to `+28.3R / -54.8R DD`; `breakout_close` fell to `-40.6R / -119.8R DD`. `breakout_close` improved NQ Asia raw R in isolation, but ES Asia degraded sharply and ES NY became structurally negative.
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ORB_CLOSE_ENTRY_PROBE.md`
+
+### Promising Excluded/Paused ORB Candidate Probe (2026-04-26)
+
+Extended the same close-entry screen to three non-ALPHA candidates that remain worth tracking: `NQ Asia-2 backup`, `GC NY R3 paused`, and `GC Asia-1 diversifier` over `2016-04-17` to `2026-03-24`. Regime gates were not applied in this broad entry-mechanics pass.
+
+Result: `fvg_close` is a broad NO-GO. It did not improve any candidate cleanly. `breakout_close` is also a clear NO-GO for both GC candidates (`GC NY R3` fell from `+153.7R` baseline to `-43.0R`; `GC Asia-1` fell from `+114.7R` to `-120.4R`). The only open thread is `NQ Asia-2 breakout_close`, which improved full-history R from `+177.8R` to `+285.5R` and holdout R from `+38.3R` to `+71.4R`, but at the cost of wider DD (`-17.5R` to `-24.0R`) and lower Sharpe (`1.95` to `1.70`). Treat it as a separate high-flow NQ Asia branch needing prop/risk/regime validation, not as a general replacement for retest entries.
+
+Report: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`
 
 ---
 

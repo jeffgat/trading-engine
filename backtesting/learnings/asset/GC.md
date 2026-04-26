@@ -69,6 +69,8 @@ R by year: 2016 +2.5 | 2017 +9.3 | 2018 +18.5 | 2019 +27.8 | 2020 +23.8 | 2021 +
 
 **DB entry**: `bt-gc-ny-cont-longs-r3-high-rr-final-fri-ex-692e90`
 
+**Close-entry follow-up (2026-04-26)**: R3 still needs the retest. In the broad close-entry probe (`2016-04-17` to `2026-03-24`), baseline retest produced `+153.7R / -15.1R DD`; `fvg_close` fell to `-28.3R / -74.9R DD`; no-FVG `breakout_close` fell to `-43.0R / -86.5R DD`. Do not pursue close-entry replacements for GC NY R3. Reference: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`.
+
 **Convergence path**: 12 rounds of variable sweeps + 3 grid sweeps. Key adoptions: rr 7→9 (grid R1), flat 14:30→13:30 (R8), max_gap_atr=30% (R8), Friday exclusion (R10), rr 8→9 (R11). Grid R3 confirmed anchor at #1/625.
 
 #### Prior: R2 config — INVALIDATED by engine bug fixes (2026-02-22)
@@ -757,6 +759,8 @@ Cross-asset transfer run with shared holdout `2024-03-01` to `2026-02-28` reconf
 - **Verdict**: `supports_gate`
 - **Interpretation**: GC keeps essentially the same holdout net R after removing medium-vol days, but the gate meaningfully improves risk-adjusted quality and payout behavior.
 - **Action**: Keep **Asia-1 gated** as the preferred production baseline and promote GC into the second-round regime-gate study.
+
+**Close-entry follow-up (2026-04-26)**: The raw `GC Asia-1` signal also still needs retest behavior. Ungated baseline retest was `+114.7R / -21.0R DD`; `fvg_close` was `-67.7R / -91.1R DD`; no-FVG `breakout_close` was `-120.4R / -124.0R DD`. Holdout did not rescue the branch (`breakout_close` holdout `-31.1R`). Do not pursue close-entry replacements here; keep regime-gated retest as the only serious GC Asia-1 form. Reference: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`.
 
 ### Regime-Gate Round Two Refinement (2026-04-01)
 

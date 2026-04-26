@@ -2700,6 +2700,10 @@ All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_
 10. **LDN is dead regardless of gating** — gate halves DD but session has no edge on holdout. All 3 LDN candidates negative or near-zero gated
 11. **Gate universally compresses drawdown** — every candidate saw smaller holdout DD when gated, but the trade-off is fewer trades and sometimes lost net R
 
+#### Close-Entry Follow-Up (2026-04-26)
+
+`NQ Asia-2` was rerun in the broad close-entry probe (`2016-04-17` to `2026-03-24`, ungated for entry-mechanics isolation). The `fvg_close` variant degraded the baseline (`+155.3R / -25.4R DD` vs retest `+177.8R / -17.5R DD`). The no-FVG `breakout_close` variant was the one interesting exception: `+285.5R`, `-24.0R DD`, Sharpe `1.70`, holdout `+71.4R` vs baseline holdout `+38.3R`. This is not enough to promote; it is a high-flow branch requiring prop/risk/regime validation. Reference: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`.
+
 ### Entry Mode vs Inversion Timing Diagnostic (Apr 2026)
 - **Status**: **DIAGNOSTIC ONLY — do not reopen discovery yet**
 - **Objective**: pressure-test the discretionary thesis that very fast post-sweep inversions should be entered at market close instead of waiting for the FVG retest.
@@ -2726,3 +2730,42 @@ All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_
   2. only reopen market-entry research if we have a materially different causal gate than simple sweep->inversion speed
   3. if a future hybrid ever clears this diagnostic stage, treat it as an anchor change and rerun the full sweep loop from scratch
 - **Engineering note**: this packet also surfaced and fixed a simulator bug where classic LSI `close` mode could reference `_tp1_est` before assignment during candidate extraction. The fix lives in `backtesting/src/orb_backtest/engine/simulator.py` and was validated with targeted pytest coverage.
+
+### Eval-Pass Fit 1s Read (Apr 2026)
+- **Status**: **DIAGNOSTIC ONLY — operating fit read for eval passes, not a new promotion workflow**
+- **Objective**: identify which current NQ branches are the best fit for fast Lucid / Apex-style eval passes, where the practical question is not full lifecycle EV but whether a trade can cleanly reach `1.2R` or `1.5R` before stop / flat and how often it gives that move back.
+- **Evidence packet**: `backtesting/scripts/run_nq_eval_fit_1s_read.py` -> `backtesting/learnings/reports/NQ_EVAL_FIT_1S_READ.md` and `backtesting/data/results/nq_eval_fit_1s_read/`
+- **Scope**:
+  - recent window only: `2024-04-01` to `2026-03-24`
+  - exact `1s` path walk after each filled trade on the top three Asia finalists from the broader eval-fit screen
+  - each trade's exact fill was inferred as the first `1s` touch of the limit price inside the recorded `5m` fill bar
+  - target reads use exact first-passage to `1.2R` and `1.5R`, with same-second stop/target conflicts marked `ambiguous` instead of forced
+- **Candidate reads**:
+  - **`NQ Asia ORB ALPHA_V1`** was the cleanest overall eval branch. Exact hit rates were **`52.9%` to `1.2R`** and **`51.5%` to `1.5R`**, with the strongest Lucid-style two-win approximation at **`52.2%`**. Giveback after hitting `1.5R` was still meaningful but materially cleaner than R9: **`44.3%`** of `1.5R` hits later retraced to breakeven-or-worse, and the median worst post-hit path still stayed positive at **`+0.26R`**.
+  - **`NQ Asia R9 Restart`** tied for the best exact `1.2R` hit rate at **`52.9%`**, but its `1.5R` rate slipped to **`47.1%`** and, more importantly, the giveback profile was much worse: **`60.6%`** of `1.5R` hits later retraced to breakeven-or-worse, with median worst post-hit path **`-0.61R`**. Practical implication: this branch is only attractive for eval use if the operating rule explicitly locks the win near the target rather than letting the trade breathe.
+  - **`NQ Asia-2` phase-one winner** remained the higher-flow backup. It traded most often at about **`7.2` trades/month**, but exact pass quality was lower: **`48.0%`** to `1.2R`, **`43.3%`** to `1.5R`, and Lucid-style two-win approximation **`40.0%`**. Its giveback profile was cleaner than R9 and broadly acceptable, so it stays alive as a volume-oriented alternate rather than the first choice.
+- **Practical ranking from the exact packet**:
+  1. **`NQ Asia ORB ALPHA_V1`** — best fit for `1.5R` eval passes and the cleanest overall branch
+  2. **`NQ Asia R9 Restart`** — acceptable for `1.2R` evals only if the target is actively locked
+  3. **`NQ Asia-2` phase-one winner** — higher-flow backup, but weaker raw pass odds
+- **Conclusion**:
+  - The exact `1s` read confirmed that the earlier proxy ranking was directionally correct.
+  - The main new information is that **R9's giveback problem is real on exact data**, not just a `1m` artifact.
+  - For fast eval passing, the honest operating default should be **`NQ Asia ORB ALPHA_V1`**. Treat **`R9 Restart`** as the aggressive alternate only when the playbook includes hard profit locking near the eval threshold.
+
+### HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)
+- **Status**: **DIAGNOSTIC ONLY — keep the current HTF-LSI lead unchanged**
+- **Evidence packet**: `backtesting/scripts/run_nq_htf_lsi_pre_entry_tp2_sweep_cancel.py` -> `backtesting/learnings/reports/NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md` and `backtesting/data/results/nq_htf_lsi_pre_entry_tp2_sweep_cancel_20260417/summary.json`
+- **Scope**:
+  - frozen current `NQ NY HTF_LSI 5m lag24` operating lead
+  - compare `baseline` vs plain pre-entry `TP2` cancel vs pre-entry `TP2 + fresh HTF-LSI sweep` cancel
+  - the sweep-gated version only cancels while the order is still pending; shared fill/cancel bars still go to fill first
+- **Read**:
+  - **Baseline**: `494` fills, `52` no-fills, `89.3R`, max DD `-10.9R`
+  - **Plain pre-entry `TP2` cancel**: `490` fills, `56` no-fills, `88.2R`, max DD `-10.9R`
+  - **`TP2 + fresh sweep`**: `494` fills, `52` no-fills, `89.3R`, max DD `-10.9R`
+  - **Recent (`2024-01-01+`)** stayed the same pattern: baseline `34.8R`, plain `TP2` cancel `34.1R`, sweep-gated version `34.8R`
+- **Practical conclusion**:
+  - plain pre-entry `TP2` cancel is mildly harmful on the current HTF-LSI lead
+  - adding a fresh HTF-LSI sweep requirement turned the rule into a complete no-op on this sample
+  - if we revisit pre-entry invalidation on this branch, it should use a different causal gate than "another HTF-LSI sweep happened"

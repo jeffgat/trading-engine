@@ -432,9 +432,10 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
     return filtered;
   }, [configRows, strategyFilter, sessionFilter, tickerFilter, dateFrom, dateTo]);
 
-  // Summary stats (only closed trades with R values)
-  const { totalR, closedCount, winCount } = useMemo(() => {
+  // Summary stats (only closed trades with realized values)
+  const { totalR, totalUsd, closedCount, winCount } = useMemo(() => {
     let r = 0;
+    let usd = 0;
     let closed = 0;
     let wins = 0;
     for (const row of rows) {
@@ -443,8 +444,11 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         closed++;
         if (row.rValue > 0) wins++;
       }
+      if (row.usdValue != null) {
+        usd += row.usdValue;
+      }
     }
-    return { totalR: r, closedCount: closed, winCount: wins };
+    return { totalR: r, totalUsd: usd, closedCount: closed, winCount: wins };
   }, [rows]);
 
   const winRate = closedCount > 0 ? (winCount / closedCount) * 100 : 0;
@@ -791,11 +795,17 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
       </div>
 
       {/* Summary stats */}
-      <div className="flex gap-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
           <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Total R</div>
           <div className={`text-lg font-mono font-semibold ${totalR > 0 ? "text-profit" : totalR < 0 ? "text-loss" : "text-text-secondary"}`}>
             {totalR > 0 ? "+" : ""}{totalR.toFixed(1)}R
+          </div>
+        </div>
+        <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
+          <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">PnL</div>
+          <div className={`text-lg font-mono font-semibold ${totalUsd > 0 ? "text-profit" : totalUsd < 0 ? "text-loss" : "text-text-secondary"}`}>
+            {totalUsd > 0 ? "+" : ""}{USD_FORMATTER.format(totalUsd)}
           </div>
         </div>
         <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">

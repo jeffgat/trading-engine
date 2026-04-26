@@ -217,6 +217,11 @@
         "regime_gates": ["block_bull_medium_vol"],
         "risk_usd": 400,
         "max_single_risk_usd": 500
+      },
+      "HUNTER_ORB": {
+        "risk_usd": 350,
+        "max_single_risk_usd": 350,
+        "max_contracts": 20
       }
     },
     "lsi_sessions": {

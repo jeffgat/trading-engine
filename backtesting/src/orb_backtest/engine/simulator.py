@@ -139,8 +139,12 @@ def _simulate_single_trade(
     half_qty: float,
     point_value: float,
     commission: float,
+    pre_entry_cancel_requires_new_sweep: bool,
+    pre_entry_new_high_sweep: np.ndarray,
+    pre_entry_new_low_sweep: np.ndarray,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
+    pre_entry_cancel_target_price: float = np.nan,
 ) -> tuple:
     """Simulate a single trade from fill scan to exit.
 
@@ -154,6 +158,8 @@ def _simulate_single_trade(
 
     # Phase 1: Scan for limit fill
     fill_bar = -1
+    pre_entry_target_touched = False
+    pre_entry_sweep_seen = False
     for i in range(entry_bar_start, min(entry_bar_end + 1, last_bar + 1)):
         if direction == 1:  # long: fill when low <= entry
             if low[i] <= entry_price:
@@ -169,6 +175,25 @@ def _simulate_single_trade(
                 return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
             elif direction == -1 and low[i] <= internal_swing_level:
                 return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+        if not np.isnan(pre_entry_cancel_target_price):
+            if direction == 1:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_low_sweep[i]:
+                    pre_entry_sweep_seen = True
+                if high[i] >= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+            else:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_high_sweep[i]:
+                    pre_entry_sweep_seen = True
+                if low[i] <= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
     if fill_bar == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
@@ -610,8 +635,12 @@ def _simulate_single_trade_magnifier(
     half_qty: float,
     point_value: float,
     commission: float,
+    pre_entry_cancel_requires_new_sweep: bool,
+    pre_entry_new_high_sweep_1m: np.ndarray,
+    pre_entry_new_low_sweep_1m: np.ndarray,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
+    pre_entry_cancel_target_price: float = np.nan,
 ) -> tuple:
     """Simulate fill + exit on 1m bars.
 
@@ -624,6 +653,8 @@ def _simulate_single_trade_magnifier(
 
     # Phase 1: Scan for limit fill on 1m bars
     fill_bar_1m = -1
+    pre_entry_target_touched = False
+    pre_entry_sweep_seen = False
     for i in range(entry_start_1m, min(entry_end_1m + 1, last_bar_1m + 1)):
         if direction == 1:
             if low_1m[i] <= entry_price:
@@ -639,6 +670,25 @@ def _simulate_single_trade_magnifier(
                 return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
             elif direction == -1 and low_1m[i] <= internal_swing_level:
                 return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+        if not np.isnan(pre_entry_cancel_target_price):
+            if direction == 1:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_low_sweep_1m[i]:
+                    pre_entry_sweep_seen = True
+                if high_1m[i] >= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+            else:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_high_sweep_1m[i]:
+                    pre_entry_sweep_seen = True
+                if low_1m[i] <= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
 
     if fill_bar_1m == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, 0.0, 0.0
@@ -1192,8 +1242,12 @@ def _simulate_single_trade_hierarchical(
     half_qty: float,
     point_value: float,
     commission: float,
+    pre_entry_cancel_requires_new_sweep: bool,
+    pre_entry_new_high_sweep_5m: np.ndarray,
+    pre_entry_new_low_sweep_5m: np.ndarray,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
+    pre_entry_cancel_target_price: float = np.nan,
 ) -> tuple:
     """Hierarchical fill+exit simulation: 5m primary, 1m on ambiguous bars, 30s on ambiguous 1m bars, 1s on ambiguous 30s bars.
 
@@ -1210,6 +1264,8 @@ def _simulate_single_trade_hierarchical(
 
     # Phase 1: Scan for fill at 5m level
     fill_bar_5m = -1
+    pre_entry_target_touched = False
+    pre_entry_sweep_seen = False
     for i in range(entry_bar_start, min(entry_bar_end + 1, last_bar + 1)):
         if direction == 1:
             if low_5m[i] <= entry_price:
@@ -1225,6 +1281,25 @@ def _simulate_single_trade_hierarchical(
                 return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
             elif direction == -1 and low_5m[i] <= internal_swing_level:
                 return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+        if not np.isnan(pre_entry_cancel_target_price):
+            if direction == 1:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_low_sweep_5m[i]:
+                    pre_entry_sweep_seen = True
+                if high_5m[i] >= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+            else:
+                if pre_entry_cancel_requires_new_sweep and pre_entry_new_high_sweep_5m[i]:
+                    pre_entry_sweep_seen = True
+                if low_5m[i] <= pre_entry_cancel_target_price:
+                    if not pre_entry_cancel_requires_new_sweep:
+                        return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
+                    pre_entry_target_touched = True
+                if pre_entry_target_touched and pre_entry_sweep_seen:
+                    return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
 
     if fill_bar_5m == -1:
         return -1, EXIT_NO_FILL, -1, 0.0, -1.0, -1.0
@@ -1485,6 +1560,7 @@ class _PreparedCandidate:
     # Internal swing level for LSI BE trigger (1e38/-1e38 = disabled)
     internal_swing_level: float = 1e38
     cancel_on_swing: bool = False
+    pre_entry_cancel_target_price: float = np.nan
 
 
 # ---------------------------------------------------------------------------
@@ -2132,19 +2208,372 @@ def _select_recent_htf_sweep(
     return min(latest_events, key=lambda event: (float(event["level_price"]), int(event["source_rank"])))
 
 
-def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.ndarray:
-    """Return indices of first True bar per session-day (vectorized).
+def _build_htf_lsi_level_sources(
+    *,
+    htf_levels: dict[str, np.ndarray] | None,
+    eqhl_levels: dict[str, np.ndarray] | None,
+    reference_levels: dict[str, np.ndarray] | None,
+    reference_instance_ids: dict[str, np.ndarray] | None,
+    selected_reference_level_names: tuple[str, ...],
+    include_htf_levels: bool,
+    include_eqhl_levels: bool,
+    htf_level_tf_minutes: int,
+) -> tuple[list[dict], list[dict]]:
+    """Build the configured HTF-LSI sweep sources split by side."""
+    high_level_sources: list[dict] = []
+    low_level_sources: list[dict] = []
+    source_rank = 0
 
-    Replaces the Python loop with seen_days set for continuation/reversal
-    candidate extraction. Uses numpy to find all valid bar indices, then
-    selects the first per unique session_day_id.
+    if include_htf_levels:
+        if htf_levels is None:
+            raise ValueError("htf_levels are required when include_htf_levels=True.")
+        high_level_sources.append(
+            {
+                "source_name": "htf_high",
+                "level_name": "",
+                "prices": htf_levels["active_high_price"],
+                "instance_ids": htf_levels["active_high_instance_id"],
+                "times": htf_levels["active_high_level_time"],
+                "tf_minutes": htf_level_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+        low_level_sources.append(
+            {
+                "source_name": "htf_low",
+                "level_name": "",
+                "prices": htf_levels["active_low_price"],
+                "instance_ids": htf_levels["active_low_instance_id"],
+                "times": htf_levels["active_low_level_time"],
+                "tf_minutes": htf_level_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+
+    if include_eqhl_levels:
+        if eqhl_levels is None:
+            raise ValueError("eqhl_levels are required when include_eqhl_levels=True.")
+        eqhl_tf_minutes = int(eqhl_levels["tf_minutes"])
+        high_level_sources.append(
+            {
+                "source_name": f"equal_high_{eqhl_tf_minutes}m",
+                "level_name": f"equal_high_{eqhl_tf_minutes}m",
+                "prices": eqhl_levels["active_high_price"],
+                "instance_ids": eqhl_levels["active_high_instance_id"],
+                "times": eqhl_levels["active_high_level_time"],
+                "tf_minutes": eqhl_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+        low_level_sources.append(
+            {
+                "source_name": f"equal_low_{eqhl_tf_minutes}m",
+                "level_name": f"equal_low_{eqhl_tf_minutes}m",
+                "prices": eqhl_levels["active_low_price"],
+                "instance_ids": eqhl_levels["active_low_instance_id"],
+                "times": eqhl_levels["active_low_level_time"],
+                "tf_minutes": eqhl_tf_minutes,
+                "source_rank": source_rank,
+            }
+        )
+        source_rank += 1
+
+    if selected_reference_level_names:
+        if reference_levels is None or reference_instance_ids is None:
+            raise ValueError(
+                "reference_levels and reference_instance_ids are required when HTF-LSI reference levels are enabled."
+            )
+        for level_name in selected_reference_level_names:
+            if level_name not in reference_levels or level_name not in reference_instance_ids:
+                raise ValueError(f"Missing cached HTF-LSI reference level arrays for {level_name!r}.")
+            source = {
+                "source_name": level_name,
+                "level_name": level_name,
+                "prices": reference_levels[level_name],
+                "instance_ids": reference_instance_ids[level_name],
+                "times": None,
+                "tf_minutes": 0,
+                "source_rank": source_rank,
+            }
+            source_rank += 1
+            if level_name.endswith("_high"):
+                high_level_sources.append(source)
+            else:
+                low_level_sources.append(source)
+
+    return high_level_sources, low_level_sources
+
+
+def _build_htf_lsi_new_sweep_flags(
+    *,
+    high: np.ndarray,
+    low: np.ndarray,
+    in_entry: np.ndarray,
+    in_sweep: np.ndarray,
+    high_level_sources: list[dict],
+    low_level_sources: list[dict],
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return per-bar flags for fresh HTF-LSI high-side and low-side sweeps."""
+    n = len(high)
+    new_high_sweep = np.zeros(n, dtype=bool)
+    new_low_sweep = np.zeros(n, dtype=bool)
+
+    level_state: dict[str, dict[str, int | bool]] = {
+        source["source_name"]: {"instance_id": -10_000_000, "consumed": False}
+        for source in (*high_level_sources, *low_level_sources)
+    }
+
+    for i in range(n):
+        for source in high_level_sources:
+            state = level_state[source["source_name"]]
+            instance_ids = source["instance_ids"]
+            instance_id = int(instance_ids[i]) if i < len(instance_ids) else -1
+            if instance_id != state["instance_id"]:
+                state["instance_id"] = instance_id
+                state["consumed"] = False
+            if state["consumed"] or instance_id < 0:
+                continue
+            level_price = float(source["prices"][i])
+            if not np.isfinite(level_price) or high[i] <= level_price or not in_sweep[i]:
+                continue
+            state["consumed"] = True
+            if in_entry[i]:
+                new_high_sweep[i] = True
+
+        for source in low_level_sources:
+            state = level_state[source["source_name"]]
+            instance_ids = source["instance_ids"]
+            instance_id = int(instance_ids[i]) if i < len(instance_ids) else -1
+            if instance_id != state["instance_id"]:
+                state["instance_id"] = instance_id
+                state["consumed"] = False
+            if state["consumed"] or instance_id < 0:
+                continue
+            level_price = float(source["prices"][i])
+            if not np.isfinite(level_price) or low[i] >= level_price or not in_sweep[i]:
+                continue
+            state["consumed"] = True
+            if in_entry[i]:
+                new_low_sweep[i] = True
+
+    return new_high_sweep, new_low_sweep
+
+
+def _build_htf_lsi_pre_entry_cancel_sweep_flags(
+    *,
+    df: pd.DataFrame,
+    timestamps,
+    masks: dict[str, np.ndarray],
+    session_day_id: np.ndarray,
+    session,
+    config: StrategyConfig,
+    signal_df_1m: pd.DataFrame | None,
+    daily_atr: np.ndarray,
+    _signal_cache: dict | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Build fresh-sweep flags used by HTF-LSI pre-entry cancel rules."""
+    n = len(df)
+    empty = (np.zeros(n, dtype=bool), np.zeros(n, dtype=bool))
+
+    if config.strategy != "htf_lsi":
+        return empty
+
+    htf_levels = None
+    if config.htf_lsi_include_htf_levels:
+        if _signal_cache is not None and "htf_levels" in _signal_cache:
+            htf_levels = _signal_cache["htf_levels"][_htf_key(session, config)]
+        else:
+            if signal_df_1m is None:
+                raise ValueError(
+                    "htf_lsi requires signal_df_1m when HTF sweep levels are enabled and signal cache is not provided."
+                )
+            htf_levels = compute_htf_unswept_levels(
+                df,
+                signal_df_1m,
+                tf_minutes=config.htf_level_tf_minutes,
+                n_left=config.htf_n_left,
+            )
+
+    eqhl_levels = None
+    if config.htf_lsi_include_eqhl_levels:
+        if _signal_cache is not None and "eqhl_levels" in _signal_cache:
+            eqhl_levels = _signal_cache["eqhl_levels"][_eqhl_key(session, config)]
+        else:
+            if signal_df_1m is None:
+                raise ValueError(
+                    "htf_lsi requires signal_df_1m when equal high/low sweep levels are enabled and signal cache is not provided."
+                )
+            eqhl_levels = compute_equal_htf_levels(
+                df,
+                signal_df_1m,
+                tf_minutes=config.eqhl_level_tf_minutes,
+                n_left=config.eqhl_n_left,
+                tolerance_points=float(config.eqhl_tolerance_ticks) * float(config.min_tick),
+                min_touches=config.eqhl_min_touches,
+                lookback_bars=config.eqhl_lookback_bars,
+            )
+            eqhl_levels["tf_minutes"] = int(config.eqhl_level_tf_minutes)
+
+    reference_levels = None
+    reference_instance_ids = None
+    if config.htf_lsi_reference_levels:
+        reference_levels, reference_instance_ids = _resolve_reference_levels(
+            df,
+            timestamps,
+            session=session,
+            selected_level_names=config.htf_lsi_reference_levels,
+            signal_df_1m=signal_df_1m,
+            atr_length=config.atr_length,
+            data_sweep_min_daily_atr_pct=config.data_sweep_min_daily_atr_pct,
+            data_sweep_require_session_extreme=config.data_sweep_require_session_extreme,
+            data_sweep_event_types=config.data_sweep_event_types,
+            data_sweep_release_window_minutes=config.data_sweep_release_window_minutes,
+            signal_cache=_signal_cache,
+        )
+
+    high_level_sources, low_level_sources = _build_htf_lsi_level_sources(
+        htf_levels=htf_levels,
+        eqhl_levels=eqhl_levels,
+        reference_levels=reference_levels,
+        reference_instance_ids=reference_instance_ids,
+        selected_reference_level_names=config.htf_lsi_reference_levels,
+        include_htf_levels=config.htf_lsi_include_htf_levels,
+        include_eqhl_levels=config.htf_lsi_include_eqhl_levels,
+        htf_level_tf_minutes=config.htf_level_tf_minutes,
+    )
+
+    if not high_level_sources and not low_level_sources:
+        return empty
+
+    return _build_htf_lsi_new_sweep_flags(
+        high=np.ascontiguousarray(df["high"].to_numpy(dtype=np.float64)),
+        low=np.ascontiguousarray(df["low"].to_numpy(dtype=np.float64)),
+        in_entry=masks["in_entry"],
+        in_sweep=masks["in_sweep"],
+        high_level_sources=high_level_sources,
+        low_level_sources=low_level_sources,
+    )
+
+
+def _select_fvg_bars_per_day(
+    valid_mask: np.ndarray,
+    session_day_id: np.ndarray,
+    entry_price: np.ndarray,
+    *,
+    mode: str,
+    prefer_highest: bool,
+) -> np.ndarray:
+    """Return one valid FVG bar per session-day for continuation/reversal.
+
+    ``mode="first"`` preserves the historical engine behavior.
+    ``mode="extreme"`` ratchets to the most aggressive same-direction FVG
+    seen that day: highest entry price for long-side FVGs, lowest entry price
+    for short-side FVGs.
     """
     indices = np.where(valid_mask)[0]
     if len(indices) == 0:
         return indices
-    day_ids = session_day_id[indices]
-    _, first_idx = np.unique(day_ids, return_index=True)
-    return indices[first_idx]
+    if mode == "first":
+        day_ids = session_day_id[indices]
+        _, first_idx = np.unique(day_ids, return_index=True)
+        return indices[first_idx]
+
+    selected: list[int] = []
+    current_day = int(session_day_id[indices[0]])
+    best_idx = int(indices[0])
+    best_price = float(entry_price[best_idx])
+
+    for idx in indices[1:]:
+        idx = int(idx)
+        day = int(session_day_id[idx])
+        price = float(entry_price[idx])
+        if day != current_day:
+            selected.append(best_idx)
+            current_day = day
+            best_idx = idx
+            best_price = price
+            continue
+        if prefer_highest:
+            if price > best_price:
+                best_idx = idx
+                best_price = price
+        else:
+            if price < best_price:
+                best_idx = idx
+                best_price = price
+
+    selected.append(best_idx)
+    return np.asarray(selected, dtype=np.int64)
+
+
+def _first_per_day(valid_mask: np.ndarray, session_day_id: np.ndarray) -> np.ndarray:
+    """Backward-compatible helper for legacy call sites."""
+    return _select_fvg_bars_per_day(
+        valid_mask,
+        session_day_id,
+        np.zeros(len(valid_mask), dtype=np.float64),
+        mode="first",
+        prefer_highest=True,
+    )
+
+
+def _select_orb_candidate_bars(
+    valid_mask: np.ndarray,
+    session_day_id: np.ndarray,
+    entry_price: np.ndarray,
+    *,
+    prefer_highest: bool,
+    selection_mode: str,
+    trade_cap: int,
+) -> np.ndarray:
+    """Return ORB candidate bars for the configured same-day trade cap."""
+    if trade_cap == 1:
+        return _select_fvg_bars_per_day(
+            valid_mask,
+            session_day_id,
+            entry_price,
+            mode=selection_mode,
+            prefer_highest=prefer_highest,
+    )
+    return np.where(valid_mask)[0]
+
+
+def _realized_orb_outcome(
+    pc: _PreparedCandidate,
+    exit_type: int,
+    pnl_pts: float,
+    *,
+    reverse_dir: bool,
+) -> tuple[int, float]:
+    """Normalize exit type and R-multiple to the executed trade outcome."""
+    realized_exit_type = exit_type
+    realized_pnl_pts = pnl_pts
+    if reverse_dir:
+        realized_pnl_pts = -realized_pnl_pts
+        if realized_exit_type == EXIT_SL:
+            realized_exit_type = EXIT_TP2_SINGLE
+        elif realized_exit_type in (EXIT_TP1_TP2, EXIT_TP2_SINGLE):
+            realized_exit_type = EXIT_SL
+    realized_r_multiple = realized_pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+    return realized_exit_type, realized_r_multiple
+
+
+def _orb_reentry_policy_allows(policy: str, exit_type: int, r_multiple: float) -> bool:
+    """Return whether the next same-session ORB trade may be armed."""
+    if policy == "any_reentry":
+        return True
+    if policy == "after_positive_first":
+        return r_multiple > 0.0
+    if policy == "after_nonpositive_first":
+        return r_multiple <= 0.0
+    if policy == "after_sl_first":
+        return exit_type == EXIT_SL
+    if policy == "after_full_target_first":
+        return exit_type in {EXIT_TP1_TP2, EXIT_TP2_SINGLE}
+    return True
 
 
 def _compute_vwap_gate_masks(
@@ -2207,10 +2636,10 @@ def _extract_setup_candidates(
     signal_df_1m: pd.DataFrame | None = None,
     _signal_cache: dict | None = None,
 ) -> list[_SetupCandidate]:
-    """Extract first-FVG-per-day setup candidates for a session.
+    """Extract continuation/reversal setup candidates for a session.
 
     This is the vectorized Phase 1: compute all signals, then group by
-    session-day and take the first valid FVG per direction.
+    session-day and select one valid FVG per direction.
 
     Args:
         signal_df_1m: Optional raw 1-minute DataFrame used for HTF level
@@ -2585,7 +3014,8 @@ def _extract_setup_candidates(
             direction_filter=config.direction_filter,
         )
     else:
-        # Continuation or reversal mode — vectorized first-per-session-day
+        # Continuation or reversal mode — select one same-direction FVG per
+        # session-day using the configured selection mode.
         dir_mult = -1 if config.strategy == "reversal" else 1
         take_longs = config.direction_filter in ("both", "long")
         take_shorts = config.direction_filter in ("both", "short")
@@ -2594,10 +3024,17 @@ def _extract_setup_candidates(
         long_out_dir = 1 * dir_mult
         want_long = (long_out_dir == 1 and take_longs) or (long_out_dir == -1 and take_shorts)
         if want_long:
-            first_long_bars = _first_per_day(valid_long, session_day_id)
             long_entry_price = fvg["long_entry_price"]
+            selected_long_bars = _select_orb_candidate_bars(
+                valid_long,
+                session_day_id,
+                long_entry_price,
+                prefer_highest=True,
+                selection_mode=config.continuation_fvg_selection,
+                trade_cap=config.orb_trade_max_per_session,
+            )
             long_gap_size = fvg["long_gap_size"]
-            for i in first_long_bars:
+            for i in selected_long_bars:
                 candidates.append(_SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
@@ -2613,10 +3050,17 @@ def _extract_setup_candidates(
         short_out_dir = -1 * dir_mult
         want_short = (short_out_dir == 1 and take_longs) or (short_out_dir == -1 and take_shorts)
         if want_short:
-            first_short_bars = _first_per_day(valid_short, session_day_id)
             short_entry_price = fvg["short_entry_price"]
+            selected_short_bars = _select_orb_candidate_bars(
+                valid_short,
+                session_day_id,
+                short_entry_price,
+                prefer_highest=False,
+                selection_mode=config.continuation_fvg_selection,
+                trade_cap=config.orb_trade_max_per_session,
+            )
             short_gap_size = fvg["short_gap_size"]
-            for i in first_short_bars:
+            for i in selected_short_bars:
                 candidates.append(_SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
@@ -3571,87 +4015,16 @@ def _extract_htf_lsi_candidates(
     short_fvg_top_arr = fvg["short_fvg_top"]
     short_fvg_bot_arr = fvg["short_entry_price"]
 
-    high_level_sources: list[dict] = []
-    low_level_sources: list[dict] = []
-    source_rank = 0
-
-    if include_htf_levels:
-        if htf_levels is None:
-            raise ValueError("htf_levels are required when include_htf_levels=True.")
-        high_level_sources.append(
-            {
-                "source_name": "htf_high",
-                "level_name": "",
-                "prices": htf_levels["active_high_price"],
-                "instance_ids": htf_levels["active_high_instance_id"],
-                "times": htf_levels["active_high_level_time"],
-                "tf_minutes": htf_level_tf_minutes,
-                "source_rank": source_rank,
-            }
-        )
-        source_rank += 1
-        low_level_sources.append(
-            {
-                "source_name": "htf_low",
-                "level_name": "",
-                "prices": htf_levels["active_low_price"],
-                "instance_ids": htf_levels["active_low_instance_id"],
-                "times": htf_levels["active_low_level_time"],
-                "tf_minutes": htf_level_tf_minutes,
-                "source_rank": source_rank,
-            }
-        )
-        source_rank += 1
-
-    if include_eqhl_levels:
-        if eqhl_levels is None:
-            raise ValueError("eqhl_levels are required when include_eqhl_levels=True.")
-        eqhl_tf_minutes = int(eqhl_levels["tf_minutes"])
-        high_level_sources.append(
-            {
-                "source_name": f"equal_high_{eqhl_tf_minutes}m",
-                "level_name": f"equal_high_{eqhl_tf_minutes}m",
-                "prices": eqhl_levels["active_high_price"],
-                "instance_ids": eqhl_levels["active_high_instance_id"],
-                "times": eqhl_levels["active_high_level_time"],
-                "tf_minutes": eqhl_tf_minutes,
-                "source_rank": source_rank,
-            }
-        )
-        source_rank += 1
-        low_level_sources.append(
-            {
-                "source_name": f"equal_low_{eqhl_tf_minutes}m",
-                "level_name": f"equal_low_{eqhl_tf_minutes}m",
-                "prices": eqhl_levels["active_low_price"],
-                "instance_ids": eqhl_levels["active_low_instance_id"],
-                "times": eqhl_levels["active_low_level_time"],
-                "tf_minutes": eqhl_tf_minutes,
-                "source_rank": source_rank,
-            }
-        )
-        source_rank += 1
-
-    if selected_reference_level_names:
-        if reference_levels is None or reference_instance_ids is None:
-            raise ValueError("reference_levels and reference_instance_ids are required when HTF-LSI reference levels are enabled.")
-        for level_name in selected_reference_level_names:
-            if level_name not in reference_levels or level_name not in reference_instance_ids:
-                raise ValueError(f"Missing cached HTF-LSI reference level arrays for {level_name!r}.")
-            source = {
-                "source_name": level_name,
-                "level_name": level_name,
-                "prices": reference_levels[level_name],
-                "instance_ids": reference_instance_ids[level_name],
-                "times": None,
-                "tf_minutes": 0,
-                "source_rank": source_rank,
-            }
-            source_rank += 1
-            if level_name.endswith("_high"):
-                high_level_sources.append(source)
-            else:
-                low_level_sources.append(source)
+    high_level_sources, low_level_sources = _build_htf_lsi_level_sources(
+        htf_levels=htf_levels,
+        eqhl_levels=eqhl_levels,
+        reference_levels=reference_levels,
+        reference_instance_ids=reference_instance_ids,
+        selected_reference_level_names=selected_reference_level_names,
+        include_htf_levels=include_htf_levels,
+        include_eqhl_levels=include_eqhl_levels,
+        htf_level_tf_minutes=htf_level_tf_minutes,
+    )
 
     if not high_level_sources and not low_level_sources:
         raise ValueError("htf_lsi requires at least one configured sweep source.")
@@ -5296,6 +5669,44 @@ def run_backtest(
                 timestamps, masks, half_day_set, date_strs, session_day_id
             )
 
+        pre_entry_cancel_requires_new_htf_lsi_sweep = (
+            config.strategy == "htf_lsi"
+            and bool(config.limit_cancel_on_pre_entry_target_touch)
+            and config.limit_cancel_on_pre_entry_target_touch_requires_htf_lsi_sweep
+        )
+        pre_entry_new_high_sweep_5m = np.zeros(n, dtype=bool)
+        pre_entry_new_low_sweep_5m = np.zeros(n, dtype=bool)
+        pre_entry_new_high_sweep_1m = np.zeros(len(high_1m) if high_1m is not None else 0, dtype=bool)
+        pre_entry_new_low_sweep_1m = np.zeros(len(low_1m) if low_1m is not None else 0, dtype=bool)
+        if pre_entry_cancel_requires_new_htf_lsi_sweep:
+            session_daily_atr = (
+                _signal_cache["atr"][config.atr_length]
+                if _signal_cache is not None
+                else compute_daily_atr(df, config.atr_length)
+            )
+            pre_entry_new_high_sweep_5m, pre_entry_new_low_sweep_5m = _build_htf_lsi_pre_entry_cancel_sweep_flags(
+                df=df,
+                timestamps=timestamps,
+                masks=masks,
+                session_day_id=session_day_id,
+                session=session,
+                config=config,
+                signal_df_1m=signal_df_1m,
+                daily_atr=session_daily_atr,
+                _signal_cache=_signal_cache,
+            )
+            if (use_hierarchical or use_magnifier) and bar_map is not None and len(pre_entry_new_high_sweep_1m) > 0:
+                flagged_high = np.where(pre_entry_new_high_sweep_5m)[0]
+                flagged_low = np.where(pre_entry_new_low_sweep_5m)[0]
+                for idx in flagged_high:
+                    start_1m = bar_map[idx, 0]
+                    end_1m = bar_map[idx, 1]
+                    pre_entry_new_high_sweep_1m[start_1m:end_1m] = True
+                for idx in flagged_low:
+                    start_1m = bar_map[idx, 0]
+                    end_1m = bar_map[idx, 1]
+                    pre_entry_new_low_sweep_1m[start_1m:end_1m] = True
+
         # Phase 1: Prepare all candidates (compute trade params + bar boundaries)
         prepared: list[_PreparedCandidate] = []
         target_pivot_arrays = None
@@ -5466,6 +5877,11 @@ def run_backtest(
                 last_bar_1m=last_bar_1m_val,
                 internal_swing_level=raw_swing,
                 cancel_on_swing=config.lsi_cancel_on_swing,
+                pre_entry_cancel_target_price=(
+                    tp1 if config.limit_cancel_on_pre_entry_target_touch == "tp1"
+                    else tp2 if config.limit_cancel_on_pre_entry_target_touch == "tp2"
+                    else np.nan
+                ),
             ))
 
         # Phase 2: Group by session-day and enforce one-trade-per-day.
@@ -5495,8 +5911,12 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pre_entry_cancel_requires_new_htf_lsi_sweep,
+                    pre_entry_new_high_sweep_5m,
+                    pre_entry_new_low_sweep_5m,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
+                    pc.pre_entry_cancel_target_price,
                 )
             elif use_magnifier and pc.entry_start_1m >= 0:
                 fill_bar_1m, exit_type, exit_bar_1m, pnl_pts, _, _ = _simulate_single_trade_magnifier(
@@ -5508,8 +5928,12 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pre_entry_cancel_requires_new_htf_lsi_sweep,
+                    pre_entry_new_high_sweep_1m,
+                    pre_entry_new_low_sweep_1m,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
+                    pc.pre_entry_cancel_target_price,
                 )
                 # Map 1m indices back to 5m for TradeResult timestamps
                 fill_bar = map_1m_to_5m(fill_bar_1m, bar_map) if fill_bar_1m >= 0 else -1
@@ -5525,8 +5949,12 @@ def run_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    pre_entry_cancel_requires_new_htf_lsi_sweep,
+                    pre_entry_new_high_sweep_5m,
+                    pre_entry_new_low_sweep_5m,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
+                    pc.pre_entry_cancel_target_price,
                 )
 
         def _simulate_candidate(pc: _PreparedCandidate) -> tuple[int, int, int, float, float, float]:
@@ -5684,6 +6112,7 @@ def run_backtest(
                 last_bar_1m=pc.last_bar_1m,
                 internal_swing_level=pc.internal_swing_level,
                 cancel_on_swing=pc.cancel_on_swing,
+                pre_entry_cancel_target_price=pc.pre_entry_cancel_target_price,
             )
 
         for sd in sorted(sd_groups):
@@ -5781,6 +6210,80 @@ def run_backtest(
                             next_pending.append((pc, sim))
                     pending = next_pending
                 continue
+            if config.strategy in {"continuation", "reversal"} and config.orb_trade_max_per_session != 1:
+                pending = [
+                    (pc, _simulate_candidate(pc))
+                    for pc in sorted(group, key=lambda pc: (pc.cand.signal_bar, pc.entry_bar_start))
+                ]
+                current_exit_bar = -1
+                filled_count = 0
+
+                while pending:
+                    blocked = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar <= current_exit_bar]
+                    if blocked:
+                        for pc, _ in blocked:
+                            _append_no_fill(pc)
+                        pending = [(pc, sim) for pc, sim in pending if pc.cand.signal_bar > current_exit_bar]
+                        if not pending:
+                            break
+
+                    if (
+                        config.orb_trade_max_per_session > 0
+                        and filled_count >= config.orb_trade_max_per_session
+                    ):
+                        for pc, _ in pending:
+                            _append_no_fill(pc)
+                        break
+
+                    # Re-arm only the next fresh setup per direction after each exit.
+                    armed_by_direction: dict[int, bool] = {}
+                    armed = []
+                    for pc, sim in pending:
+                        if armed_by_direction.get(pc.direction, False):
+                            continue
+                        armed_by_direction[pc.direction] = True
+                        armed.append((pc, sim))
+
+                    filled = [(pc, sim) for pc, sim in armed if sim[0] >= 0]
+                    if not filled:
+                        for pc, _ in pending:
+                            _append_no_fill(pc)
+                        break
+
+                    winner_pc, winner_sim = min(
+                        filled,
+                        key=lambda x: (x[1][0], x[0].cand.signal_bar),
+                    )
+                    _append_sim_result(winner_pc, *winner_sim)
+                    current_exit_bar = max(current_exit_bar, winner_sim[2])
+                    filled_count += 1
+
+                    realized_exit_type, realized_r_multiple = _realized_orb_outcome(
+                        winner_pc,
+                        winner_sim[1],
+                        winner_sim[3],
+                        reverse_dir=reverse_dir,
+                    )
+                    if not _orb_reentry_policy_allows(
+                        config.orb_reentry_policy,
+                        realized_exit_type,
+                        realized_r_multiple,
+                    ):
+                        for pc, _ in pending:
+                            if pc is not winner_pc:
+                                _append_no_fill(pc)
+                        break
+
+                    next_pending = []
+                    for pc, sim in pending:
+                        if pc is winner_pc:
+                            continue
+                        if pc.cand.signal_bar <= current_exit_bar:
+                            _append_no_fill(pc)
+                        else:
+                            next_pending.append((pc, sim))
+                    pending = next_pending
+                continue
 
             if len(group) == 1:
                 pc = group[0]
@@ -5830,6 +6333,7 @@ def run_backtest(
                             last_bar_1m=pc.last_bar_1m,
                             internal_swing_level=pc.internal_swing_level,
                             cancel_on_swing=pc.cancel_on_swing,
+                            pre_entry_cancel_target_price=pc.pre_entry_cancel_target_price,
                         )
                         _append_sim_result(pc, *_simulate_candidate(pc))
                 else:
