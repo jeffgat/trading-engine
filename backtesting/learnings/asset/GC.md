@@ -20,6 +20,22 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 
 ## Strategies Tested
 
+### TradingView Gold-X Strategy Suite v14.4 Replication — REVERSE-ENGINEERING CHECKPOINT (2026-04-27)
+
+**Status**: In progress. The revised/FVG leg is essentially matched; the remaining parity gap is Classic ORB over-generation.
+
+**Evidence**: `backtesting/data/results/goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427/summary.json`
+
+**Inputs**: TradingView export `N4A.Gold-X_Strategy_Suite_v14.4_COMEX_GC1!_2026-04-26_8d9be.csv` plus GC 5m visible-window overlays `COMEX_GC1!, 5_62a51.csv` and `COMEX_GC1!, 5_3576a.csv`.
+
+**Key findings**:
+- TradingView indicator columns include exact revised/FVG selection markers: `Shapes.2` = long FVG setup, `Shapes.3` = short FVG setup.
+- Overlay merge order mattered. Later TradingView CSV rows must override local parquet rows; otherwise March-April 2026 indicator marker columns are silently lost.
+- With the overlay fix, UT Bot trail column, 10-minute FVG-after-Classic block, and `Shapes.2`/`Shapes.3` filter, revised/FVG parity reached **17/17 export matches** (100.0% recall), with 20 simulated FVG trades (85.0% precision). Remaining FVG extras are old-history dates without exported marker columns: 2021-11-30 10:45 short, 2022-02-24 10:30 short, 2023-06-05 10:10 long.
+- Overall parity reached **224/245 entry-side-time matches** (91.43% recall). Classic ORB is 207/228 matches (90.79% recall), but still over-generates: 412 simulated Classic trades vs 228 exported (50.24% precision).
+
+**Next parity target**: reduce Classic extras by reverse-engineering proprietary Squeeze/WAE/divergence/Range Filter behavior or by using additional TradingView marker exports for Classic signal windows.
+
 ### Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-22
 
 #### Current: R3 High-RR config (post-engine-bugfix, 1s magnifier, Friday exclusion)

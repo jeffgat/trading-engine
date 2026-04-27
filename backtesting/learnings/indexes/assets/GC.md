@@ -5,6 +5,7 @@
 - Detailed history: [backtesting/learnings/asset/GC.md](../../asset/GC.md)
 
 ## Strategy Sections
+- `TradingView Gold-X Strategy Suite v14.4 Replication — REVERSE-ENGINEERING CHECKPOINT (2026-04-27)` -> `UNSPECIFIED`
 - `Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-22` -> `UNSPECIFIED`
 - `Reversal (bullish FVG -> short, bearish FVG -> long)` -> `INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal definition.`
 - `Inversion Longs (wait for FVG invalidation, then enter long)` -> `INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal/inversion definition.`
@@ -46,7 +47,7 @@
 - [GC_NY_HTF_LSI_PHASE_ONE.md](../../reports/GC_NY_HTF_LSI_PHASE_ONE.md) -> [gc_ny_htf_lsi_phase_one](../../../data/results/gc_ny_htf_lsi_phase_one)
 - [GC_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/GC_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [gc_ny_htf_lsi_stitched_followup](../../../data/results/gc_ny_htf_lsi_stitched_followup)
 
-## Result Directories (8)
+## Result Directories (19)
 - [gc_ny_htf_lsi_anchor_explore](../../../data/results/gc_ny_htf_lsi_anchor_explore) (1 files; primary: summary.json)
 - [gc_ny_htf_lsi_broad_discovery](../../../data/results/gc_ny_htf_lsi_broad_discovery) (6 files; primary: summary.json, stage_a_structural.json, stage_b_trade_cap.json, stage_c_oat.json, stage_d_grid.json)
 - [gc_ny_htf_lsi_phase_one](../../../data/results/gc_ny_htf_lsi_phase_one) (1 files; primary: phase_one_results.json)
@@ -55,3 +56,14 @@
 - [gc_orb_discovery_3session](../../../data/results/gc_orb_discovery_3session) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [gc_orb_discovery_pipeline](../../../data/results/gc_orb_discovery_pipeline) (1 files; primary: pipeline_results.json)
 - [gc_orb_phase_one](../../../data/results/gc_orb_phase_one) (1 files; primary: phase_one_results.json)
+- [goldx_gc_reverse_engineer_fvg_ut_baseline_20260426](../../../data/results/goldx_gc_reverse_engineer_fvg_ut_baseline_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_cloud_cross4_fvg_ut_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_cloud_cross4_fvg_ut_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_ema9_no_cross_fvg_ut_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_ema9_no_cross_fvg_ut_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_cloud_cross3_fvg_ut_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_cloud_cross3_fvg_ut_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_cloud_no_cross_fvg_ut_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_cloud_no_cross_fvg_ut_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_ema200_ema9_no_cross_fvg_ut_overlay_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_ema200_ema9_no_cross_fvg_ut_overlay_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_ema9_fvg_ut_classic_cd10_overlay_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_ema9_fvg_ut_classic_cd10_overlay_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_20260426_rerun](../../../data/results/goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_20260426_rerun) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_overlay_20260426](../../../data/results/goldx_gc_reverse_engineer_rg_trend_ema9_no_cross_fvg_ut_overlay_20260426) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)
+- [goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427](../../../data/results/goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427) (3 files; primary: summary.json, export_trade_diagnostics.csv, sim_trades.csv)

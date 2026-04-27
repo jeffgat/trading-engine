@@ -10,10 +10,10 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 34
+- Strategy sections indexed: 35
 - Related reports indexed: 4
-- Related result directories indexed: 8
-- Status mix: INVALIDATED_OR_CORRUPT: 7, NO-GO: 5, UNSPECIFIED: 22
+- Related result directories indexed: 19
+- Status mix: INVALIDATED_OR_CORRUPT: 7, NO-GO: 5, UNSPECIFIED: 23
 
 ## Strategy Snapshot
 - `Reversal (bullish FVG -> short, bearish FVG -> long)` -> `INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal definition.`
@@ -28,4 +28,4 @@ This is the short entrypoint for agent and LLM context loading.
 - `NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — NO-GO` -> `**NO-GO** (real pre-holdout family, but the opened funded holdout rejected the entire frozen shortlist)`
 - `NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO` -> `**NO-GO** (REJECT 2/5 pipeline phases — WF efficiency too low, prop constraints fail)`
 - `CISD (Change in State of Delivery)` -> `NO-GO (tested on old data — results may differ on new complete data, but signal quality issue is fundamental)`
-- ... plus 22 more entries in the [full GC index](../../indexes/assets/GC.md).
+- ... plus 23 more entries in the [full GC index](../../indexes/assets/GC.md).
