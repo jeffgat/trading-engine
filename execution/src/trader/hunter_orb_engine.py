@@ -53,6 +53,7 @@ class HunterORBEngine(ORBEngine):
     max_contracts: float = 20.0
 
     # 15m EMA bias filter.
+    ema15_enabled: bool = True
     ema15_length: int = 14
     ema15_source: str = "close"
     ema15_tolerance_points: float = 2.0
@@ -211,22 +212,23 @@ class HunterORBEngine(ORBEngine):
             )
             return None
 
-        ema15_distance = self._ema15_distance(bar, direction)
-        if ema15_distance is None:
-            self._log_trade("HUNTER_FILTER_EMA15", "ema not ready")
-            return None
-        if ema15_distance < -self.ema15_tolerance_points:
-            self._log_trade(
-                "HUNTER_FILTER_EMA15",
-                "distance=%.2f tolerance=%.2f" % (ema15_distance, self.ema15_tolerance_points),
-            )
-            return None
-        if self.ema15_max_distance is not None and ema15_distance > self.ema15_max_distance:
-            self._log_trade(
-                "HUNTER_FILTER_EMA15_EXT",
-                "distance=%.2f max=%.2f" % (ema15_distance, self.ema15_max_distance),
-            )
-            return None
+        ema15_distance = self._ema15_distance(bar, direction) if self.ema15_enabled else None
+        if self.ema15_enabled:
+            if ema15_distance is None:
+                self._log_trade("HUNTER_FILTER_EMA15", "ema not ready")
+                return None
+            if ema15_distance < -self.ema15_tolerance_points:
+                self._log_trade(
+                    "HUNTER_FILTER_EMA15",
+                    "distance=%.2f tolerance=%.2f" % (ema15_distance, self.ema15_tolerance_points),
+                )
+                return None
+            if self.ema15_max_distance is not None and ema15_distance > self.ema15_max_distance:
+                self._log_trade(
+                    "HUNTER_FILTER_EMA15_EXT",
+                    "distance=%.2f max=%.2f" % (ema15_distance, self.ema15_max_distance),
+                )
+                return None
 
         entry = float(bar.close)
         stop = float(bar.low) - self.sl_buffer_points if direction == 1 else float(bar.high) + self.sl_buffer_points

@@ -218,10 +218,26 @@
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
-      "HUNTER_ORB": {
+      "H_ORB": {
         "risk_usd": 350,
         "max_single_risk_usd": 350,
         "max_contracts": 20
+      },
+      "H_ORB_ABLATED": {
+        "risk_usd": 350,
+        "max_single_risk_usd": 350,
+        "max_contracts": 20,
+        "entry_end": "13:05",
+        "excluded_dow": [1],
+        "body_min_pct": 0.0,
+        "rejection_wick_max_pct": 20.0,
+        "ema15_enabled": false,
+        "ema15_max_distance": null,
+        "reentry_policy": "all_nonoverlap",
+        "allow_same_bar_win_reentry": false,
+        "reentry_max_extension_pct": null,
+        "enable_fast_reentry_exhaustion_filter": false,
+        "reduced_target_rr": 2.0
       }
     },
     "lsi_sessions": {

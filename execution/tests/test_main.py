@@ -612,9 +612,17 @@ def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
     testing = configs["TESTING"]
 
     assert testing.webhook_url == ""
-    assert "HUNTER_ORB" in testing.session_overrides
-    assert testing.session_overrides["HUNTER_ORB"]["risk_usd"] == 350
-    assert testing.session_overrides["HUNTER_ORB"]["max_contracts"] == 20
+    assert "H_ORB" in testing.session_overrides
+    assert testing.session_overrides["H_ORB"]["risk_usd"] == 350
+    assert testing.session_overrides["H_ORB"]["max_contracts"] == 20
+    assert "H_ORB_ABLATED" in testing.session_overrides
+    assert testing.session_overrides["H_ORB_ABLATED"]["risk_usd"] == 350
+    assert testing.session_overrides["H_ORB_ABLATED"]["entry_end"] == "13:05"
+    assert testing.session_overrides["H_ORB_ABLATED"]["ema15_enabled"] is False
+    assert testing.session_overrides["H_ORB_ABLATED"]["body_min_pct"] == 0.0
+    assert testing.session_overrides["H_ORB_ABLATED"]["rejection_wick_max_pct"] == 20.0
+    assert testing.session_overrides["H_ORB_ABLATED"]["reentry_policy"] == "all_nonoverlap"
+    assert testing.session_overrides["H_ORB_ABLATED"]["reduced_target_rr"] == 2.0
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():

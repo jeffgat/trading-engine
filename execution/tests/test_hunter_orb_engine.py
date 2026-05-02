@@ -28,7 +28,7 @@ def broker():
 
 def _make_hunter_engine(broker, **overrides) -> HunterORBEngine:
     defaults = dict(
-        name="HUNTER_ORB",
+        name="H_ORB",
         broker=broker,
         exec_ticker="MNQ",
         orb_start="09:30",
@@ -113,6 +113,6 @@ class TestHunterORBEngine:
 
         assert engine._state == State.WAITING_FOR_GAP
         assert len(records) == 1
-        assert records[0].session == "HUNTER_ORB"
+        assert records[0].session == "H_ORB"
         assert records[0].exit_type == "tp2_direct"
         assert records[0].r_result == pytest.approx(2.0)
