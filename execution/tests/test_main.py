@@ -22,6 +22,7 @@ from trader.gates import (
 )
 from trader.lsi_engine import LSIState
 from trader.main import (
+    SESSION_CONFIGS,
     _checkpoint_shutdown_flat,
     _required_regime_daily_symbols,
     apply_atr_values,
@@ -615,6 +616,9 @@ def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
     assert "H_ORB" in testing.session_overrides
     assert testing.session_overrides["H_ORB"]["risk_usd"] == 350
     assert testing.session_overrides["H_ORB"]["max_contracts"] == 20
+    assert "H_ORB_SAFE" in testing.session_overrides
+    assert testing.session_overrides["H_ORB_SAFE"]["risk_usd"] == 350
+    assert testing.session_overrides["H_ORB_SAFE"]["max_contracts"] == 20
     assert "H_ORB_ABLATED" in testing.session_overrides
     assert testing.session_overrides["H_ORB_ABLATED"]["risk_usd"] == 350
     assert testing.session_overrides["H_ORB_ABLATED"]["entry_end"] == "13:05"
@@ -623,6 +627,28 @@ def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
     assert testing.session_overrides["H_ORB_ABLATED"]["rejection_wick_max_pct"] == 20.0
     assert testing.session_overrides["H_ORB_ABLATED"]["reentry_policy"] == "all_nonoverlap"
     assert testing.session_overrides["H_ORB_ABLATED"]["reduced_target_rr"] == 2.0
+
+
+def test_hunter_orb_safe_defaults_match_10y_safe_branch():
+    config = SESSION_CONFIGS["H_ORB_SAFE"]
+
+    assert config["engine_type"] == "hunter_orb"
+    assert config["entry_end"] == "11:00"
+    assert config["excluded_dow"] is None
+    assert config["regime_gates"] == [
+        "block_bull_high_vol",
+        "block_bear_high_vol",
+        "block_bear_medium_vol",
+    ]
+    assert config["rejection_wick_max_pct"] == 100.0
+    assert config["ema15_length"] == 14
+    assert config["ema15_tolerance_points"] == 0.0
+    assert config["ema15_max_distance"] is None
+    assert config["reentry_policy"] == "legacy_one_reentry_after_loss"
+    assert config["allow_same_bar_win_reentry"] is False
+    assert config["reentry_max_extension_pct"] is None
+    assert config["enable_fast_reentry_exhaustion_filter"] is False
+    assert config["reduced_target_rr"] == 1.0
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():
@@ -680,7 +706,14 @@ def test_bull_regime_gate_blocks_without_daily_history_provider():
 
 
 def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
-    gates = dict(build_regime_gates(("block_bull_medium_vol", "block_sideways_medium_vol", "block_full_medium_vol")))
+    gates = dict(build_regime_gates((
+        "block_bull_medium_vol",
+        "block_sideways_medium_vol",
+        "block_full_medium_vol",
+        "block_bull_high_vol",
+        "block_bear_high_vol",
+        "block_bear_medium_vol",
+    )))
     daily = pd.DataFrame(
         {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.0]},
         index=pd.DatetimeIndex([pd.Timestamp("2025-01-31")]),
@@ -693,6 +726,9 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bull_medium_vol"]}),
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["sideways_medium_vol"]}),
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_high_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bull_high_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_high_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_medium_vol"]}),
     ))
 
     monkeypatch.setattr("trader.gates._load_nq_daily_history", _fake_daily_loader)
@@ -701,6 +737,9 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
     assert gates["block_bull_medium_vol"]("20250131") is False
     assert gates["block_sideways_medium_vol"]("20250131") is False
     assert gates["block_full_medium_vol"]("20250131") is True
+    assert gates["block_bull_high_vol"]("20250131") is False
+    assert gates["block_bear_high_vol"]("20250131") is False
+    assert gates["block_bear_medium_vol"]("20250131") is False
 
 
 def test_evaluate_regime_gate_returns_bucket_context(monkeypatch):

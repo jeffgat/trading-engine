@@ -395,6 +395,9 @@ _REGIME_GATE_BUILDERS: dict[str, Callable[[str], RegimeGateCheck]] = {
     "bull_no_low_confidence": _build_bull_no_low_confidence_gate,
     "block_bull_low_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_low_vol"})),
     "block_bull_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_medium_vol"})),
+    "block_bull_high_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bull_high_vol"})),
+    "block_bear_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bear_medium_vol"})),
+    "block_bear_high_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"bear_high_vol"})),
     "block_sideways_medium_vol": lambda name: _build_combined_regime_block_gate(name, frozenset({"sideways_medium_vol"})),
     "block_full_medium_vol": lambda name: _build_combined_regime_block_gate(
         name,
@@ -413,6 +416,21 @@ _REGIME_GATE_EVALUATORS: dict[str, Callable[[str, str], RegimeGateEvaluation]] =
         name,
         date_key,
         frozenset({"bull_medium_vol"}),
+    ),
+    "block_bull_high_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"bull_high_vol"}),
+    ),
+    "block_bear_medium_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"bear_medium_vol"}),
+    ),
+    "block_bear_high_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
+        name,
+        date_key,
+        frozenset({"bear_high_vol"}),
     ),
     "block_sideways_medium_vol": lambda name, date_key: _evaluate_combined_regime_block_gate(
         name,

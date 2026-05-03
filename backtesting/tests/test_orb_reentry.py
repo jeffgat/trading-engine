@@ -50,6 +50,10 @@ def _run_backtest_with_candidates(
     *,
     trade_cap: int,
     reentry_policy: str = "any_reentry",
+    rr: float = 2.0,
+    tp1_ratio: float = 0.5,
+    wide_stop_target_threshold_points: float = 0.0,
+    wide_stop_target_rr: float = 0.0,
 ) -> list[simulator.TradeResult]:
     monkeypatch.setattr(simulator, "_extract_setup_candidates", lambda *_args, **_kwargs: list(candidates))
     config = StrategyConfig(
@@ -72,10 +76,12 @@ def _run_backtest_with_candidates(
         risk_usd=20.0,
         min_qty=1.0,
         qty_step=1.0,
-        rr=2.0,
-        tp1_ratio=0.5,
+        rr=rr,
+        tp1_ratio=tp1_ratio,
         orb_trade_max_per_session=trade_cap,
         orb_reentry_policy=reentry_policy,
+        wide_stop_target_threshold_points=wide_stop_target_threshold_points,
+        wide_stop_target_rr=wide_stop_target_rr,
     )
     return simulator.run_backtest(df, config)
 
@@ -189,3 +195,48 @@ def test_negative_orb_trade_cap_rejected() -> None:
 def test_invalid_orb_reentry_policy_rejected() -> None:
     with pytest.raises(ValueError, match="orb_reentry_policy must be one of"):
         StrategyConfig(orb_reentry_policy="not_a_policy")
+
+
+def test_wide_stop_target_reduction_uses_lower_effective_rr(monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _df(
+        [100.0, 100.0, 100.4, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2],
+        [100.0, 100.2, 101.3, 100.4, 100.4, 100.4, 100.4, 100.4, 100.4, 100.4, 100.4, 100.4, 100.4],
+        [100.0, 99.8, 100.2, 100.1, 100.1, 100.1, 100.1, 100.1, 100.1, 100.1, 100.1, 100.1, 100.1],
+        [100.0, 100.1, 100.3, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2, 100.2],
+    )
+    candidates = [_cand(0, 100.0)]
+
+    normal = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=3.0,
+        tp1_ratio=0.5,
+    )
+    reduced = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=3.0,
+        tp1_ratio=0.5,
+        wide_stop_target_threshold_points=0.5,
+        wide_stop_target_rr=1.25,
+    )
+
+    normal_fill = [t for t in normal if t.exit_type != EXIT_NO_FILL][0]
+    reduced_fill = [t for t in reduced if t.exit_type != EXIT_NO_FILL][0]
+
+    assert normal_fill.tp2_price == pytest.approx(103.0)
+    assert reduced_fill.tp2_price == pytest.approx(101.25)
+    assert normal_fill.r_multiple < 1.0
+    assert reduced_fill.r_multiple == pytest.approx(1.25)
+
+
+def test_invalid_wide_stop_target_reduction_rejected() -> None:
+    with pytest.raises(ValueError, match="wide_stop_target_rr must be >= 1.0"):
+        StrategyConfig(wide_stop_target_rr=0.5)
+
+    with pytest.raises(ValueError, match="wide_stop_target_rr must be <= rr"):
+        StrategyConfig(rr=2.0, wide_stop_target_rr=2.5)

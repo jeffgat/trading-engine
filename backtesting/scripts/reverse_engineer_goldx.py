@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -27,7 +28,10 @@ INITIAL_CAPITAL = 10_000.0
 ORB_START = "09:30"
 ORB_END_BAR = "09:40"
 CLASSIC_SIGNAL_START = "09:45"
-CLASSIC_SIGNAL_END = "10:50"
+# Last Classic signal bar whose next-bar strategy fill is still inside the
+# guide's 09:45-10:50 New York entry window. The 10:50 signal bar would fill
+# at 10:55; those were all local-only extras against the GC TradingView export.
+CLASSIC_SIGNAL_END = "10:45"
 FVG_BREAKOUT_START = "09:45"
 FVG_BREAKOUT_END = "13:00"
 
@@ -53,10 +57,15 @@ CLASSIC_HARD_STOP_BUFFER_POINTS = 7.0
 CLASSIC_OVEREXTENSION_MAX_PCT = 60.0
 CLASSIC_COOLDOWN_MINUTES = 50
 CLASSIC_MAX_HOLD_MINUTES = 180
+CLASSIC_SQUEEZE_LENGTH = 100
+CLASSIC_DIVERGENCE_LOOKBACK = 15
 CLASSIC_RG_PERIOD = 30
 CLASSIC_RG_MULT = 5.0
 CLASSIC_TREND_FAST_EMA = 20
 CLASSIC_TREND_SLOW_EMA = 50
+CLASSIC_MOMENTUM_FAST_EMA = 8
+CLASSIC_MOMENTUM_SLOW_EMA = 100
+CLASSIC_MOMENTUM_SENSITIVITY = 250.0
 CLASSIC_EMA_FILTER_LENGTH = 200
 CLASSIC_EMA_CLOUD_PERIOD = 9
 CLASSIC_EMA_CROSS_SENSITIVITY_HOURS = 4.0
@@ -412,8 +421,15 @@ def build_classic_candidates(
     enable_ema200_filter: bool = False,
     enable_ema9_cloud_filter: bool = False,
     enable_ema_cross_filter: bool = False,
+    enable_tv_classic_shape_filter: bool = False,
+    enable_squeeze_momentum_filter: bool = False,
+    enable_wae_momentum_filter: bool = False,
+    enable_divergence_filter: bool = False,
     ema_cross_hours: float = CLASSIC_EMA_CROSS_SENSITIVITY_HOURS,
     ema_cross_max_crosses: int = CLASSIC_EMA_CROSS_MAX_CROSSES,
+    ema_cross_long_max_crosses: int | None = None,
+    ema_cross_short_max_crosses: int | None = None,
+    divergence_lookback: int = CLASSIC_DIVERGENCE_LOOKBACK,
 ) -> list[ClassicCandidate]:
     candidates: list[ClassicCandidate] = []
     needs_filter_columns = (
@@ -422,11 +438,15 @@ def build_classic_candidates(
         or enable_ema200_filter
         or enable_ema9_cloud_filter
         or enable_ema_cross_filter
+        or enable_squeeze_momentum_filter
+        or enable_wae_momentum_filter
+        or enable_divergence_filter
     )
     source = (
         add_classic_filter_columns(
             bars_5m,
             ema_cross_hours=ema_cross_hours,
+            divergence_lookback=divergence_lookback,
         )
         if needs_filter_columns
         else bars_5m
@@ -468,9 +488,27 @@ def build_classic_candidates(
                     continue
                 if enable_ema_cross_filter and not classic_ema_cross_pass(
                     row,
+                    side,
                     ema_cross_max_crosses=ema_cross_max_crosses,
+                    ema_cross_long_max_crosses=ema_cross_long_max_crosses,
+                    ema_cross_short_max_crosses=ema_cross_short_max_crosses,
                 ):
                     continue
+                if enable_squeeze_momentum_filter and not classic_squeeze_momentum_pass(row, side):
+                    continue
+                if enable_wae_momentum_filter and not classic_wae_momentum_pass(row, side):
+                    continue
+                if enable_divergence_filter and not classic_divergence_pass(row, side):
+                    continue
+                if enable_tv_classic_shape_filter:
+                    marker_col = "Shapes" if side == "long" else "Shapes.1"
+                    marker_value = row.get(marker_col)
+                    row_has_tv_markers = any(
+                        _finite(row.get(column))
+                        for column in ("Shapes", "Shapes.1")
+                    )
+                    if row_has_tv_markers and (not _finite(marker_value) or float(marker_value) == 0.0):
+                        continue
                 candidates.append(
                     ClassicCandidate(
                         family="classic",
@@ -492,6 +530,7 @@ def add_classic_filter_columns(
     bars_5m: pd.DataFrame,
     *,
     ema_cross_hours: float = CLASSIC_EMA_CROSS_SENSITIVITY_HOURS,
+    divergence_lookback: int = CLASSIC_DIVERGENCE_LOOKBACK,
 ) -> pd.DataFrame:
     """Add visible-guide Classic filter proxies.
 
@@ -504,6 +543,17 @@ def add_classic_filter_columns(
         period=CLASSIC_RG_PERIOD,
         multiplier=CLASSIC_RG_MULT,
     )
+    if "Plot" in bars.columns:
+        tv_rg_filter = pd.to_numeric(bars["Plot"], errors="coerce")
+        tv_rg_mask = tv_rg_filter.notna()
+        tv_rg_delta = tv_rg_filter.diff()
+        tv_rg_step = pd.Series(pd.NA, index=bars.index, dtype="Float64")
+        tv_rg_step = tv_rg_step.mask(tv_rg_delta > 0, 1).mask(tv_rg_delta < 0, -1)
+        tv_rg_direction = tv_rg_step.ffill()
+        fallback_direction = pd.Series(bars["classic_rg_direction"], index=bars.index)
+        tv_rg_direction = tv_rg_direction.fillna(fallback_direction).fillna(0).astype("int64")
+        bars.loc[tv_rg_mask, "classic_rg_filter"] = tv_rg_filter.loc[tv_rg_mask]
+        bars.loc[tv_rg_mask, "classic_rg_direction"] = tv_rg_direction.loc[tv_rg_mask]
     bars["classic_trend_fast_ema"] = bars["close"].ewm(
         span=CLASSIC_TREND_FAST_EMA,
         adjust=False,
@@ -514,6 +564,42 @@ def add_classic_filter_columns(
         adjust=False,
         min_periods=CLASSIC_TREND_SLOW_EMA,
     ).mean()
+    highest = bars["high"].rolling(CLASSIC_SQUEEZE_LENGTH, min_periods=CLASSIC_SQUEEZE_LENGTH).max()
+    lowest = bars["low"].rolling(CLASSIC_SQUEEZE_LENGTH, min_periods=CLASSIC_SQUEEZE_LENGTH).min()
+    close_sma = bars["close"].rolling(CLASSIC_SQUEEZE_LENGTH, min_periods=CLASSIC_SQUEEZE_LENGTH).mean()
+    squeeze_source = bars["close"] - (((highest + lowest) / 2.0 + close_sma) / 2.0)
+    bars["classic_squeeze_momentum"] = rolling_linreg_last(squeeze_source, CLASSIC_SQUEEZE_LENGTH)
+    prior_high = bars["high"].shift(1).rolling(divergence_lookback, min_periods=divergence_lookback).max()
+    prior_low = bars["low"].shift(1).rolling(divergence_lookback, min_periods=divergence_lookback).min()
+    prior_momentum_high = (
+        bars["classic_squeeze_momentum"]
+        .shift(1)
+        .rolling(divergence_lookback, min_periods=divergence_lookback)
+        .max()
+    )
+    prior_momentum_low = (
+        bars["classic_squeeze_momentum"]
+        .shift(1)
+        .rolling(divergence_lookback, min_periods=divergence_lookback)
+        .min()
+    )
+    bars["classic_bearish_divergence"] = (bars["high"] >= prior_high) & (
+        bars["classic_squeeze_momentum"] < prior_momentum_high
+    )
+    bars["classic_bullish_divergence"] = (bars["low"] <= prior_low) & (
+        bars["classic_squeeze_momentum"] > prior_momentum_low
+    )
+    momentum_fast = bars["close"].ewm(
+        span=CLASSIC_MOMENTUM_FAST_EMA,
+        adjust=False,
+        min_periods=CLASSIC_MOMENTUM_FAST_EMA,
+    ).mean()
+    momentum_slow = bars["close"].ewm(
+        span=CLASSIC_MOMENTUM_SLOW_EMA,
+        adjust=False,
+        min_periods=CLASSIC_MOMENTUM_SLOW_EMA,
+    ).mean()
+    bars["classic_wae_momentum"] = (momentum_fast - momentum_slow).diff() * CLASSIC_MOMENTUM_SENSITIVITY
     bars["classic_ema200"] = bars["close"].ewm(
         span=CLASSIC_EMA_FILTER_LENGTH,
         adjust=False,
@@ -524,7 +610,7 @@ def add_classic_filter_columns(
         adjust=False,
         min_periods=CLASSIC_EMA_CLOUD_PERIOD,
     ).mean()
-    bars["classic_ema9_low"] = bars["low"].ewm(
+    bars["classic_ema9_close"] = bars["close"].ewm(
         span=CLASSIC_EMA_CLOUD_PERIOD,
         adjust=False,
         min_periods=CLASSIC_EMA_CLOUD_PERIOD,
@@ -538,6 +624,19 @@ def add_classic_filter_columns(
     lookback_bars = max(1, int(round(ema_cross_hours * 60.0 / 5.0)))
     bars["classic_ema200_cross_count"] = crosses.rolling(lookback_bars, min_periods=1).sum()
     return bars
+
+
+def rolling_linreg_last(series: pd.Series, length: int) -> pd.Series:
+    """TradingView-style linreg value at the end of each rolling window."""
+    x = np.arange(length, dtype=float)
+    sum_x = float(x.sum())
+    sum_x2 = float((x * x).sum())
+    denominator = length * sum_x2 - sum_x * sum_x
+    sum_y = series.rolling(length, min_periods=length).sum()
+    sum_xy = series.rolling(length, min_periods=length).apply(lambda values: float(np.dot(x, values)), raw=True)
+    slope = (length * sum_xy - sum_x * sum_y) / denominator
+    intercept = (sum_y - slope * sum_x) / length
+    return intercept + slope * (length - 1)
 
 
 def range_filter_direction(
@@ -620,19 +719,59 @@ def classic_ema200_pass(row: pd.Series, side: str) -> bool:
 
 def classic_ema9_cloud_pass(row: pd.Series, side: str) -> bool:
     ema9_high = row.get("classic_ema9_high")
-    ema9_low = row.get("classic_ema9_low")
-    if not _finite(ema9_high) or not _finite(ema9_low):
+    ema9_close = row.get("classic_ema9_close")
+    if not _finite(ema9_high) or not _finite(ema9_close):
         return False
     if side == "long":
         return float(row["close"]) > float(ema9_high)
-    return float(row["close"]) < float(ema9_low)
+    return float(row["close"]) < float(ema9_close)
 
 
-def classic_ema_cross_pass(row: pd.Series, *, ema_cross_max_crosses: int) -> bool:
+def classic_ema_cross_pass(
+    row: pd.Series,
+    side: str,
+    *,
+    ema_cross_max_crosses: int,
+    ema_cross_long_max_crosses: int | None = None,
+    ema_cross_short_max_crosses: int | None = None,
+) -> bool:
     cross_count = row.get("classic_ema200_cross_count")
     if not _finite(cross_count):
         return False
-    return int(cross_count) <= ema_cross_max_crosses
+    side_cap = (
+        ema_cross_long_max_crosses
+        if side == "long" and ema_cross_long_max_crosses is not None
+        else ema_cross_short_max_crosses
+        if side == "short" and ema_cross_short_max_crosses is not None
+        else ema_cross_max_crosses
+    )
+    return int(cross_count) <= side_cap
+
+
+def classic_squeeze_momentum_pass(row: pd.Series, side: str) -> bool:
+    momentum = row.get("classic_squeeze_momentum")
+    if not _finite(momentum):
+        return False
+    if side == "long":
+        return float(momentum) > 0.0
+    return float(momentum) < 0.0
+
+
+def classic_wae_momentum_pass(row: pd.Series, side: str) -> bool:
+    momentum = row.get("classic_wae_momentum")
+    if not _finite(momentum):
+        return False
+    if side == "long":
+        return float(momentum) > 0.0
+    return float(momentum) < 0.0
+
+
+def classic_divergence_pass(row: pd.Series, side: str) -> bool:
+    if side == "long":
+        bearish = row.get("classic_bearish_divergence")
+        return False if _finite(bearish) and bool(bearish) else True
+    bullish = row.get("classic_bullish_divergence")
+    return False if _finite(bullish) and bool(bullish) else True
 
 
 def detect_fvg_at(group: pd.DataFrame, pos: int, side: str) -> tuple[float, float, float, float] | None:
@@ -1097,8 +1236,15 @@ def run_core_replication(
     enable_classic_ema200_filter: bool = False,
     enable_classic_ema9_cloud_filter: bool = False,
     enable_classic_ema_cross_filter: bool = False,
+    enable_classic_tv_shape_filter: bool = False,
+    enable_classic_squeeze_momentum_filter: bool = False,
+    enable_classic_wae_momentum_filter: bool = False,
+    enable_classic_divergence_filter: bool = False,
     classic_ema_cross_hours: float = CLASSIC_EMA_CROSS_SENSITIVITY_HOURS,
     classic_ema_cross_max_crosses: int = CLASSIC_EMA_CROSS_MAX_CROSSES,
+    classic_ema_cross_long_max_crosses: int | None = None,
+    classic_ema_cross_short_max_crosses: int | None = None,
+    classic_divergence_lookback: int = CLASSIC_DIVERGENCE_LOOKBACK,
     enable_fvg_ut_filter: bool = False,
     enable_fvg_first_setup_per_breakout: bool = False,
     enable_fvg_tv_shape_filter: bool = False,
@@ -1115,8 +1261,15 @@ def run_core_replication(
         enable_ema200_filter=enable_classic_ema200_filter,
         enable_ema9_cloud_filter=enable_classic_ema9_cloud_filter,
         enable_ema_cross_filter=enable_classic_ema_cross_filter,
+        enable_tv_classic_shape_filter=enable_classic_tv_shape_filter,
+        enable_squeeze_momentum_filter=enable_classic_squeeze_momentum_filter,
+        enable_wae_momentum_filter=enable_classic_wae_momentum_filter,
+        enable_divergence_filter=enable_classic_divergence_filter,
         ema_cross_hours=classic_ema_cross_hours,
         ema_cross_max_crosses=classic_ema_cross_max_crosses,
+        ema_cross_long_max_crosses=classic_ema_cross_long_max_crosses,
+        ema_cross_short_max_crosses=classic_ema_cross_short_max_crosses,
+        divergence_lookback=classic_divergence_lookback,
     )
     fvg_setups = build_fvg_setups(
         bars_5m,
@@ -1206,6 +1359,11 @@ def run_core_replication(
         "enable_fvg_tv_shape_filter": enable_fvg_tv_shape_filter,
         "fvg_after_classic_cooldown_minutes": fvg_after_classic_cooldown_minutes,
         "fvg_after_classic_exit_cooldown_minutes": fvg_after_classic_exit_cooldown_minutes,
+        "enable_classic_tv_shape_filter": enable_classic_tv_shape_filter,
+        "enable_classic_squeeze_momentum_filter": enable_classic_squeeze_momentum_filter,
+        "enable_classic_wae_momentum_filter": enable_classic_wae_momentum_filter,
+        "enable_classic_divergence_filter": enable_classic_divergence_filter,
+        "classic_divergence_lookback": classic_divergence_lookback,
     }
     return trades, diagnostics
 
@@ -1263,7 +1421,7 @@ def summarize_export(trades: list[ExportTrade]) -> dict[str, Any]:
             "session": "New York, ORB 09:30-09:45",
             "classic_days": "Mon, Thu, Fri",
             "revised_fvg_days": "Mon, Tue, Thu",
-            "classic_entry_signal_window": "09:45-10:50, next-bar entries through 10:55",
+            "classic_entry_signal_window": "09:45-10:45 signal bars, next-bar entries through 10:50",
             "fvg_selection_window": "09:45-13:00, later fills allowed by 30-bar/200-minute validity",
             "fvg_mode": "Aggressive, 2 bars before/after breakout",
             "fvg_size_filter": "9 to 60 points",
@@ -1484,6 +1642,26 @@ def main() -> None:
         help="Enable a Classic EMA200 cross-frequency filter proxy",
     )
     parser.add_argument(
+        "--enable-classic-tv-shape-filter",
+        action="store_true",
+        help="When TradingView marker columns are present, require Shapes for long Classic and Shapes.1 for short Classic",
+    )
+    parser.add_argument(
+        "--enable-classic-squeeze-momentum-filter",
+        action="store_true",
+        help="Enable a Classic 100-bar squeeze momentum direction proxy",
+    )
+    parser.add_argument(
+        "--enable-classic-wae-momentum-filter",
+        action="store_true",
+        help="Enable a Classic WAE-style EMA8/EMA100 momentum acceleration proxy",
+    )
+    parser.add_argument(
+        "--enable-classic-divergence-filter",
+        action="store_true",
+        help="Enable a Classic price-vs-squeeze-momentum divergence proxy",
+    )
+    parser.add_argument(
         "--classic-ema-cross-hours",
         type=float,
         default=CLASSIC_EMA_CROSS_SENSITIVITY_HOURS,
@@ -1494,6 +1672,24 @@ def main() -> None:
         type=int,
         default=CLASSIC_EMA_CROSS_MAX_CROSSES,
         help="Maximum EMA200 crosses allowed inside the cross-frequency lookback",
+    )
+    parser.add_argument(
+        "--classic-ema-cross-long-max-crosses",
+        type=int,
+        default=None,
+        help="Optional long-side override for --classic-ema-cross-max-crosses",
+    )
+    parser.add_argument(
+        "--classic-ema-cross-short-max-crosses",
+        type=int,
+        default=None,
+        help="Optional short-side override for --classic-ema-cross-max-crosses",
+    )
+    parser.add_argument(
+        "--classic-divergence-lookback",
+        type=int,
+        default=CLASSIC_DIVERGENCE_LOOKBACK,
+        help="Lookback bars for --enable-classic-divergence-filter",
     )
     parser.add_argument("--point-value", type=float, default=DEFAULT_POINT_VALUE)
     parser.add_argument("--commission", type=float, default=DEFAULT_ROUND_TRIP_COMMISSION)
@@ -1583,8 +1779,15 @@ def main() -> None:
             enable_classic_ema200_filter=args.enable_classic_ema200_filter,
             enable_classic_ema9_cloud_filter=args.enable_classic_ema9_cloud_filter,
             enable_classic_ema_cross_filter=args.enable_classic_ema_cross_filter,
+            enable_classic_tv_shape_filter=args.enable_classic_tv_shape_filter,
+            enable_classic_squeeze_momentum_filter=args.enable_classic_squeeze_momentum_filter,
+            enable_classic_wae_momentum_filter=args.enable_classic_wae_momentum_filter,
+            enable_classic_divergence_filter=args.enable_classic_divergence_filter,
             classic_ema_cross_hours=args.classic_ema_cross_hours,
             classic_ema_cross_max_crosses=args.classic_ema_cross_max_crosses,
+            classic_ema_cross_long_max_crosses=args.classic_ema_cross_long_max_crosses,
+            classic_ema_cross_short_max_crosses=args.classic_ema_cross_short_max_crosses,
+            classic_divergence_lookback=args.classic_divergence_lookback,
             enable_fvg_ut_filter=args.enable_fvg_ut_filter,
             enable_fvg_first_setup_per_breakout=args.enable_fvg_first_setup_per_breakout,
             enable_fvg_tv_shape_filter=args.enable_fvg_tv_shape_filter,
@@ -1605,21 +1808,53 @@ def main() -> None:
                     )
                     + (", Range Filter proxy" if args.enable_classic_rg_filter else "")
                     + (", EMA200 directional proxy" if args.enable_classic_ema200_filter else "")
-                    + (", EMA9 high/low cloud proxy" if args.enable_classic_ema9_cloud_filter else "")
+                    + (", EMA9 high/close cloud proxy" if args.enable_classic_ema9_cloud_filter else "")
                     + (
                         ", EMA200 cross-frequency proxy"
                         if args.enable_classic_ema_cross_filter
                         else ""
                     )
+                    + (
+                        ", exact TradingView Classic shape markers where exported"
+                        if args.enable_classic_tv_shape_filter
+                        else ""
+                    )
+                    + (
+                        ", 100-bar squeeze momentum direction proxy"
+                        if args.enable_classic_squeeze_momentum_filter
+                        else ""
+                    )
+                    + (
+                        ", WAE-style EMA8/EMA100 momentum acceleration proxy"
+                        if args.enable_classic_wae_momentum_filter
+                        else ""
+                    )
+                    + (
+                        ", price-vs-squeeze-momentum divergence proxy"
+                        if args.enable_classic_divergence_filter
+                        else ""
+                    )
                 ),
                 "classic_filters_not_implemented": (
-                    "squeeze, WAE, divergence, range filter/proprietary internals"
+                    ", ".join(
+                        name
+                        for name, implemented in (
+                            ("squeeze", args.enable_classic_squeeze_momentum_filter),
+                            ("WAE", args.enable_classic_wae_momentum_filter),
+                            ("divergence", args.enable_classic_divergence_filter),
+                            ("range filter/proprietary internals", False),
+                        )
+                        if not implemented
+                    )
                     if (
                         args.enable_classic_trend_proxy_filter
                         or args.enable_classic_rg_filter
                         or args.enable_classic_ema200_filter
                         or args.enable_classic_ema9_cloud_filter
                         or args.enable_classic_ema_cross_filter
+                        or args.enable_classic_squeeze_momentum_filter
+                        or args.enable_classic_wae_momentum_filter
+                        or args.enable_classic_divergence_filter
                     )
                     else "EMA cross, squeeze, WAE, divergence, range filter/proprietary internals"
                 ),
@@ -1627,11 +1862,23 @@ def main() -> None:
                 "classic_rg_filter_enabled": args.enable_classic_rg_filter,
                 "classic_rg_period": CLASSIC_RG_PERIOD,
                 "classic_rg_mult": CLASSIC_RG_MULT,
+                "classic_rg_tv_plot_override": "Plot" in bars_5m.columns,
                 "classic_ema200_filter_enabled": args.enable_classic_ema200_filter,
                 "classic_ema9_cloud_filter_enabled": args.enable_classic_ema9_cloud_filter,
                 "classic_ema_cross_filter_enabled": args.enable_classic_ema_cross_filter,
                 "classic_ema_cross_hours": args.classic_ema_cross_hours,
                 "classic_ema_cross_max_crosses": args.classic_ema_cross_max_crosses,
+                "classic_ema_cross_long_max_crosses": args.classic_ema_cross_long_max_crosses,
+                "classic_ema_cross_short_max_crosses": args.classic_ema_cross_short_max_crosses,
+                "classic_tv_shape_filter_enabled": args.enable_classic_tv_shape_filter,
+                "classic_squeeze_momentum_filter_enabled": args.enable_classic_squeeze_momentum_filter,
+                "classic_squeeze_length": CLASSIC_SQUEEZE_LENGTH,
+                "classic_wae_momentum_filter_enabled": args.enable_classic_wae_momentum_filter,
+                "classic_momentum_fast_ema": CLASSIC_MOMENTUM_FAST_EMA,
+                "classic_momentum_slow_ema": CLASSIC_MOMENTUM_SLOW_EMA,
+                "classic_momentum_sensitivity": CLASSIC_MOMENTUM_SENSITIVITY,
+                "classic_divergence_filter_enabled": args.enable_classic_divergence_filter,
+                "classic_divergence_lookback": args.classic_divergence_lookback,
                 "fvg_filters_implemented": (
                     "Aggressive FVG geometry, size, ORB distance, retest validity, cooldown"
                     + (", UT Bot directional proxy" if args.enable_fvg_ut_filter else "")

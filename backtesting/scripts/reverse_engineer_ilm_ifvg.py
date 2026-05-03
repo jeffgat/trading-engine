@@ -47,6 +47,7 @@ NY_AM = ("09:30", "11:30")
 ENTRY_WINDOWS = (("02:00", "05:00"), ("08:30", "11:00"))
 ALLOWED_WEEKDAYS = {0, 1, 2, 4}  # Mon, Tue, Wed, Fri. Thursday is OFF in the guide.
 SWING_LENGTH = 2
+INTERNAL_MIN_BARS_FROM_SWING = 5
 UT_KEY_VALUE = 3.0
 UT_ATR_PERIOD = 30
 STRUCTURE_BREACHES = 3
@@ -58,6 +59,9 @@ ALGO_MA_STEP_PERIOD = 33
 ALGO_VOLUME_MA_PERIOD = 20
 ALGO_REVERSAL_ZONE_FRACTION = 0.35
 TV_REVERSAL_MIN_DISTANCE_POINTS = 10.0
+GUIDE_REVERSAL_MA_PERIOD = 50
+GUIDE_REVERSAL_MA_STEP_PERIOD = 33
+GUIDE_REVERSAL_MA_STEP_OFFSET = 28
 
 
 @dataclass(frozen=True)
@@ -259,6 +263,17 @@ def wma(series: pd.Series, length: int) -> pd.Series:
     return series.rolling(length).apply(lambda values: float((values * weights).sum() / denom), raw=True)
 
 
+def hold_by_step(series: pd.Series, step: int, *, offset: int = 0) -> pd.Series:
+    """Hold the first value in each fixed-size block.
+
+    The ILM guide lists Trend MA Period=50 and MA Step Period=33 for the
+    Reversal MA. On the visible TradingView window, a 50 EMA held in 33-bar
+    blocks is the closest public-data proxy to the exported `Reversal MA`.
+    """
+    blocks = (pd.Series(range(len(series)), index=series.index) + offset) // step
+    return series.groupby(blocks).transform("first")
+
+
 def ut_bot_direction(close: pd.Series, atr: pd.Series, *, key_value: float) -> tuple[list[float], list[int]]:
     stop_values: list[float] = []
     directions: list[int] = []
@@ -400,6 +415,57 @@ def market_structure_breach_states(bars: pd.DataFrame) -> tuple[list[int], list[
     return roll_states, last_breach_states
 
 
+def algoalpha_reversal_confirmation_columns(bars: pd.DataFrame) -> tuple[list[bool], list[bool], list[bool], list[bool]]:
+    """Approximate AlgoAlpha's public reversal-confirmation sequence.
+
+    Public description: a bullish setup starts when close is below the prior
+    lookback lows, then confirms if price rises above that setup candle's high
+    within the confirmation window. Bearish setups mirror this above prior
+    highs, then confirm below the setup candle's low. Volume confirmation is
+    modeled on both the setup candle and the confirmation candle so we can
+    compare strict vs loose variants without lookahead.
+    """
+    bullish_confirm = [False] * len(bars)
+    bearish_confirm = [False] * len(bars)
+    bullish_confirm_volume = [False] * len(bars)
+    bearish_confirm_volume = [False] * len(bars)
+    pending_bullish: deque[tuple[int, float, bool]] = deque()
+    pending_bearish: deque[tuple[int, float, bool]] = deque()
+    prior_low = bars["low"].shift(1).rolling(ALGO_CANDLE_LOOKBACK, min_periods=ALGO_CANDLE_LOOKBACK).min()
+    prior_high = bars["high"].shift(1).rolling(ALGO_CANDLE_LOOKBACK, min_periods=ALGO_CANDLE_LOOKBACK).max()
+    volume_ma = bars["volume"].rolling(ALGO_VOLUME_MA_PERIOD, min_periods=ALGO_VOLUME_MA_PERIOD).mean()
+
+    for i, row in enumerate(bars.itertuples()):
+        while pending_bullish and i - pending_bullish[0][0] > ALGO_CONFIRM_WITHIN:
+            pending_bullish.popleft()
+        while pending_bearish and i - pending_bearish[0][0] > ALGO_CONFIRM_WITHIN:
+            pending_bearish.popleft()
+
+        confirm_volume_ok = not pd.isna(volume_ma.iat[i]) and float(row.volume) > float(volume_ma.iat[i])
+        if pending_bullish:
+            for setup_idx, setup_high, setup_volume_ok in list(pending_bullish):
+                if i > setup_idx and float(row.high) > setup_high:
+                    bullish_confirm[i] = True
+                    bullish_confirm_volume[i] = setup_volume_ok and confirm_volume_ok
+                    pending_bullish.clear()
+                    break
+        if pending_bearish:
+            for setup_idx, setup_low, setup_volume_ok in list(pending_bearish):
+                if i > setup_idx and float(row.low) < setup_low:
+                    bearish_confirm[i] = True
+                    bearish_confirm_volume[i] = setup_volume_ok and confirm_volume_ok
+                    pending_bearish.clear()
+                    break
+
+        setup_volume_ok = not pd.isna(volume_ma.iat[i]) and float(row.volume) > float(volume_ma.iat[i])
+        if not pd.isna(prior_low.iat[i]) and float(row.close) < float(prior_low.iat[i]):
+            pending_bullish.append((i, float(row.high), setup_volume_ok))
+        if not pd.isna(prior_high.iat[i]) and float(row.close) > float(prior_high.iat[i]):
+            pending_bearish.append((i, float(row.low), setup_volume_ok))
+
+    return bullish_confirm, bearish_confirm, bullish_confirm_volume, bearish_confirm_volume
+
+
 def add_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     out = bars.copy()
     prev_close = out["close"].shift(1)
@@ -412,6 +478,13 @@ def add_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     ).max(axis=1)
     out["atr12_wma"] = wma(tr, 12)
+    trading_day = pd.Series(
+        [ts.date() if ts.hour < 18 else (ts + pd.Timedelta(days=1)).date() for ts in out.index],
+        index=out.index,
+    )
+    out["current_day_high"] = out.groupby(trading_day)["high"].cummax()
+    out["current_day_low"] = out.groupby(trading_day)["low"].cummin()
+    out["current_day_mid"] = (out["current_day_high"] + out["current_day_low"]) / 2.0
     out["mid100"] = (out["high"].rolling(100).max() + out["low"].rolling(100).min()) / 2.0
     out["mid200"] = (out["high"].rolling(200).max() + out["low"].rolling(200).min()) / 2.0
     out["ut_atr30"] = tr.ewm(alpha=1 / UT_ATR_PERIOD, adjust=False, min_periods=UT_ATR_PERIOD).mean()
@@ -430,6 +503,23 @@ def add_indicators(bars: pd.DataFrame) -> pd.DataFrame:
         adjust=False,
         min_periods=ALGO_MA_STEP_PERIOD,
     ).mean()
+    out["guide_reversal_ma"] = hold_by_step(
+        guide_reversal_ema := out["close"].ewm(
+            span=GUIDE_REVERSAL_MA_PERIOD,
+            adjust=False,
+            min_periods=GUIDE_REVERSAL_MA_PERIOD,
+        ).mean(),
+        GUIDE_REVERSAL_MA_STEP_PERIOD,
+    )
+    out["guide_reversal_ma_distance"] = (out["close"] - out["guide_reversal_ma"]).abs()
+    out["guide_reversal_ma_phase28"] = hold_by_step(
+        guide_reversal_ema,
+        GUIDE_REVERSAL_MA_STEP_PERIOD,
+        offset=GUIDE_REVERSAL_MA_STEP_OFFSET,
+    )
+    out["guide_reversal_ma_phase28_distance"] = (
+        out["close"] - out["guide_reversal_ma_phase28"]
+    ).abs()
     out["algo_volume_ma"] = out["volume"].rolling(ALGO_VOLUME_MA_PERIOD).mean()
     algo_high = out["high"].rolling(ALGO_CANDLE_LOOKBACK).max()
     algo_low = out["low"].rolling(ALGO_CANDLE_LOOKBACK).min()
@@ -450,6 +540,39 @@ def add_indicators(bars: pd.DataFrame) -> pd.DataFrame:
     )
     out["algo_bearish_zone_reversal"] = (
         bearish_zone_raw.rolling(ALGO_CONFIRM_WITHIN, min_periods=1).max().fillna(False).astype(bool)
+    )
+    (
+        out["algoalpha_bullish_reversal"],
+        out["algoalpha_bearish_reversal"],
+        out["algoalpha_bullish_reversal_volume"],
+        out["algoalpha_bearish_reversal_volume"],
+    ) = algoalpha_reversal_confirmation_columns(out)
+    recent_window = ALGO_REVERSAL_LOOKBACK + 1
+    out["algo_bullish_reversal_recent"] = (
+        out["algo_bullish_reversal"].rolling(recent_window, min_periods=1).max().fillna(False).astype(bool)
+    )
+    out["algo_bearish_reversal_recent"] = (
+        out["algo_bearish_reversal"].rolling(recent_window, min_periods=1).max().fillna(False).astype(bool)
+    )
+    out["algoalpha_bullish_reversal_recent"] = (
+        out["algoalpha_bullish_reversal"].rolling(recent_window, min_periods=1).max().fillna(False).astype(bool)
+    )
+    out["algoalpha_bearish_reversal_recent"] = (
+        out["algoalpha_bearish_reversal"].rolling(recent_window, min_periods=1).max().fillna(False).astype(bool)
+    )
+    out["algoalpha_bullish_reversal_volume_recent"] = (
+        out["algoalpha_bullish_reversal_volume"]
+        .rolling(recent_window, min_periods=1)
+        .max()
+        .fillna(False)
+        .astype(bool)
+    )
+    out["algoalpha_bearish_reversal_volume_recent"] = (
+        out["algoalpha_bearish_reversal_volume"]
+        .rolling(recent_window, min_periods=1)
+        .max()
+        .fillna(False)
+        .astype(bool)
     )
     return out
 
@@ -518,6 +641,30 @@ def weekly_levels(bars: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("available_from").sort_index() if rows else pd.DataFrame()
 
 
+def internal_swing_level_columns(bars: pd.DataFrame) -> pd.DataFrame:
+    """Latest confirmed internal swing levels.
+
+    The ILM settings show Swing Length=2 and Min Bars from Swing=5. A swing is
+    only exposed after both constraints are satisfied, which keeps this causal
+    relative to the signal bar.
+    """
+    levels = pd.DataFrame(index=bars.index, columns=["internal_high", "internal_low"], dtype=float)
+    highs = bars["high"].to_numpy()
+    lows = bars["low"].to_numpy()
+    available_offset = max(SWING_LENGTH, INTERNAL_MIN_BARS_FROM_SWING)
+    for i in range(SWING_LENGTH, len(bars) - SWING_LENGTH):
+        available_idx = i + available_offset
+        if available_idx >= len(bars):
+            continue
+        high_window = highs[i - SWING_LENGTH : i + SWING_LENGTH + 1]
+        low_window = lows[i - SWING_LENGTH : i + SWING_LENGTH + 1]
+        if highs[i] == high_window.max() and (high_window == highs[i]).sum() == 1:
+            levels.iat[available_idx, levels.columns.get_loc("internal_high")] = float(highs[i])
+        if lows[i] == low_window.min() and (low_window == lows[i]).sum() == 1:
+            levels.iat[available_idx, levels.columns.get_loc("internal_low")] = float(lows[i])
+    return levels.ffill()
+
+
 def add_level_columns(bars: pd.DataFrame) -> pd.DataFrame:
     out = bars.copy()
     out.index = pd.DatetimeIndex(out.index).as_unit("ns")
@@ -539,6 +686,9 @@ def add_level_columns(bars: pd.DataFrame) -> pd.DataFrame:
             right_index=True,
             direction="backward",
         )
+    internal_levels = internal_swing_level_columns(bars)
+    out["internal_high"] = internal_levels["internal_high"]
+    out["internal_low"] = internal_levels["internal_low"]
     return out
 
 
@@ -591,6 +741,7 @@ def active_levels(row: pd.Series, sources: tuple[str, ...]) -> list[Level]:
         "preny": ("preny_high", "preny_low"),
         "pd": ("pdh", "pdl"),
         "pw": ("pwh", "pwl"),
+        "internal": ("internal_high", "internal_low"),
     }
     for source in sources:
         high_col, low_col = source_columns[source]
@@ -605,12 +756,12 @@ def active_levels(row: pd.Series, sources: tuple[str, ...]) -> list[Level]:
 
 def passes_filters(row: pd.Series, side: str, filters: tuple[str, ...]) -> bool:
     if "premium_discount" in filters:
-        mid100 = row.get("mid100")
-        if pd.isna(mid100):
+        current_day_mid = row.get("current_day_mid")
+        if pd.isna(current_day_mid):
             return False
-        if side == "long" and not (float(row.close) <= float(mid100)):
+        if side == "long" and not (float(row.close) <= float(current_day_mid)):
             return False
-        if side == "short" and not (float(row.close) >= float(mid100)):
+        if side == "short" and not (float(row.close) >= float(current_day_mid)):
             return False
     if "macro_premium_discount" in filters:
         mid200 = row.get("mid200")
@@ -627,6 +778,14 @@ def passes_filters(row: pd.Series, side: str, filters: tuple[str, ...]) -> bool:
         if side == "long" and int(direction) != 1:
             return False
         if side == "short" and int(direction) != -1:
+            return False
+    if "ut_stop_proxy" in filters:
+        stop = row.get("ut_stop")
+        if pd.isna(stop):
+            return False
+        if side == "long" and not (float(row.close) > float(stop)):
+            return False
+        if side == "short" and not (float(row.close) < float(stop)):
             return False
     if "tv_ub_filter" in filters:
         ub_filter = row.get("UB-Filter")
@@ -650,6 +809,30 @@ def passes_filters(row: pd.Series, side: str, filters: tuple[str, ...]) -> bool:
             return False
         if abs(float(row.close) - float(reversal_ma)) < TV_REVERSAL_MIN_DISTANCE_POINTS:
             return False
+    if "guide_reversal_ma_mean_revert" in filters:
+        reversal_ma = row.get("guide_reversal_ma")
+        if pd.isna(reversal_ma):
+            return False
+        if side == "long" and not (float(row.close) < float(reversal_ma)):
+            return False
+        if side == "short" and not (float(row.close) > float(reversal_ma)):
+            return False
+    if "guide_reversal_ma_min_distance" in filters:
+        distance = row.get("guide_reversal_ma_distance")
+        if pd.isna(distance) or float(distance) < TV_REVERSAL_MIN_DISTANCE_POINTS:
+            return False
+    if "guide_reversal_ma_phase28_mean_revert" in filters:
+        reversal_ma = row.get("guide_reversal_ma_phase28")
+        if pd.isna(reversal_ma):
+            return False
+        if side == "long" and not (float(row.close) < float(reversal_ma)):
+            return False
+        if side == "short" and not (float(row.close) > float(reversal_ma)):
+            return False
+    if "guide_reversal_ma_phase28_min_distance" in filters:
+        distance = row.get("guide_reversal_ma_phase28_distance")
+        if pd.isna(distance) or float(distance) < TV_REVERSAL_MIN_DISTANCE_POINTS:
+            return False
     if "market_structure" in filters:
         state = row.get("structure_state")
         if pd.isna(state):
@@ -671,10 +854,35 @@ def passes_filters(row: pd.Series, side: str, filters: tuple[str, ...]) -> bool:
             return False
         if side == "short" and not bool(row.get("algo_bearish_reversal", False)):
             return False
+    if "algo_reversal_recent_proxy" in filters:
+        if side == "long" and not bool(row.get("algo_bullish_reversal_recent", False)):
+            return False
+        if side == "short" and not bool(row.get("algo_bearish_reversal_recent", False)):
+            return False
     if "algo_reversal_zone_proxy" in filters:
         if side == "long" and not bool(row.get("algo_bullish_zone_reversal", False)):
             return False
         if side == "short" and not bool(row.get("algo_bearish_zone_reversal", False)):
+            return False
+    if "algoalpha_reversal_confirmation" in filters:
+        if side == "long" and not bool(row.get("algoalpha_bullish_reversal", False)):
+            return False
+        if side == "short" and not bool(row.get("algoalpha_bearish_reversal", False)):
+            return False
+    if "algoalpha_reversal_confirmation_recent" in filters:
+        if side == "long" and not bool(row.get("algoalpha_bullish_reversal_recent", False)):
+            return False
+        if side == "short" and not bool(row.get("algoalpha_bearish_reversal_recent", False)):
+            return False
+    if "algoalpha_reversal_confirmation_volume" in filters:
+        if side == "long" and not bool(row.get("algoalpha_bullish_reversal_volume", False)):
+            return False
+        if side == "short" and not bool(row.get("algoalpha_bearish_reversal_volume", False)):
+            return False
+    if "algoalpha_reversal_confirmation_volume_recent" in filters:
+        if side == "long" and not bool(row.get("algoalpha_bullish_reversal_volume_recent", False)):
+            return False
+        if side == "short" and not bool(row.get("algoalpha_bearish_reversal_volume_recent", False)):
             return False
     return True
 
@@ -1002,6 +1210,8 @@ def write_report(path: Path, summary: dict[str, Any]) -> None:
         "- Weekday filter excludes Thursday; export has no Thursday trades.",
         "- Time-limit exits are exactly 90 minutes after entry.",
         "- Guide defaults: entry 02:00-11:00 NY, sweep+iFVG required, ATR(12 WMA) stop x1.6, target 2R, BE/partial off.",
+        "- Premium/discount is modeled from the live current futures trading-day high/low midpoint, with the day rolling at 18:00 New York time.",
+        "- Liquidity levels include Asia/London/Pre-NY, prior day/week, and a tested latest confirmed internal swing source.",
         "",
         "## Export Metrics",
         "",
@@ -1032,14 +1242,21 @@ def write_report(path: Path, summary: dict[str, Any]) -> None:
         "- The guide-like inversion7 variant materially improves entry recall, which suggests the exported strategy really is centered on sweep -> FVG -> 7-bar iFVG confirmation.",
         "- The broad Algo Inversion proxy improves precision at a modest recall cost; the stricter 10-candle zone proxy is much cleaner but misses too many exported entries.",
         "- Rolling 100-bar sweep cutoff is now modeled; it has only a small effect, so it is not the main missing selectivity gate.",
+        "- Adding internal swing liquidity as an accepted source did not materially improve recall, so the remaining mismatch is unlikely to be just the selected sweep level.",
         "- The trend-following HH/HL/LH/LL proxy is too strict when combined with the other guide filters; a contrarian breach-state probe is more plausible for this sweep-reversal entry, but still does not fully explain the export.",
-        "- Precision remains low, so the remaining gap is selectivity: the exact Algo Inversion/reversal filter and market-structure state are still not replicated.",
+        "- The visible 2026 TradingView OHLC+indicator window reaches exact entry parity when exact UB-Filter and Reversal MA columns are used with a 10-point distance gate, which points to the private Algo Inversion/Reversal MA logic as the main missing selectivity gate.",
+        "- The visible UB-Filter line is essentially the guide-default UT Bot trail: close source, RMA ATR(30), key value 3. The line-based `ut_stop_proxy` is therefore a better public proxy than using the UT Bot direction state alone.",
+        "- The settings guide's Trend MA=50 and MA Step=33 clue was tested as a 50 EMA held in 33-bar blocks. It is the closest public-data fit to the visible `Reversal MA`, but it still over-prunes full history and leaves visible-window extras without the exact private column.",
+        "- A 28-bar phase offset inside that 33-bar step cycle fits the visible `Reversal MA` column better, but it does not beat the current full-history baseline. Treat it as a clue about private state timing, not as a promoted filter.",
+        "- Full-history precision remains low because those exact TradingView indicator columns are only available in the exported visible window.",
+        "- The public AlgoAlpha-style overextension-then-confirmation proxy is too strict on full history; it improves precision but misses most exported entries.",
+        "- A 4-bar minimum sweep-to-gap delay explains the visible 2026 window but does not generalize across the full export.",
         "- Exit parity is also first-pass only: the script uses 5-minute OHLC path assumptions for ATR stop/2R/90-minute exits, while TradingView uses bar magnifier/intrabar fills.",
         "",
         "## Recommended Next Tests",
         "",
-        "1. Refine the Algo Inversion proxy against the exact v22.7 behavior: lookback=2, candle lookback=10, confirm within=3, volume confirmation, EMA trend MA=50, MA step=33.",
-        "2. Continue market-structure probing around breach timing: TradingView appears to reject trend-following HH/HL semantics for many true export trades.",
+        "1. Refine the Algo Inversion/Reversal MA proxy beyond the tested 50 EMA / 33-step approximation: lookback=2, candle lookback=10, confirm within=3, volume confirmation, EMA trend MA=50, MA step=33.",
+        "2. Continue market-structure probing around breach timing only after the Reversal MA proxy is closer; current structure proxies are secondary compared with the missing MA gate.",
         "3. Rebuild with more TradingView 5-minute history if available, then add 1-second exit replay after entry recall/precision are closer.",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1115,6 +1332,16 @@ def run_tradingview_window_probe(
             ),
         },
         {
+            "name": "tv_pd_ut_stop_proxy_reversal_ma_min10",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "ut_stop_proxy",
+                "tv_reversal_ma_mean_revert",
+                "tv_reversal_ma_min_distance",
+            ),
+        },
+        {
             "name": "tv_pd_ut_proxy_reversal_ma_min10_inv5",
             **base_params,
             "filters": (
@@ -1124,6 +1351,68 @@ def run_tradingview_window_probe(
                 "tv_reversal_ma_min_distance",
             ),
             "inversion_lookback_bars": 5,
+        },
+        {
+            "name": "tv_pd_ut_proxy_guide_step_reversal_ma",
+            **base_params,
+            "filters": ("premium_discount", "ut_proxy", "guide_reversal_ma_mean_revert"),
+        },
+        {
+            "name": "tv_pd_ut_proxy_guide_step_reversal_ma_min10",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_mean_revert",
+                "guide_reversal_ma_min_distance",
+            ),
+        },
+        {
+            "name": "tv_pd_ut_stop_proxy_guide_step_reversal_ma_min10",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "ut_stop_proxy",
+                "guide_reversal_ma_mean_revert",
+                "guide_reversal_ma_min_distance",
+            ),
+        },
+        {
+            "name": "tv_pd_ut_proxy_guide_step_phase28_reversal_ma_min10",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_phase28_mean_revert",
+                "guide_reversal_ma_phase28_min_distance",
+            ),
+        },
+        {
+            "name": "tv_pd_exact_ub_algoalpha_reversal",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "tv_ub_filter",
+                "algoalpha_reversal_confirmation",
+            ),
+        },
+        {
+            "name": "tv_pd_exact_ub_algoalpha_reversal_recent2",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "tv_ub_filter",
+                "algoalpha_reversal_confirmation_recent",
+            ),
+        },
+        {
+            "name": "tv_pd_exact_ub_algoalpha_reversal_volume",
+            **base_params,
+            "filters": (
+                "premium_discount",
+                "tv_ub_filter",
+                "algoalpha_reversal_confirmation_volume",
+            ),
         },
         {
             "name": "tv_pd_exact_ub_reversal_ma_min10_sweepgap4",
@@ -1278,6 +1567,180 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_sweeps_per_major_level": 2,
         },
         {
+            "name": "guide_like_internal_sources_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_internal_sources_utstop_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_stop_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_internal_sweepgap4_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+            "_candidate_min_bars_sweep_to_gap": 4,
+        },
+        {
+            "name": "guide_like_internal_utstop_sweepgap4_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_stop_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+            "_candidate_min_bars_sweep_to_gap": 4,
+        },
+        {
+            "name": "guide_like_step_reversal_ma_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "guide_reversal_ma_mean_revert"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_step_reversal_ma_min10_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_mean_revert",
+                "guide_reversal_ma_min_distance",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_step_reversal_ma_utstop_min10_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_stop_proxy",
+                "guide_reversal_ma_mean_revert",
+                "guide_reversal_ma_min_distance",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_internal_step_reversal_ma_min10_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_mean_revert",
+                "guide_reversal_ma_min_distance",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_step_phase28_reversal_ma_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_phase28_mean_revert",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_step_phase28_reversal_ma_min10_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_phase28_mean_revert",
+                "guide_reversal_ma_phase28_min_distance",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_internal_step_phase28_reversal_ma_min10_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": (
+                "premium_discount",
+                "ut_proxy",
+                "guide_reversal_ma_phase28_mean_revert",
+                "guide_reversal_ma_phase28_min_distance",
+            ),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
             "name": "guide_like_algo_reversal_next_open",
             "sources": ("asia", "london", "preny", "pd", "pw"),
             "max_bars_after_sweep": 25,
@@ -1297,6 +1760,111 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_gap_points": None,
             "entry_timing": "next_open",
             "filters": ("premium_discount", "ut_proxy", "algo_reversal_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algo_internal_sources_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algo_reversal_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algo_recent_internal_sources_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algo_reversal_recent_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algo_internal_sources_utstop_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_stop_proxy", "algo_reversal_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algo_internal_sweepgap4_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algo_reversal_proxy"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+            "_candidate_min_bars_sweep_to_gap": 4,
+        },
+        {
+            "name": "guide_like_algoalpha_reversal_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algoalpha_reversal_confirmation"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algoalpha_recent_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algoalpha_reversal_confirmation_recent"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algoalpha_reversal_volume_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algoalpha_reversal_confirmation_volume"),
+            "inversion_lookback_bars": 7,
+            "sweep_cutoff_lookback_bars": 100,
+            "max_sweeps_per_major_level": 2,
+        },
+        {
+            "name": "guide_like_algoalpha_volume_recent_next_open",
+            "sources": ("asia", "london", "preny", "pd", "pw", "internal"),
+            "max_bars_after_sweep": 25,
+            "fvg_window_bars": 25,
+            "min_gap_points": 0.25,
+            "max_gap_points": None,
+            "entry_timing": "next_open",
+            "filters": ("premium_discount", "ut_proxy", "algoalpha_reversal_confirmation_volume_recent"),
             "inversion_lookback_bars": 7,
             "sweep_cutoff_lookback_bars": 100,
             "max_sweeps_per_major_level": 2,
@@ -1372,8 +1940,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     variant_results: list[dict[str, Any]] = []
     for variant in variants:
         params = {key: value for key, value in variant.items() if key != "name"}
+        candidate_min_bars_sweep_to_gap = params.pop("_candidate_min_bars_sweep_to_gap", None)
         candidates = build_candidates(bars, **params)
         candidates = [candidate for candidate in candidates if export_start <= candidate.entry_dt <= export_end]
+        if candidate_min_bars_sweep_to_gap is not None:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.bars_sweep_to_gap >= int(candidate_min_bars_sweep_to_gap)
+            ]
+            params["_candidate_min_bars_sweep_to_gap"] = candidate_min_bars_sweep_to_gap
         sim_trades = simulate_candidates(bars, candidates)
         result = {
             "name": variant["name"],

@@ -5772,6 +5772,14 @@ def run_backtest(
             ):
                 structural_risk_pts = abs(entry - cand.lsi_absolute_stop_price)
 
+            effective_rr = config.rr
+            if (
+                config.wide_stop_target_threshold_points > 0.0
+                and config.wide_stop_target_rr > 0.0
+                and risk_pts >= config.wide_stop_target_threshold_points
+            ):
+                effective_rr = min(config.rr, config.wide_stop_target_rr)
+
             target_mode = (
                 config.lsi_target_mode
                 if config.strategy in {"lsi", "htf_lsi", "reference_lsi"}
@@ -5788,7 +5796,7 @@ def run_backtest(
                 entry_price=entry,
                 actual_risk_pts=risk_pts,
                 structural_risk_pts=structural_risk_pts,
-                rr=config.rr,
+                rr=effective_rr,
                 tp1_ratio=config.tp1_ratio,
                 left_end_bar=left_end_bar,
                 high=high,

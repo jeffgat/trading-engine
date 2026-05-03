@@ -2769,3 +2769,126 @@ All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_
   - plain pre-entry `TP2` cancel is mildly harmful on the current HTF-LSI lead
   - adding a fresh HTF-LSI sweep requirement turned the rule into a complete no-op on this sample
   - if we revisit pre-entry invalidation on this branch, it should use a different causal gate than "another HTF-LSI sweep happened"
+
+### Hunter Classic ORB Regime Gate Read (2026-05-02)
+
+- **Status**: **CONDITIONAL research lead — promising, not promoted**
+- **Evidence packet**: `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORB_REGIME_GATE_20260502.md` and `backtesting/data/results/hunter_classic_regime_gate_test_20260502/`
+- **Strategy**: NQ NY Hunter Classic ORB replication (`EMA15C14`, no FVG requirement): 09:30-09:45 ORB, signal 09:45-10:55, Mon/Wed/Thu/Fri, 5m body/rejection candle filter, 15m EMA14 bias, next-5m-open entry, signal-bar structural stop, 2R target with 1R cap when stop >=50 points.
+- **Baseline**:
+  - Last 10y: 1,506 trades, `+46.9R`, 40.2% WR, PF `1.03`, closed DD `-161.9R`
+  - Last 2y: 325 trades, `+159.4R`, 49.5% WR, PF `1.32`, closed DD `-44.8R`
+  - Last 1y: 154 trades, `+130.3R`, 55.8% WR, PF `1.61`, closed DD `-26.8R`
+- **Causal regime gate read**:
+  - Regime calendar rebuilt from `NQ_1s.parquet` through `2026-04-24`
+  - Regime inputs shifted one full session before trade labeling
+  - Vol buckets use pre-`2024-03-01` thresholds
+- **Best simple gate**: skip `bull_high_vol`, `bear_high_vol`, and `bear_medium_vol`
+  - Last 10y: 1,004 trades, `+150.9R`, 41.0% WR, PF `1.16`, closed DD `-41.8R`
+  - Last 2y: 221 trades, `+133.8R`, 51.6% WR, PF `1.46`, closed DD `-21.7R`
+  - Last 1y: 101 trades, `+92.8R`, 57.4% WR, PF `1.76`, closed DD `-14.2R`
+- **Interpretation**: The last year was broadly strong across regimes, so do not conclude that Hunter only works in one narrow environment. The useful signal is that 10-year damage concentrates in high-volatility and bear-stress buckets (`bear_high_vol`, `bull_high_vol`, `bear_medium_vol`). A simple stress gate keeps most of the recent strength while fixing the long-run drawdown shape.
+- **Distance cap read**: `ema15_max_distance=100` alone is not enough: 10y `-0.0R`, PF `1.00`, DD `-122.6R`. With the same simple stress gate it improves to 10y `+110.0R`, 2y `+110.7R`, 1y `+77.1R`, but gives up enough recent edge that no-cap + stress gate is the better first validation target.
+- **Next-step validation**: `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_STRESS_GATE_VALIDATION_20260502.md` and `backtesting/data/results/hunter_classic_stress_gate_validation_20260502/`
+  - Standalone stress-gated: full 10y `+150.9R`, PF `1.16`, DD `-41.8R`; 2025+ `+108.5R`, PF `1.68`, DD `-14.2R`
+  - Annual OOS remains lumpy: 2019 `-17.7R`, 2022 `-10.5R`, 2021 `+4.8R`, 2023 `+4.6R`, then strong 2025/2026
+  - Monte Carlo full-risk warning: median bootstrap DD `-50.8R`, 1st percentile DD `-119.7R`, 51.9% probability of DD worse than `-50R`
+  - Portfolio fit: 0.25x Hunter add-on to frozen ALPHA_V1 improves overlap-window total from `+597.1R` to `+634.0R`, with DD only worsening from `-15.6R` to `-16.5R`; full-size Hunter worsens DD to `-30.9R`
+  - Correlation to existing ALPHA_V1 legs is low (roughly `-0.03` to `+0.06` daily R), so additivity is plausible; sizing is the limiting factor
+- **Updated conclusion**: CONDITIONAL reduced-risk pilot candidate only. Do **not** promote full-size. Best next expression is stress-gated Hunter at `0.25x` risk, optionally with ES NY ORB reduced to `0.75x` to avoid simply adding NY-session gross exposure.
+- **Strategy workflow pass** (`CURRENT_STRATEGY_WORKFLOW`, 2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_STRATEGY_WORKFLOW_20260502.md` and `backtesting/data/results/hunter_classic_stress_gate_strategy_workflow_20260502/`
+  - Search space: 450 stress-gated variants around the baseline; hold-out frozen at `2025-01-01+`
+  - Workflow-valid pre-holdout leader: `ema14_tol0_distnone_relegacy_samewin0` -> pre-HO `+58.7R / -40.5R DD`, full 10y `+162.9R / -40.5R DD`, 2025+ `+104.2R / -14.2R DD`, last 1y `+88.4R / -14.2R DD`
+  - Best 10y hindsight leader: `ema10_tol0_dist150_relegacy_samewin0` -> full 10y `+165.1R / -41.8R DD`, but weak pre-HO `+35.8R / -41.8R DD`
+  - Best 1y hindsight leader: `ema10_tol0_dist150_reall_samewin0` -> last 1y `+107.6R / -14.2R DD`, but weak pre-HO `+30.3R / -41.8R DD`; treat as hot-regime research, not promotion-clean
+  - Balanced 10y/workflow challenger: `ema14_tol2_distnone_relegacy_samewin0` -> full 10y `+164.7R / -41.8R DD`, pre-HO `+56.2R / -41.8R DD`, last 1y `+92.8R / -14.2R DD`
+  - Conservative DSR remains weak for full-history candidates after 450 raw trials; PSR is strong on full 10y and last 1y. This caps the output at shortlist/challenger status, not final deployment.
+- **Three-candidate downstream pass** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_THREE_CANDIDATE_DOWNSTREAM_20260502.md` and `backtesting/data/results/hunter_classic_three_candidate_downstream_20260502/`
+  - Moved forward with all three frozen candidates: workflow leader `ema14_tol0_distnone_relegacy_samewin0`, balanced challenger `ema14_tol2_distnone_relegacy_samewin0`, and recent challenger `ema10_tol0_dist150_reall_samewin0`
+  - Core read: all three cluster around `+163R` full-history net and `-40R` to `-42R` DD; the recent challenger wins last 1y (`+107.6R`) but has the weakest pre-holdout (`+30.3R`)
+  - Phase-one 14-day staggered scorecard at `0.25x` risk: full-history EV/attempt is positive but modest (`$84` to `$105`), while 2025+ cohorts are excellent (`85%` to `88%` payout, `0%` breach, `$326` to `$341` EV/attempt)
+  - ALPHA_V1 portfolio fit: `0.25x` Hunter add-on improves ALPHA_V1 overlap net from `+597.1R` to about `+620R` to `+621R`, with DD worsening from `-15.6R` to `-16.7R`; cutting ES NY to `0.75x` keeps worst month better but reduces total net to about `+588R` to `+590R`
+  - Updated promotion read: keep all three alive for paper/live observation, but rank **Balanced Challenger** slightly ahead for pilot because it preserves workflow hygiene while improving both 2025+ and last-1y versus the workflow leader. Use **Recent Challenger** only as a hot-regime research branch until more forward data confirms it.
+- **Dist100 attribution** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_DIST100_ATTRIBUTION_20260502.md`
+  - `ema15_max_distance=100` is a chase/exhaustion cap: it rejects signals already more than `100` NQ points beyond the confirmed previous 15m EMA in the trade direction.
+  - Paired grid attribution shows it is not doing the structural repair: vs no-cap, `dist100` median deltas were pre-holdout `-30.3R`, full 10y `-45.5R`, 2025+ `-21.8R`, last 1y `-15.6R`; full-history DD did not improve.
+  - The stress gate is the real repair mechanism. Once stress-gated, `dist100` mostly raises recent PF by cutting trade flow, while giving up too much net R.
+  - If transferring the idea to ALPHA_V1, use an ATR-normalized `entry_context_gate` on ORB legs only. Existing adjacent ALPHA ORB MA/VWAP context tests were modest-to-negative, so do not prioritize this ahead of more promising Hunter regime/forward-validation work.
+- **Hunter ablation** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ABLATION_20260502.md` and `backtesting/data/results/hunter_classic_ablation_20260502/`
+  - Baseline: `ema14_tol2_distnone_relegacy_samewin0` stress-gated balanced candidate: full 10y `+164.7R / -41.8R DD`, 2025+ `+108.5R`, last 1y `+92.8R`.
+  - Biggest contributor: stress gate. Removing it loses `-96.3R` full and widens DD by `-97.0R`, even though it would have added recent hot-window R.
+  - Biggest non-regime protection: wide-stop 1R target reduction. Forcing all wide-stop trades to keep 2R loses `-64.6R` and worsens DD by `-19.5R`.
+  - Reentry after loss matters: first-trade-only loses `-44.8R` full and `-21.3R` last 1y.
+  - EMA bias is real but smaller: removing it loses `-10.3R` full and `-17.4R` pre-HO, while slightly helping 2025+.
+  - Follow-up leads: signal window extension to `13:00` improved full/holdout in OAT and deserves workflow-clean test; Tuesday inclusion improved full but hurt recent; rejection wick filter may be over-restrictive and should be re-tested before treating as mandatory.
+- **Hunter next-tests grid** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_20260502.md` and `backtesting/data/results/hunter_classic_next_tests_20260502/`
+  - Scope: 60 stress-gated variants plus 4 no-gate context rows around the balanced baseline, sweeping signal cutoff `10:55/13:00`, rejection wick `20/40/100`, Tuesday excluded/included, and cheap EMA/dist150 controls.
+  - Cleanest broad improvement: relax/disable rejection wick. Median paired deltas for `rej20 -> rej100`: pre-HO `+7.4R`, full `+17.8R`, 2024+ `+22.5R`, 2025+ `+12.0R`, last 1y `+6.1R`; tradeoff is full DD about `-5.9R` worse.
+  - Signal extension to `13:00` is not broadly validated. It still helps the direct baseline row, but median paired deltas give up 2024+ `-12.8R`, 2025+ `-7.0R`, and last 1y `-3.5R`; keep as a narrow side branch, not a new default.
+  - Tuesday is a 10y-vs-recent fork: median full/pre effect is strongly positive, but every 2025+ and last-1y paired comparison is negative. Do not re-add Tuesday unless explicitly optimizing for long-history diversification over current-regime strength.
+  - Best workflow-clean 10y-safe branch: `ema14_tol0_distnone__withTue__1055__rej100__stress` -> pre-HO `+129.1R / -38.4R DD`, full `+236.0R / -38.4R DD`, 2025+ `+106.9R`, last 1y `+78.3R`.
+  - Best full-10y hindsight branch: `ema14_tol5_distnone__withTue__1055__rej100__stress` -> full `+240.9R / -40.6R DD`, 2025+ `+120.5R`, last 1y `+86.9R`.
+  - Best hot/recent branch: `ema14_tol5_distnone__noTue__1055__rej100__stress` (ties `rej40` recent, better long-history profile) -> full `+178.0R / -47.7R DD`, 2025+ `+131.4R`, last 1y `+108.7R`.
+  - Supersede read: no single row cleanly replaces the balanced baseline across all objectives. Carry forward two research branches: `withTue/rej100` for 10y safety and `noTue/tol5/rej100` for current hot regime; keep balanced baseline as neutral reference until downstream validation decides.
+- **Hunter next-tests downstream** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_DOWNSTREAM_20260502.md` and `backtesting/data/results/hunter_classic_next_tests_downstream_20260502/`
+  - Compared three frozen branches: neutral reference `ema14_tol2_distnone__noTue__1055__rej20__stress`, 10y-safe `ema14_tol0_distnone__withTue__1055__rej100__stress`, and recent-strength `ema14_tol5_distnone__noTue__1055__rej100__stress`.
+  - Core full-history: neutral `+164.7R / -41.8R DD`; 10y-safe `+236.0R / -38.4R DD`; recent-strength `+178.0R / -47.7R DD`.
+  - Recent windows: neutral 2025+ `+108.5R`, last 1y `+92.8R`; 10y-safe 2025+ `+106.9R`, last 1y `+78.3R`; recent-strength 2025+ `+131.4R`, last 1y `+108.7R`.
+  - Phase-one 0.25x, 14-day staggered: 10y-safe has the best full-history payout business (`57.1%` payout, `41.4%` breach, `$185` EV/attempt) versus neutral (`41.0%`, `57.5%`, `$105`) and recent-strength (`29.5%`, `68.6%`, `$48`). On 2025+ all three remain strong with `85%` to `88%` payout and `0%` breach.
+  - ALPHA_V1 portfolio fit at 0.25x: 10y-safe add-on is best (`+636.5R`, DD `-15.3R`, delta `+39.3R`, DD improves `+0.3R`); neutral add-on `+621.4R`, DD `-16.7R`; recent-strength add-on `+627.0R`, DD `-15.7R`.
+  - ES NY risk-down comparison: ES_NY `0.75x` + Hunter `0.25x` improves DD/worst-month modestly but gives up too much net for all three branches; add Hunter at small risk without cutting ES is the cleaner research read.
+  - Leg overlap/correlation stays low (`corr_to_alpha` about `-0.02` to `-0.04`; ES NY overlap corr about `0.05` to `0.07`), so overlap is not a blocker for a small pilot.
+  - Updated ranking: 10y-safe branch is the best downstream candidate if choosing one research branch now; neutral remains the control leg; recent-strength stays a hot-regime challenger, not the primary pilot.
+- **Original ungated Hunter 2025+ ablation** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORIGINAL_ABLATION_2025PLUS_20260502.md` and `backtesting/data/results/hunter_classic_original_ablation_2025plus_20260502/`
+  - Baseline: canonical ungated Hunter EMA15C14 no-cap, 2025-01-01 through 2026-04-24: `195` trades, `+157.3R`, PF `1.55`, DD `-26.8R`.
+  - Recent-window read differs from long-history: most gates cut good trades. Adding the stress gate loses `-48.8R` but improves DD by `+12.6R`; `dist100` loses `-67.5R`; Tuesday inclusion loses `-49.6R` and worsens DD by `-24.7R`.
+  - Best recent-only looseners were signal window to `13:00` (`+29.1R`, DD slightly better), removing body filter (`+25.8R`, DD better), always-2R on large stops (`+24.8R`, but DD worse by `-8.1R`), and removing rejection filter (`+16.4R`, DD better).
+  - Interpretation: the stress gate is not explaining the 2025 hot streak; it is preserving capital across older hostile regimes. Recent-only candidates should be treated as hot-regime branches and re-checked against the 10y/workflow gates before promotion.
+- **Original Hunter 2025+ combo grid** (2026-05-02): `backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORIGINAL_COMBO_GRID_2025PLUS_20260502.md` and `backtesting/data/results/hunter_classic_original_combo_grid_2025plus_20260502/`
+  - Compact 768-config grid combined the strongest one-at-a-time recent looseners on the same 2025-01-01 through 2026-04-24 window.
+  - Best net in-sample: `no_ema__noTue__1300__body0_rej20__allNonOverlap__always2R__ungated` -> `362` trades, `+372.9R`, PF `1.65`, DD `-26.8R`.
+  - Best Net/DD neighbor: `ema14_tol5__noTue__1300__body0_rej20__allNonOverlap__always2R__ungated` -> `348` trades, `+365.9R`, PF `1.67`, DD `-25.8R`.
+  - Optimized recent shape: no stress gate, no Tuesday, signal end `13:00`, body filter removed, rejection-wick filter retained, all non-overlapping reentries, and always-2R target on wide stops. Treat as an in-sample hot-regime branch only until full 10y/workflow validation.
+
+### ILM/iFVG TradingView Replication Read (2026-04-28)
+
+**Status**: reverse-engineering checkpoint only. This is not a promoted NQ strategy.
+
+**Evidence packet**: `backtesting/scripts/reverse_engineer_ilm_ifvg.py` -> `backtesting/data/results/ilm_ifvg_reverse_engineering_internal_sources_20260428/`, `backtesting/data/results/ilm_ifvg_reverse_engineering_guide_step_phase28_20260428/`, `backtesting/data/results/ilm_reversal_ma_fit_grid_20260428/`, `backtesting/data/results/ilm_ub_filter_fit_grid_20260428/`, `backtesting/data/results/ilm_ifvg_reverse_engineering_recent_signal_probe_20260428/`, and `backtesting/data/results/ilm_ifvg_recent_reversal_ma_combo_probe_20260428/`.
+
+| Variant | Matched | TV trades | Local trades | Recall | Precision | Net P&L |
+|---------|---------|-----------|--------------|--------|-----------|---------|
+| Current-day P/D + UB proxy + rolling sweep cutoff | 67 | 111 | 679 | 60.36% | 9.87% | $22,526.79 |
+| Add latest confirmed internal swing source | 67 | 111 | 678 | 60.36% | 9.88% | $22,115.54 |
+| Algo reversal proxy + internal source | 62 | 111 | 463 | 55.86% | 13.39% | $30,466.49 |
+| Guide Reversal MA proxy: EMA50 held 33 bars | 57 | 111 | 515 | 51.35% | 11.07% | $41,872.05 |
+| Guide Reversal MA proxy + 10pt distance | 51 | 111 | 394 | 45.95% | 12.94% | $23,304.70 |
+| Guide Reversal MA proxy, phase offset 28 | 60 | 111 | 513 | 54.05% | 11.70% | $43,281.63 |
+| Guide Reversal MA proxy, phase offset 28 + 10pt distance | 46 | 111 | 399 | 41.44% | 11.53% | $29,245.21 |
+| AlgoAlpha confirmation proxy | 27 | 111 | 77 | 24.32% | 35.06% | $6,966.09 |
+| AlgoAlpha confirmation within 2-bar lookback | 64 | 111 | 235 | 57.66% | 27.23% | -$3,592.46 |
+| AlgoAlpha recent + phase28 Reversal MA proxy | 57 | 111 | 186 | 51.35% | 30.65% | $1,464.45 |
+| AlgoAlpha recent + phase28 Reversal MA proxy + 10pt distance | 44 | 111 | 147 | 39.64% | 29.93% | $4,925.39 |
+| Internal source + min 4 bars sweep-to-gap | 56 | 111 | 549 | 50.45% | 10.20% | -$2,012.41 |
+| Visible TradingView 2026 window with exact UB/Reversal MA columns | 4 | 4 | 4 | 100.00% | 100.00% | n/a |
+
+**Key findings**
+
+- Premium/discount is now modeled as the live current futures trading-day midpoint, with the day rolling at 18:00 New York time.
+- Accepting internal swing liquidity did not recover any additional export entries. The remaining parity gap is unlikely to be caused by missing liquidity-level categories alone.
+- The visible 2026 TradingView OHLC+indicator window reaches exact entry parity only when using exact `UB-Filter` and `Reversal MA` columns with a 10-point distance gate.
+- The settings guide clue `Trend MA Period=50` + `MA Step Period=33` maps best to a close EMA50 held in 33-bar blocks on the visible TradingView window, but this proxy still over-prunes full history and leaves visible-window extras.
+- Fitting against the visible `Reversal MA` column found the best public proxy around offset 28 in the 33-bar step cycle (`ohlc4 EMA49` mean absolute error 16.91; guide-consistent `close EMA50` mean absolute error 16.95). Promoting that phase offset improved the loose MA-only full-history row from 57 to 60 matches, but it worsened the stricter 10-point row and did not beat the current `internal_sources` baseline.
+- Fitting the visible `UB-Filter` column effectively solved that piece: close source + RMA ATR(30) + key 3 matched the exported line almost exactly. Replacing UT direction with a line-based `ut_stop_proxy` produced identical full-history parity, so UB is no longer the active unknown.
+- Applying the guide's `Reversal Signal Lookback=2` as a recent-signal rule is helpful only for the stricter public AlgoAlpha proxy. It raises AlgoAlpha recall from 24.32% to 57.66% and precision stays materially higher than the loose baseline, but it still does not beat the 67-match internal-source baseline. Combining recent AlgoAlpha with the phase28 Reversal MA proxy lifts precision to about 30% but drops recall to 40-51%.
+- A public AlgoAlpha-style overextension-then-confirmation proxy and the visible-window 4-bar sweep-to-gap clue both over-prune full history. They are useful diagnostics, not replacement filters.
+- The next productive target is the private Algo Inversion/Reversal MA filter, not another broad sweep-source expansion.
+- **ALPHA_V1 hot-regime ablation pass** (2026-05-03): `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_ABLATION_20260503.md`
+  - Scope included the active NQ legs: NQ NY HTF-LSI and NQ Asia ORB, plus ES legs for portfolio context. This is TESTING-only, overfit-aware research inspired by `H_ORB_ABLATED`, not a robust promotion packet.
+  - Best NQ NY HTF-LSI hot-score branch: `combo__window_0830_1430__dow_none__rr3p5_tp0p4__gap1p0__fvgL20_R2__lag24__cap2__mode_fvg_limit` -> full `113.2R / -17.91R DD`, last 2y `29.9R`, last 1y `16.61R`; warning: 1 negative year.
+  - Best NQ Asia ORB hot-score branch: `combo__entry_2230__dow_none__rr6p0_tp0p3__stop_orb_pct_100p0__min_gap_orb_pct_10p0__uncapped_any__fvg_first__wide_none` -> full `242.84R / -14.22R DD`, last 2y `61.07R`, last 1y `41.4R`; warning: warning layer acceptable for TESTING.
+- **ALPHA_V1 expanded hot-regime grid** (2026-05-03): `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_EXPANDED_GRID_20260503.md`
+  - Follow-up grid expanded the top OAT families into 4,378 scored variants. This is still TESTING-only and intentionally overfit-aware.
+  - Best expanded NQ NY HTF-LSI hot-score branch: `combo__window_0830_1430__dow_none__rr3p5_tp0p4__gap1p0__fvgL10_R2__lag24__cap2__mode_fvg_limit` -> full `113.04R / -16.33R DD`, last 2y `31.22R`, last 1y `18.06R`; 0 negative years but worse DD than baseline.
+  - Best expanded NQ Asia ORB hot-score branch: `combo__entry_2230__dow_none__rr6p0_tp0p3__stop_orb_pct_100p0__min_gap_orb_pct_10p0__cap2_after_nonpositive__fvg_first__wide_none` -> full `243.62R / -14.22R DD`, last 2y `61.07R`, last 1y `41.40R`; full DD worsens versus baseline.
+  - Pure last-1y NQ Asia branch: `entry_2315 / gap0 / cap1` reached `+49.70R` last-1y, but it is less balanced than the best-score row. Treat it as a hot-regime dry-run candidate only.

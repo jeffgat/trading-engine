@@ -186,6 +186,12 @@ class StrategyConfig:
     #   "after_full_target_first" -> only re-arm after a full-target prior trade
     orb_reentry_policy: str = "any_reentry"
 
+    # Optional conditional target compression for large realized stops.
+    # Disabled when either field is 0. When enabled and computed stop/risk
+    # distance is >= threshold, TP1/TP2 use wide_stop_target_rr instead of rr.
+    wide_stop_target_threshold_points: float = 0.0
+    wide_stop_target_rr: float = 0.0
+
     # Bar magnifier: use 1m sub-bars for fill/exit simulation
     use_bar_magnifier: bool = True
 
@@ -332,6 +338,27 @@ class StrategyConfig:
                 f"{list(ALLOWED_ORB_REENTRY_POLICIES)} "
                 f"(got {self.orb_reentry_policy!r})"
             )
+        if self.wide_stop_target_threshold_points < 0:
+            raise ValueError(
+                "wide_stop_target_threshold_points must be >= 0 "
+                f"(got {self.wide_stop_target_threshold_points!r})"
+            )
+        if self.wide_stop_target_rr < 0:
+            raise ValueError(
+                "wide_stop_target_rr must be >= 0 "
+                f"(got {self.wide_stop_target_rr!r})"
+            )
+        if self.wide_stop_target_rr > 0:
+            if self.wide_stop_target_rr < 1.0:
+                raise ValueError(
+                    "wide_stop_target_rr must be >= 1.0 when enabled "
+                    f"(got {self.wide_stop_target_rr!r})"
+                )
+            if self.wide_stop_target_rr > self.rr:
+                raise ValueError(
+                    "wide_stop_target_rr must be <= rr because it is a target-reduction rule "
+                    f"(got wide_stop_target_rr={self.wide_stop_target_rr!r}, rr={self.rr!r})"
+                )
         invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(ALLOWED_REF_LSI_LEVELS))
         if invalid_ref_levels:
             raise ValueError(

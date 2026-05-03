@@ -206,6 +206,76 @@ DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
 ---
 
+## ORB Mechanic Transfer Test — Hunter Wide-Stop + Re-Entry
+
+2026-05-02 report: `backtesting/learnings/reports/ALPHA_V1_ORB_WIDESTOP_REENTRY_TRANSFER_20260502.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_orb_widestop_reentry_transfer_20260502/`
+
+Scope was the three active ALPHA_V1 ORB legs only: `NQ Asia ORB`, `ES Asia ORB`, `ES NY ORB`. The HTF-LSI leg was excluded because the hypothesis was whether Hunter ORB mechanics transfer to ORB continuation legs.
+
+**Conclusion: one-loss/nonpositive re-entry transfers; wide-stop TP compression does not.**
+
+Combined ORB sleeve, `2016-04-17` to `2026-03-24`:
+
+| Variant | Fills | Net R | PF | Sharpe | DD | Neg years | Read |
+|---------|------:|------:|---:|-------:|---:|----------:|------|
+| Baseline `cap1` | 2,989 | +486.9R | 1.40 | 1.73 | -21.2R | 0 | Current one-trade-per-session ORB sleeve |
+| `cap2_after_nonpositive` / `after_sl` | 3,224 | +545.6R | 1.41 | 1.93 | -22.0R | 0 | Best clean Hunter-style transfer |
+| `cap2_any` | 3,698 | +568.5R | 1.37 | 1.92 | -23.2R | 0 | Highest R, but more flow and worse DD/PF |
+| Best wide-stop only | 2,989 | +482.3R | 1.39 | — | -21.2R | 0 | Still loses R; no meaningful DD benefit |
+
+Recent windows:
+- `cap2_after_nonpositive` adds `+25.7R` in 2024+, `+6.6R` in 2025+, and `+1.7R` in the last 1y, with small DD giveback.
+- `cap2_any` adds more R (`+34.7R` in 2024+, `+13.6R` in 2025+, `+11.7R` last 1y) but worsens recent daily DD by about `-2.7R`.
+- Every combined wide-stop-only variant loses net R versus baseline. Best full-history wide-only is still `-4.7R`; median wide-only is about `-32.9R`. Do not port Hunter's wide-stop 1R cap to ALPHA_V1 ORB as a sleeve rule.
+
+Per-leg read:
+- `NQ Asia` and `ES Asia` both favor `cap2_after_nonpositive` / `after_sl` over target compression.
+- `ES NY` likes extra flow most; its best full-history row is a cap2-any + light wide-stop combo, but it introduces a negative year and needs prop/risk validation before promotion.
+
+Completed follow-up: the promotion packet below tests `cap2_after_nonpositive` on `NQ Asia ORB` and `ES Asia ORB` inside the full active ALPHA_V1 stack.
+
+### ORB One-Loss Reentry Promotion Packet (2026-05-02)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ORB_REENTRY_PROMOTION_20260502.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_orb_reentry_promotion_20260502/`
+
+Candidate: `NQ Asia ORB` and `ES Asia ORB` move to `orb_trade_max_per_session=2` with `orb_reentry_policy=after_nonpositive_first`; `ES NY ORB` and `NQ NY HTF-LSI` stay unchanged. The test used the active four-leg ALPHA_V1 lineup and current sprint risk sizing: HTF-LSI `$300`, NQ Asia `$300`, ES Asia `$200`, ES NY `$300`.
+
+**Read: research pass, execution build required before dry-run.** Full-history combined R improves, recent windows improve, and 2025 remains strong; however, current-dollar funded cohorts are mixed across the entire 10-year history and the generic execution `ORBEngine` does not yet support the same cap2/reentry semantics.
+
+Combined active portfolio, `2016-04-17` to `2026-03-24`:
+
+| Window | Baseline | Candidate | Delta | DD change | Current-$ delta |
+|--------|---------:|----------:|------:|----------:|----------------:|
+| Full | +579.5R | +625.6R | +46.1R | -0.9R | +$11.6k |
+| 2024+ | +159.0R | +174.0R | +15.0R | +0.5R | +$4.0k |
+| 2025+ | +106.5R | +113.1R | +6.6R | +1.3R | +$1.6k |
+| Last 1y | +91.4R | +98.1R | +6.7R | +1.3R | +$1.6k |
+| Calendar 2025 | +97.5R | +103.1R | +5.6R | +1.3R | +$1.4k |
+
+Per-leg contribution on full history:
+- `NQ Asia ORB`: `+23.8R` / `+$7.1k`, DD roughly flat (`-0.1R`).
+- `ES Asia ORB`: `+22.3R` / `+$4.5k`, DD slightly better (`+0.6R`).
+- `ES NY ORB` and `NQ NY HTF-LSI`: unchanged by design.
+
+Funded first-payout model at current risk sizing:
+
+| Window | Baseline Pay% | Candidate Pay% | Baseline breaches | Candidate breaches | Read |
+|--------|--------------:|---------------:|------------------:|-------------------:|------|
+| Full | 77.2% | 74.1% | 55 | 64 | Mixed: more R, but slightly more historical account stress |
+| 2024+ | 81.4% | 79.7% | 7 | 8 | Slightly worse |
+| 2025+ | 84.4% | 84.4% | 2 | 2 | Same payout rate, faster median payout |
+| Last 1y | 74.1% | 77.8% | 3 | 2 | Better recent cohort behavior |
+
+Timing-overlap check: candidate generated `134` reentry fills for `+46.1R` / `+$11.6k`; other legs were negative on `31.3%` of reentry days versus `46.2%` of all candidate trading days. The reentry trades do not appear to disproportionately cluster with other-leg loss days, though the worst overlap days still include multi-leg drawdowns.
+
+Execution action: do not flip this live from config alone. Add generic `ORBEngine` support for `orb_trade_max_per_session` and `orb_reentry_policy=after_nonpositive_first`, wire checkpoint/API/exact-replay fields, then run dry-mode parity before promotion.
+
+---
+
 ## Dry Run — Historical Reference
 
 ### Legacy LSI/NQ_NY-RR2
@@ -383,3 +453,43 @@ Report: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`
 4. **Portfolio-level projections are mixed-vintage**: Older lifecycle-style legacy figures should be treated as historical context only. The active NQ NY leg is now HTF-LSI, and the full four-leg exact rerun on the tightened live row is still pending.
 5. **The new HTF swap is a live-policy update, not a fully rerun portfolio dossier yet**: The NQ NY leg is backed by exact single-leg replay and replacement sizing packets, but the complete `ALPHA_V1` stack has not yet been rerun end-to-end on the tighter `08:30-13:30 / rr3.5 / tp0.4` row.
 6. **Prop firm instrument restrictions**: Apex Trader Funding bans GC trading, removing the strongest non-equity diversifier from the portfolio. Monitor for policy changes or alternative prop firms that allow GC.
+
+### Hot-Regime Ablation / Overfit Candidate Pass (2026-05-03)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_ABLATION_20260503.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_hot_regime_ablation_20260503/`
+
+Intentional TESTING-only research pass inspired by `TESTING.H_ORB_ABLATED`: maximize recent R with last 1y weighted most, last 2y second, and full 10y as warning context. Hot score used: `3*last1_net + 2*last2_net + full_net - 0.50*abs(last1_dd) - 0.25*abs(last2_dd) - 0.10*abs(full_dd) - 10*full_negative_years - 25*(last1_fills<12)`. Window was `2016-04-17` to `2026-03-24`.
+
+Best hot-score candidates by active leg:
+
+| Leg | Candidate | Full R / DD | Last 2y R | Last 1y R | Warning |
+|-----|-----------|-------------|-----------|-----------|---------|
+| NQ NY HTF-LSI | `combo__window_0830_1430__dow_none__rr3p5_tp0p4__gap1p0__fvgL20_R2__lag24__cap2__mode_fvg_limit` | `113.2R / -17.91R` | `29.9R` | `16.61R` | 1 negative year |
+| NQ Asia ORB | `combo__entry_2230__dow_none__rr6p0_tp0p3__stop_orb_pct_100p0__min_gap_orb_pct_10p0__uncapped_any__fvg_first__wide_none` | `242.84R / -14.22R` | `61.07R` | `41.4R` | warning layer acceptable for TESTING |
+| ES Asia ORB | `combo__entry_0600__dow_baseline__rr4p0_tp0p25__stop_orb_pct_125p0__min_gap_atr_pct_0p25__cap2_any__fvg_first__wide_none` | `203.35R / -17.05R` | `44.8R` | `38.33R` | warning layer acceptable for TESTING |
+| ES NY ORB | `combo__entry_1300__dow_baseline__rr7p0_tp0p2__stop_atr_pct_5p0__min_gap_atr_pct_0p25__cap2_any__fvg_first__wide_none` | `157.1R / -20.62R` | `48.48R` | `19.75R` | 1 negative year |
+
+Research read: this pass should not supersede the robust ALPHA_V1 operating profile. Use it to select dry-run TESTING candidates only, with full-history drawdown/negative-year warnings attached.
+
+#### Expanded top-3 Cartesian follow-up
+
+Report: `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_EXPANDED_GRID_20260503.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_hot_regime_expanded_grid_20260503/`
+
+Follow-up grid expanded the top-ranked OAT families into 4,378 scored variants. It kept the intentionally hot-regime objective, but constrained clearly destructive branches from the first pass: FVG extreme chasing, wide-stop target compression, and close-entry HTF-LSI. Score formula was unchanged.
+
+Best expanded hot-score candidates by active leg:
+
+| Leg | Expanded candidate | Full R / DD | Last 2y R / DD | Last 1y R / DD | Warning |
+|-----|--------------------|-------------|----------------|----------------|---------|
+| NQ NY HTF-LSI | `combo__window_0830_1430__dow_none__rr3p5_tp0p4__gap1p0__fvgL10_R2__lag24__cap2__mode_fvg_limit` | `113.04R / -16.33R` | `31.22R / -8.48R` | `18.06R / -5.62R` | 0 negative years, but worse DD than baseline |
+| NQ Asia ORB | `combo__entry_2230__dow_none__rr6p0_tp0p3__stop_orb_pct_100p0__min_gap_orb_pct_10p0__cap2_after_nonpositive__fvg_first__wide_none` | `243.62R / -14.22R` | `61.07R / -7.00R` | `41.40R / -7.00R` | Better recent R, full DD worse than baseline |
+| ES Asia ORB | `combo__entry_0600__dow_baseline__rr1p5_tp0p7__stop_orb_pct_125p0__min_gap_atr_pct_0p25__uncapped_any__fvg_first__wide_none` | `252.59R / -21.65R` | `61.17R / -16.07R` | `38.52R / -6.38R` | 1 negative year, lower PF, high trade count |
+| ES NY ORB | `combo__entry_1300__dow_baseline__rr7p0_tp0p2__stop_atr_pct_5p0__min_gap_atr_pct_0p5__cap2_any__fvg_first__wide_none` | `165.11R / -22.30R` | `50.06R / -13.25R` | `20.03R / -13.25R` | 0 negative years, but last-1y DD worsens |
+
+Portfolio proxy replacing all four baseline legs with these expanded best-score rows improved total net R from `+578.51R` to `+774.36R`, last-2y from `+140.46R` to `+203.52R`, and last-1y from `+90.38R` to `+118.02R`. The cost is obvious: PF drops from `1.401` to `1.287`, full DD worsens from `-15.40R` to `-25.83R`, and last-1y DD worsens from `-11.21R` to `-18.20R`.
+
+Pure last-1y maximizers exist, especially NQ Asia `entry_2315/gap0/cap1` at `+49.70R` last-1y and ES Asia `entry_0400/exMon/stop75/uncapped` at `+56.50R` last-1y. Those are more fragile than the best-score rows and should only be used as explicit hot-regime dry-run experiments.

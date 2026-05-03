@@ -45,12 +45,24 @@
 - `Entry Mode vs Inversion Timing Diagnostic (Apr 2026)` -> `**DIAGNOSTIC ONLY — do not reopen discovery yet**`
 - `Eval-Pass Fit 1s Read (Apr 2026)` -> `**DIAGNOSTIC ONLY — operating fit read for eval passes, not a new promotion workflow**`
 - `HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)` -> `**DIAGNOSTIC ONLY — keep the current HTF-LSI lead unchanged**`
+- `Hunter Classic ORB Regime Gate Read (2026-05-02)` -> `**CONDITIONAL research lead — promising, not promoted**`
+- `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
 
-## Reports (74)
+## Reports (84)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
 - [NQ_EVAL_FIT_1S_READ.md](../../reports/NQ_EVAL_FIT_1S_READ.md) -> [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read)
 - [NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep)
 - [NQ_HTF_LSI_LOWER_TF_STRUCTURAL_STOP_TARGET_SWEEP.md](../../reports/NQ_HTF_LSI_LOWER_TF_STRUCTURAL_STOP_TARGET_SWEEP.md) -> [nq_htf_lsi_lower_tf_structural_stop_target_sweep](../../../data/results/nq_htf_lsi_lower_tf_structural_stop_target_sweep)
+- [NQ_HUNTER_CLASSIC_ABLATION_20260502.md](../../reports/NQ_HUNTER_CLASSIC_ABLATION_20260502.md)
+- [NQ_HUNTER_CLASSIC_NEXT_TESTS_20260502.md](../../reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_20260502.md)
+- [NQ_HUNTER_CLASSIC_NEXT_TESTS_DOWNSTREAM_20260502.md](../../reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_DOWNSTREAM_20260502.md)
+- [NQ_HUNTER_CLASSIC_ORB_REGIME_GATE_20260502.md](../../reports/NQ_HUNTER_CLASSIC_ORB_REGIME_GATE_20260502.md)
+- [NQ_HUNTER_CLASSIC_ORIGINAL_ABLATION_2025PLUS_20260502.md](../../reports/NQ_HUNTER_CLASSIC_ORIGINAL_ABLATION_2025PLUS_20260502.md)
+- [NQ_HUNTER_CLASSIC_ORIGINAL_COMBO_GRID_2025PLUS_20260502.md](../../reports/NQ_HUNTER_CLASSIC_ORIGINAL_COMBO_GRID_2025PLUS_20260502.md)
+- [NQ_HUNTER_CLASSIC_STRATEGY_WORKFLOW_20260502.md](../../reports/NQ_HUNTER_CLASSIC_STRATEGY_WORKFLOW_20260502.md)
+- [NQ_HUNTER_CLASSIC_STRESS_GATE_VALIDATION_20260502.md](../../reports/NQ_HUNTER_CLASSIC_STRESS_GATE_VALIDATION_20260502.md)
+- [NQ_HUNTER_CLASSIC_THREE_CANDIDATE_DOWNSTREAM_20260502.md](../../reports/NQ_HUNTER_CLASSIC_THREE_CANDIDATE_DOWNSTREAM_20260502.md)
+- [NQ_HUNTER_DIST100_ATTRIBUTION_20260502.md](../../reports/NQ_HUNTER_DIST100_ATTRIBUTION_20260502.md)
 - [NQ_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_lsi_atr_orb_stop_sweep](../../../data/results/nq_lsi_atr_orb_stop_sweep)
 - [NQ_LSI_STRUCTURAL_STOP_TARGET_SWEEP.md](../../reports/NQ_LSI_STRUCTURAL_STOP_TARGET_SWEEP.md) -> [nq_lsi_structural_stop_target_sweep](../../../data/results/nq_lsi_structural_stop_target_sweep)
 - [NQ_NY_EQHL_LSI_PHASE_ONE.md](../../reports/NQ_NY_EQHL_LSI_PHASE_ONE.md) -> [nq_ny_eqhl_lsi_phase_one](../../../data/results/nq_ny_eqhl_lsi_phase_one)

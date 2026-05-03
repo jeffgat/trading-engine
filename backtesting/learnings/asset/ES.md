@@ -914,3 +914,12 @@ Shared cross-asset transfer run reconfirmed that **ES Asia-B should stay ungated
 - **Verdict**: `rejects_gate`
 - **Interpretation**: the medium-vol gate trims too many profitable Asia-B trades. It slightly improves drawdown and Sharpe, but the drop in net R and Calmar is too large.
 - **Action**: keep **Asia-B ungated** as the ES production baseline and do **not** promote ES into the second-round gate shortlist.
+- **ALPHA_V1 hot-regime ablation pass** (2026-05-03): `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_ABLATION_20260503.md`
+  - Scope included ES Asia ORB and ES NY ORB from the active ALPHA_V1 sleeve. This is TESTING-only, overfit-aware research inspired by `H_ORB_ABLATED`, not a robust promotion packet.
+  - Best ES Asia ORB hot-score branch: `combo__entry_0600__dow_baseline__rr4p0_tp0p25__stop_orb_pct_125p0__min_gap_atr_pct_0p25__cap2_any__fvg_first__wide_none` -> full `203.35R / -17.05R DD`, last 2y `44.8R`, last 1y `38.33R`; warning: warning layer acceptable for TESTING.
+  - Best ES NY ORB hot-score branch: `combo__entry_1300__dow_baseline__rr7p0_tp0p2__stop_atr_pct_5p0__min_gap_atr_pct_0p25__cap2_any__fvg_first__wide_none` -> full `157.1R / -20.62R DD`, last 2y `48.48R`, last 1y `19.75R`; warning: 1 negative year.
+- **ALPHA_V1 expanded hot-regime grid** (2026-05-03): `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_EXPANDED_GRID_20260503.md`
+  - Follow-up grid expanded the top OAT families into 4,378 scored variants. This is still TESTING-only and intentionally overfit-aware.
+  - Best expanded ES Asia ORB hot-score branch: `combo__entry_0600__dow_baseline__rr1p5_tp0p7__stop_orb_pct_125p0__min_gap_atr_pct_0p25__uncapped_any__fvg_first__wide_none` -> full `252.59R / -21.65R DD`, last 2y `61.17R`, last 1y `38.52R`; warning: 1 negative year, lower PF, high trade count.
+  - Pure last-1y ES Asia branch: `entry_0400 / exMon / rr1.5 / stop75 / gap0.5 / uncapped` reached `+56.50R` last-1y, but full history was much more fragile at `132.89R / -36.97R DD` with 2 negative years.
+  - Best expanded ES NY ORB hot-score branch: `combo__entry_1300__dow_baseline__rr7p0_tp0p2__stop_atr_pct_5p0__min_gap_atr_pct_0p5__cap2_any__fvg_first__wide_none` -> full `165.11R / -22.30R DD`, last 2y `50.06R`, last 1y `20.03R`; full and recent DD both worsen versus baseline.

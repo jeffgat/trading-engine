@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-27T13:37:23.947925Z",
+  "generated_at": "2026-05-03T13:08:10.809464Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 154,
-    "result_directories": 236,
+    "report_files": 168,
+    "result_directories": 303,
     "result_loose_files": 44
   },
   "assets": {
@@ -872,10 +872,15 @@
           "title": "Regime-Gate Round Two Refinement (2026-04-01)",
           "status": "UNSPECIFIED",
           "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Gold-X v14.4 TradingView Replication - GC/MGC (2026-04-27)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
         }
       ],
       "status_counts": {
-        "UNSPECIFIED": 23,
+        "UNSPECIFIED": 24,
         "INVALIDATED_OR_CORRUPT": 7,
         "NO-GO": 5
       },
@@ -1015,9 +1020,356 @@
           ]
         },
         {
+          "name": "goldx_gc_classic_sequence_probe_20260428",
+          "path": "backtesting/data/results/goldx_gc_classic_sequence_probe_20260428",
+          "mtime_utc": "2026-04-29T02:52:32.022862Z",
+          "file_count": 2,
+          "primary_files": [
+            "sequence_filter_summary.csv",
+            "sequence_filter_summary.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_ema_cross_grid_20260428",
+          "path": "backtesting/data/results/goldx_gc_ema_cross_grid_20260428",
+          "mtime_utc": "2026-04-29T01:51:56.743244Z",
+          "file_count": 2,
+          "primary_files": [
+            "grid_summary.csv",
+            "grid_summary.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_filter_ablation_20260428",
+          "path": "backtesting/data/results/goldx_gc_filter_ablation_20260428",
+          "mtime_utc": "2026-04-29T02:57:02.980257Z",
+          "file_count": 2,
+          "primary_files": [
+            "filter_ablation_summary.csv",
+            "filter_ablation_summary.json"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_cross0_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_cross0_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:20:08.101207Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_cross1_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_cross1_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:20:08.845381Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_cross2_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_cross2_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:20:08.934494Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_ema200_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_ema200_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:20:37.724559Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_ema9close_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_ema9close_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:43:55.638339Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_no_trend_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_no_trend_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:20:37.856162Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:37:48.119160Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_squeeze_wae_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_squeeze_wae_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:34:01.401737Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_tvshape_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_tvshape_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:14:52.790984Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:17:11.251983Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_classic_wae_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_classic_wae_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:29:06.430498Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_ema4h_max4_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_ema4h_max4_20260428",
+          "mtime_utc": "2026-04-29T01:33:39.173126Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_entrycap1050_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_entrycap1050_20260428",
+          "mtime_utc": "2026-04-28T23:34:39.381339Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_entrycap1050_emacross5_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_entrycap1050_emacross5_20260428",
+          "mtime_utc": "2026-04-29T00:53:12.963567Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_entrycap1050_fvg_exitcd10_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_entrycap1050_fvg_exitcd10_20260428",
+          "mtime_utc": "2026-04-29T00:38:29.004589Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
           "name": "goldx_gc_reverse_engineer_fvg_ut_baseline_20260426",
           "path": "backtesting/data/results/goldx_gc_reverse_engineer_fvg_ut_baseline_20260426",
           "mtime_utc": "2026-04-27T01:38:43.283167Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_guide_ema3h_long5_short4_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_long5_short4_20260428",
+          "mtime_utc": "2026-04-29T02:05:00.952596Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_guide_ema3h_max2_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_max2_20260428",
+          "mtime_utc": "2026-04-29T01:28:33.084819Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_guide_ema3h_max3_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_max3_20260428",
+          "mtime_utc": "2026-04-29T01:28:33.107681Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_guide_ema3h_max4_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_max4_20260428",
+          "mtime_utc": "2026-04-29T01:30:50.573180Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_guide_ema3h_max5_20260428",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_max5_20260428",
+          "mtime_utc": "2026-04-29T01:28:33.181810Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_no_rg_classic_ema9close_squeeze_wae_divergence_tvshape_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_no_rg_classic_ema9close_squeeze_wae_divergence_tvshape_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:45:38.367762Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_no_trend_classic_ema9close_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_no_trend_classic_ema9close_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427",
+          "mtime_utc": "2026-04-27T14:44:55.714484Z",
           "file_count": 3,
           "primary_files": [
             "summary.json",
@@ -1155,6 +1507,174 @@
           ]
         },
         {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_0_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_0_20260427",
+          "mtime_utc": "2026-04-27T14:38:40.342298Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_10_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_10_20260427",
+          "mtime_utc": "2026-04-27T14:40:38.544784Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_1_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_1_20260427",
+          "mtime_utc": "2026-04-27T14:38:48.170686Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_2_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_2_20260427",
+          "mtime_utc": "2026-04-27T14:38:56.028700Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_3_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_3_20260427",
+          "mtime_utc": "2026-04-27T14:39:04.268656Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_4_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_4_20260427",
+          "mtime_utc": "2026-04-27T14:40:01.632066Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_5_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_5_20260427",
+          "mtime_utc": "2026-04-27T14:40:10.600991Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_6_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_6_20260427",
+          "mtime_utc": "2026-04-27T14:40:19.946675Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_cross_8_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_cross_8_20260427",
+          "mtime_utc": "2026-04-27T14:40:30.543168Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_fvg_both_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_fvg_both_20260427",
+          "mtime_utc": "2026-04-27T14:47:31.691323Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_fvg_exitcd_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_fvg_exitcd_20260427",
+          "mtime_utc": "2026-04-27T14:47:23.507906Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_tmp_fvg_first_20260427",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_tmp_fvg_first_20260427",
+          "mtime_utc": "2026-04-27T14:46:17.048370Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
           "name": "goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427",
           "path": "backtesting/data/results/goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427",
           "mtime_utc": "2026-04-27T13:32:28.940768Z",
@@ -1163,6 +1683,33 @@
             "summary.json",
             "export_trade_diagnostics.csv",
             "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_reverse_engineer_with_0223_overlay_20260429",
+          "path": "backtesting/data/results/goldx_gc_reverse_engineer_with_0223_overlay_20260429",
+          "mtime_utc": "2026-04-29T13:54:07.933248Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "export_trade_diagnostics.csv",
+            "sim_trades.csv"
+          ],
+          "assets": [
+            "GC"
+          ]
+        },
+        {
+          "name": "goldx_gc_side_specific_ema_cross_grid_20260428",
+          "path": "backtesting/data/results/goldx_gc_side_specific_ema_cross_grid_20260428",
+          "mtime_utc": "2026-04-29T01:57:18.391433Z",
+          "file_count": 2,
+          "primary_files": [
+            "grid_summary.csv",
+            "grid_summary.json"
           ],
           "assets": [
             "GC"
@@ -1374,15 +1921,25 @@
           "title": "HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)",
           "status": "**DIAGNOSTIC ONLY \u2014 keep the current HTF-LSI lead unchanged**",
           "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Hunter Classic ORB Regime Gate Read (2026-05-02)",
+          "status": "**CONDITIONAL research lead \u2014 promising, not promoted**",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "ILM/iFVG TradingView Replication Read (2026-04-28)",
+          "status": "UNSPECIFIED",
+          "status_bucket": "UNSPECIFIED"
         }
       ],
       "status_counts": {
         "NO-GO": 5,
-        "CONDITIONAL": 11,
+        "CONDITIONAL": 12,
         "SUPERSEDED": 2,
         "OPTIMIZATION_COMPLETE": 1,
         "GO": 3,
-        "UNSPECIFIED": 15,
+        "UNSPECIFIED": 16,
         "INVALIDATED_OR_CORRUPT": 3
       },
       "reports": [
@@ -1413,6 +1970,76 @@
           "slug": "nq_htf_lsi_lower_tf_structural_stop_target_sweep",
           "mtime_utc": "2026-04-13T21:16:48.099372Z",
           "matched_result_directory": "backtesting/data/results/nq_htf_lsi_lower_tf_structural_stop_target_sweep"
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_ABLATION_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ABLATION_20260502.md",
+          "slug": "nq_hunter_classic_ablation_20260502",
+          "mtime_utc": "2026-05-02T16:27:18.950200Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_NEXT_TESTS_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_20260502.md",
+          "slug": "nq_hunter_classic_next_tests_20260502",
+          "mtime_utc": "2026-05-02T17:37:17.277955Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_NEXT_TESTS_DOWNSTREAM_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_NEXT_TESTS_DOWNSTREAM_20260502.md",
+          "slug": "nq_hunter_classic_next_tests_downstream_20260502",
+          "mtime_utc": "2026-05-02T18:04:00.001733Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_ORB_REGIME_GATE_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORB_REGIME_GATE_20260502.md",
+          "slug": "nq_hunter_classic_orb_regime_gate_20260502",
+          "mtime_utc": "2026-05-02T14:25:23.319185Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_ORIGINAL_ABLATION_2025PLUS_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORIGINAL_ABLATION_2025PLUS_20260502.md",
+          "slug": "nq_hunter_classic_original_ablation_2025plus_20260502",
+          "mtime_utc": "2026-05-02T16:37:35.664373Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_ORIGINAL_COMBO_GRID_2025PLUS_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_ORIGINAL_COMBO_GRID_2025PLUS_20260502.md",
+          "slug": "nq_hunter_classic_original_combo_grid_2025plus_20260502",
+          "mtime_utc": "2026-05-02T16:51:44.494607Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_STRATEGY_WORKFLOW_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_STRATEGY_WORKFLOW_20260502.md",
+          "slug": "nq_hunter_classic_strategy_workflow_20260502",
+          "mtime_utc": "2026-05-02T15:01:03.069972Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_STRESS_GATE_VALIDATION_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_STRESS_GATE_VALIDATION_20260502.md",
+          "slug": "nq_hunter_classic_stress_gate_validation_20260502",
+          "mtime_utc": "2026-05-02T14:38:51.812919Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_CLASSIC_THREE_CANDIDATE_DOWNSTREAM_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_CLASSIC_THREE_CANDIDATE_DOWNSTREAM_20260502.md",
+          "slug": "nq_hunter_classic_three_candidate_downstream_20260502",
+          "mtime_utc": "2026-05-02T15:17:48.289424Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_HUNTER_DIST100_ATTRIBUTION_20260502.md",
+          "path": "backtesting/learnings/reports/NQ_HUNTER_DIST100_ATTRIBUTION_20260502.md",
+          "slug": "nq_hunter_dist100_attribution_20260502",
+          "mtime_utc": "2026-05-02T16:12:23.578183Z",
+          "matched_result_directory": null
         },
         {
           "name": "NQ_LSI_ATR_ORB_STOP_SWEEP.md",
@@ -3789,6 +4416,20 @@
           "matched_result_directory": null
         },
         {
+          "name": "ALPHA_V1_HOT_REGIME_ABLATION_20260503.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_ABLATION_20260503.md",
+          "slug": "alpha_v1_hot_regime_ablation_20260503",
+          "mtime_utc": "2026-05-03T03:10:49.549284Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_hot_regime_ablation_20260503"
+        },
+        {
+          "name": "ALPHA_V1_HOT_REGIME_EXPANDED_GRID_20260503.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_EXPANDED_GRID_20260503.md",
+          "slug": "alpha_v1_hot_regime_expanded_grid_20260503",
+          "mtime_utc": "2026-05-03T13:04:38.332260Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_hot_regime_expanded_grid_20260503"
+        },
+        {
           "name": "ALPHA_V1_NQ_NY_HTF_LSI_FUNDED_TARGET_COMPARE.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_NQ_NY_HTF_LSI_FUNDED_TARGET_COMPARE.md",
           "slug": "alpha_v1_nq_ny_htf_lsi_funded_target_compare",
@@ -3873,11 +4514,25 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_orb_reentry_2y"
         },
         {
+          "name": "ALPHA_V1_ORB_REENTRY_PROMOTION_20260502.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_REENTRY_PROMOTION_20260502.md",
+          "slug": "alpha_v1_orb_reentry_promotion_20260502",
+          "mtime_utc": "2026-05-03T02:53:55.358953Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_reentry_promotion_20260502"
+        },
+        {
           "name": "ALPHA_V1_ORB_R_TRIGGER_STAGGER_COMPARE.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ORB_R_TRIGGER_STAGGER_COMPARE.md",
           "slug": "alpha_v1_orb_r_trigger_stagger_compare",
           "mtime_utc": "2026-04-18T17:10:03.307716Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_orb_r_trigger_stagger_compare"
+        },
+        {
+          "name": "ALPHA_V1_ORB_WIDESTOP_REENTRY_TRANSFER_20260502.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_WIDESTOP_REENTRY_TRANSFER_20260502.md",
+          "slug": "alpha_v1_orb_widestop_reentry_transfer_20260502",
+          "mtime_utc": "2026-05-02T17:45:00.714917Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_widestop_reentry_transfer_20260502"
         },
         {
           "name": "ALPHA_V1_PRE_ENTRY_TARGET_CANCEL.md",
@@ -4137,6 +4792,28 @@
     },
     "result_directories": [
       {
+        "name": "_tmp_hunter_original_check",
+        "path": "backtesting/data/results/_tmp_hunter_original_check",
+        "mtime_utc": "2026-05-02T16:33:41.075547Z",
+        "file_count": 2,
+        "primary_files": [
+          "summary.json",
+          "sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "_tmp_hunter_original_legacy_check",
+        "path": "backtesting/data/results/_tmp_hunter_original_legacy_check",
+        "mtime_utc": "2026-05-02T16:35:09.746406Z",
+        "file_count": 2,
+        "primary_files": [
+          "summary.json",
+          "sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "alpha_v1_downside",
         "path": "backtesting/data/results/alpha_v1_downside",
         "mtime_utc": "2026-04-03T23:48:14.991662Z",
@@ -4171,6 +4848,34 @@
           "exact_target_frontier.json",
           "policy_trade_analysis.csv",
           "target_frontier.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_hot_regime_ablation_20260503",
+        "path": "backtesting/data/results/alpha_v1_hot_regime_ablation_20260503",
+        "mtime_utc": "2026-05-03T03:10:49.547894Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "annual_r.csv",
+          "metrics_by_window.csv",
+          "portfolio_proxy.csv",
+          "variant_manifest.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_hot_regime_expanded_grid_20260503",
+        "path": "backtesting/data/results/alpha_v1_hot_regime_expanded_grid_20260503",
+        "mtime_utc": "2026-05-03T13:04:38.325981Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "annual_r.csv",
+          "metrics_by_window.csv",
+          "portfolio_proxy.csv",
+          "variant_manifest.csv"
         ],
         "assets": []
       },
@@ -4281,6 +4986,34 @@
         "file_count": 1,
         "primary_files": [
           "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_reentry_promotion_20260502",
+        "path": "backtesting/data/results/alpha_v1_orb_reentry_promotion_20260502",
+        "mtime_utc": "2026-05-03T02:53:55.357050Z",
+        "file_count": 11,
+        "primary_files": [
+          "summary.json",
+          "baseline_trades.csv",
+          "candidate_trades.csv",
+          "combined_window_metrics.csv",
+          "execution_compatibility.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_widestop_reentry_transfer_20260502",
+        "path": "backtesting/data/results/alpha_v1_orb_widestop_reentry_transfer_20260502",
+        "mtime_utc": "2026-05-02T17:43:29.703846Z",
+        "file_count": 8,
+        "primary_files": [
+          "summary.json",
+          "annual_r_by_variant.csv",
+          "combined_metrics_by_window.csv",
+          "combined_rankings.csv",
+          "leg_metrics_by_window.csv"
         ],
         "assets": []
       },
@@ -4449,6 +5182,20 @@
         "assets": []
       },
       {
+        "name": "hunter_classic_ablation_20260502",
+        "path": "backtesting/data/results/hunter_classic_ablation_20260502",
+        "mtime_utc": "2026-05-02T16:25:01.220082Z",
+        "file_count": 13,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "ablation_contribution.csv",
+          "ablation_metrics.csv",
+          "ablation_trade_counts.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "hunter_classic_ema15_bias_sweep_20260426",
         "path": "backtesting/data/results/hunter_classic_ema15_bias_sweep_20260426",
         "mtime_utc": "2026-04-26T18:32:35.485525Z",
@@ -4476,6 +5223,34 @@
         "assets": []
       },
       {
+        "name": "hunter_classic_next_tests_20260502",
+        "path": "backtesting/data/results/hunter_classic_next_tests_20260502",
+        "mtime_utc": "2026-05-02T17:29:35.113219Z",
+        "file_count": 12,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "annual_metrics.csv",
+          "next_test_metrics.csv",
+          "paired_effect_summary.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_next_tests_downstream_20260502",
+        "path": "backtesting/data/results/hunter_classic_next_tests_downstream_20260502",
+        "mtime_utc": "2026-05-02T18:03:24.583003Z",
+        "file_count": 11,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "alpha_v1_leg_overlap.csv",
+          "annual_returns.csv",
+          "candidate_window_metrics.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "hunter_classic_orb_replication_10y_ema15c14_20260426",
         "path": "backtesting/data/results/hunter_classic_orb_replication_10y_ema15c14_20260426",
         "mtime_utc": "2026-04-26T16:24:28.676819Z",
@@ -4484,6 +5259,17 @@
           "summary.json",
           "trades.csv",
           "yearly_breakdown.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_orb_replication_10y_ema15c14_dist100_20260502",
+        "path": "backtesting/data/results/hunter_classic_orb_replication_10y_ema15c14_dist100_20260502",
+        "mtime_utc": "2026-05-02T14:17:26.475487Z",
+        "file_count": 2,
+        "primary_files": [
+          "summary.json",
+          "sim_trades.csv"
         ],
         "assets": []
       },
@@ -4629,6 +5415,34 @@
           "accuracy_summary.json",
           "sim_trades.csv",
           "yearly_accuracy.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_original_ablation_2025plus_20260502",
+        "path": "backtesting/data/results/hunter_classic_original_ablation_2025plus_20260502",
+        "mtime_utc": "2026-05-02T16:37:12.547810Z",
+        "file_count": 13,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "ablation_contribution_2025plus.csv",
+          "ablation_metrics_2025plus.csv",
+          "ablation_trade_counts_2025plus.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_original_combo_grid_2025plus_20260502",
+        "path": "backtesting/data/results/hunter_classic_original_combo_grid_2025plus_20260502",
+        "mtime_utc": "2026-05-02T16:51:13.068680Z",
+        "file_count": 8,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "combo_grid_2025plus.csv",
+          "selected_trades/top_balanced_no_ema__noTue__1300__body0_rej20__allNonOverlap__always2R__ungated.csv",
+          "selected_trades/top_net_no_ema__noTue__1300__body0_rej20__allNonOverlap__always2R__ungated.csv"
         ],
         "assets": []
       },
@@ -4781,6 +5595,32 @@
         "assets": []
       },
       {
+        "name": "hunter_classic_regime_gate_test_20260502",
+        "path": "backtesting/data/results/hunter_classic_regime_gate_test_20260502",
+        "mtime_utc": "2026-05-02T14:23:51.295338Z",
+        "file_count": 8,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "combined_regime_attribution.csv",
+          "gate_weighted_ranking.csv",
+          "gate_window_metrics.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_regime_read_20260502",
+        "path": "backtesting/data/results/hunter_classic_regime_read_20260502",
+        "mtime_utc": "2026-05-02T14:12:29.590942Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "feature_quantile_gates_pre.csv",
+          "gate_candidates.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "hunter_classic_state_timing_sweep_20260426",
         "path": "backtesting/data/results/hunter_classic_state_timing_sweep_20260426",
         "mtime_utc": "2026-04-26T18:47:00.650482Z",
@@ -4795,6 +5635,58 @@
         "assets": []
       },
       {
+        "name": "hunter_classic_stress_gate_strategy_workflow_20260502",
+        "path": "backtesting/data/results/hunter_classic_stress_gate_strategy_workflow_20260502",
+        "mtime_utc": "2026-05-02T14:59:54.674876Z",
+        "file_count": 18,
+        "primary_files": [
+          "summary.md",
+          "candidate_grid_metrics.csv",
+          "selected_candidate_diagnostics.json",
+          "selected_trades/ema10_tol0_dist150_reall_samewin0.csv",
+          "selected_trades/ema10_tol0_dist150_reall_samewin1.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_stress_gate_validation_20260502",
+        "path": "backtesting/data/results/hunter_classic_stress_gate_validation_20260502",
+        "mtime_utc": "2026-05-02T14:37:02.354046Z",
+        "file_count": 12,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "alpha_v1_plus_hunter_daily_r.csv",
+          "alpha_v1_portfolio_fit_scenarios.csv",
+          "alpha_v1_portfolio_yearly.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hunter_classic_three_candidate_downstream_20260502",
+        "path": "backtesting/data/results/hunter_classic_three_candidate_downstream_20260502",
+        "mtime_utc": "2026-05-02T15:16:34.898531Z",
+        "file_count": 10,
+        "primary_files": [
+          "summary.md",
+          "summary.json",
+          "annual_returns.csv",
+          "candidate_window_metrics.csv",
+          "monte_carlo_bootstrap.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_recent_reversal_ma_combo_probe_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_recent_reversal_ma_combo_probe_20260428",
+        "mtime_utc": "2026-04-29T03:24:54.367248Z",
+        "file_count": 1,
+        "primary_files": [
+          "summary.json"
+        ],
+        "assets": []
+      },
+      {
         "name": "ilm_ifvg_reverse_engineering",
         "path": "backtesting/data/results/ilm_ifvg_reverse_engineering",
         "mtime_utc": "2026-04-26T23:54:46.543340Z",
@@ -4805,6 +5697,104 @@
           "ilm_ifvg_report.md",
           "ilm_ifvg_summary.json",
           "nq_5m_cache_20210131_20260425.parquet"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_algoalpha_reversal_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_algoalpha_reversal_20260428",
+        "mtime_utc": "2026-04-29T01:13:52.048175Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_current_day_pd_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_current_day_pd_20260428",
+        "mtime_utc": "2026-04-29T00:24:32.617973Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_guide_step_phase28_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_guide_step_phase28_20260428",
+        "mtime_utc": "2026-04-29T01:59:35.719893Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_guide_step_reversal_ma_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_guide_step_reversal_ma_20260428",
+        "mtime_utc": "2026-04-29T01:36:56.039699Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_internal_sources_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_internal_sources_20260428",
+        "mtime_utc": "2026-04-29T00:49:20.502463Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_recent_signal_probe_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_recent_signal_probe_20260428",
+        "mtime_utc": "2026-04-29T03:20:03.117792Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ifvg_reverse_engineering_sweepgap4_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_sweepgap4_20260428",
+        "mtime_utc": "2026-04-29T01:19:24.758209Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
         ],
         "assets": []
       },
@@ -4851,6 +5841,20 @@
         "assets": []
       },
       {
+        "name": "ilm_ifvg_reverse_engineering_utstop_probe_20260428",
+        "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_utstop_probe_20260428",
+        "mtime_utc": "2026-04-29T03:05:22.902365Z",
+        "file_count": 6,
+        "primary_files": [
+          "ilm_ifvg_best_sim_trades.csv",
+          "ilm_ifvg_export_trades.csv",
+          "ilm_ifvg_report.md",
+          "ilm_ifvg_summary.json",
+          "ilm_ifvg_tv_window_best_sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "ilm_ifvg_reverse_engineering_v2_20260426",
         "path": "backtesting/data/results/ilm_ifvg_reverse_engineering_v2_20260426",
         "mtime_utc": "2026-04-27T00:14:56.570663Z",
@@ -4871,6 +5875,27 @@
         "file_count": 1,
         "primary_files": [
           "nq_5m_cache_20210131_20260425.parquet"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_reversal_ma_fit_grid_20260428",
+        "path": "backtesting/data/results/ilm_reversal_ma_fit_grid_20260428",
+        "mtime_utc": "2026-04-29T01:52:38.153431Z",
+        "file_count": 1,
+        "primary_files": [
+          "reversal_ma_fit_grid_top100.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "ilm_ub_filter_fit_grid_20260428",
+        "path": "backtesting/data/results/ilm_ub_filter_fit_grid_20260428",
+        "mtime_utc": "2026-04-29T02:55:08.533073Z",
+        "file_count": 2,
+        "primary_files": [
+          "ub_filter_fit_top100.csv",
+          "ub_filter_fit_top100.json"
         ],
         "assets": []
       },
@@ -5143,7 +6168,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-04-17T15:21:08.493523Z"
+        "mtime_utc": "2026-04-29T15:19:50.493327Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",

@@ -24,17 +24,20 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 
 **Status**: In progress. The revised/FVG leg is essentially matched; the remaining parity gap is Classic ORB over-generation.
 
-**Evidence**: `backtesting/data/results/goldx_gc_reverse_engineer_tvshape_overlay_fixed_20260427/summary.json`
+**Evidence**: `backtesting/data/results/goldx_gc_reverse_engineer_classic_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427/summary.json`
 
 **Inputs**: TradingView export `N4A.Gold-X_Strategy_Suite_v14.4_COMEX_GC1!_2026-04-26_8d9be.csv` plus GC 5m visible-window overlays `COMEX_GC1!, 5_62a51.csv` and `COMEX_GC1!, 5_3576a.csv`.
 
 **Key findings**:
 - TradingView indicator columns include exact revised/FVG selection markers: `Shapes.2` = long FVG setup, `Shapes.3` = short FVG setup.
+- TradingView indicator columns also include exact Classic signal markers in visible windows: `Shapes` = long Classic signal bar, `Shapes.1` = short Classic signal bar.
+- TradingView `Plot` is the Classic Range Filter line. The local proxy is already very close (visible-window median absolute difference about 0.00024 points), but the exported `Plot` is now used as an override where available.
 - Overlay merge order mattered. Later TradingView CSV rows must override local parquet rows; otherwise March-April 2026 indicator marker columns are silently lost.
 - With the overlay fix, UT Bot trail column, 10-minute FVG-after-Classic block, and `Shapes.2`/`Shapes.3` filter, revised/FVG parity reached **17/17 export matches** (100.0% recall), with 20 simulated FVG trades (85.0% precision). Remaining FVG extras are old-history dates without exported marker columns: 2021-11-30 10:45 short, 2022-02-24 10:30 short, 2023-06-05 10:10 long.
-- Overall parity reached **224/245 entry-side-time matches** (91.43% recall). Classic ORB is 207/228 matches (90.79% recall), but still over-generates: 412 simulated Classic trades vs 228 exported (50.24% precision).
+- With Classic shape markers and Range Filter `Plot` override added, overall parity remains **224/245 entry-side-time matches** (91.43% recall). Classic ORB is 207/228 matches (90.79% recall), with 409 simulated Classic trades vs 228 exported (50.61% precision). The marker filter removes visible-window false Classics, but older history still lacks exported marker columns.
+- EMA cross-frequency with max crosses 2 is not the next parity target: aggregate metrics look close to TradingView (241 sim trades, $38,972 net P&L, PF 1.688), but Classic entry recall collapses to 139/228 (60.96%). Treat it as a clue about a missing state filter, not as the replication baseline.
 
-**Next parity target**: reduce Classic extras by reverse-engineering proprietary Squeeze/WAE/divergence/Range Filter behavior or by using additional TradingView marker exports for Classic signal windows.
+**Next parity target**: reduce Classic extras by reverse-engineering proprietary Squeeze/WAE/momentum state behavior or by using additional TradingView marker exports for older Classic signal windows.
 
 ### Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-22
 
@@ -791,3 +794,61 @@ Round two tested partial vs full medium-vol blocks on the same shared holdout:
 
 - **Damage attribution**: `bull_medium_vol` was -6.59R on holdout, while `sideways_medium_vol` was +6.26R.
 - **Updated action**: refine the GC gate to **block `bull_medium_vol` only**. The full NQ-style gate is directionally helpful, but it removes a profitable GC bucket.
+
+---
+
+### Gold-X v14.4 TradingView Replication - GC/MGC (2026-04-27)
+
+**Status**: Reverse-engineering checkpoint, not a validated production strategy. Goal is parity with the private TradingView Gold-X export on `GC1!` while executing/risking like `MGC`.
+
+**Best checkpoint result directory**: `backtesting/data/results/goldx_gc_reverse_engineer_classic_ema9close_squeeze_wae_divergence_tvshape_rgplot_fvg_tvshape_overlay_fixed_20260427`
+
+| Source | Trades | Net P&L | WR | PF | Max closed DD |
+|--------|--------|---------|----|----|---------------|
+| TradingView export | 245 | $40,238.00 | 55.51% | 1.674 | $9,980.80 |
+| Local replication | 311 | $54,285.40 | 54.34% | 1.801 | $10,491.60 |
+
+| Slice | Export trades | Local trades | Entry-side-time matches | Recall | Precision |
+|-------|---------------|--------------|-------------------------|--------|-----------|
+| Overall | 245 | 311 | 232 | 94.69% | 74.60% |
+| Classic ORB | 228 | 292 | 215 | 94.30% | 73.63% |
+| Revised FVG | 17 | 19 | 17 | 100.00% | 89.47% |
+
+**Current reconstructed rule stack**
+
+- Classic: New York 09:30-09:45 ORB, Mon/Thu/Fri, next-bar ORB cross entries through 10:55, 60% overextension cap, 50-minute Classic cooldown, SD1 target, midpoint +/- 7 hard stop, Q1/Q4 close stop, 180-minute max hold.
+- Classic filters now modeled: Range Filter period 30/mult 5 with TradingView `Plot` override where available, EMA9 High/Close cloud, 100-bar squeeze momentum direction, WAE-style EMA8/EMA100 acceleration, 15-bar price-vs-squeeze-momentum divergence, and exported Classic shape markers where visible.
+- Revised FVG: Aggressive mode, 2 bars before/after breakout, 9-60 point FVG size, max 30 points from ORB, 30 bars/200 minutes validity, UT Bot directional filter with TradingView `UT Bot Trail` override where available, exported FVG shape markers where visible, 10-minute block after Classic entry.
+
+**Important findings**
+
+- The EMA9 cloud is High + Close, not High + Low. Using EMA9 close for short-side validation recovered three Classic export matches.
+- Squeeze momentum direction and the 15-bar divergence proxy were the largest parity improvements: precision rose from about 52% to about 75% while preserving high recall.
+- EMA cross-frequency is a precision knob but over-prunes real export trades at the tested limits. Keep it disabled for the current parity checkpoint even though the guide lists it as part of Moderate mode.
+- Starting the local state on 2021-01-01 recovers one additional Classic match but introduces a local 2021-01-08 trade absent from the export. Treat as a warmup/state clue, not a clean parity fix yet.
+- Remaining gap is mostly Classic proprietary filter/state behavior: 13 missing Classic exports and 77 extra Classic local trades remain after the best checkpoint; FVG parity is already strong with only two extra local FVG trades.
+
+**2026-04-28 update**
+
+Result directories:
+- `backtesting/data/results/goldx_gc_reverse_engineer_entrycap1050_20260428`
+- `backtesting/data/results/goldx_gc_reverse_engineer_entrycap1050_emacross5_20260428`
+- `backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_max4_20260428`
+- `backtesting/data/results/goldx_gc_ema_cross_grid_20260428`
+- `backtesting/data/results/goldx_gc_side_specific_ema_cross_grid_20260428`
+- `backtesting/data/results/goldx_gc_reverse_engineer_guide_ema3h_long5_short4_20260428`
+- `backtesting/data/results/goldx_gc_classic_sequence_probe_20260428`
+- `backtesting/data/results/goldx_gc_filter_ablation_20260428`
+
+| Model | Matched | Missing | Extra | Recall | Precision | Sim Net | TV Net |
+|-------|---------|---------|-------|--------|-----------|---------|--------|
+| Entry-cap baseline | 232 | 13 | 70 | 94.69% | 76.82% | $55,037.80 | $40,238.00 |
+| EMA-cross max 5 | 223 | 22 | 37 | 91.02% | 85.77% | $54,039.00 | $40,238.00 |
+| Guide 3h EMA-cross max 4 | 221 | 24 | 26 | 90.20% | 89.47% | $42,295.80 | $40,238.00 |
+| Guide 3h EMA-cross long<=5 / short<=4 | 227 | 18 | 32 | 92.65% | 87.64% | $48,472.60 | $40,238.00 |
+
+EMA-cross frequency is a valid precision lever, but symmetric caps force a recall/precision tradeoff. The settings guide says Moderate mode uses a 3-hour EMA-cross window; a side-specific grid found the best F1/parity checkpoint at 3h with long-side cap 5 and short-side cap 4. This keeps FVG parity at 17/19 and improves Classic to 210/228 matches on 240 local Classic trades. The older 3h/max4 branch remains the cleanest precision-biased reference, but the side-specific cap is now the better balanced replication candidate.
+
+Sequence and ablation probes did not beat the side-specific EMA-cross branch. Same-day same-side timing conflicts explain only 6 of 18 missing export entries, and "replace with later signal" variants degrade F1 sharply. Simple filter relaxations recover a handful of missing trades but add too many extras: disabling EMA-cross reaches 232 matches but expands to 302 local trades, while disabling RG/divergence/squeeze similarly worsens precision. Treat the remaining Gold-X gap as exact private Classic marker/filter state, not a sequencing rule.
+
+**2026-04-29 marker-case update**: User provided GC 5m TradingView export `COMEX_GC1!, 5_0fe5c.csv` around the 2026-02-23 missing Classic long. This confirmed the hidden Classic marker behavior directly: `Shapes=0` on the 09:45 breakout bar that local proxies accepted, and `Shapes=1` on the 10:05 breakout bar that TradingView entered at 10:10. Overlaying only the Feb 23 regular-session window improves overall parity from **227/245 to 228/245** and Classic parity from **210/228 to 211/228**, while preserving FVG at **17/17**. Do not use the whole current-chart CSV as a blanket overlay because it changes unrelated 2026 marker state and reduces FVG recall; use targeted windows as marker truth-table cases.

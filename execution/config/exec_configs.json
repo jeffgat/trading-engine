@@ -223,6 +223,11 @@
         "max_single_risk_usd": 350,
         "max_contracts": 20
       },
+      "H_ORB_SAFE": {
+        "risk_usd": 350,
+        "max_single_risk_usd": 350,
+        "max_contracts": 20
+      },
       "H_ORB_ABLATED": {
         "risk_usd": 350,
         "max_single_risk_usd": 350,
