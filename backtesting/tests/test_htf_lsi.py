@@ -135,6 +135,7 @@ def _extract_candidates(
     include_eqhl_levels: bool = False,
     entry_mode: str = "close",
     close_on_sweep_to_inversion_minutes: int = 0,
+    confirmation_mode: str = "inversion",
 ) -> list[_SetupCandidate]:
     timestamps = df.index
     hour = timestamps.hour.values
@@ -170,6 +171,7 @@ def _extract_candidates(
         stop_mode="absolute",
         entry_mode=entry_mode,
         close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+        confirmation_mode=confirmation_mode,
         htf_level_tf_minutes=60,
     )
 
@@ -212,6 +214,31 @@ def _run_backtest_with_candidates(
         ),
     )
     return simulator.run_backtest(df, config)
+
+
+def test_htf_lsi_cisd_replaces_fvg_inversion_after_level_sweep() -> None:
+    df = _df(
+        open_=[10.2, 10.0, 9.8, 9.5, 9.3, 9.6],
+        high=[10.4, 10.2, 10.0, 9.7, 9.8, 10.3],
+        low=[9.0, 9.7, 8.8, 9.1, 9.2, 9.5],
+        close=[10.0, 9.8, 9.5, 9.3, 9.6, 10.2],
+        start="08:40",
+    )
+    n = len(df)
+    candidates = _extract_candidates(
+        df,
+        _empty_lsi_fvg(n),
+        _htf_level_arrays(n, low_price=9.0),
+        confirmation_mode="cisd",
+        entry_mode="level_limit",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].direction == 1
+    assert candidates[0].lsi_confirmation_type == "cisd"
+    assert candidates[0].entry_price == pytest.approx(10.0)
+    assert candidates[0].lsi_cisd_level == pytest.approx(10.0)
+    assert candidates[0].lsi_sweep_bar == 2
 
 
 def test_htf_lsi_level_publishes_only_after_n_left_bars_and_equal_touch_does_not_sweep() -> None:

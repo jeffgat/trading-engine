@@ -285,6 +285,87 @@ class TestScanningToArmed:
         assert eng._state == State.ARMED_LIMIT
         broker.send_entry.assert_called_once()
 
+    async def test_extreme_fvg_selection_rearms_unfilled_limit(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            continuation_fvg_selection="extreme",
+            rr=3.0,
+            tp1_ratio=0.8,
+        )
+        await advance_to_armed(eng, orb_high=19530.0)
+        assert eng._levels.entry == pytest.approx(19545.0)
+
+        for bar in [
+            make_bar("2025-01-15 10:05", 19590, 19600, 19590, 19595),
+            make_bar("2025-01-15 10:10", 19605, 19650, 19605, 19640),
+            make_bar("2025-01-15 10:15", 19640, 19670, 19620, 19665),
+        ]:
+            await eng.on_bar(bar, 300.0)
+
+        assert eng._state == State.ARMED_LIMIT
+        assert eng._levels.entry == pytest.approx(19620.0)
+        assert broker.send_cancel.call_count >= 1
+        assert broker.send_entry.call_count >= 2
+
+    async def test_wide_stop_target_reduces_orb_targets(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            rr=3.0,
+            tp1_ratio=0.8,
+            stop_atr_pct=10.0,
+            wide_stop_target_threshold_points=20.0,
+            wide_stop_target_rr=1.5,
+        )
+        await advance_to_armed(eng, atr=300.0)
+
+        levels = eng._levels
+        assert levels.risk_pts == pytest.approx(30.0)
+        assert levels.tp1 == pytest.approx(levels.entry + 36.0)
+        assert levels.tp2 == pytest.approx(levels.entry + 45.0)
+
+    async def test_pre_entry_target_touch_cancels_unfilled_limit(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            rr=3.0,
+            tp1_ratio=0.8,
+            limit_cancel_on_pre_entry_target_touch="tp1",
+        )
+        await advance_to_armed(eng, orb_high=19530.0)
+        levels = eng._levels
+
+        await eng.on_bar(
+            make_bar(
+                "2025-01-15 10:05",
+                levels.entry + 20,
+                levels.tp1 + 1,
+                levels.entry + 5,
+                levels.tp1,
+            ),
+            300.0,
+        )
+
+        assert eng._state == State.FLAT
+        broker.send_cancel.assert_called_once()
+
+    async def test_orb_reentry_after_nonpositive_first_loss_returns_to_scanning(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            rr=3.0,
+            tp1_ratio=0.8,
+            orb_trade_max_per_session=2,
+            orb_reentry_policy="after_nonpositive_first",
+        )
+        await advance_to_managing(eng, orb_high=19530.0)
+        stop = eng._levels.stop
+
+        await eng.on_bar(
+            make_bar("2025-01-15 10:10", stop + 10, stop + 12, stop - 1, stop + 5),
+            300.0,
+        )
+
+        assert eng._state == State.WAITING_FOR_GAP
+        assert eng._session_filled_trades == 1
+
 
 # =============================================================================
 # ARMED_LIMIT → MANAGING (fill detection on 5m bars)

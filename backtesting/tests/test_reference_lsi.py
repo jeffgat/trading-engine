@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import orb_backtest.engine.simulator as simulator
 from orb_backtest.config import SessionConfig, StrategyConfig
@@ -126,6 +127,47 @@ def _run_backtest_with_candidates(
     return simulator.run_backtest(df, config)
 
 
+def test_reference_lsi_cisd_replaces_fvg_inversion_after_reference_sweep() -> None:
+    df = _reference_df(
+        open_=[10.2, 10.0, 9.8, 9.5, 9.3, 9.6],
+        high=[10.4, 10.2, 10.0, 9.7, 9.8, 10.3],
+        low=[9.0, 9.7, 8.8, 9.1, 9.2, 9.5],
+        close=[10.0, 9.8, 9.5, 9.3, 9.6, 10.2],
+    )
+    n = len(df)
+    reference_levels, reference_ids = _reference_arrays(n, low_level=9.0)
+
+    candidates = _extract_reference_lsi_candidates(
+        df,
+        _empty_fvg(n),
+        np.zeros(n, dtype=bool),
+        np.zeros(n, dtype=bool),
+        np.zeros(n, dtype=np.int64),
+        np.ones(n, dtype=bool),
+        np.ones(n, dtype=bool),
+        df.index.date,
+        df["close"].to_numpy(dtype=float),
+        np.full(n, 10.0, dtype=float),
+        np.zeros(n, dtype=float),
+        np.zeros(n, dtype=float),
+        REFERENCE_SESSION,
+        reference_levels=reference_levels,
+        reference_instance_ids=reference_ids,
+        inversion_max_bars=5,
+        direction_filter="long",
+        entry_mode="level_limit",
+        selected_level_names=("previous_day_low",),
+        confirmation_mode="cisd",
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].direction == 1
+    assert candidates[0].lsi_confirmation_type == "cisd"
+    assert candidates[0].entry_price == pytest.approx(10.0)
+    assert candidates[0].lsi_cisd_level == pytest.approx(10.0)
+    assert candidates[0].reference_level_name == "previous_day_low"
+
+
 def test_reference_lsi_requires_in_session_sweep_and_consumes_level_once() -> None:
     df = _reference_df(
         [102.0, 99.0, 98.0, 99.0],
@@ -152,6 +194,8 @@ def test_reference_lsi_requires_in_session_sweep_and_consumes_level_once() -> No
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
@@ -193,6 +237,8 @@ def test_reference_lsi_rejects_stale_pre_sweep_gap() -> None:
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
@@ -230,6 +276,8 @@ def test_reference_lsi_rejects_late_inversion() -> None:
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
@@ -272,6 +320,8 @@ def test_reference_lsi_near_far_edges_and_stop_use_sweep_to_inversion_range() ->
         near_df.index.date,
         near_df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
@@ -291,6 +341,8 @@ def test_reference_lsi_near_far_edges_and_stop_use_sweep_to_inversion_range() ->
         far_df.index.date,
         far_df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,
@@ -359,6 +411,8 @@ def test_reference_lsi_respects_selected_reference_level_subset() -> None:
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         REFERENCE_SESSION,
         reference_levels=reference_levels,
         reference_instance_ids=reference_ids,

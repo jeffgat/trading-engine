@@ -11,7 +11,8 @@ Unlike ORBEngine (continuation FVG after ORB), this engine detects:
     4. Entry via two modes (matches backtester):
        - "close": enter at inversion bar close
        - "fvg_limit": limit order at FVG boundary, fill on next bar touch
-    5. Absolute-range stop (matches backtester stop_mode="absolute")
+       - "timed_hybrid": close for fast inversions, otherwise FVG limit
+    5. Absolute/FVG/gap/structural stop modes
     6. Position management (SL/TP1/TP2/BE/EOD)
 
 Implements the same on_bar() / on_tick() interface as ORBEngine.
@@ -41,6 +42,27 @@ STANDARD_LSI_VARIANT = "standard"
 LEGACY_LSI_VARIANT = "legacy-LSI"
 HTF_LSI_VARIANT = "htf-LSI"
 VALID_LSI_VARIANTS = frozenset({STANDARD_LSI_VARIANT, LEGACY_LSI_VARIANT, HTF_LSI_VARIANT})
+VALID_LSI_STOP_MODES = frozenset({
+    "absolute",
+    "fvg",
+    "gap_1x",
+    "gap_2x",
+    "gap_3x",
+    "gap_4x",
+    "struct_50pct",
+    "struct_75pct",
+})
+VALID_LSI_TARGET_MODES = frozenset({"risk", "structural"})
+_LSI_GAP_STOP_MULTIPLIERS = {
+    "gap_1x": 1.0,
+    "gap_2x": 2.0,
+    "gap_3x": 3.0,
+    "gap_4x": 4.0,
+}
+_LSI_STRUCT_STOP_FRACTIONS = {
+    "struct_50pct": 0.50,
+    "struct_75pct": 0.75,
+}
 
 
 class LSIState(enum.Enum):
@@ -94,6 +116,9 @@ class LSIEngine:
         fvg_window_left: int = 10,
         fvg_window_right: int = 5,
         lsi_entry_mode: str = "close",  # "close" or "fvg_limit"
+        lsi_close_on_sweep_to_inversion_minutes: int = 0,
+        lsi_stop_mode: str = "absolute",
+        lsi_target_mode: str = "risk",
         lsi_variant: str = LEGACY_LSI_VARIANT,
         # Risk params
         risk_usd: float = 250.0,
@@ -103,6 +128,8 @@ class LSIEngine:
         qty_multiplier: float = 1.0,
         min_tick: float = 0.25,
         max_single_risk_usd: float = 500.0,
+        wide_stop_target_threshold_points: float = 0.0,
+        wide_stop_target_rr: float = 0.0,
         # Direction
         long_only: bool = True,
         # DOW exclusion
@@ -159,6 +186,29 @@ class LSIEngine:
         self.fvg_window_left = fvg_window_left
         self.fvg_window_right = fvg_window_right
         self.lsi_entry_mode = lsi_entry_mode
+        self.lsi_close_on_sweep_to_inversion_minutes = lsi_close_on_sweep_to_inversion_minutes
+        self.lsi_stop_mode = lsi_stop_mode
+        self.lsi_target_mode = lsi_target_mode
+        if lsi_entry_mode not in {"close", "fvg_limit", "level_limit", "timed_hybrid"}:
+            raise ValueError(
+                "lsi_entry_mode must be one of close, fvg_limit, level_limit, or timed_hybrid "
+                f"(got {lsi_entry_mode!r})"
+            )
+        if lsi_entry_mode == "timed_hybrid" and lsi_close_on_sweep_to_inversion_minutes <= 0:
+            raise ValueError(
+                "lsi_close_on_sweep_to_inversion_minutes must be > 0 when "
+                "lsi_entry_mode == 'timed_hybrid'"
+            )
+        if lsi_stop_mode not in VALID_LSI_STOP_MODES:
+            raise ValueError(
+                f"lsi_stop_mode must be one of {sorted(VALID_LSI_STOP_MODES)} "
+                f"(got {lsi_stop_mode!r})"
+            )
+        if lsi_target_mode not in VALID_LSI_TARGET_MODES:
+            raise ValueError(
+                f"lsi_target_mode must be one of {sorted(VALID_LSI_TARGET_MODES)} "
+                f"(got {lsi_target_mode!r})"
+            )
         if lsi_variant not in VALID_LSI_VARIANTS:
             raise ValueError(
                 "lsi_variant must be one of "
@@ -179,6 +229,17 @@ class LSIEngine:
         self.qty_multiplier = qty_multiplier
         self.min_tick = min_tick
         self.max_single_risk_usd = max_single_risk_usd
+        self.wide_stop_target_threshold_points = wide_stop_target_threshold_points
+        self.wide_stop_target_rr = wide_stop_target_rr
+        if self.wide_stop_target_threshold_points < 0.0:
+            raise ValueError("wide_stop_target_threshold_points must be >= 0")
+        if self.wide_stop_target_rr < 0.0:
+            raise ValueError("wide_stop_target_rr must be >= 0")
+        if self.wide_stop_target_rr > 0.0:
+            if self.wide_stop_target_rr < 1.0:
+                raise ValueError("wide_stop_target_rr must be >= 1.0 when enabled")
+            if self.wide_stop_target_rr > self.rr:
+                raise ValueError("wide_stop_target_rr must be <= rr")
 
         # Direction
         self.long_only = long_only
@@ -249,6 +310,7 @@ class LSIEngine:
         self._limit_direction: int = 0
         self._limit_gap: GapInfo | None = None
         self._limit_daily_atr: float = 0.0
+        self._limit_resolved_entry_mode: str = "fvg_limit"
 
         # LSI overlay (swept level + FVG zone, persists until next session reset)
         self._swept_level: float | None = None
@@ -1079,6 +1141,7 @@ class LSIEngine:
                 self._limit_direction = 0
                 self._limit_gap = None
                 self._limit_daily_atr = 0.0
+                self._limit_resolved_entry_mode = "fvg_limit"
                 self._levels = None
                 self._set_trade_overlap(False, notify=False)
                 self._tp1_hit = False
@@ -1321,10 +1384,23 @@ class LSIEngine:
                         self._sweep_to_inversion_bars = self._bar_count - self._sweep_bar_index
                         self._active_gap = chosen_gap
                         self._set_gap_overlay(chosen_gap)
-                        if self.lsi_entry_mode == "fvg_limit":
-                            await self._arm_limit(bar, chosen_gap, direction=-1, daily_atr=daily_atr)
+                        resolved_entry_mode = self._resolve_lsi_entry_mode()
+                        if self._is_lsi_limit_entry_mode(resolved_entry_mode):
+                            await self._arm_limit(
+                                bar,
+                                chosen_gap,
+                                direction=-1,
+                                daily_atr=daily_atr,
+                                resolved_entry_mode=resolved_entry_mode,
+                            )
                             return
-                        await self._enter_at_close(bar, chosen_gap, direction=-1, daily_atr=daily_atr)
+                        await self._enter_at_close(
+                            bar,
+                            chosen_gap,
+                            direction=-1,
+                            daily_atr=daily_atr,
+                            resolved_entry_mode=resolved_entry_mode,
+                        )
                 else:
                     if self._block_for_overlap(direction=1):
                         self._pending_gaps.insert(0, chosen_gap)
@@ -1334,10 +1410,23 @@ class LSIEngine:
                     self._sweep_to_inversion_bars = self._bar_count - self._sweep_bar_index
                     self._active_gap = chosen_gap
                     self._set_gap_overlay(chosen_gap)
-                    if self.lsi_entry_mode == "fvg_limit":
-                        await self._arm_limit(bar, chosen_gap, direction=1, daily_atr=daily_atr)
+                    resolved_entry_mode = self._resolve_lsi_entry_mode()
+                    if self._is_lsi_limit_entry_mode(resolved_entry_mode):
+                        await self._arm_limit(
+                            bar,
+                            chosen_gap,
+                            direction=1,
+                            daily_atr=daily_atr,
+                            resolved_entry_mode=resolved_entry_mode,
+                        )
                         return
-                    await self._enter_at_close(bar, chosen_gap, direction=1, daily_atr=daily_atr)
+                    await self._enter_at_close(
+                        bar,
+                        chosen_gap,
+                        direction=1,
+                        daily_atr=daily_atr,
+                        resolved_entry_mode=resolved_entry_mode,
+                    )
 
         if self._state == LSIState.ARMED_LIMIT:
             if not self._in_entry(bar_time):
@@ -1402,11 +1491,75 @@ class LSIEngine:
         deduped = [existing for existing in gaps if not self._same_gap(existing, gap)]
         return [gap] + deduped
 
+    @staticmethod
+    def _is_lsi_limit_entry_mode(entry_mode: str) -> bool:
+        return entry_mode in {"fvg_limit", "level_limit"}
+
+    def _resolve_lsi_entry_mode(self) -> str:
+        if self.lsi_entry_mode != "timed_hybrid":
+            return self.lsi_entry_mode
+        if self._sweep_to_inversion_bars is None:
+            return "fvg_limit"
+        elapsed_minutes = self._sweep_to_inversion_bars * self.base_bar_minutes
+        if elapsed_minutes <= self.lsi_close_on_sweep_to_inversion_minutes:
+            return "close"
+        return "fvg_limit"
+
+    @staticmethod
+    def _stop_from_distance(direction: int, entry: float, stop_dist: float) -> float:
+        return entry - stop_dist if direction == 1 else entry + stop_dist
+
+    def _resolve_lsi_stop(self, *, entry: float, absolute_stop: float, gap: GapInfo, direction: int) -> float:
+        structural_dist = abs(entry - absolute_stop)
+        if structural_dist <= 0.0:
+            return absolute_stop
+
+        mode = self.lsi_stop_mode
+        if mode == "absolute":
+            return absolute_stop
+        if mode == "fvg":
+            return gap.bottom if direction == 1 else gap.top
+        if mode in _LSI_GAP_STOP_MULTIPLIERS:
+            stop_dist = min(gap.top - gap.bottom, structural_dist) * _LSI_GAP_STOP_MULTIPLIERS[mode]
+            stop_dist = min(stop_dist, structural_dist)
+            return self._stop_from_distance(direction, entry, stop_dist)
+        if mode in _LSI_STRUCT_STOP_FRACTIONS:
+            stop_dist = structural_dist * _LSI_STRUCT_STOP_FRACTIONS[mode]
+            return self._stop_from_distance(direction, entry, stop_dist)
+        return absolute_stop
+
+    def _resolve_target_distances(self, *, risk_pts: float, structural_risk_pts: float) -> tuple[float, float]:
+        effective_rr = self.rr
+        if (
+            self.wide_stop_target_threshold_points > 0.0
+            and self.wide_stop_target_rr > 0.0
+            and risk_pts >= self.wide_stop_target_threshold_points
+        ):
+            effective_rr = min(self.rr, self.wide_stop_target_rr)
+
+        target_basis = risk_pts
+        if self.lsi_target_mode == "structural" and structural_risk_pts > 0.0:
+            target_basis = max(structural_risk_pts, risk_pts)
+
+        tp1_dist = effective_rr * target_basis * self.tp1_ratio
+        tp2_dist = effective_rr * target_basis
+        if self.lsi_target_mode == "structural":
+            tp1_dist = max(tp1_dist, risk_pts)
+            tp2_dist = max(tp2_dist, 1.5 * risk_pts)
+        return tp1_dist, tp2_dist
+
     # ------------------------------------------------------------------
     # fvg_limit entry mode: arm limit → fill on next bar touch
     # ------------------------------------------------------------------
 
-    async def _arm_limit(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
+    async def _arm_limit(
+        self,
+        bar: Bar,
+        gap: GapInfo,
+        direction: int,
+        daily_atr: float,
+        resolved_entry_mode: str = "fvg_limit",
+    ) -> None:
         """Arm a limit order at the FVG boundary after inversion is confirmed.
 
         Matches backtester's entry_mode="fvg_limit":
@@ -1422,14 +1575,15 @@ class LSIEngine:
         self._limit_direction = direction
         self._limit_gap = gap
         self._limit_daily_atr = daily_atr
+        self._limit_resolved_entry_mode = resolved_entry_mode
         self._state = LSIState.ARMED_LIMIT
         self._request_checkpoint()
 
         dir_str = "long" if is_long else "short"
         self._log_trade(
             "LIMIT_ARMED",
-            "dir=%s limit=%.2f gap_top=%.2f gap_bottom=%.2f"
-            % (dir_str, limit_price, gap.top, gap.bottom),
+            "dir=%s limit=%.2f gap_top=%.2f gap_bottom=%.2f mode=%s"
+            % (dir_str, limit_price, gap.top, gap.bottom, resolved_entry_mode),
         )
         self._notify_state_change()
 
@@ -1453,22 +1607,40 @@ class LSIEngine:
         range_bars = self._bars[start_idx:]
 
         if is_long:
-            raw_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
+            absolute_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
         else:
-            raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
+            absolute_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
 
-        if self.min_stop_points > 0:
-            stop_dist = abs(entry - raw_stop)
-            if stop_dist < self.min_stop_points:
-                raw_stop = entry - self.min_stop_points if is_long else entry + self.min_stop_points
+        actual_stop = self._resolve_lsi_stop(
+            entry=entry,
+            absolute_stop=absolute_stop,
+            gap=gap,
+            direction=direction,
+        )
 
-        await self._build_and_enter(bar, gap, entry, raw_stop, direction, daily_atr)
+        await self._build_and_enter(
+            bar,
+            gap,
+            entry,
+            actual_stop,
+            direction,
+            daily_atr,
+            absolute_stop=absolute_stop,
+            resolved_entry_mode=self._limit_resolved_entry_mode,
+        )
 
     # ------------------------------------------------------------------
     # Inversion-bar-close entry
     # ------------------------------------------------------------------
 
-    async def _enter_at_close(self, bar: Bar, gap: GapInfo, direction: int, daily_atr: float) -> None:
+    async def _enter_at_close(
+        self,
+        bar: Bar,
+        gap: GapInfo,
+        direction: int,
+        daily_atr: float,
+        resolved_entry_mode: str = "close",
+    ) -> None:
         """Enter at inversion bar close with absolute-range stop.
 
         Matches the backtester's entry_mode="close" and stop_mode="absolute":
@@ -1486,20 +1658,32 @@ class LSIEngine:
         range_bars = self._bars[start_idx:]
 
         if is_long:
-            raw_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
+            absolute_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
         else:
-            raw_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
+            absolute_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
 
-        if self.min_stop_points > 0:
-            stop_dist = abs(entry - raw_stop)
-            if stop_dist < self.min_stop_points:
-                raw_stop = entry - self.min_stop_points if is_long else entry + self.min_stop_points
+        actual_stop = self._resolve_lsi_stop(
+            entry=entry,
+            absolute_stop=absolute_stop,
+            gap=gap,
+            direction=direction,
+        )
 
-        await self._build_and_enter(bar, gap, entry, raw_stop, direction, daily_atr)
+        await self._build_and_enter(
+            bar,
+            gap,
+            entry,
+            actual_stop,
+            direction,
+            daily_atr,
+            absolute_stop=absolute_stop,
+            resolved_entry_mode=resolved_entry_mode,
+        )
 
     async def _build_and_enter(
         self, bar: Bar, gap: GapInfo, entry: float, raw_stop: float,
-        direction: int, daily_atr: float,
+        direction: int, daily_atr: float, *, absolute_stop: float | None = None,
+        resolved_entry_mode: str = "",
     ) -> None:
         """Shared sizing + state transition for both entry modes."""
         is_long = direction == 1
@@ -1507,8 +1691,14 @@ class LSIEngine:
         gap_size = gap.top - gap.bottom
 
         risk_pts = abs(entry - raw_stop)
-        tp1_dist = self.rr * risk_pts * self.tp1_ratio
-        tp2_dist = self.rr * risk_pts
+        if self.min_stop_points > 0 and risk_pts < self.min_stop_points:
+            raw_stop = entry - self.min_stop_points if is_long else entry + self.min_stop_points
+            risk_pts = abs(entry - raw_stop)
+        structural_risk_pts = abs(entry - absolute_stop) if absolute_stop is not None else risk_pts
+        tp1_dist, tp2_dist = self._resolve_target_distances(
+            risk_pts=risk_pts,
+            structural_risk_pts=structural_risk_pts,
+        )
 
         from .sizing import TradeLevels as TL, _floor_to_step
         qty_raw = self.risk_usd / (risk_pts * self.point_value) if risk_pts > 0 else 0
@@ -1579,12 +1769,12 @@ class LSIEngine:
         self._state = LSIState.MANAGING
         self._request_checkpoint()
 
-        mode_str = self.lsi_entry_mode
+        mode_str = resolved_entry_mode or self.lsi_entry_mode
         self._log_trade(
             "FILLED",
-            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (%s)"
+            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (%s stop_mode=%s)"
             % (dir_str, entry, raw_stop,
-               self._levels.tp1, self._levels.tp2, self._levels.qty, mode_str),
+               self._levels.tp1, self._levels.tp2, self._levels.qty, mode_str, self.lsi_stop_mode),
         )
 
         if self._should_send:

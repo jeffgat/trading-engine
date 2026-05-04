@@ -61,6 +61,9 @@ def compute_trade_levels(
     min_tp1_pts: float = 0.0,
     max_single_risk_usd: float = 500.0,
     qty_multiplier: float = 1.0,
+    target_rr: float | None = None,
+    wide_stop_target_threshold_points: float = 0.0,
+    wide_stop_target_rr: float = 0.0,
 ) -> TradeLevels | None:
     """Compute all trade levels and position size.
 
@@ -129,14 +132,22 @@ def compute_trade_levels(
         half_qty = max(half_qty, min_qty)
 
     # Price levels
-    tp1_dist = rr * risk_pts * tp1_ratio
+    effective_rr = rr if target_rr is None else target_rr
+    if (
+        target_rr is None
+        and wide_stop_target_threshold_points > 0.0
+        and wide_stop_target_rr > 0.0
+        and risk_pts >= wide_stop_target_threshold_points
+    ):
+        effective_rr = min(rr, wide_stop_target_rr)
+    tp1_dist = effective_rr * risk_pts * tp1_ratio
 
     # Dual floor: clamp TP1 distance to minimum points
     if min_tp1_pts > 0:
         tp1_dist = max(tp1_dist, min_tp1_pts)
 
     tp1 = entry + tp1_dist * direction
-    tp2 = entry + (rr * risk_pts) * direction
+    tp2 = entry + (effective_rr * risk_pts) * direction
     be_offset = be_offset_ticks * min_tick
     be = entry + be_offset * direction
 

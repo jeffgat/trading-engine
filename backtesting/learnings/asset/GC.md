@@ -852,3 +852,26 @@ EMA-cross frequency is a valid precision lever, but symmetric caps force a recal
 Sequence and ablation probes did not beat the side-specific EMA-cross branch. Same-day same-side timing conflicts explain only 6 of 18 missing export entries, and "replace with later signal" variants degrade F1 sharply. Simple filter relaxations recover a handful of missing trades but add too many extras: disabling EMA-cross reaches 232 matches but expands to 302 local trades, while disabling RG/divergence/squeeze similarly worsens precision. Treat the remaining Gold-X gap as exact private Classic marker/filter state, not a sequencing rule.
 
 **2026-04-29 marker-case update**: User provided GC 5m TradingView export `COMEX_GC1!, 5_0fe5c.csv` around the 2026-02-23 missing Classic long. This confirmed the hidden Classic marker behavior directly: `Shapes=0` on the 09:45 breakout bar that local proxies accepted, and `Shapes=1` on the 10:05 breakout bar that TradingView entered at 10:10. Overlaying only the Feb 23 regular-session window improves overall parity from **227/245 to 228/245** and Classic parity from **210/228 to 211/228**, while preserving FVG at **17/17**. Do not use the whole current-chart CSV as a blanket overlay because it changes unrelated 2026 marker state and reduces FVG recall; use targeted windows as marker truth-table cases.
+- **Hot one-year strategy workflow** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_STRATEGY_WORKFLOW_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. TESTING-only, overfit-aware Calmar optimization; Bailey-style deflation intentionally skipped.
+  - GC NY ORB: `combo__orb15m__entry_1100__flat_1530__rr10p0_tp0p2__stop_orb_50p0__gap_atr_3p0__atr7__dir_long__dow_baseline__icf_off__cap2_any__fvg_first` with `gate_none` -> 30 fills, `25.73R`, Calmar `12.864`, PF `2.749`, DD `-2.0R`, surface `soft_curve`.
+  - GC Asia ORB: `combo__orb10m__entry_2315__flat_0400__rr2p5_tp0p6__stop_atr_5p0__gap_atr_1p0__atr7__dir_short__dow_baseline__icf_off__cap1__fvg_first` with `gate_skip_bear_high_vol` -> 45 fills, `22.99R`, Calmar `11.496`, PF `2.339`, DD `-2.0R`, surface `soft_curve`.
+  - GC NY LSI: `combo__entry_1530__flat_1550__rr3p0_tp0p4__gap5p0__atr7__nL5__nR75__fvgL10_R5__dir_both__mode_close__dow_exMon` with `gate_skip_high_vol` -> 9 fills, `2.91R`, Calmar `23.967`, PF `16.36`, DD `-0.12R`, surface `soft_curve`.
+  - GC Asia LSI: `combo__entry_2315__flat_0400__rr9p0_tp0p4__gap4p0__atr7__nL3__nR48__fvgL10_R10__dir_both__mode_fvg_limit__dow_exWed` with `gate_skip_medium_vol` -> 14 fills, `19.13R`, Calmar `19.134`, PF `9.774`, DD `-1.0R`, surface `curve`.
+
+- **Hot one-year squeeze** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_SQUEEZE_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. TESTING-only second-stage local squeeze around prior screenshot winners.
+  - GC NY ORB: `prev_curve_net__combo__rr12p0_tp0p8__atr5__entry_end_1130__gap_orb_20p0__stop_atr_3p0__flat_1550__dow_none` with `gate_skip_sideways_medium_vol` -> 45 fills, `66.86R`, Calmar `13.372`, PF `3.131`, DD `-5.0R`, surface `curve`.
+  - GC Asia ORB: `prev_curve_net__combo__rr3p0_tp0p8__pre_cancel_tp2__stop_atr_3p0__gap_atr_1p0__orb10m__wide_t15_rr1__entry_end_2300` with `gate_skip_medium_vol` -> 121 fills, `57.27R`, Calmar `11.453`, PF `1.862`, DD `-5.0R`, surface `curve`.
+  - GC NY LSI: `prev_curve_calmar__combo__dow_none__nL10__mode_timed_hybrid_60__rr3p5_tp0p3__stop_struct_75pct__entry_1530__atr5` with `gate_skip_high_vol` -> 9 fills, `6.18R`, Calmar `60.284`, PF `60.351`, DD `-0.1R`, surface `curve`.
+
+- **Hot structural sequence** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_SEQUENCE_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. Post-trade structural gates around current hot one-year candidates.
+  - GC NY ORB: best structural `combo__exclude_cpi_nfp__signal_outside_orb` (combo) -> 36 fills, `63.99R`, Calmar `14.967`, PF `3.71`, DD `-4.28R`, delta `7.0R`; TESTING-only.
+  - GC Asia ORB: best structural `combo__exclude_cpi_nfp__prior_not_inside_day` (combo) -> 94 fills, `65.74R`, Calmar `13.147`, PF `2.485`, DD `-5.0R`, delta `3.3R`; TESTING-only.
+  - GC NY LSI: best structural `exclude_fomc` (calendar_news) -> 11 fills, `5.12R`, Calmar `4.797`, PF `4.767`, DD `-1.07R`, delta `1.0R`; TESTING-only.
+
+- **Hot structural follow-up** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_FOLLOWUP_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. Targeted second pass around positive structural gates from the hot structural sequence.
+  - GC NY ORB: best refined structural `combo__cpi_nfp_plus_outside__exclude_fomc_nfp` -> 36 fills, `63.99R`, delta `7.0R`, Calmar `14.967`, PF `3.71`, DD `-4.28R`, surface `cliff`; TESTING-only.
+  - GC Asia ORB: best refined structural `cpi_nfp_plus_not_inside` -> 94 fills, `65.74R`, delta `3.3R`, Calmar `13.147`, PF `2.485`, DD `-5.0R`, surface `n/a`; TESTING-only.

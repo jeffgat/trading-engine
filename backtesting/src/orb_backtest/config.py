@@ -38,6 +38,11 @@ ALLOWED_ORB_REENTRY_POLICIES = (
     "after_sl_first",
     "after_full_target_first",
 )
+ALLOWED_LSI_CONFIRMATION_MODES = (
+    "inversion",
+    "cisd",
+    "inversion_or_cisd",
+)
 
 
 @dataclass(frozen=True)
@@ -233,12 +238,23 @@ class StrategyConfig:
     # Supported values:
     #   "close"        -> enter on the inversion bar close
     #   "fvg_limit"    -> wait for a retest at the inverted FVG boundary
+    #   "level_limit"  -> wait for a retest at the broken confirmation level
+    #                     (alias of fvg_limit for FVG inversions; CISD body level
+    #                     for CISD confirmations)
     #   "timed_hybrid" -> use "close" only when sweep->inversion time is fast enough,
     #                     otherwise fall back to "fvg_limit"
     lsi_close_on_sweep_to_inversion_minutes: int = 0
     # Only used when lsi_entry_mode == "timed_hybrid". If sweep->inversion time
     # in minutes is <= this threshold, the engine enters at the inversion close.
     # Otherwise it behaves like "fvg_limit". 0 = disabled.
+    lsi_confirmation_mode: str = "inversion"
+    # Supported values:
+    #   "inversion"         -> legacy sweep + FVG + FVG inversion path
+    #   "cisd"              -> sweep + body-based internal CISD path
+    #   "inversion_or_cisd" -> additive path; earliest fill wins per session-day
+    cisd_min_leg_bars: int = 2
+    cisd_min_leg_atr_pct: float = 5.0
+    cisd_max_leg_bars: int = 60
     lsi_first_fvg_only: bool = False
     # When True: per session-day, only keep the first (chronologically earliest)
     # FVG in active_for_long/active_for_short. Prevents entering on the last
@@ -436,9 +452,10 @@ class StrategyConfig:
                 "lsi_target_mode must be one of 'risk', 'structural', or 'left_structure' "
                 f"(got {self.lsi_target_mode!r})"
             )
-        if self.lsi_entry_mode not in {"close", "fvg_limit", "timed_hybrid"}:
+        if self.lsi_entry_mode not in {"close", "fvg_limit", "level_limit", "timed_hybrid"}:
             raise ValueError(
-                "lsi_entry_mode must be one of 'close', 'fvg_limit', or 'timed_hybrid' "
+                "lsi_entry_mode must be one of 'close', 'fvg_limit', 'level_limit', "
+                "or 'timed_hybrid' "
                 f"(got {self.lsi_entry_mode!r})"
             )
         if self.lsi_close_on_sweep_to_inversion_minutes < 0:
@@ -453,6 +470,27 @@ class StrategyConfig:
             raise ValueError(
                 "lsi_close_on_sweep_to_inversion_minutes must be > 0 when "
                 "lsi_entry_mode == 'timed_hybrid'"
+            )
+        if self.lsi_confirmation_mode not in ALLOWED_LSI_CONFIRMATION_MODES:
+            raise ValueError(
+                "lsi_confirmation_mode must be one of "
+                f"{list(ALLOWED_LSI_CONFIRMATION_MODES)} "
+                f"(got {self.lsi_confirmation_mode!r})"
+            )
+        if self.cisd_min_leg_bars < 1:
+            raise ValueError(
+                "cisd_min_leg_bars must be >= 1 "
+                f"(got {self.cisd_min_leg_bars!r})"
+            )
+        if self.cisd_min_leg_atr_pct < 0:
+            raise ValueError(
+                "cisd_min_leg_atr_pct must be >= 0 "
+                f"(got {self.cisd_min_leg_atr_pct!r})"
+            )
+        if self.cisd_max_leg_bars < 0:
+            raise ValueError(
+                "cisd_max_leg_bars must be >= 0 "
+                f"(got {self.cisd_max_leg_bars!r})"
             )
         if self.lsi_lrlr_gate not in {"", "require", "exclude"}:
             raise ValueError(

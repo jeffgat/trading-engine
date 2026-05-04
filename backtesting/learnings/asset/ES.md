@@ -923,3 +923,24 @@ Shared cross-asset transfer run reconfirmed that **ES Asia-B should stay ungated
   - Best expanded ES Asia ORB hot-score branch: `combo__entry_0600__dow_baseline__rr1p5_tp0p7__stop_orb_pct_125p0__min_gap_atr_pct_0p25__uncapped_any__fvg_first__wide_none` -> full `252.59R / -21.65R DD`, last 2y `61.17R`, last 1y `38.52R`; warning: 1 negative year, lower PF, high trade count.
   - Pure last-1y ES Asia branch: `entry_0400 / exMon / rr1.5 / stop75 / gap0.5 / uncapped` reached `+56.50R` last-1y, but full history was much more fragile at `132.89R / -36.97R DD` with 2 negative years.
   - Best expanded ES NY ORB hot-score branch: `combo__entry_1300__dow_baseline__rr7p0_tp0p2__stop_atr_pct_5p0__min_gap_atr_pct_0p5__cap2_any__fvg_first__wide_none` -> full `165.11R / -22.30R DD`, last 2y `50.06R`, last 1y `20.03R`; full and recent DD both worsen versus baseline.
+- **Hot one-year strategy workflow** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_STRATEGY_WORKFLOW_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. TESTING-only, overfit-aware Calmar optimization; Bailey-style deflation intentionally skipped.
+  - ES NY ORB: `combo__orb15m__entry_1300__flat_1430__rr5p0_tp0p2__stop_atr_5p0__gap_orb_10p0__atr7__dir_both__dow_baseline__icf_off__cap1__fvg_first` with `gate_none` -> 115 fills, `30.13R`, Calmar `8.499`, PF `1.799`, DD `-3.55R`, surface `curve`.
+  - ES Asia ORB: `combo__orb10m__entry_0600__flat_0700__rr1p5_tp0p7__stop_orb_125p0__gap_atr_0p5__atr20__dir_long__dow_baseline__icf_off__cap2_nonpos__fvg_first` with `gate_skip_bear_high_vol` -> 173 fills, `46.88R`, Calmar `12.656`, PF `1.799`, DD `-3.7R`, surface `curve`.
+  - ES NY LSI: `combo__window_0830_1500__rr4p0_tp0p3__gap3p0__atr20__fvgL20_R3__lag16__cap1__htfN2__htf90__dir_long__mode_fvg_limit__dow_exTue` with `gate_skip_high_vol` -> 22 fills, `14.6R`, Calmar `14.598`, PF `3.277`, DD `-1.0R`, surface `soft_curve`.
+
+- **Hot one-year squeeze** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_SQUEEZE_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. TESTING-only second-stage local squeeze around prior screenshot winners.
+  - ES NY ORB: `prev_curve_net__combo__rr7p0_tp0p8__dow_none__gap_atr_1p0__wide_t12p5_rr3__icf_on__pre_cancel_tp1__flat_1330` with `gate_skip_medium_vol` -> 222 fills, `111.94R`, Calmar `4.146`, PF `1.671`, DD `-27.0R`, surface `curve`.
+  - ES Asia ORB: `prev_curve_net__combo__rr2p0_tp0p7__stop_orb_75p0__gap_atr_0p375__dow_exMon__flat_0600__atr10__wide_t12p5_rr1p5` with `gate_skip_sideways_high_vol` -> 216 fills, `61.61R`, Calmar `9.91`, PF `1.641`, DD `-6.22R`, surface `curve`.
+  - ES NY LSI: `prev_curve_net__combo__dow_exWed__fvgL7_R3__rr5p0_tp0p25__stop_struct_75pct__atr14__lag16__entry_1400` with `gate_skip_high_vol` -> 32 fills, `28.64R`, Calmar `20.832`, PF `4.58`, DD `-1.38R`, surface `curve`.
+
+- **Hot structural sequence** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_SEQUENCE_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. Post-trade structural gates around current hot one-year candidates.
+  - ES NY ORB: best structural `exclude_fomc` (calendar_news) -> 179 fills, `120.97R`, Calmar `8.641`, PF `1.938`, DD `-14.0R`, delta `5.0R`; TESTING-only.
+  - ES Asia ORB: best structural `combo__orb_not_extreme__exclude_fomc` (combo) -> 143 fills, `55.34R`, Calmar `14.636`, PF `1.947`, DD `-3.78R`, delta `-5.73R`; TESTING-only.
+  - ES NY LSI: best structural `prior_not_inside_day` (prior_day) -> 27 fills, `21.76R`, Calmar `21.755`, PF `4.121`, DD `-1.0R`, delta `0.44R`; TESTING-only.
+
+- **Hot structural follow-up** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_FOLLOWUP_20260503.md`
+  - Window: `2025-03-24` to `2026-03-24`. Targeted second pass around positive structural gates from the hot structural sequence.
+  - ES NY ORB: best refined structural `exclude_fomc_cpi` -> 174 fills, `125.97R`, delta `10.0R`, Calmar `10.497`, PF `2.017`, DD `-12.0R`, surface `n/a`; TESTING-only.

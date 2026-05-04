@@ -234,6 +234,10 @@ Per-leg read:
 - `NQ Asia` and `ES Asia` both favor `cap2_after_nonpositive` / `after_sl` over target compression.
 - `ES NY` likes extra flow most; its best full-history row is a cap2-any + light wide-stop combo, but it introduces a negative year and needs prop/risk validation before promotion.
 
+2026-05-03 follow-up report: `backtesting/learnings/reports/ALPHA_V1_ORB_GAP_CANDLE_STOP_COMPARE_20260503.md`
+
+Tested replacing the current ATR/ORB-distance stop logic on the same three ORB legs with an FVG impulse-candle structural stop: long stop = `low[signal_bar - 1] - 1pt`, short stop = `high[signal_bar - 1] + 1pt`, while leaving the engine's hard floors active. **Conclusion: NO-GO as a sleeve rule.** Combined 10yr fell from `+486.9R / -21.2R DD` to `+375.5R / -28.8R DD`; funded first-payout outcomes fell from `186` payouts / `70` breaches to `170` payouts / `85` breaches. The damage was largest in `ES NY` (`-62.6R`) and `NQ Asia` (`-35.0R`). The only favorable read was small 2026 YTD noise (`+1.6R`, DD `+0.9R`) and is not enough to offset the long-run and 2025 degradation.
+
 Completed follow-up: the promotion packet below tests `cap2_after_nonpositive` on `NQ Asia ORB` and `ES Asia ORB` inside the full active ALPHA_V1 stack.
 
 ### ORB One-Loss Reentry Promotion Packet (2026-05-02)

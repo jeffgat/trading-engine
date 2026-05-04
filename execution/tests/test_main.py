@@ -22,6 +22,7 @@ from trader.gates import (
 )
 from trader.lsi_engine import LSIState
 from trader.main import (
+    LSI_SESSION_CONFIGS,
     SESSION_CONFIGS,
     _checkpoint_shutdown_flat,
     _required_regime_daily_symbols,
@@ -629,6 +630,88 @@ def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
     assert testing.session_overrides["H_ORB_ABLATED"]["reduced_target_rr"] == 2.0
 
 
+def test_hot_regime_v1_exec_config_is_dry_run_hot_candidate_portfolio():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    hot = configs["HOT_REGIME_V1"]
+
+    assert hot.enabled is True
+    assert hot.webhook_url == ""
+    assert hot.webhooks == []
+    assert set(hot.session_overrides) == {
+        "NQ_NY",
+        "NQ_Asia",
+        "ES_NY",
+        "ES_Asia",
+        "GC_NY",
+        "GC_Asia",
+    }
+    assert set(hot.lsi_session_overrides) == {
+        "NQ_NY_LSI",
+        "ES_NY_LSI",
+        "GC_NY_LSI",
+    }
+
+    assert hot.session_overrides["NQ_NY"]["rr"] == 6.0
+    assert hot.session_overrides["NQ_NY"]["entry_end"] == "11:30"
+    assert hot.session_overrides["NQ_NY"]["gap_filter_basis"] == "orb"
+    assert hot.session_overrides["NQ_NY"]["orb_trade_max_per_session"] == 2
+    assert hot.session_overrides["NQ_NY"]["continuation_fvg_selection"] == "extreme"
+    assert hot.session_overrides["NQ_Asia"]["regime_gates"] == [
+        "block_bear_medium_vol",
+        "block_bear_high_vol",
+    ]
+    assert hot.session_overrides["ES_NY"]["limit_cancel_on_pre_entry_target_touch"] == "tp1"
+    assert hot.session_overrides["GC_Asia"]["wide_stop_target_rr"] == 1.0
+    assert hot.session_overrides["ES_Asia"]["regime_gates"] == ["block_sideways_high_vol"]
+    assert hot.session_overrides["GC_NY"]["rr"] == 12.0
+    assert hot.lsi_session_overrides["ES_NY_LSI"]["regime_gates"] == ["block_full_high_vol"]
+    assert hot.lsi_session_overrides["ES_NY_LSI"]["lsi_stop_mode"] == "struct_75pct"
+    assert hot.lsi_session_overrides["GC_NY_LSI"]["lsi_entry_mode"] == "timed_hybrid"
+    assert hot.lsi_session_overrides["GC_NY_LSI"]["lsi_close_on_sweep_to_inversion_minutes"] == 60
+    assert hot.lsi_session_overrides["GC_NY_LSI"]["lsi_n_left"] == 10
+
+
+def test_hot_regime_v1_builds_all_orb_and_lsi_engines():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+    hot = configs["HOT_REGIME_V1"]
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {"half_days": [], "excluded": []},
+        "sessions": {},
+    }
+
+    orb_engines, symbol_map, atr_lengths = build_engines(
+        config,
+        broker,
+        config_name=hot.name,
+        session_list=list(hot.session_overrides),
+        exec_overrides=hot.session_overrides,
+    )
+    lsi_engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name=hot.name,
+        lsi_list=list(hot.lsi_session_overrides),
+        lsi_overrides=hot.lsi_session_overrides,
+    )
+
+    assert {engine.name for engine in orb_engines} == set(hot.session_overrides)
+    assert {engine.name for engine in lsi_engines} == set(hot.lsi_session_overrides)
+    assert LSI_SESSION_CONFIGS["ES_NY_LSI"]["instrument"] == "ES"
+    assert LSI_SESSION_CONFIGS["GC_NY_LSI"]["instrument"] == "GC"
+    by_name = {engine.name: engine for engine in lsi_engines}
+    assert by_name["ES_NY_LSI"].exec_ticker == "MES"
+    assert by_name["GC_NY_LSI"].exec_ticker == "MGC"
+    assert by_name["ES_NY_LSI"].long_only is False
+    assert by_name["GC_NY_LSI"].long_only is False
+    assert by_name["ES_NY_LSI"].lsi_stop_mode == "struct_75pct"
+    assert by_name["GC_NY_LSI"].lsi_entry_mode == "timed_hybrid"
+
+
 def test_hunter_orb_safe_defaults_match_10y_safe_branch():
     config = SESSION_CONFIGS["H_ORB_SAFE"]
 
@@ -713,6 +796,8 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
         "block_bull_high_vol",
         "block_bear_high_vol",
         "block_bear_medium_vol",
+        "block_sideways_high_vol",
+        "block_full_high_vol",
     )))
     daily = pd.DataFrame(
         {"open": [100.0], "high": [101.0], "low": [99.0], "close": [100.0]},
@@ -729,6 +814,8 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bull_high_vol"]}),
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_high_vol"]}),
         pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bear_medium_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["sideways_high_vol"]}),
+        pd.DataFrame({"date": [pd.Timestamp("2025-01-31")], "combined_regime": ["bull_high_vol"]}),
     ))
 
     monkeypatch.setattr("trader.gates._load_nq_daily_history", _fake_daily_loader)
@@ -740,6 +827,8 @@ def test_combined_regime_avoidance_gates_use_named_buckets(monkeypatch):
     assert gates["block_bull_high_vol"]("20250131") is False
     assert gates["block_bear_high_vol"]("20250131") is False
     assert gates["block_bear_medium_vol"]("20250131") is False
+    assert gates["block_sideways_high_vol"]("20250131") is False
+    assert gates["block_full_high_vol"]("20250131") is False
 
 
 def test_evaluate_regime_gate_returns_bucket_context(monkeypatch):

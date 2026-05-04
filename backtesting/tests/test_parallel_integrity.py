@@ -87,7 +87,11 @@ def test_load_or_build_signal_cache_invalidates_when_dataframe_content_changes(
 
     calls: list[float] = []
 
-    def fake_build_signal_cache(df: pd.DataFrame, _configs: list[StrategyConfig]) -> dict:
+    def fake_build_signal_cache(
+        df: pd.DataFrame,
+        _configs: list[StrategyConfig],
+        signal_df_1m: pd.DataFrame | None = None,
+    ) -> dict:
         calls.append(float(df["high"].iloc[10]))
         return {"marker": float(df["high"].iloc[10])}
 
@@ -95,7 +99,7 @@ def test_load_or_build_signal_cache_invalidates_when_dataframe_content_changes(
     monkeypatch.setattr(
         parallel,
         "_signal_cache_path",
-        lambda df, configs: tmp_path / f"sigcache_{parallel._dataframe_cache_fingerprint(df)}_{len(configs)}.pkl",
+        lambda df, configs, signal_df_1m=None: tmp_path / f"sigcache_{parallel._dataframe_cache_fingerprint(df)}_{len(configs)}.pkl",
     )
 
     cache_a = parallel._load_or_build_signal_cache(df_a, [config])

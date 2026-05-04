@@ -205,6 +205,14 @@ class ORBEngine:
     # ICF (impulse close filter) — GC only
     icf_enabled: bool = False
 
+    # Hot-regime ORB research knobs.
+    continuation_fvg_selection: str = "first"
+    orb_trade_max_per_session: int = 1
+    orb_reentry_policy: str = "any_reentry"
+    wide_stop_target_threshold_points: float = 0.0
+    wide_stop_target_rr: float = 0.0
+    limit_cancel_on_pre_entry_target_touch: str = ""
+
     # Day-of-week exclusion (0=Mon..6=Sun, None=no exclusion)
     excluded_dow: int | list[int] | None = None
 
@@ -262,6 +270,7 @@ class ORBEngine:
     _bar_count: int = field(default=0, init=False)
     _long_fvg_found: bool = field(default=False, init=False)
     _short_fvg_found: bool = field(default=False, init=False)
+    _session_filled_trades: int = field(default=0, init=False)
     _current_date: str = field(default="", init=False)
     _skip_reason: str | None = field(default=None, init=False)
     _blocking_gate: str | None = field(default=None, init=False)
@@ -301,6 +310,54 @@ class ORBEngine:
             self.regime_gate_check,
             self.regime_gate_checks,
         )
+        if self.continuation_fvg_selection not in {"first", "extreme"}:
+            raise ValueError(
+                "continuation_fvg_selection must be one of 'first' or 'extreme' "
+                f"(got {self.continuation_fvg_selection!r})"
+            )
+        if self.orb_trade_max_per_session < 0:
+            raise ValueError(
+                "orb_trade_max_per_session must be >= 0 "
+                f"(got {self.orb_trade_max_per_session!r})"
+            )
+        if self.orb_reentry_policy not in {
+            "any_reentry",
+            "after_positive_first",
+            "after_nonpositive_first",
+            "after_sl_first",
+            "after_full_target_first",
+        }:
+            raise ValueError(
+                "orb_reentry_policy must be one of any_reentry, after_positive_first, "
+                "after_nonpositive_first, after_sl_first, or after_full_target_first "
+                f"(got {self.orb_reentry_policy!r})"
+            )
+        if self.wide_stop_target_threshold_points < 0.0:
+            raise ValueError(
+                "wide_stop_target_threshold_points must be >= 0 "
+                f"(got {self.wide_stop_target_threshold_points!r})"
+            )
+        if self.wide_stop_target_rr < 0.0:
+            raise ValueError(
+                "wide_stop_target_rr must be >= 0 "
+                f"(got {self.wide_stop_target_rr!r})"
+            )
+        if self.wide_stop_target_rr > 0.0:
+            if self.wide_stop_target_rr < 1.0:
+                raise ValueError(
+                    "wide_stop_target_rr must be >= 1.0 when enabled "
+                    f"(got {self.wide_stop_target_rr!r})"
+                )
+            if self.wide_stop_target_rr > self.rr:
+                raise ValueError(
+                    "wide_stop_target_rr must be <= rr "
+                    f"(got wide_stop_target_rr={self.wide_stop_target_rr!r}, rr={self.rr!r})"
+                )
+        if self.limit_cancel_on_pre_entry_target_touch not in {"", "tp1", "tp2"}:
+            raise ValueError(
+                "limit_cancel_on_pre_entry_target_touch must be one of '', 'tp1', or 'tp2' "
+                f"(got {self.limit_cancel_on_pre_entry_target_touch!r})"
+            )
 
     @property
     def _should_send(self) -> bool:
@@ -620,6 +677,126 @@ class ORBEngine:
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
         return 0.0
 
+    def _orb_reentry_policy_allows(self, exit_type: str, r_result: float | None) -> bool:
+        r = 0.0 if r_result is None else r_result
+        if self.orb_reentry_policy == "any_reentry":
+            return True
+        if self.orb_reentry_policy == "after_positive_first":
+            return r > 0.0
+        if self.orb_reentry_policy == "after_nonpositive_first":
+            return r <= 0.0
+        if self.orb_reentry_policy == "after_sl_first":
+            return exit_type == "sl"
+        if self.orb_reentry_policy == "after_full_target_first":
+            return exit_type in {"tp1_tp2", "tp2_direct"}
+        return True
+
+    def _set_post_exit_state(self, exit_time: time, exit_type: str) -> None:
+        cap_allows = (
+            self.orb_trade_max_per_session <= 0
+            or self._session_filled_trades < self.orb_trade_max_per_session
+        )
+        policy_allows = self._orb_reentry_policy_allows(exit_type, self._r_result)
+        if cap_allows and policy_allows and self._in_entry(exit_time):
+            self._levels = None
+            self._tp1_hit = False
+            self._tp1_bar_count = -1
+            self._fill_bar_idx = -1
+            self._fill_timestamp = None
+            self._fill_via_tick = False
+            self._armed_at = None
+            self._long_fvg_found = False
+            self._short_fvg_found = False
+            self._state = State.WAITING_FOR_GAP
+            self._log_trade(
+                "REENTRY_READY",
+                "filled_trades=%d policy=%s"
+                % (self._session_filled_trades, self.orb_reentry_policy),
+            )
+            return
+        self._state = State.FLAT
+
+    def _pre_entry_cancel_touched(self, bar: Bar) -> bool:
+        if self.limit_cancel_on_pre_entry_target_touch not in {"tp1", "tp2"}:
+            return False
+        levels = self._levels
+        if levels is None:
+            return False
+        target = levels.tp1 if self.limit_cancel_on_pre_entry_target_touch == "tp1" else levels.tp2
+        if levels.direction == 1:
+            return bar.high >= target
+        return bar.low <= target
+
+    async def _cancel_armed_limit(self, reason: str) -> None:
+        self._log_trade("CANCELLED_LIMITS", reason)
+        self._release_position_cap()
+        if self._should_send:
+            await self.broker.send_cancel(ticker=self.exec_ticker)
+        self._state = State.FLAT
+        self._request_checkpoint()
+        self._notify_state_change()
+
+    async def _replace_armed_limit_if_extreme(self, bar: Bar) -> bool:
+        if self.continuation_fvg_selection != "extreme" or self._levels is None:
+            return False
+
+        current = self._levels
+        if current.direction == 1:
+            if self.short_only:
+                return False
+            detected, entry, gap_size = self._check_long_fvg()
+            if not detected or not self._gap_valid(gap_size) or entry <= current.entry:
+                return False
+            new_levels = self._compute_setup_levels(entry=entry, direction=1, gap_size=gap_size)
+            action = "buy"
+        else:
+            if self.long_only and not self.short_only:
+                return False
+            detected, entry, gap_size = self._check_short_fvg()
+            if not detected or not self._gap_valid(gap_size) or entry >= current.entry:
+                return False
+            new_levels = self._compute_setup_levels(entry=entry, direction=-1, gap_size=gap_size)
+            action = "sell"
+
+        if new_levels is None:
+            return False
+
+        self._release_position_cap()
+        capped = self._apply_position_cap(new_levels)
+        if capped is None:
+            restored = self._apply_position_cap(current)
+            if restored is not None:
+                self._levels = restored
+            return False
+
+        self._levels = capped
+        self._armed_at = bar.timestamp + timedelta(minutes=5)
+        self._request_checkpoint()
+        self._log_trade(
+            "LIMIT_REARMED_EXTREME",
+            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f gap=%.2f"
+            % (
+                "long" if capped.direction == 1 else "short",
+                capped.entry,
+                capped.stop,
+                capped.tp1,
+                capped.tp2,
+                gap_size,
+            ),
+        )
+        if self._should_send:
+            await self.broker.send_cancel(ticker=self.exec_ticker)
+            await self.broker.send_entry(
+                action=action,
+                qty=capped.qty,
+                price=capped.entry,
+                tp2=capped.tp2,
+                stop=capped.stop,
+                ticker=self.exec_ticker,
+            )
+        self._notify_state_change()
+        return True
+
     async def _flatten_position(self, bar: Bar, *, resolution: str, reason: str) -> None:
         """Force a market flatten and record it as an EOD-style exit."""
         levels = self._levels
@@ -636,7 +813,7 @@ class ORBEngine:
             exit_price=bar.close,
             exit_timestamp=bar.timestamp,
         )
-        self._state = State.FLAT
+        self._set_post_exit_state(bar.timestamp.time(), self._exit_type or "eod")
         self._request_checkpoint()
         self._notify_state_change()
 
@@ -737,6 +914,7 @@ class ORBEngine:
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
+        self._session_filled_trades = 0
         self._exit_type = None
         self._r_result = None
         self._current_date = date_str
@@ -947,6 +1125,31 @@ class ORBEngine:
                     return False
             return True
 
+    def _compute_setup_levels(self, *, entry: float, direction: int, gap_size: float) -> TradeLevels | None:
+        return compute_trade_levels(
+            entry=entry,
+            direction=direction,
+            gap_size=gap_size,
+            daily_atr=self._daily_atr,
+            stop_atr_pct=self.stop_atr_pct,
+            rr=self.rr,
+            tp1_ratio=self.tp1_ratio,
+            risk_usd=self.risk_usd,
+            point_value=self.point_value,
+            min_qty=self.min_qty,
+            qty_step=self.qty_step,
+            be_offset_ticks=self.be_offset_ticks,
+            min_tick=self.min_tick,
+            stop_basis=self.stop_basis,
+            orb_range=self._orb_range,
+            stop_orb_pct=self.stop_orb_pct,
+            min_stop_pts=self.min_stop_pts,
+            min_tp1_pts=self.min_tp1_pts,
+            max_single_risk_usd=self.max_single_risk_usd,
+            wide_stop_target_threshold_points=self.wide_stop_target_threshold_points,
+            wide_stop_target_rr=self.wide_stop_target_rr,
+        )
+
     # ------------------------------------------------------------------
     # Main bar handler
     # ------------------------------------------------------------------
@@ -1110,6 +1313,16 @@ class ORBEngine:
 
     async def _handle_scanning(self, bar: Bar, bar_time: time) -> None:
         """Scanning for first FVG in entry window (long only)."""
+        if (
+            self.orb_trade_max_per_session > 0
+            and self._session_filled_trades >= self.orb_trade_max_per_session
+        ):
+            self._log_trade("NO_SETUP", "trade cap reached")
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
         if not self._in_entry(bar_time):
             # Past entry window — cancel and go flat
             self._log_trade("NO_SETUP", "entry window closed")
@@ -1140,27 +1353,7 @@ class ORBEngine:
                         )
                         return
                     self._long_fvg_found = True
-                    levels = compute_trade_levels(
-                        entry=entry,
-                        direction=1,
-                        gap_size=gap_size,
-                        daily_atr=self._daily_atr,
-                        stop_atr_pct=self.stop_atr_pct,
-                        rr=self.rr,
-                        tp1_ratio=self.tp1_ratio,
-                        risk_usd=self.risk_usd,
-                        point_value=self.point_value,
-                        min_qty=self.min_qty,
-                        qty_step=self.qty_step,
-                        be_offset_ticks=self.be_offset_ticks,
-                        min_tick=self.min_tick,
-                        stop_basis=self.stop_basis,
-                        orb_range=self._orb_range,
-                        stop_orb_pct=self.stop_orb_pct,
-                        min_stop_pts=self.min_stop_pts,
-                        min_tp1_pts=self.min_tp1_pts,
-                        max_single_risk_usd=self.max_single_risk_usd,
-                    )
+                    levels = self._compute_setup_levels(entry=entry, direction=1, gap_size=gap_size)
                     if levels is not None:
                         levels = self._apply_position_cap(levels)
                     if levels is not None:
@@ -1215,27 +1408,7 @@ class ORBEngine:
             detected, entry, gap_size = self._check_short_fvg()
             if detected and self._gap_valid(gap_size):
                 self._short_fvg_found = True
-                levels = compute_trade_levels(
-                    entry=entry,
-                    direction=-1,
-                    gap_size=gap_size,
-                    daily_atr=self._daily_atr,
-                    stop_atr_pct=self.stop_atr_pct,
-                    rr=self.rr,
-                    tp1_ratio=self.tp1_ratio,
-                    risk_usd=self.risk_usd,
-                    point_value=self.point_value,
-                    min_qty=self.min_qty,
-                    qty_step=self.qty_step,
-                    be_offset_ticks=self.be_offset_ticks,
-                    min_tick=self.min_tick,
-                    stop_basis=self.stop_basis,
-                    orb_range=self._orb_range,
-                    stop_orb_pct=self.stop_orb_pct,
-                    min_stop_pts=self.min_stop_pts,
-                    min_tp1_pts=self.min_tp1_pts,
-                    max_single_risk_usd=self.max_single_risk_usd,
-                )
+                levels = self._compute_setup_levels(entry=entry, direction=-1, gap_size=gap_size)
                 if levels is not None:
                     levels = self._apply_position_cap(levels)
                 if levels is not None:
@@ -1281,19 +1454,11 @@ class ORBEngine:
 
         # Cancel if past entry window
         if not self._in_entry(bar_time):
-            self._log_trade(
-                "CANCELLED_LIMITS",
-                "entry window expired entry=%.2f" % levels.entry,
-            )
-            self._release_position_cap()
-            if self._should_send:
-                await self.broker.send_cancel(ticker=self.exec_ticker)
-            self._state = State.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
+            await self._cancel_armed_limit("entry window expired entry=%.2f" % levels.entry)
             return
 
         if not self.allow_5m_fill_detection:
+            await self._replace_armed_limit_if_extreme(bar)
             return
 
         # Check for fill: did price touch our limit entry?
@@ -1309,6 +1474,7 @@ class ORBEngine:
             self._fill_timestamp = bar.timestamp
             self._fill_via_tick = False
             self._armed_at = None
+            self._session_filled_trades += 1
             self._log_trade(
                 "FILLED",
                 "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f bar_time=%s resolution=5m"
@@ -1318,6 +1484,20 @@ class ORBEngine:
             self._state = State.MANAGING
             self._request_checkpoint()
             self._notify_state_change()
+            return
+
+        if self._pre_entry_cancel_touched(bar):
+            await self._cancel_armed_limit(
+                "%s touched before entry target=%.2f entry=%.2f"
+                % (
+                    self.limit_cancel_on_pre_entry_target_touch,
+                    levels.tp1 if self.limit_cancel_on_pre_entry_target_touch == "tp1" else levels.tp2,
+                    levels.entry,
+                )
+            )
+            return
+
+        await self._replace_armed_limit_if_extreme(bar)
 
     async def _handle_managing(self, bar: Bar, bar_time: time) -> None:
         """Position open — manage TP1/TP2/SL/BE/EOD."""
@@ -1371,7 +1551,7 @@ class ORBEngine:
                 delay_s=self._broker_exit_cleanup_delay(1.0),
             )
             self._emit_trade_record("sl", exit_timestamp=bar.timestamp)
-            self._state = State.FLAT
+            self._set_post_exit_state(bar.timestamp.time(), "sl")
             self._request_checkpoint()
             self._notify_state_change()
             return
@@ -1444,7 +1624,7 @@ class ORBEngine:
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_5m")
                 self._emit_trade_record("tp1_be", exit_timestamp=bar.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(bar.timestamp.time(), "tp1_be")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1463,7 +1643,7 @@ class ORBEngine:
                 )
                 self._schedule_post_exit_cleanup(reason="tp2_hit_5m")
                 self._emit_trade_record("tp1_tp2", exit_timestamp=bar.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(bar.timestamp.time(), "tp1_tp2")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1486,7 +1666,7 @@ class ORBEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("tp2_direct", exit_timestamp=bar.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(bar.timestamp.time(), "tp2_direct")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1520,16 +1700,7 @@ class ORBEngine:
 
         # Cancel if past entry window
         if not self._in_entry(tick_time):
-            self._log_trade(
-                "CANCELLED_LIMITS",
-                "entry window expired (1s) entry=%.2f" % levels.entry,
-            )
-            self._release_position_cap()
-            if self._should_send:
-                await self.broker.send_cancel(ticker=self.exec_ticker)
-            self._state = State.FLAT
-            self._request_checkpoint()
-            self._notify_state_change()
+            await self._cancel_armed_limit("entry window expired (1s) entry=%.2f" % levels.entry)
             return
 
         # A setup confirmed on a 5m close cannot fill from ticks that
@@ -1550,6 +1721,7 @@ class ORBEngine:
             self._fill_bar_idx = self._bar_count
             self._fill_via_tick = True
             self._armed_at = None
+            self._session_filled_trades += 1
             self._state = State.MANAGING
             self._request_checkpoint()
             self._log_trade(
@@ -1558,6 +1730,17 @@ class ORBEngine:
                 % ("long" if is_long else "short", levels.entry, levels.stop, levels.tp1, levels.tp2, levels.qty, tick.timestamp),
             )
             self._notify_state_change()
+            return
+
+        if self._pre_entry_cancel_touched(tick):
+            await self._cancel_armed_limit(
+                "%s touched before entry target=%.2f entry=%.2f resolution=1s"
+                % (
+                    self.limit_cancel_on_pre_entry_target_touch,
+                    levels.tp1 if self.limit_cancel_on_pre_entry_target_touch == "tp1" else levels.tp2,
+                    levels.entry,
+                )
+            )
 
     async def _handle_managing_tick(self, tick: Bar) -> None:
         """Manage position exits at 1s resolution.
@@ -1608,7 +1791,7 @@ class ORBEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(tick.timestamp.time(), "sl")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1624,7 +1807,7 @@ class ORBEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("sl", exit_timestamp=tick.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(tick.timestamp.time(), "sl")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1686,7 +1869,7 @@ class ORBEngine:
                     delay_s=self._broker_exit_cleanup_delay(1.0),
                 )
                 self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(tick.timestamp.time(), "tp2_direct")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1706,7 +1889,7 @@ class ORBEngine:
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_1s")
                 self._emit_trade_record("tp1_be", exit_timestamp=tick.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(tick.timestamp.time(), "tp1_be")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1719,7 +1902,7 @@ class ORBEngine:
                 )
                 self._schedule_post_exit_cleanup(reason="tp2_hit_1s")
                 self._emit_trade_record("tp1_tp2", exit_timestamp=tick.timestamp)
-                self._state = State.FLAT
+                self._set_post_exit_state(tick.timestamp.time(), "tp1_tp2")
                 self._request_checkpoint()
                 self._notify_state_change()
                 return

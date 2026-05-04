@@ -105,6 +105,8 @@ def _extract_long_candidates(
         df.index.date,
         df["close"].to_numpy(dtype=float),
         np.full(len(df), 10.0, dtype=float),
+        np.zeros(len(df), dtype=float),
+        np.zeros(len(df), dtype=float),
         TEST_SESSION,
         htf_levels=_htf_low_levels(len(df), 100.0),
         include_htf_levels=True,

@@ -48,7 +48,7 @@
 - `Hunter Classic ORB Regime Gate Read (2026-05-02)` -> `**CONDITIONAL research lead — promising, not promoted**`
 - `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
 
-## Reports (84)
+## Reports (88)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
 - [NQ_EVAL_FIT_1S_READ.md](../../reports/NQ_EVAL_FIT_1S_READ.md) -> [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read)
 - [NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep)
@@ -113,6 +113,10 @@
 - [NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md](../../reports/NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md)
 - [NQ_NY_HTF_LSI_UNCAPPED_RERUN.md](../../reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md)
 - [NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md](../../reports/NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md) -> [nq_ny_htf_lsi_window_exit_local_sweep](../../../data/results/nq_ny_htf_lsi_window_exit_local_sweep)
+- [NQ_NY_LSI_CISD_CANDIDATE_VALIDATION_20260503.md](../../reports/NQ_NY_LSI_CISD_CANDIDATE_VALIDATION_20260503.md) -> [nq_ny_lsi_cisd_candidate_validation_20260503](../../../data/results/nq_ny_lsi_cisd_candidate_validation_20260503)
+- [NQ_NY_LSI_CISD_RESTRICTED_FINALISTS_20260503.md](../../reports/NQ_NY_LSI_CISD_RESTRICTED_FINALISTS_20260503.md) -> [nq_ny_lsi_cisd_restricted_finalists_20260503](../../../data/results/nq_ny_lsi_cisd_restricted_finalists_20260503)
+- [NQ_NY_LSI_CISD_SEQUENCE_20260503.md](../../reports/NQ_NY_LSI_CISD_SEQUENCE_20260503.md) -> [nq_ny_lsi_cisd_sequence_20260503](../../../data/results/nq_ny_lsi_cisd_sequence_20260503)
+- [NQ_NY_LSI_CISD_SURVIVOR_REFINEMENT_20260503.md](../../reports/NQ_NY_LSI_CISD_SURVIVOR_REFINEMENT_20260503.md)
 - [NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md](../../reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md)
 - [NQ_NY_REFERENCE_LSI_3M_FAILURE_ANALYSIS.md](../../reports/NQ_NY_REFERENCE_LSI_3M_FAILURE_ANALYSIS.md) -> [nq_ny_reference_lsi_3m_failure_analysis](../../../data/results/nq_ny_reference_lsi_3m_failure_analysis)
 - [NQ_NY_REFERENCE_LSI_3M_PHASE_ONE.md](../../reports/NQ_NY_REFERENCE_LSI_3M_PHASE_ONE.md) -> [nq_ny_reference_lsi_3m_phase_one](../../../data/results/nq_ny_reference_lsi_3m_phase_one)
@@ -134,7 +138,7 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (103)
+## Result Directories (106)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [nq_asia_4leg_combo_sweep](../../../data/results/nq_asia_4leg_combo_sweep) (4 files; primary: summary.md, asia_combo_details.json, asia_combo_ranking.csv, asia_combo_ranking_practical.csv)
 - [nq_asia_lsi_4leg_combo_sweep](../../../data/results/nq_asia_lsi_4leg_combo_sweep) (4 files; primary: summary.md, asia_lsi_combo_details.json, asia_lsi_combo_ranking.csv, asia_lsi_combo_ranking_practical.csv)
@@ -211,6 +215,9 @@
 - [nq_ny_htf_lsi_tf_transfer_uncapped](../../../data/results/nq_ny_htf_lsi_tf_transfer_uncapped) (5 files; primary: summary.json, 1m.json, 2m.json, 3m.json, 5m.json)
 - [nq_ny_htf_lsi_window_exit_local_sweep](../../../data/results/nq_ny_htf_lsi_window_exit_local_sweep) (4 files; primary: finalists.json, selected_windows.json, exit_rows.json, window_rows.json)
 - [nq_ny_lsi_4leg_combo_sweep](../../../data/results/nq_ny_lsi_4leg_combo_sweep) (4 files; primary: summary.md, ny_lsi_combo_details.json, ny_lsi_combo_ranking.csv, ny_lsi_combo_ranking_practical.csv)
+- [nq_ny_lsi_cisd_candidate_validation_20260503](../../../data/results/nq_ny_lsi_cisd_candidate_validation_20260503) (10 files; primary: summary.json, execution_stress.csv, fragility_rows.csv, fragility_summary.csv, frozen_scorecards.csv)
+- [nq_ny_lsi_cisd_restricted_finalists_20260503](../../../data/results/nq_ny_lsi_cisd_restricted_finalists_20260503) (8 files; primary: summary.json, execution_stress.csv, monte_carlo.json, period_scorecards.csv, phase_one_accounts.csv)
+- [nq_ny_lsi_cisd_sequence_20260503](../../../data/results/nq_ny_lsi_cisd_sequence_20260503) (4 files; primary: summary.json, all_rows.csv, survivor_rows.csv, survivor_summary.json)
 - [nq_ny_reference_lsi_3m_failure_analysis](../../../data/results/nq_ny_reference_lsi_3m_failure_analysis) (1 files; primary: failure_analysis.json)
 - [nq_ny_reference_lsi_3m_phase_one](../../../data/results/nq_ny_reference_lsi_3m_phase_one) (1 files; primary: phase_one_results.json)
 - [nq_ny_reference_lsi_3m_previous_day_asia_phase_one](../../../data/results/nq_ny_reference_lsi_3m_previous_day_asia_phase_one) (1 files; primary: phase_one_results.json)

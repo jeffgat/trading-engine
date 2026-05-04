@@ -35,6 +35,7 @@ from ..signals.daily_atr import compute_daily_atr
 from ..signals.equal_levels import compute_equal_htf_levels
 from ..signals.orb import compute_orb_levels
 from ..signals.fvg import detect_fvg
+from ..signals.cisd import detect_internal_cisd
 from ..signals.htf_levels import compute_htf_unswept_levels
 from ..signals.reference_levels import compute_reference_levels, compute_data_sweep_levels
 from ..signals.swing import detect_swing_highs, detect_swing_lows
@@ -95,6 +96,9 @@ class TradeResult(NamedTuple):
     lsi_fvg_bottom: float = 0.0    # lower boundary of the inverting FVG zone
     lsi_fvg_time: str = ""         # ISO timestamp of the FVG bar (bar[0] of 3-candle pattern)
     lsi_sweep_time: str = ""       # ISO timestamp of the bar where the liquidity sweep occurred
+    lsi_confirmation_type: str = ""  # "inversion" or "cisd" for LSI-style setups
+    lsi_cisd_level: float = 0.0
+    lsi_cisd_time: str = ""
     reference_level_name: str = ""  # completed-session / previous-day level used by reference_lsi
     reference_level_price: float = 0.0
     htf_level_time: str = ""       # ISO timestamp of the HTF bar that supplied the swept level
@@ -1587,6 +1591,9 @@ class _SetupCandidate:
     lsi_fvg_bottom: float = 0.0
     lsi_fvg_bar: int = -1
     lsi_sweep_bar: int = -1
+    lsi_confirmation_type: str = ""
+    lsi_cisd_level: float = 0.0
+    lsi_cisd_bar: int = -1
     lsi_internal_swing_level: float = 1e38  # sentinel: 1e38=disabled (longs), -1e38=disabled (shorts)
     reference_level_name: str = ""
     reference_level_price: float = 0.0
@@ -1762,6 +1769,10 @@ def _resolve_lsi_entry_mode(
     if inversion_minutes <= float(close_on_sweep_to_inversion_minutes):
         return "close"
     return "fvg_limit"
+
+
+def _is_lsi_level_limit_entry_mode(entry_mode: str) -> bool:
+    return entry_mode in {"fvg_limit", "level_limit"}
 
 
 def _build_lrlr_settings(config: StrategyConfig) -> _LSILRLRSettings:
@@ -2715,6 +2726,9 @@ def _extract_setup_candidates(
         for _ds in _unique_dates:
             if _dt.strptime(_ds, "%Y%m%d").weekday() in _dow_set:
                 excluded.add(_ds)
+    exclude_mask = None
+    if excluded:
+        exclude_mask = np.isin(date_strs, np.array(list(excluded)))
 
     # Filter candidates: must be in entry window, ORB ready, not excluded, bar confirmed
     # Pine uses barstate.isconfirmed — for completed 5m bars, all bars in historical data
@@ -2748,9 +2762,7 @@ def _extract_setup_candidates(
         valid_short &= vwap_short_ok
 
     # Exclude specific dates (vectorized via numpy isin)
-    if excluded:
-        exclude_arr = np.array(list(excluded))
-        exclude_mask = np.isin(date_strs, exclude_arr)
+    if exclude_mask is not None:
         valid_long &= ~exclude_mask
         valid_short &= ~exclude_mask
 
@@ -2774,17 +2786,18 @@ def _extract_setup_candidates(
                 daily_atr,
                 session.min_gap_atr_pct,
             )
-        valid_long_lsi = fvg_lsi["long_fvg"] & masks["in_entry"] & masks["in_rth"]
-        valid_short_lsi = fvg_lsi["short_fvg"] & masks["in_entry"] & masks["in_rth"]
-        # Apply date exclusions (excluded_dates + excluded_days) to LSI candidates
-        if excluded:
-            _excl_arr = np.array(list(excluded))
-            _excl_mask = np.isin(date_strs, _excl_arr)
-            valid_long_lsi &= ~_excl_mask
-            valid_short_lsi &= ~_excl_mask
+        lsi_in_entry = masks["in_entry"]
+        lsi_in_rth = masks["in_rth"]
+        lsi_in_sweep = masks["in_sweep"]
+        if exclude_mask is not None:
+            lsi_in_entry = lsi_in_entry & ~exclude_mask
+            lsi_in_rth = lsi_in_rth & ~exclude_mask
+            lsi_in_sweep = lsi_in_sweep & ~exclude_mask
+        valid_long_lsi = fvg_lsi["long_fvg"] & lsi_in_entry & lsi_in_rth
+        valid_short_lsi = fvg_lsi["short_fvg"] & lsi_in_entry & lsi_in_rth
         candidates = _extract_lsi_candidates(
             df, fvg_lsi, valid_long_lsi, valid_short_lsi, session_day_id,
-            masks["in_entry"], masks["in_rth"], masks["in_sweep"], dates, close,
+            lsi_in_entry, lsi_in_rth, lsi_in_sweep, dates, close,
             daily_atr, orb_high, orb_low, session,
             n_left=config.lsi_n_left,
             n_right=config.lsi_n_right,
@@ -2795,6 +2808,10 @@ def _extract_setup_candidates(
             target_mode=config.lsi_target_mode,
             entry_mode=config.lsi_entry_mode,
             close_on_sweep_to_inversion_minutes=config.lsi_close_on_sweep_to_inversion_minutes,
+            confirmation_mode=config.lsi_confirmation_mode,
+            cisd_min_leg_bars=config.cisd_min_leg_bars,
+            cisd_min_leg_atr_pct=config.cisd_min_leg_atr_pct,
+            cisd_max_leg_bars=config.cisd_max_leg_bars,
             first_fvg_only=config.lsi_first_fvg_only,
             clean_path=config.lsi_clean_path,
             rr=config.rr,
@@ -2819,13 +2836,15 @@ def _extract_setup_candidates(
                 session.min_gap_atr_pct,
             )
 
-        valid_long_htf = fvg_htf["long_fvg"] & masks["in_entry"] & masks["in_rth"]
-        valid_short_htf = fvg_htf["short_fvg"] & masks["in_entry"] & masks["in_rth"]
-        if excluded:
-            _excl_arr = np.array(list(excluded))
-            _excl_mask = np.isin(date_strs, _excl_arr)
-            valid_long_htf &= ~_excl_mask
-            valid_short_htf &= ~_excl_mask
+        htf_in_entry = masks["in_entry"]
+        htf_in_rth = masks["in_rth"]
+        htf_in_sweep = masks["in_sweep"]
+        if exclude_mask is not None:
+            htf_in_entry = htf_in_entry & ~exclude_mask
+            htf_in_rth = htf_in_rth & ~exclude_mask
+            htf_in_sweep = htf_in_sweep & ~exclude_mask
+        valid_long_htf = fvg_htf["long_fvg"] & htf_in_entry & htf_in_rth
+        valid_short_htf = fvg_htf["short_fvg"] & htf_in_entry & htf_in_rth
 
         htf_levels = None
         if config.htf_lsi_include_htf_levels:
@@ -2882,9 +2901,9 @@ def _extract_setup_candidates(
             valid_long_htf,
             valid_short_htf,
             session_day_id,
-            masks["in_entry"],
-            masks["in_rth"],
-            masks["in_sweep"],
+            htf_in_entry,
+            htf_in_rth,
+            htf_in_sweep,
             dates,
             close,
             daily_atr,
@@ -2905,6 +2924,10 @@ def _extract_setup_candidates(
             target_mode=config.lsi_target_mode,
             entry_mode=config.lsi_entry_mode,
             close_on_sweep_to_inversion_minutes=config.lsi_close_on_sweep_to_inversion_minutes,
+            confirmation_mode=config.lsi_confirmation_mode,
+            cisd_min_leg_bars=config.cisd_min_leg_bars,
+            cisd_min_leg_atr_pct=config.cisd_min_leg_atr_pct,
+            cisd_max_leg_bars=config.cisd_max_leg_bars,
             rr=config.rr,
             tp1_ratio=config.tp1_ratio,
             target_swing_n_bars=config.swing_n_bars,
@@ -2927,13 +2950,13 @@ def _extract_setup_candidates(
                 session.min_gap_atr_pct,
             )
 
-        valid_long_ref = fvg_ref["long_fvg"] & masks["in_entry"] & masks["in_rth"]
-        valid_short_ref = fvg_ref["short_fvg"] & masks["in_entry"] & masks["in_rth"]
-        if excluded:
-            _excl_arr = np.array(list(excluded))
-            _excl_mask = np.isin(date_strs, _excl_arr)
-            valid_long_ref &= ~_excl_mask
-            valid_short_ref &= ~_excl_mask
+        ref_in_entry = masks["in_entry"]
+        ref_in_rth = masks["in_rth"]
+        if exclude_mask is not None:
+            ref_in_entry = ref_in_entry & ~exclude_mask
+            ref_in_rth = ref_in_rth & ~exclude_mask
+        valid_long_ref = fvg_ref["long_fvg"] & ref_in_entry & ref_in_rth
+        valid_short_ref = fvg_ref["short_fvg"] & ref_in_entry & ref_in_rth
 
         reference_levels, reference_instance_ids = _resolve_reference_levels(
             df,
@@ -2955,8 +2978,8 @@ def _extract_setup_candidates(
             valid_long_ref,
             valid_short_ref,
             session_day_id,
-            masks["in_entry"],
-            masks["in_rth"],
+            ref_in_entry,
+            ref_in_rth,
             dates,
             close,
             daily_atr,
@@ -2969,8 +2992,14 @@ def _extract_setup_candidates(
             inversion_max_bars=config.ref_lsi_inversion_max_bars,
             direction_filter=config.direction_filter,
             stop_mode=config.lsi_stop_mode,
+            entry_mode=config.lsi_entry_mode,
+            close_on_sweep_to_inversion_minutes=config.lsi_close_on_sweep_to_inversion_minutes,
             gap_entry_edge=config.ref_lsi_gap_entry_edge,
             selected_level_names=config.ref_lsi_reference_levels,
+            confirmation_mode=config.lsi_confirmation_mode,
+            cisd_min_leg_bars=config.cisd_min_leg_bars,
+            cisd_min_leg_atr_pct=config.cisd_min_leg_atr_pct,
+            cisd_max_leg_bars=config.cisd_max_leg_bars,
             rr=config.rr,
             tp1_ratio=config.tp1_ratio,
             target_mode=config.lsi_target_mode,
@@ -3454,6 +3483,10 @@ def _extract_lsi_candidates(
     target_mode: str = "risk",
     entry_mode: str = "close",
     close_on_sweep_to_inversion_minutes: int = 0,
+    confirmation_mode: str = "inversion",
+    cisd_min_leg_bars: int = 2,
+    cisd_min_leg_atr_pct: float = 5.0,
+    cisd_max_leg_bars: int = 60,
     first_fvg_only: bool = False,
     clean_path: bool = False,
     rr: float = 2.5,
@@ -3467,12 +3500,16 @@ def _extract_lsi_candidates(
 ) -> list[_SetupCandidate]:
     """Extract Liquidity Sweep Inversion (LSI) candidates.
 
-    LSI combines three events:
+    Default LSI combines these events:
     1. A confirmed swing high/low (pivot detection with n_left/n_right bars)
     2. A liquidity sweep — price crosses above swing high (for shorts) or below swing low (for longs)
     3. An FVG that forms within fvg_window bars before OR after the sweep
     4. That FVG is inverted — close < FVG bottom (for shorts) or close > FVG top (for longs)
     5. Entry at the close of the inversion candle
+
+    ``confirmation_mode="cisd"`` replaces steps 3-4 with an internal,
+    body-based CISD close through the most recent local structure level after
+    the sweep. ``"inversion_or_cisd"`` arms both confirmation paths.
 
     Direction logic:
     - SHORT LSI: swing HIGH swept → bullish FVG nearby → bullish FVG inverted → short at close
@@ -3481,6 +3518,7 @@ def _extract_lsi_candidates(
     n = len(df)
     high = df["high"].values
     low = df["low"].values
+    open_ = df["open"].values
     lrlr_settings = lrlr_settings or _LSILRLRSettings(False, "", 2, 2, 3, 120, 30, 120, 0.18, 0.03, 0.04, False, 0.0)
     bar_minutes = _infer_bar_minutes(df.index)
     lrlr_pivot_arrays = _build_lrlr_pivot_arrays(high, low, lrlr_settings)
@@ -3492,6 +3530,17 @@ def _extract_lsi_candidates(
 
     take_shorts = direction_filter in ("both", "short")
     take_longs = direction_filter in ("both", "long")
+    use_inversion = confirmation_mode in {"inversion", "inversion_or_cisd"}
+    use_cisd = confirmation_mode in {"cisd", "inversion_or_cisd"}
+
+    cisd = detect_internal_cisd(
+        open_,
+        close,
+        daily_atr=daily_atr,
+        min_leg_bars=cisd_min_leg_bars,
+        min_leg_atr_pct=cisd_min_leg_atr_pct,
+        max_leg_bars=cisd_max_leg_bars,
+    ) if use_cisd else {}
 
     # --- Phase 1: Vectorized swing and sweep detection ---
 
@@ -3548,7 +3597,8 @@ def _extract_lsi_candidates(
     recent_sweep_highs: list[tuple[int, float, int]] = []  # (bar, level, session_day_id)
     recent_sweep_lows: list[tuple[int, float, int]] = []
 
-    seen_days: set = set()            # one trade per session-day
+    seen_inversion_days: set = set()  # one FVG-inversion signal per session-day
+    seen_cisd_days: set = set()       # one CISD signal per session-day
     candidates: list[_SetupCandidate] = []
 
     for i in range(n):
@@ -3587,7 +3637,7 @@ def _extract_lsi_candidates(
         ]
 
         # A) Register new bullish FVG (valid_long[i] means in_entry + in_rth + orb_ready)
-        if valid_long[i] and take_shorts:
+        if use_inversion and valid_long[i] and take_shorts:
             base_entry = (i, long_fvg_bottom[i], fvg["long_gap_size"][i], daily_atr[i], sd)
             if recent_sweep_highs:
                 _sweep_bar, _swept, _ = recent_sweep_highs[-1]
@@ -3602,7 +3652,7 @@ def _extract_lsi_candidates(
                 detected_bullish_fvgs.append(base_entry)
 
         # B) Register new bearish FVG
-        if valid_short[i] and take_longs:
+        if use_inversion and valid_short[i] and take_longs:
             base_entry = (i, short_fvg_top[i], fvg["short_gap_size"][i], daily_atr[i], sd)
             if recent_sweep_lows:
                 _sweep_bar, _swept, _ = recent_sweep_lows[-1]
@@ -3617,7 +3667,7 @@ def _extract_lsi_candidates(
                 detected_bearish_fvgs.append(base_entry)
 
         # C) Sweep of swing HIGH at bar i → promote bullish FVGs within window → active_for_short
-        if valid_sweep_high and take_shorts:
+        if use_inversion and valid_sweep_high and take_shorts:
             _swept_c = float(swept_high_level)
             still_pending = []
             to_promote = []
@@ -3637,7 +3687,7 @@ def _extract_lsi_candidates(
             detected_bullish_fvgs = still_pending
 
         # D) Sweep of swing LOW at bar i → promote bearish FVGs within window → active_for_long
-        if valid_sweep_low and take_longs:
+        if use_inversion and valid_sweep_low and take_longs:
             _swept_d = float(swept_low_level)
             still_pending = []
             to_promote = []
@@ -3656,6 +3706,245 @@ def _extract_lsi_candidates(
                 active_for_long.extend(to_promote)
             detected_bearish_fvgs = still_pending
 
+        # E0) CISD confirmation path: sweep first, then close through the
+        # body-level that started the most recent internal opposite leg.
+        if use_cisd and in_entry[i] and sd not in seen_cisd_days:
+            if take_longs and recent_sweep_lows and cisd["bullish_cisd"][i]:
+                sweep_bar, swept_lv, _ = recent_sweep_lows[-1]
+                cisd_level = float(cisd["bullish_level"][i])
+                cisd_level_bar = int(cisd["bullish_level_bar"][i])
+                if np.isfinite(cisd_level) and cisd_level_bar >= 0:
+                    _orb_r = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+                    _resolved_entry_mode = _resolve_lsi_entry_mode(
+                        entry_mode=entry_mode,
+                        bar_minutes=bar_minutes,
+                        sweep_to_inversion_bars=i - sweep_bar,
+                        close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+                    )
+                    _entry_price = cisd_level if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else close[i]
+                    _signal_bar = i if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else i - 1
+                    _absolute_stop = float(np.min(low[sweep_bar:i + 1]))
+                    _atr_points, _orb_points = _resolve_lsi_session_stop_points(
+                        session=session,
+                        daily_atr=float(daily_atr[i]),
+                        orb_range=_orb_r,
+                    )
+                    _actual_stop = _resolve_lsi_stop_price(
+                        direction=1,
+                        entry_price=_entry_price,
+                        absolute_stop_price=_absolute_stop,
+                        fvg_stop_price=float(low[i]),
+                        gap_size=abs(float(close[i]) - cisd_level),
+                        atr_points=_atr_points,
+                        orb_points=_orb_points,
+                        stop_mode=stop_mode,
+                    )
+                    _risk = _entry_price - _actual_stop
+                    _structural_risk = _entry_price - _absolute_stop
+                    if _risk > 0.0 and _structural_risk > 0.0:
+                        _tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                            target_mode=target_mode,
+                            direction=1,
+                            entry_price=_entry_price,
+                            actual_risk_pts=_risk,
+                            structural_risk_pts=_structural_risk,
+                            rr=rr,
+                            tp1_ratio=tp1_ratio,
+                            left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                            high=high,
+                            low=low,
+                            pivot_arrays=target_pivot_arrays,
+                            min_tick=min_tick,
+                        )
+                        _tp1_est = _entry_price + _tp1_dist
+                        _path_clear = True
+                        if clean_path:
+                            scan_start = max(0, i - 100)
+                            for j in range(scan_start, i + 1):
+                                if short_fvg_bool[j]:
+                                    fvg_bot = short_fvg_bot_arr[j]
+                                    fvg_top = short_fvg_top_arr[j]
+                                    if fvg_bot < _tp1_est and fvg_top > _entry_price:
+                                        _path_clear = False
+                                        break
+                        _lrlr_match = _detect_candidate_lrlr(
+                            high=high,
+                            low=low,
+                            bar_minutes=bar_minutes,
+                            left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                            direction=1,
+                            entry_price=_entry_price,
+                            tp1_price=_tp1_est,
+                            daily_atr=float(daily_atr[i]),
+                            settings=lrlr_settings,
+                            pivot_arrays=lrlr_pivot_arrays,
+                        )
+                        if _path_clear and not _lrlr_gate_blocks(_lrlr_match, lrlr_settings):
+                            _swing_level = 1e38
+                            if be_swing_n_left > 0:
+                                _search_start = cisd_level_bar - 1
+                                for _j in range(_search_start, max(-1, _search_start - 50), -1):
+                                    _is_pivot = True
+                                    for _k in range(1, be_swing_n_left + 1):
+                                        if _j - _k < 0 or high[_j] <= high[_j - _k]:
+                                            _is_pivot = False
+                                            break
+                                    if _is_pivot and high[_j] > _entry_price:
+                                        _swing_level = float(high[_j])
+                                        break
+                            seen_cisd_days.add(sd)
+                            candidates.append(_SetupCandidate(
+                                date_str=str(dates[i]),
+                                session=session.name,
+                                direction=1,
+                                signal_bar=_signal_bar,
+                                entry_price=_entry_price,
+                                gap_size=abs(float(close[i]) - cisd_level),
+                                daily_atr=float(daily_atr[i]),
+                                orb_range=_orb_r,
+                                structural_stop_price=_actual_stop,
+                                lsi_absolute_stop_price=_absolute_stop,
+                                lsi_swept_level=float(swept_lv),
+                                lsi_fvg_bar=cisd_level_bar,
+                                lsi_sweep_bar=sweep_bar,
+                                lsi_fvg_top=cisd_level,
+                                lsi_fvg_bottom=cisd_level,
+                                lsi_confirmation_type="cisd",
+                                lsi_cisd_level=cisd_level,
+                                lsi_cisd_bar=cisd_level_bar,
+                                lsi_internal_swing_level=_swing_level,
+                                fvg_to_inversion_bars=i - cisd_level_bar,
+                                sweep_to_inversion_bars=i - sweep_bar,
+                                lsi_lrlr_present=_lrlr_match.present,
+                                lsi_lrlr_level_count=_lrlr_match.level_count,
+                                lsi_lrlr_nearest_level_price=_lrlr_match.nearest_level_price,
+                                lsi_lrlr_farthest_level_price=_lrlr_match.farthest_level_price,
+                                lsi_lrlr_span_bars=_lrlr_match.span_bars,
+                                lsi_lrlr_price_span_atr=_lrlr_match.price_span_atr,
+                                lsi_lrlr_slope_atr_per_bar=_lrlr_match.slope_atr_per_bar,
+                                lsi_lrlr_fit_error_atr=_lrlr_match.fit_error_atr,
+                                lsi_lrlr_tp1_path_present=_lrlr_match.tp1_path_present,
+                                lsi_lrlr_nearest_tp1_gap_atr=_lrlr_match.nearest_tp1_gap_atr,
+                            ))
+
+            if take_shorts and sd not in seen_cisd_days and recent_sweep_highs and cisd["bearish_cisd"][i]:
+                sweep_bar, swept_lv, _ = recent_sweep_highs[-1]
+                cisd_level = float(cisd["bearish_level"][i])
+                cisd_level_bar = int(cisd["bearish_level_bar"][i])
+                if np.isfinite(cisd_level) and cisd_level_bar >= 0:
+                    _orb_r = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+                    _resolved_entry_mode = _resolve_lsi_entry_mode(
+                        entry_mode=entry_mode,
+                        bar_minutes=bar_minutes,
+                        sweep_to_inversion_bars=i - sweep_bar,
+                        close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+                    )
+                    _entry_price = cisd_level if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else close[i]
+                    _signal_bar = i if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else i - 1
+                    _absolute_stop = float(np.max(high[sweep_bar:i + 1]))
+                    _atr_points, _orb_points = _resolve_lsi_session_stop_points(
+                        session=session,
+                        daily_atr=float(daily_atr[i]),
+                        orb_range=_orb_r,
+                    )
+                    _actual_stop = _resolve_lsi_stop_price(
+                        direction=-1,
+                        entry_price=_entry_price,
+                        absolute_stop_price=_absolute_stop,
+                        fvg_stop_price=float(high[i]),
+                        gap_size=abs(float(close[i]) - cisd_level),
+                        atr_points=_atr_points,
+                        orb_points=_orb_points,
+                        stop_mode=stop_mode,
+                    )
+                    _risk = _actual_stop - _entry_price
+                    _structural_risk = _absolute_stop - _entry_price
+                    if _risk > 0.0 and _structural_risk > 0.0:
+                        _tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                            target_mode=target_mode,
+                            direction=-1,
+                            entry_price=_entry_price,
+                            actual_risk_pts=_risk,
+                            structural_risk_pts=_structural_risk,
+                            rr=rr,
+                            tp1_ratio=tp1_ratio,
+                            left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                            high=high,
+                            low=low,
+                            pivot_arrays=target_pivot_arrays,
+                            min_tick=min_tick,
+                        )
+                        _tp1_est = _entry_price - _tp1_dist
+                        _path_clear = True
+                        if clean_path:
+                            scan_start = max(0, i - 100)
+                            for j in range(scan_start, i + 1):
+                                if long_fvg_bool[j]:
+                                    fvg_bot = long_fvg_bot_arr[j]
+                                    fvg_top = long_fvg_top_arr[j]
+                                    if fvg_bot < _entry_price and fvg_top > _tp1_est:
+                                        _path_clear = False
+                                        break
+                        _lrlr_match = _detect_candidate_lrlr(
+                            high=high,
+                            low=low,
+                            bar_minutes=bar_minutes,
+                            left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                            direction=-1,
+                            entry_price=_entry_price,
+                            tp1_price=_tp1_est,
+                            daily_atr=float(daily_atr[i]),
+                            settings=lrlr_settings,
+                            pivot_arrays=lrlr_pivot_arrays,
+                        )
+                        if _path_clear and not _lrlr_gate_blocks(_lrlr_match, lrlr_settings):
+                            _swing_level = -1e38
+                            if be_swing_n_left > 0:
+                                _search_start = cisd_level_bar - 1
+                                for _j in range(_search_start, max(-1, _search_start - 50), -1):
+                                    _is_pivot = True
+                                    for _k in range(1, be_swing_n_left + 1):
+                                        if _j - _k < 0 or low[_j] >= low[_j - _k]:
+                                            _is_pivot = False
+                                            break
+                                    if _is_pivot and low[_j] < _entry_price:
+                                        _swing_level = float(low[_j])
+                                        break
+                            seen_cisd_days.add(sd)
+                            candidates.append(_SetupCandidate(
+                                date_str=str(dates[i]),
+                                session=session.name,
+                                direction=-1,
+                                signal_bar=_signal_bar,
+                                entry_price=_entry_price,
+                                gap_size=abs(float(close[i]) - cisd_level),
+                                daily_atr=float(daily_atr[i]),
+                                orb_range=_orb_r,
+                                structural_stop_price=_actual_stop,
+                                lsi_absolute_stop_price=_absolute_stop,
+                                lsi_swept_level=float(swept_lv),
+                                lsi_fvg_bar=cisd_level_bar,
+                                lsi_sweep_bar=sweep_bar,
+                                lsi_fvg_top=cisd_level,
+                                lsi_fvg_bottom=cisd_level,
+                                lsi_confirmation_type="cisd",
+                                lsi_cisd_level=cisd_level,
+                                lsi_cisd_bar=cisd_level_bar,
+                                lsi_internal_swing_level=_swing_level,
+                                fvg_to_inversion_bars=i - cisd_level_bar,
+                                sweep_to_inversion_bars=i - sweep_bar,
+                                lsi_lrlr_present=_lrlr_match.present,
+                                lsi_lrlr_level_count=_lrlr_match.level_count,
+                                lsi_lrlr_nearest_level_price=_lrlr_match.nearest_level_price,
+                                lsi_lrlr_farthest_level_price=_lrlr_match.farthest_level_price,
+                                lsi_lrlr_span_bars=_lrlr_match.span_bars,
+                                lsi_lrlr_price_span_atr=_lrlr_match.price_span_atr,
+                                lsi_lrlr_slope_atr_per_bar=_lrlr_match.slope_atr_per_bar,
+                                lsi_lrlr_fit_error_atr=_lrlr_match.fit_error_atr,
+                                lsi_lrlr_tp1_path_present=_lrlr_match.tp1_path_present,
+                                lsi_lrlr_nearest_tp1_gap_atr=_lrlr_match.nearest_tp1_gap_atr,
+                            ))
+
         # E) Check active setups for inversion — runs on every bar, discards past-entry-window
         # entries explicitly (mirrors _extract_inversion_candidates pattern).
         remaining_short_active = []
@@ -3667,8 +3956,8 @@ def _extract_lsi_candidates(
             if not in_entry[i]:
                 # Past entry window — discard
                 continue
-            if close[i] < inv_level and sd not in seen_days:
-                seen_days.add(sd)
+            if close[i] < inv_level and sd not in seen_inversion_days:
+                seen_inversion_days.add(sd)
                 _orb_r = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
                 _resolved_entry_mode = _resolve_lsi_entry_mode(
                     entry_mode=entry_mode,
@@ -3676,8 +3965,8 @@ def _extract_lsi_candidates(
                     sweep_to_inversion_bars=i - sweep_bar,
                     close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
                 )
-                _entry_price = inv_level if _resolved_entry_mode == "fvg_limit" else close[i]
-                _signal_bar = i if _resolved_entry_mode == "fvg_limit" else i - 1
+                _entry_price = inv_level if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else close[i]
+                _signal_bar = i if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else i - 1
                 _absolute_stop = float(np.max(high[fvg_bar:i + 1]))
                 _fvg_stop = float(low[fvg_bar])  # long_fvg_top = low of fvg bar
                 _atr_points, _orb_points = _resolve_lsi_session_stop_points(
@@ -3725,7 +4014,7 @@ def _extract_lsi_candidates(
                                 break
                     if not _path_clear:
                         remaining_short_active.append(pending)
-                        seen_days.discard(sd)
+                        seen_inversion_days.discard(sd)
                         continue
                 _lrlr_match = _detect_candidate_lrlr(
                     high=high,
@@ -3741,7 +4030,7 @@ def _extract_lsi_candidates(
                 )
                 if _lrlr_gate_blocks(_lrlr_match, lrlr_settings):
                     remaining_short_active.append(pending)
-                    seen_days.discard(sd)
+                    seen_inversion_days.discard(sd)
                     continue
                 # Internal swing LOW: search BEFORE the FVG (not [fvg_bar, signal_bar-1] as originally
                 # specced). For fvg_limit shorts, bars between fvg_bar and signal_bar have lows ABOVE
@@ -3778,6 +4067,7 @@ def _extract_lsi_candidates(
                     lsi_sweep_bar=sweep_bar,
                     lsi_fvg_top=fvg_other_bound,
                     lsi_fvg_bottom=inv_level,
+                    lsi_confirmation_type="inversion",
                     lsi_internal_swing_level=_swing_level,
                     lsi_lrlr_present=_lrlr_match.present,
                     lsi_lrlr_level_count=_lrlr_match.level_count,
@@ -3803,8 +4093,8 @@ def _extract_lsi_candidates(
             if not in_entry[i]:
                 # Past entry window — discard
                 continue
-            if close[i] > inv_level and sd not in seen_days:
-                seen_days.add(sd)
+            if close[i] > inv_level and sd not in seen_inversion_days:
+                seen_inversion_days.add(sd)
                 _orb_r = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
                 _resolved_entry_mode = _resolve_lsi_entry_mode(
                     entry_mode=entry_mode,
@@ -3812,8 +4102,8 @@ def _extract_lsi_candidates(
                     sweep_to_inversion_bars=i - sweep_bar,
                     close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
                 )
-                _entry_price = inv_level if _resolved_entry_mode == "fvg_limit" else close[i]
-                _signal_bar = i if _resolved_entry_mode == "fvg_limit" else i - 1
+                _entry_price = inv_level if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else close[i]
+                _signal_bar = i if _is_lsi_level_limit_entry_mode(_resolved_entry_mode) else i - 1
                 _absolute_stop = float(np.min(low[fvg_bar:i + 1]))
                 _fvg_stop = float(high[fvg_bar])  # short_fvg_bottom = high of fvg bar
                 _atr_points, _orb_points = _resolve_lsi_session_stop_points(
@@ -3861,7 +4151,7 @@ def _extract_lsi_candidates(
                                 break
                     if not _path_clear:
                         remaining_long_active.append(pending)
-                        seen_days.discard(sd)
+                        seen_inversion_days.discard(sd)
                         continue
                 _lrlr_match = _detect_candidate_lrlr(
                     high=high,
@@ -3877,7 +4167,7 @@ def _extract_lsi_candidates(
                 )
                 if _lrlr_gate_blocks(_lrlr_match, lrlr_settings):
                     remaining_long_active.append(pending)
-                    seen_days.discard(sd)
+                    seen_inversion_days.discard(sd)
                     continue
                 # Internal swing HIGH: search BEFORE the FVG (not [fvg_bar, signal_bar-1] as originally
                 # specced). For fvg_limit longs, bars between fvg_bar and signal_bar have highs BELOW
@@ -3914,6 +4204,7 @@ def _extract_lsi_candidates(
                     lsi_sweep_bar=sweep_bar,
                     lsi_fvg_top=inv_level,
                     lsi_fvg_bottom=fvg_other_bound,
+                    lsi_confirmation_type="inversion",
                     lsi_internal_swing_level=_swing_level,
                     lsi_lrlr_present=_lrlr_match.present,
                     lsi_lrlr_level_count=_lrlr_match.level_count,
@@ -3981,6 +4272,10 @@ def _extract_htf_lsi_candidates(
     target_mode: str = "risk",
     entry_mode: str = "close",
     close_on_sweep_to_inversion_minutes: int = 0,
+    confirmation_mode: str = "inversion",
+    cisd_min_leg_bars: int = 2,
+    cisd_min_leg_atr_pct: float = 5.0,
+    cisd_max_leg_bars: int = 60,
     rr: float = 2.5,
     tp1_ratio: float = 0.5,
     target_swing_n_bars: int = 10,
@@ -3994,6 +4289,7 @@ def _extract_htf_lsi_candidates(
     n = len(df)
     high = df["high"].to_numpy(dtype=np.float64)
     low = df["low"].to_numpy(dtype=np.float64)
+    open_ = df["open"].to_numpy(dtype=np.float64)
     lrlr_settings = lrlr_settings or _LSILRLRSettings(False, "", 2, 2, 3, 120, 30, 120, 0.18, 0.03, 0.04, False, 0.0)
     bar_minutes = _infer_bar_minutes(df.index)
     lrlr_pivot_arrays = _build_lrlr_pivot_arrays(high, low, lrlr_settings)
@@ -4005,6 +4301,17 @@ def _extract_htf_lsi_candidates(
 
     take_shorts = direction_filter in ("both", "short")
     take_longs = direction_filter in ("both", "long")
+    use_inversion = confirmation_mode in {"inversion", "inversion_or_cisd"}
+    use_cisd = confirmation_mode in {"cisd", "inversion_or_cisd"}
+
+    cisd = detect_internal_cisd(
+        open_,
+        close,
+        daily_atr=daily_atr,
+        min_leg_bars=cisd_min_leg_bars,
+        min_leg_atr_pct=cisd_min_leg_atr_pct,
+        max_leg_bars=cisd_max_leg_bars,
+    ) if use_cisd else {}
 
     long_fvg_bottom = fvg["long_fvg_bottom"]
     short_fvg_top = fvg["short_fvg_top"]
@@ -4137,7 +4444,7 @@ def _extract_htf_lsi_candidates(
             and sweep["level_key"] not in armed_low_instances
         ]
 
-        if valid_long[i] and take_shorts:
+        if use_inversion and valid_long[i] and take_shorts:
             base_entry = {
                 "fvg_bar": i,
                 "inv_level": float(long_fvg_bottom[i]),
@@ -4162,7 +4469,7 @@ def _extract_htf_lsi_candidates(
             else:
                 detected_bullish_fvgs.append(base_entry)
 
-        if valid_short[i] and take_longs:
+        if use_inversion and valid_short[i] and take_longs:
             base_entry = {
                 "fvg_bar": i,
                 "inv_level": float(short_fvg_top[i]),
@@ -4188,7 +4495,7 @@ def _extract_htf_lsi_candidates(
                 detected_bearish_fvgs.append(base_entry)
 
         selected_new_high_sweep = _select_recent_htf_sweep(new_sweep_highs, side="high")
-        if selected_new_high_sweep is not None:
+        if use_inversion and selected_new_high_sweep is not None:
             still_pending = []
             to_promote: list[dict] = []
             for pending in detected_bullish_fvgs:
@@ -4211,7 +4518,7 @@ def _extract_htf_lsi_candidates(
             detected_bullish_fvgs = still_pending
 
         selected_new_low_sweep = _select_recent_htf_sweep(new_sweep_lows, side="low")
-        if selected_new_low_sweep is not None:
+        if use_inversion and selected_new_low_sweep is not None:
             still_pending = []
             to_promote: list[dict] = []
             for pending in detected_bearish_fvgs:
@@ -4232,6 +4539,225 @@ def _extract_htf_lsi_candidates(
                     still_pending.append(pending)
             active_for_long.extend(to_promote)
             detected_bearish_fvgs = still_pending
+
+        if use_cisd and in_entry[i]:
+            selected_high_sweep = _select_recent_htf_sweep(recent_sweep_highs, side="high")
+            if selected_high_sweep is not None and take_shorts and cisd["bearish_cisd"][i]:
+                level_key = selected_high_sweep["level_key"]
+                if level_key not in armed_high_instances:
+                    sweep_bar = int(selected_high_sweep["sweep_bar"])
+                    cisd_level = float(cisd["bearish_level"][i])
+                    cisd_level_bar = int(cisd["bearish_level_bar"][i])
+                    if np.isfinite(cisd_level) and cisd_level_bar >= 0:
+                        resolved_entry_mode = _resolve_lsi_entry_mode(
+                            entry_mode=entry_mode,
+                            bar_minutes=bar_minutes,
+                            sweep_to_inversion_bars=i - sweep_bar,
+                            close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+                        )
+                        entry_price = (
+                            cisd_level if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+                        )
+                        signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
+                        orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+                        absolute_stop = float(np.max(high[sweep_bar:i + 1]))
+                        atr_points, orb_points = _resolve_lsi_session_stop_points(
+                            session=session,
+                            daily_atr=float(daily_atr[i]),
+                            orb_range=orb_range,
+                        )
+                        structural_stop = _resolve_lsi_stop_price(
+                            direction=-1,
+                            entry_price=entry_price,
+                            absolute_stop_price=absolute_stop,
+                            fvg_stop_price=float(high[i]),
+                            gap_size=abs(float(close[i]) - cisd_level),
+                            atr_points=atr_points,
+                            orb_points=orb_points,
+                            stop_mode=stop_mode,
+                        )
+                        risk = structural_stop - entry_price
+                        structural_risk = absolute_stop - entry_price
+                        if risk > 0.0 and structural_risk > 0.0:
+                            tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                                target_mode=target_mode,
+                                direction=-1,
+                                entry_price=entry_price,
+                                actual_risk_pts=risk,
+                                structural_risk_pts=structural_risk,
+                                rr=rr,
+                                tp1_ratio=tp1_ratio,
+                                left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                                high=high,
+                                low=low,
+                                pivot_arrays=target_pivot_arrays,
+                                min_tick=min_tick,
+                            )
+                            tp1_est = entry_price - tp1_dist
+                            lrlr_match = _detect_candidate_lrlr(
+                                high=high,
+                                low=low,
+                                bar_minutes=bar_minutes,
+                                left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                                direction=-1,
+                                entry_price=entry_price,
+                                tp1_price=tp1_est,
+                                daily_atr=float(daily_atr[i]),
+                                settings=lrlr_settings,
+                                pivot_arrays=lrlr_pivot_arrays,
+                            )
+                            if not _lrlr_gate_blocks(lrlr_match, lrlr_settings):
+                                swept_level = float(selected_high_sweep["level_price"])
+                                armed_high_instances.add(level_key)
+                                candidates.append(
+                                    _SetupCandidate(
+                                        date_str=str(dates[i]),
+                                        session=session.name,
+                                        direction=-1,
+                                        signal_bar=signal_bar,
+                                        entry_price=entry_price,
+                                        gap_size=abs(float(close[i]) - cisd_level),
+                                        daily_atr=float(daily_atr[i]),
+                                        orb_range=orb_range,
+                                        structural_stop_price=structural_stop,
+                                        lsi_absolute_stop_price=absolute_stop,
+                                        lsi_swept_level=swept_level,
+                                        lsi_fvg_bar=cisd_level_bar,
+                                        lsi_sweep_bar=sweep_bar,
+                                        lsi_fvg_top=cisd_level,
+                                        lsi_fvg_bottom=cisd_level,
+                                        lsi_confirmation_type="cisd",
+                                        lsi_cisd_level=cisd_level,
+                                        lsi_cisd_bar=cisd_level_bar,
+                                        reference_level_name=str(selected_high_sweep["level_name"]),
+                                        reference_level_price=swept_level,
+                                        htf_level_time=str(selected_high_sweep["level_time_iso"]),
+                                        htf_level_price=swept_level,
+                                        htf_level_side="high",
+                                        htf_level_tf_minutes=int(selected_high_sweep["tf_minutes"]),
+                                        fvg_to_inversion_bars=i - cisd_level_bar,
+                                        sweep_to_inversion_bars=i - sweep_bar,
+                                        lsi_lrlr_present=lrlr_match.present,
+                                        lsi_lrlr_level_count=lrlr_match.level_count,
+                                        lsi_lrlr_nearest_level_price=lrlr_match.nearest_level_price,
+                                        lsi_lrlr_farthest_level_price=lrlr_match.farthest_level_price,
+                                        lsi_lrlr_span_bars=lrlr_match.span_bars,
+                                        lsi_lrlr_price_span_atr=lrlr_match.price_span_atr,
+                                        lsi_lrlr_slope_atr_per_bar=lrlr_match.slope_atr_per_bar,
+                                        lsi_lrlr_fit_error_atr=lrlr_match.fit_error_atr,
+                                        lsi_lrlr_tp1_path_present=lrlr_match.tp1_path_present,
+                                        lsi_lrlr_nearest_tp1_gap_atr=lrlr_match.nearest_tp1_gap_atr,
+                                    )
+                                )
+
+            selected_low_sweep = _select_recent_htf_sweep(recent_sweep_lows, side="low")
+            if selected_low_sweep is not None and take_longs and cisd["bullish_cisd"][i]:
+                level_key = selected_low_sweep["level_key"]
+                if level_key not in armed_low_instances:
+                    sweep_bar = int(selected_low_sweep["sweep_bar"])
+                    cisd_level = float(cisd["bullish_level"][i])
+                    cisd_level_bar = int(cisd["bullish_level_bar"][i])
+                    if np.isfinite(cisd_level) and cisd_level_bar >= 0:
+                        resolved_entry_mode = _resolve_lsi_entry_mode(
+                            entry_mode=entry_mode,
+                            bar_minutes=bar_minutes,
+                            sweep_to_inversion_bars=i - sweep_bar,
+                            close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+                        )
+                        entry_price = (
+                            cisd_level if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+                        )
+                        signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
+                        orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+                        absolute_stop = float(np.min(low[sweep_bar:i + 1]))
+                        atr_points, orb_points = _resolve_lsi_session_stop_points(
+                            session=session,
+                            daily_atr=float(daily_atr[i]),
+                            orb_range=orb_range,
+                        )
+                        structural_stop = _resolve_lsi_stop_price(
+                            direction=1,
+                            entry_price=entry_price,
+                            absolute_stop_price=absolute_stop,
+                            fvg_stop_price=float(low[i]),
+                            gap_size=abs(float(close[i]) - cisd_level),
+                            atr_points=atr_points,
+                            orb_points=orb_points,
+                            stop_mode=stop_mode,
+                        )
+                        risk = entry_price - structural_stop
+                        structural_risk = entry_price - absolute_stop
+                        if risk > 0.0 and structural_risk > 0.0:
+                            tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                                target_mode=target_mode,
+                                direction=1,
+                                entry_price=entry_price,
+                                actual_risk_pts=risk,
+                                structural_risk_pts=structural_risk,
+                                rr=rr,
+                                tp1_ratio=tp1_ratio,
+                                left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                                high=high,
+                                low=low,
+                                pivot_arrays=target_pivot_arrays,
+                                min_tick=min_tick,
+                            )
+                            tp1_est = entry_price + tp1_dist
+                            lrlr_match = _detect_candidate_lrlr(
+                                high=high,
+                                low=low,
+                                bar_minutes=bar_minutes,
+                                left_end_bar=min(cisd_level_bar, sweep_bar) - 1,
+                                direction=1,
+                                entry_price=entry_price,
+                                tp1_price=tp1_est,
+                                daily_atr=float(daily_atr[i]),
+                                settings=lrlr_settings,
+                                pivot_arrays=lrlr_pivot_arrays,
+                            )
+                            if not _lrlr_gate_blocks(lrlr_match, lrlr_settings):
+                                swept_level = float(selected_low_sweep["level_price"])
+                                armed_low_instances.add(level_key)
+                                candidates.append(
+                                    _SetupCandidate(
+                                        date_str=str(dates[i]),
+                                        session=session.name,
+                                        direction=1,
+                                        signal_bar=signal_bar,
+                                        entry_price=entry_price,
+                                        gap_size=abs(float(close[i]) - cisd_level),
+                                        daily_atr=float(daily_atr[i]),
+                                        orb_range=orb_range,
+                                        structural_stop_price=structural_stop,
+                                        lsi_absolute_stop_price=absolute_stop,
+                                        lsi_swept_level=swept_level,
+                                        lsi_fvg_bar=cisd_level_bar,
+                                        lsi_sweep_bar=sweep_bar,
+                                        lsi_fvg_top=cisd_level,
+                                        lsi_fvg_bottom=cisd_level,
+                                        lsi_confirmation_type="cisd",
+                                        lsi_cisd_level=cisd_level,
+                                        lsi_cisd_bar=cisd_level_bar,
+                                        reference_level_name=str(selected_low_sweep["level_name"]),
+                                        reference_level_price=swept_level,
+                                        htf_level_time=str(selected_low_sweep["level_time_iso"]),
+                                        htf_level_price=swept_level,
+                                        htf_level_side="low",
+                                        htf_level_tf_minutes=int(selected_low_sweep["tf_minutes"]),
+                                        fvg_to_inversion_bars=i - cisd_level_bar,
+                                        sweep_to_inversion_bars=i - sweep_bar,
+                                        lsi_lrlr_present=lrlr_match.present,
+                                        lsi_lrlr_level_count=lrlr_match.level_count,
+                                        lsi_lrlr_nearest_level_price=lrlr_match.nearest_level_price,
+                                        lsi_lrlr_farthest_level_price=lrlr_match.farthest_level_price,
+                                        lsi_lrlr_span_bars=lrlr_match.span_bars,
+                                        lsi_lrlr_price_span_atr=lrlr_match.price_span_atr,
+                                        lsi_lrlr_slope_atr_per_bar=lrlr_match.slope_atr_per_bar,
+                                        lsi_lrlr_fit_error_atr=lrlr_match.fit_error_atr,
+                                        lsi_lrlr_tp1_path_present=lrlr_match.tp1_path_present,
+                                        lsi_lrlr_nearest_tp1_gap_atr=lrlr_match.nearest_tp1_gap_atr,
+                                    )
+                                )
 
         remaining_short_active = []
         invertible_short_by_level: defaultdict[tuple[str, int], list[dict]] = defaultdict(list)
@@ -4270,9 +4796,9 @@ def _extract_htf_lsi_candidates(
                 close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
             )
             entry_price = (
-                float(pending["inv_level"]) if resolved_entry_mode == "fvg_limit" else float(close[i])
+                float(pending["inv_level"]) if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
             )
-            signal_bar = i if resolved_entry_mode == "fvg_limit" else i - 1
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
             orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
             absolute_stop = float(np.max(high[fvg_bar:i + 1]))
             fvg_stop = float(low[fvg_bar])
@@ -4340,6 +4866,7 @@ def _extract_htf_lsi_candidates(
                     lsi_sweep_bar=sweep_bar,
                     lsi_fvg_top=float(pending["fvg_other_bound"]),
                     lsi_fvg_bottom=float(pending["inv_level"]),
+                    lsi_confirmation_type="inversion",
                     reference_level_name=str(pending["reference_level_name"]),
                     reference_level_price=swept_level if pending["reference_level_name"] else 0.0,
                     htf_level_time=str(pending["level_time_iso"]),
@@ -4399,9 +4926,9 @@ def _extract_htf_lsi_candidates(
                 close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
             )
             entry_price = (
-                float(pending["inv_level"]) if resolved_entry_mode == "fvg_limit" else float(close[i])
+                float(pending["inv_level"]) if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
             )
-            signal_bar = i if resolved_entry_mode == "fvg_limit" else i - 1
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
             orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
             absolute_stop = float(np.min(low[fvg_bar:i + 1]))
             fvg_stop = float(high[fvg_bar])
@@ -4469,6 +4996,7 @@ def _extract_htf_lsi_candidates(
                     lsi_sweep_bar=sweep_bar,
                     lsi_fvg_top=float(pending["inv_level"]),
                     lsi_fvg_bottom=float(pending["fvg_other_bound"]),
+                    lsi_confirmation_type="inversion",
                     reference_level_name=str(pending["reference_level_name"]),
                     reference_level_price=swept_level if pending["reference_level_name"] else 0.0,
                     htf_level_time=str(pending["level_time_iso"]),
@@ -4520,8 +5048,14 @@ def _extract_reference_lsi_candidates(
     inversion_max_bars: int = 18,
     direction_filter: str = "both",
     stop_mode: str = "absolute",
+    entry_mode: str = "level_limit",
+    close_on_sweep_to_inversion_minutes: int = 0,
     gap_entry_edge: str = "near",
     selected_level_names: tuple[str, ...] | None = None,
+    confirmation_mode: str = "inversion",
+    cisd_min_leg_bars: int = 2,
+    cisd_min_leg_atr_pct: float = 5.0,
+    cisd_max_leg_bars: int = 60,
     rr: float = 2.5,
     tp1_ratio: float = 0.5,
     target_mode: str = "risk",
@@ -4556,6 +5090,17 @@ def _extract_reference_lsi_candidates(
 
     take_shorts = direction_filter in ("both", "short")
     take_longs = direction_filter in ("both", "long")
+    use_inversion = confirmation_mode in {"inversion", "inversion_or_cisd"}
+    use_cisd = confirmation_mode in {"cisd", "inversion_or_cisd"}
+
+    cisd = detect_internal_cisd(
+        open_,
+        close,
+        daily_atr=daily_atr,
+        min_leg_bars=cisd_min_leg_bars,
+        min_leg_atr_pct=cisd_min_leg_atr_pct,
+        max_leg_bars=cisd_max_leg_bars,
+    ) if use_cisd else {}
 
     long_fvg_bottom = fvg["long_fvg_bottom"]
     long_fvg_top = fvg["long_entry_price"]
@@ -4575,6 +5120,10 @@ def _extract_reference_lsi_candidates(
 
     active_short_events: list[dict] = []
     active_long_events: list[dict] = []
+    active_short_cisd_events: list[dict] = []
+    active_long_cisd_events: list[dict] = []
+    armed_high_instances: set[tuple[str, int]] = set()
+    armed_low_instances: set[tuple[str, int]] = set()
     candidates: list[_SetupCandidate] = []
 
     for i in range(n):
@@ -4601,12 +5150,26 @@ def _extract_reference_lsi_candidates(
                     if not (open_[i] <= level and high[i] > level):
                         continue
                     state["consumed"] = True
+                    level_key = (level_name, int(reference_instance_ids[level_name][i]))
+                    if level_key in armed_high_instances:
+                        continue
                     lo = max(0, i - gap_lookback_bars)
                     eligible_fvg_bars = [
                         j for j in range(lo, i)
                         if session_day_id[j] == sd and valid_long[j]
                     ]
-                    if eligible_fvg_bars:
+                    if use_cisd:
+                        active_short_cisd_events.append(
+                            {
+                                "sd": sd,
+                                "sweep_bar": i,
+                                "expiry_bar": i + inversion_max_bars,
+                                "level_name": level_name,
+                                "level_price": level,
+                                "level_key": level_key,
+                            }
+                        )
+                    if use_inversion and eligible_fvg_bars:
                         active_short_events.append(
                             {
                                 "sd": sd,
@@ -4614,6 +5177,7 @@ def _extract_reference_lsi_candidates(
                                 "expiry_bar": i + inversion_max_bars,
                                 "level_name": level_name,
                                 "level_price": level,
+                                "level_key": level_key,
                                 "fvg_bars": eligible_fvg_bars,
                             }
                         )
@@ -4629,12 +5193,26 @@ def _extract_reference_lsi_candidates(
                     if not (open_[i] >= level and low[i] < level):
                         continue
                     state["consumed"] = True
+                    level_key = (level_name, int(reference_instance_ids[level_name][i]))
+                    if level_key in armed_low_instances:
+                        continue
                     lo = max(0, i - gap_lookback_bars)
                     eligible_fvg_bars = [
                         j for j in range(lo, i)
                         if session_day_id[j] == sd and valid_short[j]
                     ]
-                    if eligible_fvg_bars:
+                    if use_cisd:
+                        active_long_cisd_events.append(
+                            {
+                                "sd": sd,
+                                "sweep_bar": i,
+                                "expiry_bar": i + inversion_max_bars,
+                                "level_name": level_name,
+                                "level_price": level,
+                                "level_key": level_key,
+                            }
+                        )
+                    if use_inversion and eligible_fvg_bars:
                         active_long_events.append(
                             {
                                 "sd": sd,
@@ -4642,12 +5220,249 @@ def _extract_reference_lsi_candidates(
                                 "expiry_bar": i + inversion_max_bars,
                                 "level_name": level_name,
                                 "level_price": level,
+                                "level_key": level_key,
                                 "fvg_bars": eligible_fvg_bars,
                             }
                         )
 
+        remaining_short_cisd_events: list[dict] = []
+        for event in active_short_cisd_events:
+            if event["level_key"] in armed_high_instances:
+                continue
+            if event["sd"] != sd:
+                continue
+            if i <= event["sweep_bar"]:
+                remaining_short_cisd_events.append(event)
+                continue
+            if i > event["expiry_bar"] or not in_entry[i]:
+                continue
+            if not cisd["bearish_cisd"][i]:
+                remaining_short_cisd_events.append(event)
+                continue
+
+            cisd_level = float(cisd["bearish_level"][i])
+            cisd_level_bar = int(cisd["bearish_level_bar"][i])
+            if not np.isfinite(cisd_level) or cisd_level_bar < 0:
+                remaining_short_cisd_events.append(event)
+                continue
+
+            resolved_entry_mode = _resolve_lsi_entry_mode(
+                entry_mode=entry_mode,
+                bar_minutes=bar_minutes,
+                sweep_to_inversion_bars=i - int(event["sweep_bar"]),
+                close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+            )
+            entry_price = cisd_level if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
+            orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+            absolute_stop = float(np.max(high[int(event["sweep_bar"]):i + 1]))
+            atr_points, orb_points = _resolve_lsi_session_stop_points(
+                session=session,
+                daily_atr=float(daily_atr[i]),
+                orb_range=orb_range,
+            )
+            structural_stop = _resolve_lsi_stop_price(
+                direction=-1,
+                entry_price=entry_price,
+                absolute_stop_price=absolute_stop,
+                fvg_stop_price=float(high[i]),
+                gap_size=abs(float(close[i]) - cisd_level),
+                atr_points=atr_points,
+                orb_points=orb_points,
+                stop_mode=stop_mode,
+            )
+            risk = structural_stop - entry_price
+            structural_risk = absolute_stop - entry_price
+            if risk <= 0.0 or structural_risk <= 0.0:
+                continue
+            tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                target_mode=target_mode,
+                direction=-1,
+                entry_price=entry_price,
+                actual_risk_pts=risk,
+                structural_risk_pts=structural_risk,
+                rr=rr,
+                tp1_ratio=tp1_ratio,
+                left_end_bar=min(cisd_level_bar, int(event["sweep_bar"])) - 1,
+                high=high,
+                low=low,
+                pivot_arrays=target_pivot_arrays,
+                min_tick=min_tick,
+            )
+            tp1_est = entry_price - tp1_dist
+            lrlr_match = _detect_candidate_lrlr(
+                high=high,
+                low=low,
+                bar_minutes=bar_minutes,
+                left_end_bar=min(cisd_level_bar, int(event["sweep_bar"])) - 1,
+                direction=-1,
+                entry_price=entry_price,
+                tp1_price=tp1_est,
+                daily_atr=float(daily_atr[i]),
+                settings=lrlr_settings,
+                pivot_arrays=lrlr_pivot_arrays,
+            )
+            if _lrlr_gate_blocks(lrlr_match, lrlr_settings):
+                remaining_short_cisd_events.append(event)
+                continue
+            armed_high_instances.add(event["level_key"])
+            candidates.append(
+                _SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=-1,
+                    signal_bar=signal_bar,
+                    entry_price=entry_price,
+                    gap_size=abs(float(close[i]) - cisd_level),
+                    daily_atr=float(daily_atr[i]),
+                    orb_range=orb_range,
+                    structural_stop_price=structural_stop,
+                    lsi_absolute_stop_price=absolute_stop,
+                    lsi_swept_level=float(event["level_price"]),
+                    lsi_fvg_top=cisd_level,
+                    lsi_fvg_bottom=cisd_level,
+                    lsi_fvg_bar=cisd_level_bar,
+                    lsi_sweep_bar=int(event["sweep_bar"]),
+                    lsi_confirmation_type="cisd",
+                    lsi_cisd_level=cisd_level,
+                    lsi_cisd_bar=cisd_level_bar,
+                    reference_level_name=str(event["level_name"]),
+                    reference_level_price=float(event["level_price"]),
+                    lsi_lrlr_present=lrlr_match.present,
+                    lsi_lrlr_level_count=lrlr_match.level_count,
+                    lsi_lrlr_nearest_level_price=lrlr_match.nearest_level_price,
+                    lsi_lrlr_farthest_level_price=lrlr_match.farthest_level_price,
+                    lsi_lrlr_span_bars=lrlr_match.span_bars,
+                    lsi_lrlr_price_span_atr=lrlr_match.price_span_atr,
+                    lsi_lrlr_slope_atr_per_bar=lrlr_match.slope_atr_per_bar,
+                    lsi_lrlr_fit_error_atr=lrlr_match.fit_error_atr,
+                    lsi_lrlr_tp1_path_present=lrlr_match.tp1_path_present,
+                    lsi_lrlr_nearest_tp1_gap_atr=lrlr_match.nearest_tp1_gap_atr,
+                )
+            )
+        active_short_cisd_events = remaining_short_cisd_events
+
+        remaining_long_cisd_events: list[dict] = []
+        for event in active_long_cisd_events:
+            if event["level_key"] in armed_low_instances:
+                continue
+            if event["sd"] != sd:
+                continue
+            if i <= event["sweep_bar"]:
+                remaining_long_cisd_events.append(event)
+                continue
+            if i > event["expiry_bar"] or not in_entry[i]:
+                continue
+            if not cisd["bullish_cisd"][i]:
+                remaining_long_cisd_events.append(event)
+                continue
+
+            cisd_level = float(cisd["bullish_level"][i])
+            cisd_level_bar = int(cisd["bullish_level_bar"][i])
+            if not np.isfinite(cisd_level) or cisd_level_bar < 0:
+                remaining_long_cisd_events.append(event)
+                continue
+
+            resolved_entry_mode = _resolve_lsi_entry_mode(
+                entry_mode=entry_mode,
+                bar_minutes=bar_minutes,
+                sweep_to_inversion_bars=i - int(event["sweep_bar"]),
+                close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+            )
+            entry_price = cisd_level if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
+            orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
+            absolute_stop = float(np.min(low[int(event["sweep_bar"]):i + 1]))
+            atr_points, orb_points = _resolve_lsi_session_stop_points(
+                session=session,
+                daily_atr=float(daily_atr[i]),
+                orb_range=orb_range,
+            )
+            structural_stop = _resolve_lsi_stop_price(
+                direction=1,
+                entry_price=entry_price,
+                absolute_stop_price=absolute_stop,
+                fvg_stop_price=float(low[i]),
+                gap_size=abs(float(close[i]) - cisd_level),
+                atr_points=atr_points,
+                orb_points=orb_points,
+                stop_mode=stop_mode,
+            )
+            risk = entry_price - structural_stop
+            structural_risk = entry_price - absolute_stop
+            if risk <= 0.0 or structural_risk <= 0.0:
+                continue
+            tp1_dist, _ = _resolve_lsi_candidate_target_distances(
+                target_mode=target_mode,
+                direction=1,
+                entry_price=entry_price,
+                actual_risk_pts=risk,
+                structural_risk_pts=structural_risk,
+                rr=rr,
+                tp1_ratio=tp1_ratio,
+                left_end_bar=min(cisd_level_bar, int(event["sweep_bar"])) - 1,
+                high=high,
+                low=low,
+                pivot_arrays=target_pivot_arrays,
+                min_tick=min_tick,
+            )
+            tp1_est = entry_price + tp1_dist
+            lrlr_match = _detect_candidate_lrlr(
+                high=high,
+                low=low,
+                bar_minutes=bar_minutes,
+                left_end_bar=min(cisd_level_bar, int(event["sweep_bar"])) - 1,
+                direction=1,
+                entry_price=entry_price,
+                tp1_price=tp1_est,
+                daily_atr=float(daily_atr[i]),
+                settings=lrlr_settings,
+                pivot_arrays=lrlr_pivot_arrays,
+            )
+            if _lrlr_gate_blocks(lrlr_match, lrlr_settings):
+                remaining_long_cisd_events.append(event)
+                continue
+            armed_low_instances.add(event["level_key"])
+            candidates.append(
+                _SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=1,
+                    signal_bar=signal_bar,
+                    entry_price=entry_price,
+                    gap_size=abs(float(close[i]) - cisd_level),
+                    daily_atr=float(daily_atr[i]),
+                    orb_range=orb_range,
+                    structural_stop_price=structural_stop,
+                    lsi_absolute_stop_price=absolute_stop,
+                    lsi_swept_level=float(event["level_price"]),
+                    lsi_fvg_top=cisd_level,
+                    lsi_fvg_bottom=cisd_level,
+                    lsi_fvg_bar=cisd_level_bar,
+                    lsi_sweep_bar=int(event["sweep_bar"]),
+                    lsi_confirmation_type="cisd",
+                    lsi_cisd_level=cisd_level,
+                    lsi_cisd_bar=cisd_level_bar,
+                    reference_level_name=str(event["level_name"]),
+                    reference_level_price=float(event["level_price"]),
+                    lsi_lrlr_present=lrlr_match.present,
+                    lsi_lrlr_level_count=lrlr_match.level_count,
+                    lsi_lrlr_nearest_level_price=lrlr_match.nearest_level_price,
+                    lsi_lrlr_farthest_level_price=lrlr_match.farthest_level_price,
+                    lsi_lrlr_span_bars=lrlr_match.span_bars,
+                    lsi_lrlr_price_span_atr=lrlr_match.price_span_atr,
+                    lsi_lrlr_slope_atr_per_bar=lrlr_match.slope_atr_per_bar,
+                    lsi_lrlr_fit_error_atr=lrlr_match.fit_error_atr,
+                    lsi_lrlr_tp1_path_present=lrlr_match.tp1_path_present,
+                    lsi_lrlr_nearest_tp1_gap_atr=lrlr_match.nearest_tp1_gap_atr,
+                )
+            )
+        active_long_cisd_events = remaining_long_cisd_events
+
         remaining_short_events: list[dict] = []
         for event in active_short_events:
+            if event["level_key"] in armed_high_instances:
+                continue
             if event["sd"] != sd:
                 continue
             if i <= event["sweep_bar"]:
@@ -4667,7 +5482,19 @@ def _extract_reference_lsi_candidates(
             # Use the most recent eligible pre-sweep FVG when several invert on
             # the same bar. This keeps the setup anchored to the freshest gap.
             fvg_bar = max(inverted)
-            entry_price = float(long_fvg_bottom[fvg_bar]) if gap_entry_edge == "near" else float(long_fvg_top[fvg_bar])
+            resolved_entry_mode = _resolve_lsi_entry_mode(
+                entry_mode=entry_mode,
+                bar_minutes=bar_minutes,
+                sweep_to_inversion_bars=i - int(event["sweep_bar"]),
+                close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+            )
+            level_entry_price = (
+                float(long_fvg_bottom[fvg_bar]) if gap_entry_edge == "near" else float(long_fvg_top[fvg_bar])
+            )
+            entry_price = (
+                level_entry_price if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+            )
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
             orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
             absolute_stop = float(np.max(high[event["sweep_bar"]: i + 1]))
             fvg_stop = float(long_fvg_top[fvg_bar])
@@ -4718,12 +5545,13 @@ def _extract_reference_lsi_candidates(
             if _lrlr_gate_blocks(lrlr_match, lrlr_settings):
                 remaining_short_events.append(event)
                 continue
+            armed_high_instances.add(event["level_key"])
             candidates.append(
                 _SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
                     direction=-1,
-                    signal_bar=i,
+                    signal_bar=signal_bar,
                     entry_price=entry_price,
                     gap_size=float(fvg["long_gap_size"][fvg_bar]),
                     daily_atr=float(daily_atr[i]),
@@ -4735,6 +5563,7 @@ def _extract_reference_lsi_candidates(
                     lsi_fvg_bottom=float(long_fvg_bottom[fvg_bar]),
                     lsi_fvg_bar=fvg_bar,
                     lsi_sweep_bar=int(event["sweep_bar"]),
+                    lsi_confirmation_type="inversion",
                     reference_level_name=str(event["level_name"]),
                     reference_level_price=float(event["level_price"]),
                     lsi_lrlr_present=lrlr_match.present,
@@ -4753,6 +5582,8 @@ def _extract_reference_lsi_candidates(
 
         remaining_long_events: list[dict] = []
         for event in active_long_events:
+            if event["level_key"] in armed_low_instances:
+                continue
             if event["sd"] != sd:
                 continue
             if i <= event["sweep_bar"]:
@@ -4770,7 +5601,19 @@ def _extract_reference_lsi_candidates(
                 continue
 
             fvg_bar = max(inverted)
-            entry_price = float(short_fvg_top[fvg_bar]) if gap_entry_edge == "near" else float(short_fvg_bottom[fvg_bar])
+            resolved_entry_mode = _resolve_lsi_entry_mode(
+                entry_mode=entry_mode,
+                bar_minutes=bar_minutes,
+                sweep_to_inversion_bars=i - int(event["sweep_bar"]),
+                close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
+            )
+            level_entry_price = (
+                float(short_fvg_top[fvg_bar]) if gap_entry_edge == "near" else float(short_fvg_bottom[fvg_bar])
+            )
+            entry_price = (
+                level_entry_price if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else float(close[i])
+            )
+            signal_bar = i if _is_lsi_level_limit_entry_mode(resolved_entry_mode) else i - 1
             orb_range = _resolve_lsi_orb_range(float(orb_high[i]), float(orb_low[i]))
             absolute_stop = float(np.min(low[event["sweep_bar"]: i + 1]))
             fvg_stop = float(short_fvg_bottom[fvg_bar])
@@ -4821,12 +5664,13 @@ def _extract_reference_lsi_candidates(
             if _lrlr_gate_blocks(lrlr_match, lrlr_settings):
                 remaining_long_events.append(event)
                 continue
+            armed_low_instances.add(event["level_key"])
             candidates.append(
                 _SetupCandidate(
                     date_str=str(dates[i]),
                     session=session.name,
                     direction=1,
-                    signal_bar=i,
+                    signal_bar=signal_bar,
                     entry_price=entry_price,
                     gap_size=float(fvg["short_gap_size"][fvg_bar]),
                     daily_atr=float(daily_atr[i]),
@@ -4838,6 +5682,7 @@ def _extract_reference_lsi_candidates(
                     lsi_fvg_bottom=float(short_fvg_bottom[fvg_bar]),
                     lsi_fvg_bar=fvg_bar,
                     lsi_sweep_bar=int(event["sweep_bar"]),
+                    lsi_confirmation_type="inversion",
                     reference_level_name=str(event["level_name"]),
                     reference_level_price=float(event["level_price"]),
                     lsi_lrlr_present=lrlr_match.present,
@@ -6021,6 +6866,9 @@ def run_backtest(
                 lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
                 lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
+                lsi_confirmation_type=pc.cand.lsi_confirmation_type,
+                lsi_cisd_level=pc.cand.lsi_cisd_level,
+                lsi_cisd_time=timestamps[pc.cand.lsi_cisd_bar].isoformat() if pc.cand.lsi_cisd_bar >= 0 else "",
                 reference_level_name=pc.cand.reference_level_name,
                 reference_level_price=pc.cand.reference_level_price,
                 htf_level_time=pc.cand.htf_level_time,
@@ -6058,6 +6906,9 @@ def run_backtest(
                 lsi_fvg_bottom=pc.cand.lsi_fvg_bottom,
                 lsi_fvg_time=timestamps[pc.cand.lsi_fvg_bar].isoformat() if pc.cand.lsi_fvg_bar >= 0 else "",
                 lsi_sweep_time=timestamps[pc.cand.lsi_sweep_bar].isoformat() if pc.cand.lsi_sweep_bar >= 0 else "",
+                lsi_confirmation_type=pc.cand.lsi_confirmation_type,
+                lsi_cisd_level=pc.cand.lsi_cisd_level,
+                lsi_cisd_time=timestamps[pc.cand.lsi_cisd_bar].isoformat() if pc.cand.lsi_cisd_bar >= 0 else "",
                 reference_level_name=pc.cand.reference_level_name,
                 reference_level_price=pc.cand.reference_level_price,
                 htf_level_time=pc.cand.htf_level_time,

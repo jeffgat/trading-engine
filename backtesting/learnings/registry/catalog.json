@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-03T13:08:10.809464Z",
+  "generated_at": "2026-05-03T22:29:46.505727Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,9 +8,9 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 168,
-    "result_directories": 303,
-    "result_loose_files": 44
+    "report_files": 177,
+    "result_directories": 311,
+    "result_loose_files": 45
   },
   "assets": {
     "6B": {
@@ -2392,6 +2392,34 @@
           "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_window_exit_local_sweep"
         },
         {
+          "name": "NQ_NY_LSI_CISD_CANDIDATE_VALIDATION_20260503.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_CISD_CANDIDATE_VALIDATION_20260503.md",
+          "slug": "nq_ny_lsi_cisd_candidate_validation_20260503",
+          "mtime_utc": "2026-05-03T18:45:08.158582Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_lsi_cisd_candidate_validation_20260503"
+        },
+        {
+          "name": "NQ_NY_LSI_CISD_RESTRICTED_FINALISTS_20260503.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_CISD_RESTRICTED_FINALISTS_20260503.md",
+          "slug": "nq_ny_lsi_cisd_restricted_finalists_20260503",
+          "mtime_utc": "2026-05-03T19:23:01.381947Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_lsi_cisd_restricted_finalists_20260503"
+        },
+        {
+          "name": "NQ_NY_LSI_CISD_SEQUENCE_20260503.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_CISD_SEQUENCE_20260503.md",
+          "slug": "nq_ny_lsi_cisd_sequence_20260503",
+          "mtime_utc": "2026-05-03T16:03:18.597747Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_lsi_cisd_sequence_20260503"
+        },
+        {
+          "name": "NQ_NY_LSI_CISD_SURVIVOR_REFINEMENT_20260503.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_CISD_SURVIVOR_REFINEMENT_20260503.md",
+          "slug": "nq_ny_lsi_cisd_survivor_refinement_20260503",
+          "mtime_utc": "2026-05-03T16:24:30.381367Z",
+          "matched_result_directory": null
+        },
+        {
           "name": "NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md",
           "slug": "nq_ny_lsi_legacy_vs_htf_exact_comparison",
@@ -3559,6 +3587,53 @@
           ]
         },
         {
+          "name": "nq_ny_lsi_cisd_candidate_validation_20260503",
+          "path": "backtesting/data/results/nq_ny_lsi_cisd_candidate_validation_20260503",
+          "mtime_utc": "2026-05-03T18:44:05.430100Z",
+          "file_count": 10,
+          "primary_files": [
+            "summary.json",
+            "execution_stress.csv",
+            "fragility_rows.csv",
+            "fragility_summary.csv",
+            "frozen_scorecards.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_cisd_restricted_finalists_20260503",
+          "path": "backtesting/data/results/nq_ny_lsi_cisd_restricted_finalists_20260503",
+          "mtime_utc": "2026-05-03T19:14:41.854995Z",
+          "file_count": 8,
+          "primary_files": [
+            "summary.json",
+            "execution_stress.csv",
+            "monte_carlo.json",
+            "period_scorecards.csv",
+            "phase_one_accounts.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_cisd_sequence_20260503",
+          "path": "backtesting/data/results/nq_ny_lsi_cisd_sequence_20260503",
+          "mtime_utc": "2026-05-03T16:24:30.380365Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.json",
+            "all_rows.csv",
+            "survivor_rows.csv",
+            "survivor_summary.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
           "name": "nq_ny_reference_lsi_3m_failure_analysis",
           "path": "backtesting/data/results/nq_ny_reference_lsi_3m_failure_analysis",
           "mtime_utc": "2026-04-09T00:09:36.208814Z",
@@ -4472,6 +4547,13 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_orb_esny_risk_explore"
         },
         {
+          "name": "ALPHA_V1_ORB_GAP_CANDLE_STOP_COMPARE_20260503.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_GAP_CANDLE_STOP_COMPARE_20260503.md",
+          "slug": "alpha_v1_orb_gap_candle_stop_compare_20260503",
+          "mtime_utc": "2026-05-03T14:24:49.680391Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_gap_candle_stop_compare_20260503"
+        },
+        {
           "name": "ALPHA_V1_ORB_GAP_CHASE_20240417_20260324.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ORB_GAP_CHASE_20240417_20260324.md",
           "slug": "alpha_v1_orb_gap_chase_20240417_20260324",
@@ -4568,6 +4650,34 @@
           "slug": "general_v1_phase1_robust_pipeline_report",
           "mtime_utc": "2026-03-30T13:52:48.348227Z",
           "matched_result_directory": null
+        },
+        {
+          "name": "HOT_ONE_YEAR_SQUEEZE_20260503.md",
+          "path": "backtesting/learnings/reports/HOT_ONE_YEAR_SQUEEZE_20260503.md",
+          "slug": "hot_one_year_squeeze_20260503",
+          "mtime_utc": "2026-05-03T16:30:14.677056Z",
+          "matched_result_directory": "backtesting/data/results/hot_one_year_squeeze_20260503"
+        },
+        {
+          "name": "HOT_ONE_YEAR_STRATEGY_WORKFLOW_20260503.md",
+          "path": "backtesting/learnings/reports/HOT_ONE_YEAR_STRATEGY_WORKFLOW_20260503.md",
+          "slug": "hot_one_year_strategy_workflow_20260503",
+          "mtime_utc": "2026-05-03T14:57:30.622346Z",
+          "matched_result_directory": "backtesting/data/results/hot_one_year_strategy_workflow_20260503"
+        },
+        {
+          "name": "HOT_STRUCTURAL_FOLLOWUP_20260503.md",
+          "path": "backtesting/learnings/reports/HOT_STRUCTURAL_FOLLOWUP_20260503.md",
+          "slug": "hot_structural_followup_20260503",
+          "mtime_utc": "2026-05-03T22:29:02.885768Z",
+          "matched_result_directory": "backtesting/data/results/hot_structural_followup_20260503"
+        },
+        {
+          "name": "HOT_STRUCTURAL_SEQUENCE_20260503.md",
+          "path": "backtesting/learnings/reports/HOT_STRUCTURAL_SEQUENCE_20260503.md",
+          "slug": "hot_structural_sequence_20260503",
+          "mtime_utc": "2026-05-03T20:04:17.297092Z",
+          "matched_result_directory": "backtesting/data/results/hot_structural_sequence_20260503"
         },
         {
           "name": "ORB_INDICATOR_CONFLUENCE_ENGINE_RERUN.md",
@@ -4930,6 +5040,20 @@
         "assets": []
       },
       {
+        "name": "alpha_v1_orb_gap_candle_stop_compare_20260503",
+        "path": "backtesting/data/results/alpha_v1_orb_gap_candle_stop_compare_20260503",
+        "mtime_utc": "2026-05-03T14:24:49.679574Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "current_stop_filled_trades.csv",
+          "funded_first_payout_accounts.csv",
+          "funded_first_payout_summary.csv",
+          "gap_impulse_stop_filled_trades.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "alpha_v1_orb_htf_high_filters_20260417",
         "path": "backtesting/data/results/alpha_v1_orb_htf_high_filters_20260417",
         "mtime_utc": "2026-04-17T15:29:31.552930Z",
@@ -5178,6 +5302,57 @@
           "summary.json",
           "export_trade_diagnostics.csv",
           "sim_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hot_one_year_squeeze_20260503",
+        "path": "backtesting/data/results/hot_one_year_squeeze_20260503",
+        "mtime_utc": "2026-05-03T16:30:11.274248Z",
+        "file_count": 5,
+        "primary_files": [
+          "summary.json",
+          "combo_categories.json",
+          "score_rows.csv",
+          "selected_options.json",
+          "variant_manifest.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hot_one_year_strategy_workflow_20260503",
+        "path": "backtesting/data/results/hot_one_year_strategy_workflow_20260503",
+        "mtime_utc": "2026-05-03T14:57:30.073442Z",
+        "file_count": 4,
+        "primary_files": [
+          "summary.json",
+          "score_rows.csv",
+          "selected_options.json",
+          "variant_manifest.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hot_structural_followup_20260503",
+        "path": "backtesting/data/results/hot_structural_followup_20260503",
+        "mtime_utc": "2026-05-03T22:29:02.881243Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "score_rows.csv",
+          "selected_followup_gates.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "hot_structural_sequence_20260503",
+        "path": "backtesting/data/results/hot_structural_sequence_20260503",
+        "mtime_utc": "2026-05-03T20:02:10.724265Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "score_rows.csv",
+          "selected_structural_gates.json"
         ],
         "assets": []
       },
@@ -6168,7 +6343,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-04-29T15:19:50.493327Z"
+        "mtime_utc": "2026-05-03T19:25:18.800701Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",
@@ -6294,6 +6469,11 @@
         "name": "nq_ny_lsi_discovery_step2_sweeps.json",
         "path": "backtesting/data/results/nq_ny_lsi_discovery_step2_sweeps.json",
         "mtime_utc": "2026-04-02T01:21:53.151865Z"
+      },
+      {
+        "name": "nq_ny_lsi_live_gap_check_20260503.json",
+        "path": "backtesting/data/results/nq_ny_lsi_live_gap_check_20260503.json",
+        "mtime_utc": "2026-05-03T14:07:34.112297Z"
       },
       {
         "name": "nq_ny_lsi_rr_tp1_grid_sweep.json",

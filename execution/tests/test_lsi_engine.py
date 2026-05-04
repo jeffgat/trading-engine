@@ -497,6 +497,51 @@ class TestInversionToManaging:
         # For long: stop = min(low) over the range, which should be 19350 from the FVG bars
         assert eng._levels.stop <= 19350.0
 
+    async def test_struct_75pct_stop_compresses_absolute_stop(self):
+        eng = make_lsi_engine(lsi_stop_mode="struct_75pct")
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, gap.top + 5)
+        await eng.on_bar(inversion_bar, 300.0)
+
+        entry = gap.top + 5
+        absolute_stop = 19350.0
+        expected_stop = entry - ((entry - absolute_stop) * 0.75)
+        assert eng._levels.stop == pytest.approx(expected_stop)
+
+    async def test_timed_hybrid_fast_inversion_enters_at_close(self):
+        eng = make_lsi_engine(
+            lsi_entry_mode="timed_hybrid",
+            lsi_close_on_sweep_to_inversion_minutes=60,
+        )
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+        gap = eng._active_gap
+        inversion_close = gap.top + 5
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, inversion_close)
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.MANAGING
+        assert eng._levels.entry == pytest.approx(inversion_close)
+
+    async def test_timed_hybrid_slow_inversion_arms_limit(self):
+        eng = make_lsi_engine(
+            lsi_entry_mode="timed_hybrid",
+            lsi_close_on_sweep_to_inversion_minutes=5,
+        )
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, gap.top + 5)
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng._limit_price == pytest.approx(gap.top)
+
     async def test_direction_is_long(self):
         eng = make_lsi_engine()
         result = await _advance_to_inversion(eng)

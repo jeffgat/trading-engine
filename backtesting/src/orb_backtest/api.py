@@ -210,6 +210,10 @@ class BacktestRequest(BaseModel):
     lsi_stop_mode: Optional[str] = None
     lsi_entry_mode: Optional[str] = None
     lsi_close_on_sweep_to_inversion_minutes: Optional[int] = None
+    lsi_confirmation_mode: Optional[str] = None
+    cisd_min_leg_bars: Optional[int] = None
+    cisd_min_leg_atr_pct: Optional[float] = None
+    cisd_max_leg_bars: Optional[int] = None
     lsi_first_fvg_only: Optional[bool] = None
     lsi_clean_path: Optional[bool] = None
     lsi_be_swing_n_left: Optional[int] = None
@@ -526,6 +530,8 @@ def run_backtest_endpoint(req: BacktestRequest):
         "ldn_qualifying_move_atr_pct", "ldn_min_stop_points", "ldn_min_tp1_points", "ldn_rth_start",
         "lsi_n_left", "lsi_n_right", "lsi_fvg_window_left", "lsi_fvg_window_right",
         "lsi_stop_mode", "lsi_entry_mode", "lsi_close_on_sweep_to_inversion_minutes",
+        "lsi_confirmation_mode", "cisd_min_leg_bars", "cisd_min_leg_atr_pct",
+        "cisd_max_leg_bars",
         "lsi_first_fvg_only", "lsi_clean_path",
         "lsi_be_swing_n_left", "lsi_cancel_on_swing",
         "htf_level_tf_minutes", "htf_n_left", "htf_trade_max_per_session",

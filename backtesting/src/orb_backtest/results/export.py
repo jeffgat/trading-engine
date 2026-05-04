@@ -35,6 +35,10 @@ _PARAM_ABBREV: dict[str, str] = {
 
     "atr_length": "atr",
     "risk_usd": "risk",
+    "lsi_confirmation_mode": "confirm",
+    "cisd_min_leg_bars": "cisdmin",
+    "cisd_min_leg_atr_pct": "cisdatr",
+    "cisd_max_leg_bars": "cisdmax",
     "ny_stop_atr_pct": "ny.stop",
     "ny_stop_orb_pct": "ny.orbstop",
     "ny_min_gap_atr_pct": "ny.gap",
@@ -232,6 +236,10 @@ def results_to_dict(
         config_dict["lsi_stop_mode"] = config.lsi_stop_mode
         config_dict["lsi_target_mode"] = config.lsi_target_mode
         config_dict["lsi_entry_mode"] = config.lsi_entry_mode
+        config_dict["lsi_confirmation_mode"] = config.lsi_confirmation_mode
+        config_dict["cisd_min_leg_bars"] = config.cisd_min_leg_bars
+        config_dict["cisd_min_leg_atr_pct"] = config.cisd_min_leg_atr_pct
+        config_dict["cisd_max_leg_bars"] = config.cisd_max_leg_bars
         if config.lsi_close_on_sweep_to_inversion_minutes > 0:
             config_dict["lsi_close_on_sweep_to_inversion_minutes"] = (
                 config.lsi_close_on_sweep_to_inversion_minutes
@@ -330,6 +338,9 @@ def results_to_dict(
                 "lsi_fvg_bottom": t.lsi_fvg_bottom if t.lsi_fvg_bottom else None,
                 "lsi_fvg_time": t.lsi_fvg_time if t.lsi_fvg_time else None,
                 "lsi_sweep_time": t.lsi_sweep_time if t.lsi_sweep_time else None,
+                "lsi_confirmation_type": t.lsi_confirmation_type if t.lsi_confirmation_type else None,
+                "lsi_cisd_level": t.lsi_cisd_level if t.lsi_cisd_level else None,
+                "lsi_cisd_time": t.lsi_cisd_time if t.lsi_cisd_time else None,
                 "reference_level_name": t.reference_level_name if t.reference_level_name else None,
                 "reference_level_price": t.reference_level_price if t.reference_level_name else None,
                 "htf_level_time": t.htf_level_time if t.htf_level_time else None,

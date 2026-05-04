@@ -162,6 +162,10 @@ export interface BacktestHistoryItem {
   lsi_fvg_window_right?: number;
   lsi_stop_mode?: string;
   lsi_entry_mode?: string;
+  lsi_confirmation_mode?: string;
+  cisd_min_leg_bars?: number;
+  cisd_min_leg_atr_pct?: number;
+  cisd_max_leg_bars?: number;
   lsi_first_fvg_only?: number;
   lsi_clean_path?: number;
   lsi_be_swing_n_left?: number;
