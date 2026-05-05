@@ -41,6 +41,7 @@ Discovery-first pipeline that answers: **"Which small set of parameter candidate
 - If PSR and DSR are implemented in the codebase, run them on every promoted candidate before handing anything to `phase-one-robust-pipeline`.
 - If PBO or CSCV are implemented, include them as stronger Bailey-style diagnostics; if they are not implemented, say so explicitly.
 - If PSR or DSR are not implemented, say so explicitly and cap the verdict at **heuristic** rather than statistically strong.
+- Label every candidate row with `deployability`, `live_support_notes`, and `exact_replay_required` from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`.
 - Do not call this skill's output a final deployment verdict. Its job is candidate promotion, not final approval.
 
 ## Key Files
@@ -63,7 +64,7 @@ Discovery-first pipeline that answers: **"Which small set of parameter candidate
 | 2 | Discovery Search | Coarse search over pre-holdout data with explicit trial tracking | Candidate pool |
 | 3 | Rolling Walk-Forward | Rank candidates by combined OOS behavior, not IS peaks | OOS-ranked shortlist |
 | 4 | Local Stability / Plateau Check | Prefer robust neighborhoods over fragile maxima | Frozen promoted candidates |
-| 5 | Promotion Packet | Prepare 1-3 candidates for `phase-one-robust-pipeline` with raw/effective trial counts and PSR/DSR when implemented | Promotion memo + frozen params |
+| 5 | Promotion Packet | Prepare 1-3 candidates for `phase-one-robust-pipeline` with raw/effective trial counts, PSR/DSR when implemented, and deployability labels | Promotion memo + frozen params |
 
 See `references/phases.md` for the detailed execution guide with promotion rules.
 See `references/prop-constraints.md` for constraint thresholds and interpretation.

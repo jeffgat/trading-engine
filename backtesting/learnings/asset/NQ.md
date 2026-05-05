@@ -989,6 +989,14 @@ Re-optimization with dual floors has been completed as NY Continuation Short v2.
 - **Verdict**: CONDITIONAL — size position conservatively. Phase 3 fails because long-only NY generates ~56 trades/year, limiting absolute R accumulation. Edge per trade (+0.24R) is solid but frequency is the bottleneck.
 - **DB entry**: `bt-nq-ny-cont-long-r11-final-2016-2026-aa7630`
 
+#### Wide-Stop Target Sweep (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md`
+- **Scope**: Held R11 structure fixed (20m ORB, long-only, ATR 12, gap 2.5% ATR, entry to 12:00, flat 15:30, excl-Fri, 1s magnifier) and swept ATR/ORB stop width, `rr`, and TP1 distance.
+- **Baseline in common ALPHA window (`2016-04-17` to `2026-03-24`)**: `ATR 7% / rr 3.5 / tp1 0.4` -> median stop `54.9` ticks, `+122.4R`, `PF 1.55`, `-10.6R` DD, last-1y `+9.4R`, last-2y `+19.9R`.
+- **Conclusion**: NO-GO for replacing R11 with a wider stop. Zero rows widened the actual median stop by at least `20%` while preserving full-history, last-1y, last-2y, PF, DD, and negative-year quality. The least-bad actual widening was the `ATR 9%` family (`~70.6` median ticks, `1.29x` wider), but its best full-history rows gave up roughly `26R-30R` versus baseline. Example: `ATR 9% / rr 3.0 / TP1_R 1.25` -> `+96.2R`, `PF 1.42`, `-10.4R` DD, last-1y `+10.6R`, last-2y `+19.8R`.
+- **Operating read**: R11's stop is already part of the edge. If NQ NY ORB is added beside ES NY ORB, size it down as a second NY ORB leg rather than widening the stop to make it feel like Asia. `deployability=live_native`, `exact_replay_required=yes_before_live_promotion`.
+
 #### Optimization History
 - **R1-R7**: 7 rounds of variable sweeps. R2 adopted 5 changes simultaneously — destructive (crashed Calmar). R3 reverted all 5. Lesson: max 2-3 adoptions at once. **R7 CONVERGED** at Calmar 14.45.
 - **Grid R1**: 540 combos. Winner: stop=7.0, rr=3.25, gap=2.5, tp1=0.45 (Calmar 16.45, +2.00). Adopted.
@@ -2925,6 +2933,20 @@ All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_
   - Best pure-CISD capital-protection row: `pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200` -> full `193` trades, PF `1.52`, `+38.7R`, DD `-9.1R`; post-2023 `54` trades, PF `1.91`, `+15.4R`, DD `-2.9R`; phase-one post-2023 payout `78.2%`, breach `0.0%`, EV `+4.44R`. This is lower capacity/throughput but cleaner on breach risk.
   - Restriction read: noon cutoff hurts additive R; long-only cuts additive throughput and total R; no-Thursday improves additive full-history quality but is not a decisive post-2023 edge. For pure CISD, long-only plus noon cutoff improves DD/PF and phase-one profile at the cost of fewer trades.
   - Status: keep additive no-Thursday and pure long/noon as finalists for phase-one style account simulation and small live-sim/watchlist review; do not broaden the parameter grid further without new data or a new structural thesis.
+- **NQ NY LSI + CISD target sweep** (2026-05-04): `backtesting/learnings/reports/NQ_NY_LSI_CISD_TARGET_SWEEP_20260504.md` and `backtesting/data/results/nq_ny_lsi_cisd_target_sweep_20260504/`
+  - Scope: target-only sweep on the two additive finalists plus the pure-CISD finalist. Signal, entry, stop, sweep source, timeframe, DOW, and session cutoff stayed frozen; only `rr` and `tp1_ratio` moved. Swept `rr` from `1.5` to `4.0`, `tp1_ratio` from `0.4` to `0.8`, skipping rows where TP1 would be under `1R`.
+  - Result: target tuning creates **incremental**, not transformational, progress. Keep the original `rr=2.0`, `tp1=0.5` all-weekday additive row as the plain benchmark.
+  - Best all-weekday additive target score: `rr=2.5`, `tp1_ratio=0.4` -> post-2023 `+32.6R`, PF `1.51`, DD `-6.7R`; 2025 `+5.6R`; phase-one post-2023 payout `80.5%`, breach `14.9%`, EV `+3.61R`. This is only modestly better than benchmark (`+1.7R` post-2023, `+0.12R` EV) and slightly worse in 2025.
+  - Best no-Thursday additive practical row: `rr=2.5`, `tp1_ratio=0.4` -> post-2023 `+32.7R`, PF `1.67`, DD `-6.6R`; 2025 `+7.0R`; phase-one post-2023 payout `82.8%`, breach `8.0%`, EV `+4.18R`. This is the best additive account-profile improvement, mostly through payout/breach behavior rather than net R.
+  - Best pure-CISD practical row: `rr=2.0`, `tp1_ratio=0.6` -> post-2023 `+19.9R`, PF `2.00`, DD `-2.4R`; 2025 `+2.9R`; phase-one post-2023 payout `90.8%`, breach `0.0%`, EV `+4.74R`. This is the strongest pure-CISD target finding, though full-history returns remain modest and exact replay is required.
+  - Deployability label for target-sweep rows: `live_native` in research config terms, but exact replay is still required before execution-config promotion.
+- **NQ NY LSI + CISD hot-regime one-year sweep** (2026-05-04): `backtesting/learnings/reports/NQ_NY_LSI_CISD_HOT_REGIME_SWEEP_20260504.md` and `backtesting/data/results/nq_ny_lsi_cisd_hot_regime_sweep_20260504/`
+  - Window: `2025-05-01` to `2026-05-01`. This is in-sample trailing-one-year research only, modeled after HOT_REGIME squeeze work; label rows `research_only` until exact replay or forward validation.
+  - Scope: two-stage grid on the pure-CISD leg plus additive allDOW/noThu finalists. Stage 1 swept stop ATR (`7.5-20%`), CISD bars (`2-4`), CISD body ATR (`5-10%`), and entry cutoff (`12:00-15:30`). Stage 2 swept targets around the top structures (`rr=1.5-5.0`, `tp1_ratio=0.3-0.8`, respecting TP1 >= 1R).
+  - Best additive allDOW squeeze: `stop=10%`, `bars=3`, `body_atr=7.5%`, `cut=13:00`, `rr=2.5`, `tp1=0.4` -> `45` trades, `+15.48R`, PF `2.11`, DD `-4.07R`; only `+0.51R` over the current same-family baseline but with fewer trades and lower DD.
+  - Best additive noThu squeeze: `stop=10%`, `bars=2`, `body_atr=7.5%`, `cut=13:00`, `rr=2.5`, `tp1=0.4` -> `38` trades, `+10.95R`, PF `1.84`, DD `-3.07R`; only `+0.47R` over baseline.
+  - Best pure-CISD squeeze: `stop=7.5%`, `bars=4`, `body_atr=5%`, `cut=14:00`, `rr=4.0`, `tp1=0.3` -> `15` trades, `+9.42R`, PF `3.36`, DD `-2.00R`; `+2.02R` over pure baseline. Pure improves most from hot-regime tuning but remains low-throughput.
+  - Read: Additive allDOW is still the highest recent-R leg; the one-year optimization mostly tightens cutoffs and confirms the existing `rr=2.5/tp1=0.4` additive target. Pure CISD is the cleaner capital-protection branch, not the highest-R branch.
 
 - **Hot one-year squeeze** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_SQUEEZE_20260503.md`
   - Window: `2025-03-24` to `2026-03-24`. TESTING-only second-stage local squeeze around prior screenshot winners.

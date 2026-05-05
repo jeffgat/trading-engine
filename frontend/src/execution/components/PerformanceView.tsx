@@ -6,6 +6,7 @@ import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
 import { EquityCurveComparison } from "@/execution/components/EquityCurveComparison";
 import { BacktestWindowSlider } from "@/execution/components/BacktestWindowSlider";
 import { DatePicker } from "@/shared/ui/date-picker";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 interface PerformanceViewProps {
   entries: TradeLogEntry[];
@@ -28,6 +29,7 @@ interface OpenTrade {
   id: string;
   session: string;
   config: string;
+  leg: string;
   ticker: string;
   direction: "Long" | "Short";
   entryTs: string;
@@ -39,6 +41,7 @@ interface PerfRow {
   entryTime: string;
   exitDate: string;
   exitTime: string;
+  leg: string;
   ticker: string;
   session: string;
   config: string;
@@ -58,16 +61,25 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
 });
 
 function splitTs(ts: string): { date: string; time: string } {
-  const [date = "\u2014", time = "\u2014"] = ts.split(" ");
+  if (!ts) return { date: "\u2014", time: "\u2014" };
+  const cleaned = ts
+    .replace("T", " ")
+    .replace(/([+-]\d{2}:\d{2}|Z)$/, "")
+    .trim();
+  const [date = "\u2014", time = "\u2014"] = cleaned.split(" ");
   return { date, time };
 }
 
+function normalizeTicker(raw: string | null | undefined): string {
+  const value = (raw ?? "").toUpperCase();
+  if (value.includes("NQ")) return "NQ";
+  if (value.includes("ES")) return "ES";
+  if (value.includes("GC")) return "GC";
+  return value || "\u2014";
+}
+
 function tickerFromEntry(entry: TradeLogEntry): string {
-  const raw = (entry.asset || entry.session.split("_")[0] || "").toUpperCase();
-  if (raw.includes("NQ")) return "NQ";
-  if (raw.includes("ES")) return "ES";
-  if (raw.includes("GC")) return "GC";
-  return "\u2014";
+  return normalizeTicker(entry.asset || entry.session.split("_")[0]);
 }
 
 function sessionLabel(session: string): string {
@@ -113,24 +125,30 @@ function buildSessionLookups(config: ConfigResponse | null) {
   const cfgByKey: Record<string, SessionCfg> = {};
   const cfgByShort: Record<string, SessionCfg> = {};
   const typeByShort: Record<string, "continuation" | "lsi"> = {};
+  const tickerByKey: Record<string, string> = {};
+  const tickerByShort: Record<string, string> = {};
   if (config?.sessions) {
     for (const [key, cfg] of Object.entries(config.sessions)) {
       const configName = key.includes(":") ? key.split(":")[0] : "";
       const short = key.includes(":") ? key.split(":")[1] : key;
+      const sessionCfg = cfg as SessionCfg & { signal_ticker?: string; exec_ticker?: string };
+      const ticker = normalizeTicker(sessionCfg.signal_ticker || sessionCfg.exec_ticker || short.split("_")[0]);
       if (configName) {
-        cfgByKey[`${configName}:${short}`] = cfg as SessionCfg;
+        cfgByKey[`${configName}:${short}`] = sessionCfg;
+        tickerByKey[`${configName}:${short}`] = ticker;
       }
       if (!cfgByShort[short]) {
-        cfgByShort[short] = cfg as SessionCfg;
+        cfgByShort[short] = sessionCfg;
         typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
+        tickerByShort[short] = ticker;
       }
     }
   }
-  return { cfgByKey, cfgByShort, typeByShort };
+  return { cfgByKey, cfgByShort, typeByShort, tickerByKey, tickerByShort };
 }
 
 function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): PerfRow[] {
-  const { cfgByKey, cfgByShort, typeByShort } = buildSessionLookups(config);
+  const { cfgByKey, cfgByShort, typeByShort, tickerByKey, tickerByShort } = buildSessionLookups(config);
   const ordered = [...entries].reverse();
   // Key open trades by config:session to handle multiple configs
   const openByKey = new Map<string, OpenTrade>();
@@ -147,7 +165,10 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
         id: `${tradeKey}-${entry.timestamp}`,
         session: entry.session,
         config: entryConfig,
-        ticker: tickerFromEntry(entry),
+        leg: entry.session,
+        ticker: tickerFromEntry(entry) !== "\u2014"
+          ? tickerFromEntry(entry)
+          : tickerByKey[tradeKey] ?? tickerByShort[entry.session] ?? "\u2014",
         direction,
         entryTs: entry.timestamp,
       });
@@ -171,6 +192,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       entryTime: entryParts.time,
       exitDate: exitParts.date,
       exitTime: exitParts.time,
+      leg: open.leg,
       ticker: open.ticker,
       session: sessionLabel(open.session),
       config: open.config,
@@ -193,6 +215,7 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
       entryTime: entryParts.time,
       exitDate: "\u2014",
       exitTime: "open",
+      leg: open.leg,
       ticker: open.ticker,
       session: sessionLabel(open.session),
       config: open.config,
@@ -248,37 +271,88 @@ function getDbRValue(trade: LiveTrade, config: ConfigResponse | null): number | 
 }
 
 function tickerFromSession(session: string): string {
-  const asset = session.split("_")[0]?.toUpperCase() ?? "";
-  if (asset.includes("NQ")) return "NQ";
-  if (asset.includes("ES")) return "ES";
-  if (asset.includes("GC")) return "GC";
-  return "\u2014";
+  return normalizeTicker(session.split("_")[0]);
 }
 
-function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null): PerfRow[] {
+function tradeDirectionLabel(direction: number): "Long" | "Short" {
+  return direction === 1 ? "Long" : "Short";
+}
+
+function directionMatches(entry: TradeLogEntry, trade: LiveTrade): boolean {
+  const dirRaw = (entry.details.dir || entry.details.direction || "").toLowerCase();
+  if (!dirRaw) return true;
+  return trade.direction === 1
+    ? dirRaw === "long" || dirRaw === "1"
+    : dirRaw === "short" || dirRaw === "-1";
+}
+
+function findEntryLogForTrade(trade: LiveTrade, entries: TradeLogEntry[]): TradeLogEntry | undefined {
+  const leg = trade.leg || trade.session;
+  const config = trade.config_name || "";
+  const entryDate = trade.date.length === 8
+    ? `${trade.date.slice(0, 4)}-${trade.date.slice(4, 6)}-${trade.date.slice(6, 8)}`
+    : trade.date;
+  const exitTs = splitTs(trade.exit_timestamp);
+  const exitSortable = `${exitTs.date} ${exitTs.time}`;
+
+  return entries
+    .filter((entry) => {
+      if (entry.session !== leg && entry.session !== trade.session) return false;
+      if ((entry.config || "") !== config) return false;
+      if (!entry.timestamp.startsWith(entryDate)) return false;
+      if (entry.timestamp > exitSortable) return false;
+      if (entry.event !== "FILLED" && entry.event !== "HUNTER_SETUP") return false;
+      return directionMatches(entry, trade);
+    })
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
+}
+
+function tickerFromConfig(
+  config: ConfigResponse | null,
+  configName: string,
+  leg: string,
+): string {
+  const cfg = (config?.sessions?.[`${configName}:${leg}`] ?? config?.sessions?.[leg]) as
+    | (SessionCfg & { signal_ticker?: string; exec_ticker?: string })
+    | undefined;
+  return normalizeTicker(cfg?.signal_ticker || cfg?.exec_ticker || leg.split("_")[0]);
+}
+
+function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null, entries: TradeLogEntry[]): PerfRow[] {
   return trades.map((t) => {
-    const exitParts = splitTs(t.exit_timestamp.replace("T", " ").replace(/-\d{2}:\d{2}$/, ""));
+    const leg = t.leg || t.session;
+    const entryLog = findEntryLogForTrade(t, entries);
+    const entryTimestamp = t.entry_timestamp || entryLog?.timestamp || "";
+    const entryParts = splitTs(entryTimestamp);
+    const exitParts = splitTs(t.exit_timestamp);
     // Format YYYYMMDD → YYYY-MM-DD for entry date display
-    const entryDate = t.date.length === 8
+    const fallbackEntryDate = t.date.length === 8
       ? `${t.date.slice(0, 4)}-${t.date.slice(4, 6)}-${t.date.slice(6, 8)}`
       : t.date;
-    const sessionParts = t.session.split("_");
+    const sessionParts = leg.split("_");
     const sessionLabel = sessionParts[1] ?? t.session;
-    const stratType = t.session.toLowerCase().includes("lsi") ? "LSI" : "ORB";
-    const compoundKey = `${t.config_name}:${t.session}`;
-    const sessionCfg = (config?.sessions?.[compoundKey] ?? config?.sessions?.[t.session]) as SessionCfg | undefined;
+    const stratType = leg.toLowerCase().includes("lsi") ? "LSI" : "ORB";
+    const compoundKey = `${t.config_name}:${leg}`;
+    const sessionCfg = (config?.sessions?.[compoundKey] ?? config?.sessions?.[leg] ?? config?.sessions?.[t.session]) as SessionCfg | undefined;
     const rValue = getDbRValue(t, config);
+    const ticker = normalizeTicker(
+      t.ticker
+        || entryLog?.asset
+        || tickerFromConfig(config, t.config_name, leg)
+        || tickerFromSession(leg),
+    );
 
     return {
       id: `db-${t.id}`,
-      entryDate,
-      entryTime: "\u2014",
+      entryDate: entryParts.date === "\u2014" ? fallbackEntryDate : entryParts.date,
+      entryTime: entryParts.time,
       exitDate: exitParts.date,
       exitTime: exitParts.time,
-      ticker: tickerFromSession(t.session),
+      leg,
+      ticker,
       session: sessionLabel,
       config: t.config_name,
-      direction: t.direction === 1 ? "Long" as const : "Short" as const,
+      direction: tradeDirectionLabel(t.direction),
       rValue,
       usdValue: getUsdValue(rValue, sessionCfg),
       strategy: stratType,
@@ -324,27 +398,38 @@ function Pill({
   );
 }
 
-/* ---------- Filter pill button ---------- */
-function FilterPill({
+function FilterSelect({
   label,
-  active,
-  onClick,
+  value,
+  onChange,
+  allLabel,
+  options,
+  widthClass = "w-[140px]",
 }: {
   label: string;
-  active: boolean;
-  onClick: () => void;
+  value: string;
+  onChange: (value: string) => void;
+  allLabel: string;
+  options: string[];
+  widthClass?: string;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
-        active
-          ? "bg-accent/20 text-accent border-accent/40"
-          : "border-border text-text-muted hover:text-text-secondary hover:border-text-muted/40"
-      }`}
-    >
-      {label}
-    </button>
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">{label}</span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className={widthClass}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">{allLabel}</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
@@ -399,7 +484,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   // Use DB trades when available, fall back to log-based rows
   const useDb = (dbTrades?.length ?? 0) > 0;
   const allRows = useMemo(() => {
-    if (useDb && dbTrades) return buildRowsFromDb(dbTrades, config);
+    if (useDb && dbTrades) return buildRowsFromDb(dbTrades, config, entries);
     return buildRows(entries, config);
   }, [useDb, dbTrades, entries, config]);
 
@@ -410,6 +495,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   }, [allRows, activeConfig]);
 
   // Local filters
+  const [legFilter, setLegFilter] = useState<string>("ALL");
   const [strategyFilter, setStrategyFilter] = useState<string>("ALL");
   const [sessionFilter, setSessionFilter] = useState<string>("ALL");
   const [tickerFilter, setTickerFilter] = useState<string>("ALL");
@@ -417,6 +503,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   const [dateTo, setDateTo] = useState<string>("");
 
   // Derive unique options from configRows (so they respect the config pill)
+  const legs = useMemo(() => uniqueValues(configRows, "leg"), [configRows]);
   const strategies = useMemo(() => uniqueValues(configRows, "strategy"), [configRows]);
   const sessions = useMemo(() => uniqueValues(configRows, "session"), [configRows]);
   const tickers = useMemo(() => uniqueValues(configRows, "ticker"), [configRows]);
@@ -424,13 +511,14 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   // Apply all filters
   const rows = useMemo(() => {
     let filtered = configRows;
+    if (legFilter !== "ALL") filtered = filtered.filter((r) => r.leg === legFilter);
     if (strategyFilter !== "ALL") filtered = filtered.filter((r) => r.strategy === strategyFilter);
     if (sessionFilter !== "ALL") filtered = filtered.filter((r) => r.session === sessionFilter);
     if (tickerFilter !== "ALL") filtered = filtered.filter((r) => r.ticker === tickerFilter);
     if (dateFrom) filtered = filtered.filter((r) => r.entryDate >= dateFrom);
     if (dateTo) filtered = filtered.filter((r) => r.entryDate <= dateTo);
     return filtered;
-  }, [configRows, strategyFilter, sessionFilter, tickerFilter, dateFrom, dateTo]);
+  }, [configRows, legFilter, strategyFilter, sessionFilter, tickerFilter, dateFrom, dateTo]);
 
   // Summary stats (only closed trades with realized values)
   const { totalR, totalUsd, closedCount, winCount } = useMemo(() => {
@@ -551,58 +639,59 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   }
 
   const hasActiveFilters =
-    strategyFilter !== "ALL" || sessionFilter !== "ALL" || tickerFilter !== "ALL" || dateFrom !== "" || dateTo !== "";
+    activeConfig !== "ALL" || legFilter !== "ALL" || strategyFilter !== "ALL" || sessionFilter !== "ALL" || tickerFilter !== "ALL" || dateFrom !== "" || dateTo !== "";
 
   return (
     <div className="space-y-3">
       {/* Filters */}
       <div className="rounded-md border border-border bg-bg-card p-3 space-y-2.5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          {/* Config (FAST/SLOW) */}
           {configNames.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Config</span>
-              <div className="flex gap-1">
-                <FilterPill label="All" active={activeConfig === "ALL"} onClick={() => setActiveConfig("ALL")} />
-                {configNames.map((name) => (
-                  <FilterPill key={name} label={name} active={activeConfig === name} onClick={() => setActiveConfig(name)} />
-                ))}
-              </div>
-            </div>
+            <FilterSelect
+              label="Config"
+              value={activeConfig}
+              onChange={setActiveConfig}
+              allLabel="All Configs"
+              options={configNames}
+              widthClass="w-[180px]"
+            />
           )}
 
-          {/* Strategy */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Strategy</span>
-            <div className="flex gap-1">
-              <FilterPill label="All" active={strategyFilter === "ALL"} onClick={() => setStrategyFilter("ALL")} />
-              {strategies.map((s) => (
-                <FilterPill key={s} label={s} active={strategyFilter === s} onClick={() => setStrategyFilter(s)} />
-              ))}
-            </div>
-          </div>
+          <FilterSelect
+            label="Leg"
+            value={legFilter}
+            onChange={setLegFilter}
+            allLabel="All Legs"
+            options={legs}
+            widthClass="w-[170px]"
+          />
 
-          {/* Session */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Session</span>
-            <div className="flex gap-1">
-              <FilterPill label="All" active={sessionFilter === "ALL"} onClick={() => setSessionFilter("ALL")} />
-              {sessions.map((s) => (
-                <FilterPill key={s} label={s} active={sessionFilter === s} onClick={() => setSessionFilter(s)} />
-              ))}
-            </div>
-          </div>
+          <FilterSelect
+            label="Strategy"
+            value={strategyFilter}
+            onChange={setStrategyFilter}
+            allLabel="All Strategies"
+            options={strategies}
+            widthClass="w-[150px]"
+          />
 
-          {/* Ticker */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-text-muted font-medium uppercase tracking-wide">Ticker</span>
-            <div className="flex gap-1">
-              <FilterPill label="All" active={tickerFilter === "ALL"} onClick={() => setTickerFilter("ALL")} />
-              {tickers.map((t) => (
-                <FilterPill key={t} label={t} active={tickerFilter === t} onClick={() => setTickerFilter(t)} />
-              ))}
-            </div>
-          </div>
+          <FilterSelect
+            label="Session"
+            value={sessionFilter}
+            onChange={setSessionFilter}
+            allLabel="All Sessions"
+            options={sessions}
+            widthClass="w-[150px]"
+          />
+
+          <FilterSelect
+            label="Ticker"
+            value={tickerFilter}
+            onChange={setTickerFilter}
+            allLabel="All Tickers"
+            options={tickers}
+            widthClass="w-[130px]"
+          />
 
           {/* Date range */}
           <div className="flex items-center gap-1.5">
@@ -616,6 +705,8 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
           {hasActiveFilters && (
             <button
               onClick={() => {
+                setActiveConfig("ALL");
+                setLegFilter("ALL");
                 setStrategyFilter("ALL");
                 setSessionFilter("ALL");
                 setTickerFilter("ALL");
@@ -635,7 +726,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
       </div>
 
       <div className="overflow-x-auto overflow-y-auto max-h-[800px] rounded-md border border-border bg-bg-card">
-        <table className="min-w-[1260px] w-full border-collapse text-sm">
+        <table className="min-w-[1380px] w-full border-collapse text-sm">
           <thead className="bg-[#24242b] text-text-primary sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2 border-r border-border/80">Entry Date</th>
@@ -643,6 +734,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
               <th className="px-3 py-2 border-r border-border/80">Exit Date</th>
               <th className="px-3 py-2 border-r border-border/80">Exit Time</th>
               <th className="px-3 py-2 border-r border-border/80">Config</th>
+              <th className="px-3 py-2 border-r border-border/80">Leg</th>
               <th className="px-3 py-2 border-r border-border/80">Ticker</th>
               <th className="px-3 py-2 border-r border-border/80">Session</th>
               <th className="px-3 py-2 border-r border-border/80">Direction</th>
@@ -654,7 +746,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-text-muted">
+                <td colSpan={12} className="px-4 py-10 text-center text-text-muted">
                   No completed trades yet
                 </td>
               </tr>
@@ -695,6 +787,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
                         <span className="text-text-muted">\u2014</span>
                       )}
                     </td>
+                    <td className="px-3 py-2"><Pill label={row.leg} /></td>
                     <td className="px-3 py-2"><Pill label={row.ticker} tone={tickerTone} /></td>
                     <td className="px-3 py-2"><Pill label={row.session} tone={
                       row.session === "NY" ? "session-ny"

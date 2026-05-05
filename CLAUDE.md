@@ -124,6 +124,7 @@ backtesting/learnings/
 ├── asset/                        # Detailed per-instrument learnings ({SYMBOL}.md)
 ├── portfolios/                   # Portfolio construction and allocation docs
 ├── reports/                      # Pipeline reports, sweep reports, council reports
+├── CANDIDATE_DEPLOYABILITY.md    # Required live/research deployability labels
 ├── ALPHA_V1.md                   # Research thesis docs (top-level)
 ├── CURRENT_REGIME_WORKFLOW.md
 ├── CURRENT_STRATEGY_WORKFLOW.md
@@ -157,6 +158,7 @@ Pipeline reports, council transcripts, and sweep analyses go in `backtesting/lea
 3. **Include the evidence** — record key metrics (trades, WR, Net R, Sharpe, DD) and the DB experiment name so results are traceable.
 4. **Regenerate the access layer** — after updating detailed learnings or adding reports, run `uv run python backtesting/scripts/build_learnings_registry.py`.
 5. **Create new files as needed** — when testing a new asset for the first time, create its learnings file in `backtesting/learnings/asset/` following the GC.md template.
+6. **Label candidate deployability** — every ranked candidate, shortlist, sweep report, and promotion packet must include the `deployability`, `live_support_notes`, and `exact_replay_required` fields defined in `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`. Do not recommend a candidate for live or dry-run execution unless it is `live_native` or has a concrete implementation plan to become `live_native`.
 
 ## Backtesting Best Practices
 

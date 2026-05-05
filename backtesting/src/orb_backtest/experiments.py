@@ -289,6 +289,10 @@ CREATE TABLE IF NOT EXISTS live_trades (
     exit_timestamp TEXT NOT NULL,
     config_name TEXT NOT NULL DEFAULT '',
     r_result REAL,
+    entry_timestamp TEXT,
+    ticker TEXT,
+    exec_ticker TEXT,
+    leg TEXT,
     notes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_live_trades_date ON live_trades(date);
@@ -381,6 +385,18 @@ def init_db() -> Path:
         conn.executescript(_EXECUTION_TRADE_LOGS_SCHEMA)
         conn.executescript(_EXECUTION_MAIN_LOGS_SCHEMA)
         conn.executescript(_EXECUTION_WEBHOOK_LOGS_SCHEMA)
+
+        # Migrate: add live execution display fields if missing
+        live_existing = {row[1] for row in conn.execute("PRAGMA table_info(live_trades)").fetchall()}
+        live_new_cols = {
+            "entry_timestamp": "TEXT",
+            "ticker": "TEXT",
+            "exec_ticker": "TEXT",
+            "leg": "TEXT",
+        }
+        for col, dtype in live_new_cols.items():
+            if col not in live_existing:
+                conn.execute(f"ALTER TABLE live_trades ADD COLUMN {col} {dtype}")
 
         # Migrate: add stop_loss_points to news_straddle_runs if missing
         ns_existing = {row[1] for row in conn.execute("PRAGMA table_info(news_straddle_runs)").fetchall()}
@@ -1946,8 +1962,8 @@ def log_live_trade(trade: dict) -> int:
             INSERT INTO live_trades
                 (timestamp, session, date, direction, entry_price, stop_price,
                  tp1_price, tp2_price, exit_type, tp1_hit, exit_timestamp,
-                 config_name, r_result, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 config_name, r_result, entry_timestamp, ticker, exec_ticker, leg, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 datetime.now(timezone.utc).isoformat(),
@@ -1963,6 +1979,10 @@ def log_live_trade(trade: dict) -> int:
                 trade["exit_timestamp"],
                 trade.get("config_name", ""),
                 trade.get("r_result"),
+                trade.get("entry_timestamp"),
+                trade.get("ticker"),
+                trade.get("exec_ticker"),
+                trade.get("leg") or trade["session"],
                 trade.get("notes"),
             ],
         )
@@ -2017,7 +2037,7 @@ def update_live_trade(trade_id: int, updates: dict) -> dict | None:
     allowed = {
         "session", "date", "direction", "entry_price", "stop_price",
         "tp1_price", "tp2_price", "exit_type", "tp1_hit", "exit_timestamp",
-        "config_name", "r_result", "notes",
+        "config_name", "r_result", "entry_timestamp", "ticker", "exec_ticker", "leg", "notes",
     }
     fields = {k: v for k, v in updates.items() if k in allowed}
     if not fields:

@@ -38,7 +38,8 @@ The optimization knowledge base now lives under `backtesting/learnings/`.
 
 **Every optimization run MUST:**
 1. **Read** `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, and the relevant `backtesting/learnings/briefs/assets/{SYMBOL}.md` before starting
-2. **Update** the relevant detailed learnings file after discovering meaningful insights, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
+2. **Label** every candidate row with `deployability`, `live_support_notes`, and `exact_replay_required` from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`
+3. **Update** the relevant detailed learnings file after discovering meaningful insights, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
 
 ## Workflow
 

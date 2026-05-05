@@ -196,6 +196,10 @@ class StrategyConfig:
     # distance is >= threshold, TP1/TP2 use wide_stop_target_rr instead of rr.
     wide_stop_target_threshold_points: float = 0.0
     wide_stop_target_rr: float = 0.0
+    # Optional large-stop exit simplification. When enabled and computed stop/risk
+    # distance is >= wide_stop_target_threshold_points, TP2 is set equal to the
+    # normal TP1 level so the trade exits the full position at TP1.
+    wide_stop_full_exit_at_tp1: bool = False
 
     # Bar magnifier: use 1m sub-bars for fill/exit simulation
     use_bar_magnifier: bool = True

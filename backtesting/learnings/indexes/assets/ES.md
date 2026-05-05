@@ -34,6 +34,8 @@
 - `WF Fold Details` -> `UNSPECIFIED`
 - `Key Findings` -> `UNSPECIFIED`
 - `DB Entry` -> `UNSPECIFIED`
+- `ALPHA_V1-A Live Retention Note (2026-05-05)` -> `CONDITIONAL — keep in research portfolio, demote or pause live risk at `$400``
+- `ES_NY ORB Wide-Stop Target Sweep (2026-05-05)` -> `UNSPECIFIED`
 - `NY LSI (Liquidity Sweep Inversion) — Long Only` -> `**NO-GO** (thin edge, parameter instability, structural negative year)`
 - `London LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (2/5 pipeline phases — PF ceiling, no WF transferability)`
 - `Asia LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (definitive — losing strategy, no edge)`
@@ -51,7 +53,7 @@
 - [ES_NY_HTF_LSI_PHASE_ONE.md](../../reports/ES_NY_HTF_LSI_PHASE_ONE.md) -> [es_ny_htf_lsi_phase_one](../../../data/results/es_ny_htf_lsi_phase_one)
 - [ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [es_ny_htf_lsi_stitched_followup](../../../data/results/es_ny_htf_lsi_stitched_followup)
 
-## Result Directories (8)
+## Result Directories (9)
 - [es_asia_b_phase_one](../../../data/results/es_asia_b_phase_one) (1 files; primary: phase_one_results.json)
 - [es_ny_htf_lsi_anchor_explore](../../../data/results/es_ny_htf_lsi_anchor_explore) (1 files; primary: summary.json)
 - [es_ny_htf_lsi_broad_discovery](../../../data/results/es_ny_htf_lsi_broad_discovery) (6 files; primary: summary.json, stage_a_structural.json, stage_b_trade_cap.json, stage_c_oat.json, stage_d_grid.json)
@@ -60,3 +62,4 @@
 - [es_orb_discovery_3session](../../../data/results/es_orb_discovery_3session) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [es_orb_discovery_pipeline](../../../data/results/es_orb_discovery_pipeline) (2 files; primary: phase_one_results.json, discovery_pipeline_results.json)
 - [nq_combo_with_es_candidates](../../../data/results/nq_combo_with_es_candidates) (3 files; primary: summary.md, combo_es_candidate_details.json, combo_es_candidate_ranking.csv)
+- [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505) (6 files; primary: summary.json, best_near_intact_by_candidate.csv, near_intact_candidates.csv, ranked_candidates.csv, variant_manifest.csv)

@@ -54,6 +54,7 @@ def _run_backtest_with_candidates(
     tp1_ratio: float = 0.5,
     wide_stop_target_threshold_points: float = 0.0,
     wide_stop_target_rr: float = 0.0,
+    wide_stop_full_exit_at_tp1: bool = False,
 ) -> list[simulator.TradeResult]:
     monkeypatch.setattr(simulator, "_extract_setup_candidates", lambda *_args, **_kwargs: list(candidates))
     config = StrategyConfig(
@@ -82,6 +83,7 @@ def _run_backtest_with_candidates(
         orb_reentry_policy=reentry_policy,
         wide_stop_target_threshold_points=wide_stop_target_threshold_points,
         wide_stop_target_rr=wide_stop_target_rr,
+        wide_stop_full_exit_at_tp1=wide_stop_full_exit_at_tp1,
     )
     return simulator.run_backtest(df, config)
 
@@ -232,6 +234,45 @@ def test_wide_stop_target_reduction_uses_lower_effective_rr(monkeypatch: pytest.
     assert reduced_fill.tp2_price == pytest.approx(101.25)
     assert normal_fill.r_multiple < 1.0
     assert reduced_fill.r_multiple == pytest.approx(1.25)
+
+
+def test_wide_stop_full_exit_at_tp1_uses_normal_tp1_as_full_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _df(
+        [100.0, 100.0, 100.4, 100.2, 100.2],
+        [100.0, 100.2, 101.6, 100.4, 100.4],
+        [100.0, 99.8, 100.2, 100.1, 100.1],
+        [100.0, 100.1, 101.4, 100.2, 100.2],
+    )
+    candidates = [_cand(0, 100.0)]
+
+    normal = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=3.0,
+        tp1_ratio=0.5,
+    )
+    full_at_tp1 = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=3.0,
+        tp1_ratio=0.5,
+        wide_stop_target_threshold_points=0.5,
+        wide_stop_full_exit_at_tp1=True,
+    )
+
+    normal_fill = [t for t in normal if t.exit_type != EXIT_NO_FILL][0]
+    full_at_tp1_fill = [t for t in full_at_tp1 if t.exit_type != EXIT_NO_FILL][0]
+
+    assert normal_fill.tp1_price == pytest.approx(101.5)
+    assert normal_fill.tp2_price == pytest.approx(103.0)
+    assert full_at_tp1_fill.tp1_price == pytest.approx(101.5)
+    assert full_at_tp1_fill.tp2_price == pytest.approx(101.5)
+    assert full_at_tp1_fill.r_multiple == pytest.approx(1.5)
+    assert full_at_tp1_fill.r_multiple > normal_fill.r_multiple
 
 
 def test_invalid_wide_stop_target_reduction_rejected() -> None:

@@ -60,6 +60,9 @@ class TradeRecord:
     config_name: str = "" # execution config (e.g. "FAST", "SLOW")
     r_result: float | None = None
     entry_timestamp: str = ""
+    ticker: str = ""      # signal ticker displayed in dashboard (e.g. "NQ")
+    exec_ticker: str = "" # execution contract routed to broker (e.g. "MNQ")
+    leg: str = ""         # display leg/session name (e.g. "H_ORB_SAFE")
 
 
 # ---------------------------------------------------------------------------
@@ -634,6 +637,9 @@ class ORBEngine:
             config_name=self.config_name,
             r_result=self._r_result,
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
+            ticker=self._asset_tag.upper(),
+            exec_ticker=self.exec_ticker,
+            leg=self.name,
         )
         self.on_trade_exit(record)
 
@@ -1925,6 +1931,8 @@ class ORBEngine:
         return {
             "config_name": self.config_name,
             "session": self.name,
+            "signal_ticker": self._asset_tag.upper(),
+            "exec_ticker": self.exec_ticker,
             "state": self._state.value,
             "date": self._current_date,
             "orb_high": self._orb_high if self._orb_high == self._orb_high else None,

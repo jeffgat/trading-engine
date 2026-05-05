@@ -37,6 +37,8 @@ export interface SessionStatus {
   r_result: number | null;
   risk_usd?: number;
   config_name?: string;
+  signal_ticker?: string;
+  exec_ticker?: string;
   paused?: boolean;
   excluded_dow?: number | number[] | null;
   fomc_exclusion?: boolean;
@@ -158,6 +160,7 @@ export interface SessionConfig {
   be_offset_ticks: number;
   min_tick: number;
   exec_ticker: string;
+  signal_ticker?: string;
   excluded_dow: number | number[] | null;
 }
 

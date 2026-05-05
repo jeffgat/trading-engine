@@ -15,6 +15,10 @@ export interface LiveTrade {
   exit_timestamp: string;
   config_name: string;
   r_result: number | null;
+  entry_timestamp?: string | null;
+  ticker?: string | null;
+  exec_ticker?: string | null;
+  leg?: string | null;
   notes: string | null;
 }
 

@@ -16,11 +16,20 @@
 
    Run coarse variable sweeps or small grid searches with `2-3` parameters at a time. Start broad, then narrow.
 
-5. **Use `discovery-pipeline`**
+5. **Label deployability for every candidate**
+
+   Every ranked row, shortlist row, and promotion candidate must include the deployability fields from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`:
+   - `deployability`: `live_native`, `post_filter_only`, or `research_only`
+   - `live_support_notes`: why the row received that label
+   - `exact_replay_required`: `yes` for anything being considered for execution
+
+   Treat `post_filter_only` and `research_only` rows as idea generators until they are converted into live pre-trade logic and exact-replayed.
+
+6. **Use `discovery-pipeline`**
 
    Once the anchor stabilizes, use it to rank candidates by combined OOS behavior, walk-forward retention, and local plateau stability. Promote only a tiny frozen shortlist.
 
-6. **Validate with PSR/DSR (overfitting gate)**
+7. **Validate with PSR/DSR (overfitting gate)**
 
    Run PSR and DSR on every promoted candidate before phase-one.
    - **PSR** (Probabilistic Sharpe Ratio): confirms the observed Sharpe is real given sample size, skewness, and kurtosis. Threshold: PSR >= `0.95` = strong, >= `0.85` = moderate.
@@ -28,10 +37,10 @@
    - If PSR is strong but DSR is weak, the edge is real but may not survive selection bias — proceed with caution and flag in the promotion memo.
    - Module: `backtesting/src/orb_backtest/validate/deflated_sharpe.py`
 
-7. **Run `phase-one-robust-pipeline`**
+8. **Run `phase-one-robust-pipeline`**
 
    Feed only the frozen promoted candidates into phase one and evaluate payout rate, EV per attempt, and time to payout. Do not use phase one as the main search loop.
 
-8. **Save and document the winner**
+9. **Save and document the winner**
 
    After downstream validation, save the final config, update the asset learnings file with the conclusion and DB references, and regenerate `backtesting/learnings/registry/catalog.json`.

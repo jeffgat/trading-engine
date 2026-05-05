@@ -38,7 +38,8 @@ The canonical research memory now lives under `backtesting/learnings/`. It is la
 1. **Read** `backtesting/learnings/README.md`, then `backtesting/learnings/briefs/GLOBAL.md`, before running backtests, sweeps, or proposing strategy changes
 2. **Read** the relevant asset brief at `backtesting/learnings/briefs/assets/{SYMBOL}.md` before opening the detailed asset history
 3. **Use** `backtesting/learnings/global/strategy-memory.md`, `backtesting/learnings/asset/{SYMBOL}.md`, `backtesting/learnings/indexes/assets/{SYMBOL}.md`, and `backtesting/learnings/registry/catalog.json` only as deeper layers when the brief is not enough
-4. **Update** the relevant detailed learnings file after reaching a meaningful strategy conclusion, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
+4. **Apply** `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md` to every ranked candidate, shortlist row, sweep report, and promotion packet
+5. **Update** the relevant detailed learnings file after reaching a meaningful strategy conclusion, then regenerate the access layer with `uv run python backtesting/scripts/build_learnings_registry.py`
 
 **What to record:**
 - Parameter values that consistently help or hurt (with data: instrument, session, date range, metric impact)
@@ -119,6 +120,7 @@ After running a backtest:
 - Report key metrics: total trades, win rate, profit factor, Sharpe ratio, max drawdown
 - Note the exit type breakdown (SL, TP1+TP2, TP1+BE, EOD, no-fills)
 - Flag if results were auto-saved and the experiment ID
+- For every candidate table, include `deployability`, `live_support_notes`, and `exact_replay_required` from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`
 
 After modifying engine code:
 - Run existing backtests to verify no regression
@@ -133,7 +135,7 @@ After completing the task, determine if any new insight was discovered. If so, u
 - **Signal Observations** — FVG quality, gap size patterns, ORB behavior
 - **Failed Hypotheses** — what was tested, what the result was, why it failed
 - **Known Edge Cases** — specific dates or conditions causing anomalies
-- **Optimization Results** — best parameter combos from sweeps with context
+- **Optimization Results** — best parameter combos from sweeps with context, including whether each candidate is `live_native`, `post_filter_only`, or `research_only`
 
 Use:
 - `backtesting/learnings/global/strategy-memory.md` for cross-asset or cross-strategy conclusions

@@ -10,10 +10,10 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 39
+- Strategy sections indexed: 41
 - Related reports indexed: 4
-- Related result directories indexed: 8
-- Status mix: CONDITIONAL: 2, INVALIDATED_OR_CORRUPT: 1, NO-GO: 7, UNSPECIFIED: 29
+- Related result directories indexed: 9
+- Status mix: CONDITIONAL: 3, INVALIDATED_OR_CORRUPT: 1, NO-GO: 7, UNSPECIFIED: 30
 
 ## Strategy Snapshot
 - `London ORB Continuation — Both Directions` -> `CONDITIONAL GO (edge confirmed, DD structural but accepted)`
@@ -21,9 +21,10 @@ This is the short entrypoint for agent and LLM context loading.
 - `London ORB Continuation — Long Only (earlier test)` -> `NO-GO`
 - `London ORB Inversion — Both Directions` -> `INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal/inversion definition.`
 - `London ORB CISD — Both Directions` -> `NO-GO (definitive)`
+- `ALPHA_V1-A Live Retention Note (2026-05-05)` -> `CONDITIONAL — keep in research portfolio, demote or pause live risk at `$400``
 - `NY LSI (Liquidity Sweep Inversion) — Long Only` -> `**NO-GO** (thin edge, parameter instability, structural negative year)`
 - `London LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (2/5 pipeline phases — PF ceiling, no WF transferability)`
 - `Asia LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (definitive — losing strategy, no edge)`
 - `NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO` -> `**NO-GO** (REJECT 2/5 pipeline phases — deep DD, MC ruin, gap fragility)`
 - `NY HTF-LSI Phase One — CONDITIONAL / HOLDOUT WEAK` -> `CONDITIONAL at best; not promoted to phase two`
-- ... plus 29 more entries in the [full ES index](../../indexes/assets/ES.md).
+- ... plus 30 more entries in the [full ES index](../../indexes/assets/ES.md).

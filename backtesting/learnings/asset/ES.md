@@ -429,6 +429,24 @@ R by year: 2016:+18  2017:+25  2018:+4  2019:+11  2020:+16  2021:+20  2022:+15  
 - **ID**: `bt-es-ny-cont-long-2016-2026-final-650260`
 - **Name**: `ES NY Cont Long 2016-2026 Final`
 
+### ALPHA_V1-A Live Retention Note (2026-05-05)
+
+- **Status**: CONDITIONAL — keep in research portfolio, demote or pause live risk at `$400`
+- **Context**: Active `ALPHA_V1-A` execution config runs `ES_NY` at `$400` risk even though the ALPHA sizing table originally preferred `$300` and warned `$400` degraded first-payout behavior.
+- **Exact production replay evidence** (`2016-04-17` to `2026-03-24`): `506` trades, `+71.13R`, `55.34%` WR, `PF 1.33`, `-12.00R` DD. Last 1y: `57` trades, `+18.88R`, `61.40%` WR, `PF 1.996`, `-6.00R` DD.
+- **Portfolio contribution**: Removing ES_NY from the same exact replay reduces full-history ALPHA_V1 R from `+445.45R` to `+374.33R`, while improving DD only slightly (`-14.89R` to `-14.42R`). It adds R historically but is not essential to portfolio viability.
+- **Live DB sample** (`2026-04-15` to `2026-05-05`): `7` closed trades, `-4.0R` / `-$1,600` at `$400`, with `5` stopouts, `2` TP1-to-BE partials, and `0` full TP2 exits. This confirms the uncomfortable payoff mode: if TP2s dry up, `+0.5R` partials cannot carry the leg.
+- **Operating read**: Do not invalidate the ES NY ORB edge from 7 live trades, but do not keep the aggressive `$400` sizing while live behavior is failing. Prefer `$200-$300` risk or a temporary pause until post-`2026-03-24` data can be exact-replayed.
+
+### ES_NY ORB Wide-Stop Target Sweep (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md`
+- **Scope**: Held ES_NY ORB structure fixed (`09:30-09:45` ORB, long-only, ATR 7, gap 0.25% ATR, entry to 13:00, flat 15:50, excl-Thu, `min_stop_points=3`, `min_tp1_points=3`, 1s magnifier) and swept ATR/ORB stop width, `rr`, and TP1 distance.
+- **Baseline in common ALPHA window (`2016-04-17` to `2026-03-24`)**: `ATR 5% / rr 5.0 / tp1 0.2` -> median stop `12.0` ticks, `+126.6R`, `PF 1.39`, `-10.9R` DD, last-1y `+18.2R`, last-2y `+21.4R`.
+- **Conclusion**: NO-GO for replacing ES_NY with a wider-stop variant. Zero rows widened the actual median stop by at least `20%` while preserving full-history, recent-window, PF, and DD quality. `ATR 6%` and `ORB 25%` did not actually widen median stop because the `3pt` minimum stop floor dominated. The first meaningful wider rows were `ATR 10%+`, `ATR 12%+`, and `ORB 50%+`; they either damaged recent performance or pushed drawdown materially higher.
+- **Least-bad wide examples**: `ATR 12% / rr 6.0 / TP1_R 1.5` widened to `21.3` median ticks and nearly retained full R (`+124.5R`), but last-1y collapsed to `+5.3R`, last-1y PF fell to `1.08`, and DD worsened to roughly `-20.4R` full / `-17.1R` last-1y. `ORB 50% / rr 5.0 / TP1_R 2.5` widened to `18.5` ticks with `+114.9R` full and `+14.6R` last-1y, but still worsened full DD to `-17.2R`.
+- **Operating read**: The narrow ES_NY stop is uncomfortable but not an obvious optimization error. If live stopouts are the concern, risk down or pause ES_NY rather than widening its stop. `deployability=live_native`, `exact_replay_required=yes_before_live_promotion`.
+
 ---
 
 ### NY LSI (Liquidity Sweep Inversion) — Long Only

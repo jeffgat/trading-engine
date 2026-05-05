@@ -158,6 +158,7 @@ class LSIEngine:
         self.name = name
         self.broker = broker
         self.exec_ticker = exec_ticker
+        self._asset_tag = self._resolve_asset_tag()
         self.config_name = config_name
         self.paused: bool = False
         self.post_exit_cleanup_delay_s = post_exit_cleanup_delay_s
@@ -952,10 +953,25 @@ class LSIEngine:
         cfg = self.config_name or "DEFAULT"
         if detail:
             trade_logger.info(
-                "%s | nq | %s | %s | %s", cfg, self.name, event, detail,
+                "%s | %s | %s | %s | %s", cfg, self._asset_tag, self.name, event, detail,
             )
             return
-        trade_logger.info("%s | nq | %s | %s", cfg, self.name, event)
+        trade_logger.info("%s | %s | %s | %s", cfg, self._asset_tag, self.name, event)
+
+    def _resolve_asset_tag(self) -> str:
+        prefix = self.name.split("_", maxsplit=1)[0].upper()
+        if prefix in {"NQ", "ES", "GC"}:
+            return prefix.lower()
+
+        ticker_map = {
+            "NQ": "nq",
+            "MNQ": "nq",
+            "ES": "es",
+            "MES": "es",
+            "GC": "gc",
+            "MGC": "gc",
+        }
+        return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
 
     def _notify_state_change(self) -> None:
         if self.on_state_change:
@@ -987,6 +1003,9 @@ class LSIEngine:
             config_name=self.config_name,
             r_result=self._r_result,
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
+            ticker=self._asset_tag.upper(),
+            exec_ticker=self.exec_ticker,
+            leg=self.name,
         )
         self.on_trade_exit(record)
 
@@ -2093,6 +2112,8 @@ class LSIEngine:
         result: dict = {
             "config_name": self.config_name,
             "session": self.name,
+            "signal_ticker": self._asset_tag.upper(),
+            "exec_ticker": self.exec_ticker,
             "state": self._display_state(),
             "raw_state": self._state.value,
             "type": "lsi",

@@ -6652,6 +6652,12 @@ def run_backtest(
             # Apply minimum TP1 distance floor (points)
             if session.min_tp1_points > 0:
                 tp1_dist = max(tp1_dist, session.min_tp1_points)
+            if (
+                config.wide_stop_full_exit_at_tp1
+                and config.wide_stop_target_threshold_points > 0.0
+                and risk_pts >= config.wide_stop_target_threshold_points
+            ):
+                tp2_dist = tp1_dist
             if direction == 1:
                 tp1 = entry + tp1_dist
                 tp2 = entry + tp2_dist

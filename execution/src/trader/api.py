@@ -254,6 +254,10 @@ def _write_trade_to_db(record: "TradeRecord") -> None:
                     "exit_timestamp": trade_dict["timestamp"],
                     "config_name": trade_dict.get("config_name", ""),
                     "r_result": trade_dict.get("r_result"),
+                    "entry_timestamp": trade_dict.get("entry_timestamp", ""),
+                    "ticker": trade_dict.get("ticker", ""),
+                    "exec_ticker": trade_dict.get("exec_ticker", ""),
+                    "leg": trade_dict.get("leg") or trade_dict["session"],
                 }
             }
             data = json.dumps(payload).encode()
@@ -318,6 +322,78 @@ def _fetch_trades_from_db(
 
     trades = _fetch_once(config)
     return [_normalize_live_trade(trade) for trade in trades]
+
+
+def _signal_ticker_from_engine(engine: Any) -> str:
+    asset_tag = getattr(engine, "_asset_tag", "")
+    if asset_tag:
+        return str(asset_tag).upper()
+    prefix = str(getattr(engine, "name", "")).split("_", maxsplit=1)[0].upper()
+    if prefix in {"NQ", "ES", "GC"}:
+        return prefix
+    exec_ticker = str(getattr(engine, "exec_ticker", "")).upper()
+    ticker_map = {
+        "MNQ": "NQ",
+        "MES": "ES",
+        "MGC": "GC",
+        "NQ": "NQ",
+        "ES": "ES",
+        "GC": "GC",
+    }
+    return ticker_map.get(exec_ticker, exec_ticker)
+
+
+def _enrich_live_trades(trades: list[dict], state: "DashboardState") -> list[dict]:
+    """Add dashboard display fields that older live_trades rows may not store."""
+    engines_by_key = {
+        (_normalize_config_name(getattr(e, "config_name", "")), getattr(e, "name", "")): e
+        for e in state.all_engines
+    }
+    history_by_key: dict[tuple, Any] = {}
+    for record in state.trade_history:
+        history_by_key[
+            (
+                _normalize_config_name(record.config_name),
+                record.session,
+                record.date,
+                record.direction,
+                record.timestamp,
+            )
+        ] = record
+
+    enriched: list[dict] = []
+    for trade in trades:
+        row = _normalize_live_trade(trade)
+        config_name = _normalize_config_name(row.get("config_name"))
+        session = str(row.get("session") or "")
+        row["config_name"] = config_name
+        row["leg"] = row.get("leg") or session
+
+        history = history_by_key.get(
+            (
+                config_name,
+                session,
+                row.get("date"),
+                row.get("direction"),
+                row.get("exit_timestamp"),
+            )
+        )
+        if history is not None:
+            row["entry_timestamp"] = row.get("entry_timestamp") or getattr(history, "entry_timestamp", "")
+            row["ticker"] = row.get("ticker") or getattr(history, "ticker", "")
+            row["exec_ticker"] = row.get("exec_ticker") or getattr(history, "exec_ticker", "")
+
+        engine = engines_by_key.get((config_name, session))
+        if engine is not None:
+            row["ticker"] = row.get("ticker") or _signal_ticker_from_engine(engine)
+            row["exec_ticker"] = row.get("exec_ticker") or getattr(engine, "exec_ticker", "")
+
+        row["ticker"] = row.get("ticker") or _signal_ticker_from_engine(type("_Fallback", (), {
+            "name": session,
+            "exec_ticker": row.get("exec_ticker", ""),
+        })())
+        enriched.append(row)
+    return enriched
 
 # Known execution config names (used to distinguish config tag from asset tag in log parsing)
 _KNOWN_CONFIGS: set[str] = set()
@@ -843,7 +919,7 @@ def create_app(state: DashboardState) -> FastAPI:
             records = list(reversed(records))[:limit]
             from dataclasses import asdict
             return {
-                "trades": [_normalize_live_trade(asdict(r)) for r in records],
+                "trades": _enrich_live_trades([asdict(r) for r in records], state),
                 "total": len(state.trade_history),
             }
 
@@ -853,6 +929,7 @@ def create_app(state: DashboardState) -> FastAPI:
                 session=session, config=config,
                 date_from=date_from, date_to=date_to, limit=limit,
             )
+            trades = _enrich_live_trades(trades, state)
             return {"trades": trades, "total": len(trades)}
         except Exception as exc:
             logger.warning("DB trade fetch failed, falling back to memory: %s", exc)
@@ -867,7 +944,7 @@ def create_app(state: DashboardState) -> FastAPI:
             records = list(reversed(records))[:limit]
             from dataclasses import asdict
             return {
-                "trades": [_normalize_live_trade(asdict(r)) for r in records],
+                "trades": _enrich_live_trades([asdict(r) for r in records], state),
                 "total": len(state.trade_history),
             }
 
@@ -885,6 +962,10 @@ def create_app(state: DashboardState) -> FastAPI:
         config_name: str = ""
         r_result: float | None = None
         notes: str | None = None
+        entry_timestamp: str | None = None
+        ticker: str | None = None
+        exec_ticker: str | None = None
+        leg: str | None = None
 
     @app.post("/api/trades/history")
     async def create_manual_trade(req: ManualTradeRequest):
@@ -1425,6 +1506,7 @@ def _session_info(engine) -> dict:
             "long_only": engine.long_only,
             "excluded_dow": engine.excluded_dow,
             "exec_ticker": engine.exec_ticker,
+            "signal_ticker": _signal_ticker_from_engine(engine),
             "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
             "regime_gates": regime_gates,
         }
@@ -1462,6 +1544,7 @@ def _session_info(engine) -> dict:
         "min_stop_pts": engine.min_stop_pts,
         "min_tp1_pts": engine.min_tp1_pts,
         "exec_ticker": engine.exec_ticker,
+        "signal_ticker": _signal_ticker_from_engine(engine),
         "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
         "regime_gates": regime_gates,
         "structure_gate": getattr(engine, "structure_gate", None),

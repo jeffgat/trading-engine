@@ -77,7 +77,12 @@
 
    A specialist does not need to win outside its target regime, but the live system must still be tested across the full calendar to verify the gate behaves correctly and mostly stays out when it should.
 
-12. **Use the final hold-out once**
+12. **Label gate deployability**
+
+   Every regime gate or specialist candidate must include the deployability fields from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md`.
+   A gate is `live_native` only if the live engine can compute it causally before arming an order. Attribution-only buckets, post-trade filters, and same-day/future labels are `post_filter_only` or `research_only`.
+
+13. **Use the final hold-out once**
 
    Final evaluation should include:
    same-regime hold-out performance for the specialist logic

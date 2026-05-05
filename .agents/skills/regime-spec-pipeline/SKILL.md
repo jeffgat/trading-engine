@@ -58,7 +58,7 @@ Regime-specific pipeline that answers: **"Does this strategy have real edge in t
 | 2 | In-Regime Structural Check | Sanity check the specialist thesis on pre-holdout target-regime data | Enough trades, basic viability |
 | 3 | Same-Regime Walk-Forward | Optimize on earlier regime episodes, test on unseen later episodes of that regime | Conditional OOS edge, stability |
 | 4 | Full-Calendar Gate Test | Run the gated system across all dates | Good in target regime, controlled outside |
-| 5 | Final Same-Regime Hold-Out + Diagnostics | One untouched final test plus specialist diagnostics | Conditional hold-out confirmation |
+| 5 | Final Same-Regime Hold-Out + Diagnostics | One untouched final test plus specialist diagnostics and deployability labels from `backtesting/learnings/CANDIDATE_DEPLOYABILITY.md` | Conditional hold-out confirmation |
 
 See `references/phases.md` for the workflow.
 See `references/regime-rules.md` for regime-label and Bailey rules.
@@ -70,3 +70,5 @@ See `references/regime-rules.md` for regime-label and Bailey rules.
 | **GO** | Same-regime WF passes, gated system behaves correctly, hold-out is clean, and specialist diagnostics support deployment | Deploy as a regime specialist |
 | **CONDITIONAL** | Target-regime edge looks good but hold-out is thin, diagnostics are incomplete, or outside-regime behavior is only acceptable with tight gating | Trade reduced size or finish diagnostics |
 | **NO-GO** | Regime label leaks, same-regime OOS fails, hold-out is contaminated, or the strategy is not meaningfully better in-target than out-of-target | Do not deploy as a specialist |
+
+Every GO/CONDITIONAL candidate must also state whether the gate is `live_native`, `post_filter_only`, or `research_only`. A regime gate is deployable only when the live engine can compute it causally before arming an order.

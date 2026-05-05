@@ -204,6 +204,26 @@ R by year: 2016:+15.4 | 2017:+25.9 | 2018:+4.6 | 2019:+11.0 | 2020:+16.6 | 2021:
 
 DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
+### ES_NY ORB Live Retention Review (2026-05-05)
+
+Live `ALPHA_V1-A` currently risks `$400` on `ES_NY`, while the original ALPHA sizing table marked `$300` as the preferred sprint risk and explicitly noted that `$400` reduced first-payout quality (`82.7%` payout, `7` max consecutive breaches). Treat `$400` ES_NY as an aggressive live override, not the canonical ALPHA risk.
+
+Production exact replay still supports keeping the leg in the research portfolio: over `2016-04-17` to `2026-03-24`, exact `ALPHA_V1-A` replay shows `ES_NY ORB` at `506` trades, `+71.13R`, `55.34%` WR, `PF 1.33`, and `-12.00R` DD; last 1y shows `57` trades, `+18.88R`, `61.40%` WR, `PF 1.996`, and `-6.00R` DD. Removing ES_NY from the same exact replay lowers full-history portfolio R from `+445.45R` to `+374.33R`, but only slightly improves full-history DD (`-14.89R` to `-14.42R`).
+
+Live DB sample after the local data cutoff is weak and matches the discretionary concern: from `2026-04-15` through `2026-05-05`, `ES_NY` has `7` closed live trades for `-4.0R` / `-$1,600` at `$400` risk, with `5` full stopouts, `2` TP1-to-breakeven exits, and `0` full TP2 exits. This is not enough sample to invalidate the historical edge, but it confirms the leg's uncomfortable payoff shape: without occasional TP2/EOD extension, two `+0.5R` partials are needed just to offset one `-1R` loss.
+
+**Operating conclusion:** do not permanently delete ES_NY ORB on this sample alone, but do not keep it at `$400` while it is failing live. Demote to `$200-$300` or pause until fresh post-2026-03-24 data can be exact-replayed. If ALPHA_V1 needs a leg removed for simplicity or drawdown relief, ES_NY is the first ORB leg to cut because it is positive but least essential: the portfolio remains profitable without it, and the current live sizing magnifies its worst behavioral mode.
+
+### NY ORB Wide-Stop Target Sweep (2026-05-05)
+
+Report: `backtesting/learnings/reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md`
+
+Focused sweep across `794` valid configs tested whether **NQ NY ORB R11** and **ES_NY ORB** could use wider NY-session stops while sweeping `rr` and TP1 distance. Structure was held fixed for each candidate; only stop basis/width, `rr`, and TP1 moved.
+
+**Conclusion: do not widen either NY ORB as an ALPHA_V1 replacement.** Zero rows widened the actual median stop by at least `20%` while preserving full-history, last-1y, last-2y, PF, DD, and negative-year quality. NQ R11's least-bad actual widening (`ATR 9%`, about `1.29x` wider) cost roughly `26R-30R` full-history. ES_NY's first meaningful wider families (`ATR 10%+`, `ATR 12%+`, `ORB 50%+`) either damaged recent performance or materially increased DD; `ATR 6%` and `ORB 25%` mostly hit the same `12`-tick median stop because the `3pt` floor dominated.
+
+Operating implication: if NY ORB stopouts are emotionally or live-operationally uncomfortable, solve that with **risk sizing**, not wider stops. ES_NY remains the first ORB leg to risk down or pause when live behavior is bad. NQ NY ORB R11 remains a separate conditional candidate that needs exact execution replay before live promotion; widening its stop is not the upgrade path. Both tested branches are `deployability=live_native` mechanically, but `exact_replay_required=yes_before_live_promotion`.
+
 ---
 
 ## ORB Mechanic Transfer Test — Hunter Wide-Stop + Re-Entry
@@ -237,6 +257,10 @@ Per-leg read:
 2026-05-03 follow-up report: `backtesting/learnings/reports/ALPHA_V1_ORB_GAP_CANDLE_STOP_COMPARE_20260503.md`
 
 Tested replacing the current ATR/ORB-distance stop logic on the same three ORB legs with an FVG impulse-candle structural stop: long stop = `low[signal_bar - 1] - 1pt`, short stop = `high[signal_bar - 1] + 1pt`, while leaving the engine's hard floors active. **Conclusion: NO-GO as a sleeve rule.** Combined 10yr fell from `+486.9R / -21.2R DD` to `+375.5R / -28.8R DD`; funded first-payout outcomes fell from `186` payouts / `70` breaches to `170` payouts / `85` breaches. The damage was largest in `ES NY` (`-62.6R`) and `NQ Asia` (`-35.0R`). The only favorable read was small 2026 YTD noise (`+1.6R`, DD `+0.9R`) and is not enough to offset the long-run and 2025 degradation.
+
+2026-05-04 follow-up report: `backtesting/learnings/reports/ALPHA_V1_ASIA_ORB_FULL_TP1_WIDESTOP_SWEEP_20260504.md`
+
+Tested a narrower wide-stop exit rule on the two Asia ORB legs only: when realized stop/risk points are above `large_sl_threshold_points`, exit the full trade at the normal TP1 level instead of partialing at TP1 and targeting TP2. **Conclusion: NO-GO / tiny research-only NQ sidecar at best.** NQ Asia's best full-history threshold was `35` points for only `+3.82R` with no DD change. ES Asia's best threshold was `15` points and still lost `-0.18R`. The best combined NQ+ES Asia row was simply `nq_sl35p0__es_baseline`, adding `+3.82R` with no DD improvement; 2025+ best combined lift was only `+1.42R`. This does not justify live/exact replay implementation unless paired with a broader exit-management project.
 
 Completed follow-up: the promotion packet below tests `cap2_after_nonpositive` on `NQ Asia ORB` and `ES Asia ORB` inside the full active ALPHA_V1 stack.
 
@@ -446,6 +470,26 @@ Extended the same close-entry screen to three non-ALPHA candidates that remain w
 Result: `fvg_close` is a broad NO-GO. It did not improve any candidate cleanly. `breakout_close` is also a clear NO-GO for both GC candidates (`GC NY R3` fell from `+153.7R` baseline to `-43.0R`; `GC Asia-1` fell from `+114.7R` to `-120.4R`). The only open thread is `NQ Asia-2 breakout_close`, which improved full-history R from `+177.8R` to `+285.5R` and holdout R from `+38.3R` to `+71.4R`, but at the cost of wider DD (`-17.5R` to `-24.0R`) and lower Sharpe (`1.95` to `1.70`). Treat it as a separate high-flow NQ Asia branch needing prop/risk/regime validation, not as a general replacement for retest entries.
 
 Report: `backtesting/learnings/reports/PROMISING_ORB_CLOSE_ENTRY_PROBE.md`
+
+---
+
+## ATH Regime First Pass (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_FIRST_PASS_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_ath_regime_first_pass_20260505/`
+
+Scope was the active ALPHA_V1 baseline trade set from the 2026-05-02 reentry promotion packet: `3,470` filled trades across `NQ NY HTF-LSI`, `NQ Asia ORB`, `ES Asia ORB`, and `ES NY ORB`, annotated with point-in-time ATH features from local continuous futures data only.
+
+**First read: promising as attribution, not yet a live filter.** The clearest broad weak bucket is signal-time `0.5-1%` below futures ATH. Full history is almost flat in that zone (`381` trades, `+2.6R`, `0.01R` avg, `46.7%` WR), while the full portfolio baseline is `+579.5R`, `0.167R` avg, `54.0%` WR. A simple skip probe preserves full-history net R (`+576.9R`) while raising avg R to `0.187` and PF from `1.41` to `1.46`; in `2025+`, the same skip improves `+106.3R / -11.2R DD` to `+111.5R / -8.5R DD`.
+
+Leg-level behavior is not a universal "near ATH good" rule:
+- `ES Asia ORB` likes the closest ATH band: `0-0.5%` below ATH produced `325` trades, `+61.1R`, `0.188R` avg, with much lower SL rate (`21.2%`) than its baseline.
+- `NQ Asia ORB` is strongest in deeper ATH drawdowns or `1-2%` below ATH, not simply right at ATH.
+- `NQ NY HTF-LSI` is strongest around `2-5%` below futures ATH (`102` trades, `+42.1R`, `0.412R` avg).
+- `ES NY ORB` also dislikes the `0.5-1%` band, but has good buckets both very near ATH and far below ATH.
+
+**Next step:** pre-register and validate `skip_pct_0p5_1_all` with same-regime OOS and a full-calendar gated-system run before any execution work. Separately diagnose ES-near-ATH and HTF-LSI `2-5%` behavior as leg-specific theses.
 
 ---
 
