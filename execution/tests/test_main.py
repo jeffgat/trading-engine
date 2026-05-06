@@ -722,9 +722,13 @@ def test_alpha_v1_c_is_disabled_conservative_clone_without_default_webhook():
     aggressive = configs["ALPHA_V1-A"]
     conservative = configs["ALPHA_V1-C"]
 
-    def _without_risk(overrides: dict[str, dict]) -> dict[str, dict]:
+    def _without_sizing(overrides: dict[str, dict]) -> dict[str, dict]:
         return {
-            name: {key: value for key, value in values.items() if key != "risk_usd"}
+            name: {
+                key: value
+                for key, value in values.items()
+                if key not in {"risk_usd", "max_single_risk_usd"}
+            }
             for name, values in overrides.items()
         }
 
@@ -733,14 +737,21 @@ def test_alpha_v1_c_is_disabled_conservative_clone_without_default_webhook():
     assert aggressive.max_open_contracts == conservative.max_open_contracts
     assert aggressive.webhooks[0].label == "Account 1"
     assert conservative.webhooks == []
-    assert _without_risk(aggressive.session_overrides) == _without_risk(conservative.session_overrides)
-    assert _without_risk(aggressive.lsi_session_overrides) == _without_risk(conservative.lsi_session_overrides)
-    assert aggressive.session_overrides["NQ_Asia"]["risk_usd"] == 250
-    assert aggressive.session_overrides["ES_Asia"]["risk_usd"] == 250
-    assert aggressive.session_overrides["ES_NY"]["risk_usd"] == 400
-    assert aggressive.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 400
-    assert set(conservative.session_overrides) == {"NQ_Asia", "ES_Asia", "ES_NY"}
+    assert _without_sizing(aggressive.session_overrides) == _without_sizing(conservative.session_overrides)
+    assert _without_sizing(aggressive.lsi_session_overrides) == _without_sizing(conservative.lsi_session_overrides)
+    assert aggressive.session_overrides["NQ_NY"]["risk_usd"] == 250
+    assert aggressive.session_overrides["NQ_NY"]["max_single_risk_usd"] == 375
+    assert aggressive.session_overrides["NQ_Asia"]["risk_usd"] == 400
+    assert aggressive.session_overrides["NQ_Asia"]["max_single_risk_usd"] == 600
+    assert aggressive.session_overrides["ES_Asia"]["risk_usd"] == 150
+    assert aggressive.session_overrides["ES_Asia"]["max_single_risk_usd"] == 225
+    assert aggressive.session_overrides["ES_NY"]["risk_usd"] == 300
+    assert aggressive.session_overrides["ES_NY"]["max_single_risk_usd"] == 450
+    assert aggressive.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 500
+    assert aggressive.lsi_session_overrides["NQ_NY_LSI"]["max_single_risk_usd"] == 750
+    assert set(conservative.session_overrides) == {"NQ_NY", "NQ_Asia", "ES_Asia", "ES_NY"}
     assert set(conservative.lsi_session_overrides) == {"NQ_NY_LSI"}
+    assert conservative.session_overrides["NQ_NY"]["risk_usd"] == 150
     assert conservative.session_overrides["NQ_Asia"]["risk_usd"] == 150
     assert conservative.session_overrides["ES_Asia"]["risk_usd"] == 200
     assert conservative.session_overrides["ES_NY"]["risk_usd"] == 200

@@ -26,15 +26,17 @@ Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and
 
 Risk is differentiated per leg based on actual trade-level prop sims. For the NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep; the 2026-05-06 recent annual payout sim stitched exact cached trade streams for the four active ALPHA legs plus exact NQ R11. This is still not a freshly exported five-leg execution profile, but it is the current operating sizing read.
 
+Live execution single-contract cap rule: each leg sets `max_single_risk_usd = 1.5 * risk_usd`. If one micro contract would exceed that cap, the setup is skipped; if it fits, one-contract split trades now exit the full position at TP1 instead of using TP1 only as a breakeven trigger.
+
 | Leg | Sprint Risk | Pay% | PayD | MCBch | EV$/acct | Rationale |
 |-----|------------|------|------|-------|----------|-----------|
-| NQ NY HTF-LSI lag24 | $300 | 90.6% | 304d | 9 | +$2,076 | Canonical LSI swap-in; recent 2024-2026 packet stayed strong at 98.0% / 176d |
-| NQ Asia ORB | $300 | 96.9% | 132d | 2 | +$2,362 | $400 → 90.4% with 6 MCBch. $300 fixes it |
+| NQ NY HTF-LSI lag24 | $500 | 87.0%* | 27d* | n/a* | n/a* | Selected aggressive sprint sizing; fastest payout sleeve, accepts higher breach variance |
+| NQ Asia ORB | $400 | 87.0%* | 27d* | n/a* | n/a* | Selected aggressive sprint sizing; primary Asia accelerator |
 | ES Asia Cont | $150 | 95.7%* | 52d* | 2* | +$276* | Trimmed from `$200` in the annual payout sim to reduce breach clustering while preserving speed |
-| NQ NY ORB R11 | $150 | 95.7%* | 52d* | 2* | +$276* | Added NY ORB companion leg; exact split replay `+148.3R`, `PF 1.51`, `-6.45R` DD |
-| ES NY Cont | $100 | 95.7%* | 52d* | 2* | +$276* | Demoted from the `$400` live override; keep it as a small NY ORB satellite only |
+| NQ NY ORB R11 | $250 | 87.0%* | 27d* | n/a* | n/a* | Added NY ORB companion leg; exact split replay `+148.3R`, `PF 1.51`, `-6.45R` DD |
+| ES NY Cont | $300 | 87.0%* | 27d* | n/a* | n/a* | Higher-risk aggressive sprint satellite; monitor 2026 NY stress closely |
 
-\* Five-leg recent annual sim row for `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`: average resolved 2024-2025 payout time `52d`, resolved payout `95.7%`, resolved breach `4.3%`, max consecutive breaches `2`, average EV/start `+$276`. Partial `2026_YTD` had `2` payouts, `0` breaches, and `4` open accounts through `2026-03-24`.
+\* Five-leg recent annual sim row for selected aggressive sprint `HTF $500 / NQ Asia $400 / ES Asia $150 / NQ R11 $250 / ES NY $300`: `87.0%` payout / `13.0%` breach / `32.8d` average payout in 2024, `84.6%` payout / `15.4%` breach / `21.2d` average payout in 2025, and partial `2026_YTD` had `3` payouts, `2` breaches, and `1` open account through `2026-03-24`.
 
 ### Risk Combination Suggestions
 
@@ -42,9 +44,9 @@ These are operating risk menus. The 2026-05-06 annual sim uses exact cached ALPH
 
 | Mode | NQ NY HTF-LSI | NQ Asia ORB | ES Asia ORB | NQ NY ORB R11 | ES NY ORB | Read |
 |------|---------------|-------------|-------------|---------------|-----------|------|
-| Fast-safe annual default | $300 | $300 | $150 | $150 | $100 | Best current tradeoff: `52d` avg 2024-2025 payout, `95.7%` resolved payout, `4.3%` resolved breach |
+| Fast-safe annual default | $300 | $300 | $150 | $150 | $100 | Best breach-controlled tradeoff: `52d` avg 2024-2025 payout, `95.7%` resolved payout, `4.3%` resolved breach |
 | Balanced NY sleeve challenger | $300 | $300 | $200 | $250 | $200 | Fast but less comfortable: `47d` in 2024 and `28d` in 2025, but partial `2026_YTD` resolved at `2` payouts / `3` breaches / `1` open |
-| Aggressive sprint | $500 | $400 | $150 | $250 | $300 | Very fast (`27d` avg 2024-2025) but breach jumps to `14.2%`; not the default if minimizing breach is the priority |
+| Aggressive sprint | $500 | $400 | $150 | $250 | $300 | Selected live sprint menu: very fast (`27d` avg 2024-2025) but breach jumps to `14.2%`; use with the new `1.5x` single-contract cap rule |
 
 **Current combined-account exact packet with HTF swap (legacy `NQ_NY_LSI` replaced by `HTF_LSI_5M_LAG24` at `$300`; other legs unchanged):**
 
@@ -394,7 +396,7 @@ Key result: payout speed is not the blocker. Even low-risk rows reached first pa
 | `HTF 300 / NQ Asia 300 / ES Asia 200 / R11 250 / ES NY 200` | `82.6%` payout, `17.4%` breach, `47.2d` | `84.6%` payout, `15.4%` breach, `27.7d` | `2` payout / `3` breach / `1` open | Fast but too much 2026 NY stress |
 | `HTF 500 / NQ Asia 400 / ES Asia 150 / R11 250 / ES NY 300` | `87.0%` payout, `13.0%` breach, `32.8d` | `84.6%` payout, `15.4%` breach, `21.2d` | `3` payout / `2` breach / `1` open | Very fast, but breach is no longer minimized |
 
-Operating conclusion: revise the live-study default toward **lower NY ORB risk**, not higher. Preferred paper/live candidate is `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`. The prior `NQ R11 $250 / ES_NY $200` sleeve remains a speed challenger, but partial 2026 makes it too breach-prone for the default if the objective is fastest payout while minimizing breach rates.
+Operating conclusion: the breach-controlled default remains `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`, but the live execution profile is intentionally moving to the aggressive sprint menu `HTF $500 / NQ Asia $400 / ES Asia $150 / NQ R11 $250 / ES NY $300` for faster payout velocity. This accepts the known higher breach rate and should be monitored closely against partial-2026 NY stress.
 
 ---
 

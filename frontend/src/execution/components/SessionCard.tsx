@@ -67,6 +67,7 @@ function getPrimaryRegimeEvaluation(engine: SessionStatus) {
 
 const EXIT_LABELS: Record<string, string> = {
   sl: "SL Hit",
+  tp1_single: "TP1 Hit",
   tp1_be: "BE Hit",
   tp1_tp2: "TP2 Hit",
   tp1_eod: "EOD Exit",
@@ -76,6 +77,7 @@ const EXIT_LABELS: Record<string, string> = {
 
 const EXIT_COLORS: Record<string, { dot: string; text: string }> = {
   sl: { dot: "bg-loss", text: "text-loss" },
+  tp1_single: { dot: "bg-profit-dim", text: "text-profit-dim" },
   tp1_be: { dot: "bg-text-muted", text: "text-text-muted" },
   tp1_tp2: { dot: "bg-profit", text: "text-profit" },
   tp1_eod: { dot: "bg-text-muted", text: "text-text-muted" },

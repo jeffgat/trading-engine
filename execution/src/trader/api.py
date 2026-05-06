@@ -1466,6 +1466,9 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
                 setattr(engine, key, risk.get("risk_usd", 250))
             elif key == "min_qty":
                 setattr(engine, key, risk.get("min_qty", 1.0))
+            elif key == "max_single_risk_usd":
+                risk_usd = getattr(engine, "risk_usd", risk.get("risk_usd", 250))
+                setattr(engine, key, 1.5 * risk_usd)
             elif key == "lsi_variant":
                 setattr(engine, key, "legacy-LSI")
             elif key == "exit_mode":
@@ -1480,7 +1483,8 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
             elif key == "min_qty":
                 setattr(engine, key, risk.get("min_qty", 1.0))
             elif key == "max_single_risk_usd":
-                setattr(engine, key, risk.get("max_single_risk_usd", 500.0))
+                risk_usd = getattr(engine, "risk_usd", risk.get("risk_usd", 250))
+                setattr(engine, key, 1.5 * risk_usd)
             elif key == "be_offset_ticks":
                 setattr(engine, key, risk.get("be_offset_ticks", 0))
             elif key == "exit_mode":

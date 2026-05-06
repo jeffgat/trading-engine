@@ -92,6 +92,7 @@ interface TradesTableProps {
 }
 
 const EXIT_LABELS: Record<string, string> = {
+  tp1_single: "tp1",
   tp1_tp2: "tp1+tp2",
   tp1_flat: "tp1+flat",
   tp1_be: "tp1+be",

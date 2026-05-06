@@ -35,6 +35,7 @@ export const EVENT_COLORS: Record<string, string> = {
   FILLED: "bg-accent/20 text-accent",
   TP1_PARTIAL: "bg-profit-dim/20 text-profit-dim",
   TP1_BE_SINGLE: "bg-profit-dim/20 text-profit-dim",
+  TP1_SINGLE_EXIT: "bg-profit-dim/20 text-profit-dim",
   TP2_HIT: "bg-profit/20 text-profit",
   TP2_DIRECT: "bg-profit/20 text-profit",
   SL_HIT: "bg-loss/20 text-loss",

@@ -23,6 +23,7 @@ import {
 } from "@/shared/ui/dialog";
 
 const EXIT_LABELS: Record<string, string> = {
+  tp1_single: "tp1",
   tp1_tp2: "tp1+tp2",
   tp1_flat: "tp1+flat",
   tp1_be: "tp1+be",
@@ -275,7 +276,7 @@ export function TradeChartModal({
         }
       } else {
         // TP-based exits: find first bar after entry where price crosses TP2 (or TP1)
-        const tpPrice = trade.tp2_price;
+        const tpPrice = trade.exit_type === "tp1_single" ? trade.tp1_price : trade.tp2_price;
         for (const c of barsAfterEntry) {
           if (isLong ? c.high >= tpPrice : c.low <= tpPrice) {
             exitTime = c.time;

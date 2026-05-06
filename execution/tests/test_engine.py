@@ -503,18 +503,28 @@ class TestManagingExits5m:
         assert eng._tp1_hit is True
         assert eng._state == State.MANAGING  # still open, runner active
 
-    async def test_tp1_hit_single_contract_calls_tp1_single(self, broker):
-        """Single contract (qty=1): TP1 should call send_tp1_single."""
+    async def test_tp1_hit_single_contract_exits_at_tp1(self, broker):
+        """Single contract (qty=1): TP1 should flatten the full position."""
+        records = []
         # Low risk_usd forces single contract
         eng = _make_orb_engine(broker, risk_usd=10)
+        eng.on_trade_exit = records.append
         eng, entry_price = await advance_to_managing(eng, orb_high=19530.0)
         if not eng._levels.is_single_contract:
             pytest.skip("Couldn't get single-contract with these params")
         tp1 = eng._levels.tp1
+        expected_r = eng._price_to_r(tp1)
         bar = make_bar("2025-01-15 10:05", tp1 - 5, tp1 + 10, tp1 - 10, tp1 + 5)
         await eng.on_bar(bar, 300.0)
-        broker.send_tp1_single.assert_called_once()
+        await _flush_cleanup_tasks()
+        broker.send_flatten.assert_called()
+        broker.send_cancel.assert_called()
+        broker.send_tp1_single.assert_not_called()
         broker.send_tp1_multi.assert_not_called()
+        assert records[0].exit_type == "tp1_single"
+        assert records[0].tp1_hit is True
+        assert records[0].r_result == pytest.approx(expected_r)
+        assert eng._state == State.FLAT
 
     async def test_tp2_hit_after_tp1_exits(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)

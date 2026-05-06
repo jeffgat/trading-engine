@@ -685,6 +685,31 @@ class TestManagingExits:
         assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
         assert eng._tp1_hit is True
 
+    async def test_tp1_hit_single_contract_exits_at_tp1(self):
+        records = []
+        eng = make_lsi_engine(risk_usd=10)
+        eng.on_trade_exit = records.append
+        eng, entry_price = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+        if not eng._levels.is_single_contract:
+            pytest.skip("Need single-contract")
+        broker = eng.broker
+        tp1 = eng._levels.tp1
+        expected_r = eng._price_to_r(tp1)
+        bar = make_bar("2025-01-15 10:05", tp1 - 5, tp1 + 10, tp1 - 10, tp1 + 5)
+        await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+
+        broker.send_flatten.assert_called()
+        broker.send_cancel.assert_called()
+        broker.send_tp1_single.assert_not_called()
+        broker.send_tp1_multi.assert_not_called()
+        assert records[0].exit_type == "tp1_single"
+        assert records[0].tp1_hit is True
+        assert records[0].r_result == pytest.approx(expected_r)
+        assert eng._state == LSIState.FLAT
+
     async def test_tp2_hit_after_tp1(self):
         records = []
         eng = make_lsi_engine()
@@ -791,7 +816,7 @@ class TestTP1BarGuard:
     """Ensure 5m bar containing TP1 (detected via 1s) doesn't false-trigger BE."""
 
     async def test_tp1_bar_count_set_on_tick(self):
-        eng = make_lsi_engine()
+        eng = make_lsi_engine(risk_usd=5000)
         eng, entry_price = await _advance_to_managing(eng)
         if eng is None:
             pytest.skip("Could not reach MANAGING")
@@ -833,7 +858,7 @@ class TestTP1BarGuard:
         broker.send_flatten.assert_not_called()
 
     async def test_tp1_bar_count_set_on_5m_tp1(self):
-        eng = make_lsi_engine()
+        eng = make_lsi_engine(risk_usd=5000)
         eng, entry_price = await _advance_to_managing(eng)
         if eng is None:
             pytest.skip("Could not reach MANAGING")

@@ -1076,6 +1076,9 @@ def build_engines(
         sess_atr_length = merged.get("atr_length", 14)
         atr_lengths.setdefault(db_symbol, set()).add(sess_atr_length)
 
+        risk_usd_value = merged.get("risk_usd", risk.get("risk_usd", 250))
+        max_single_risk_usd_value = merged.get("max_single_risk_usd", 1.5 * risk_usd_value)
+
         common_kwargs = dict(
             name=sess_name,
             broker=broker,
@@ -1095,7 +1098,7 @@ def build_engines(
             tp1_ratio=merged["tp1_ratio"],
             exit_mode=merged.get("exit_mode", "split"),
             atr_length=sess_atr_length,
-            risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
+            risk_usd=risk_usd_value,
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
@@ -1107,7 +1110,7 @@ def build_engines(
             min_gap_orb_pct=merged.get("min_gap_orb_pct", 0.0),
             min_stop_pts=merged.get("min_stop_pts", 0.0),
             min_tp1_pts=merged.get("min_tp1_pts", 0.0),
-            max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
+            max_single_risk_usd=max_single_risk_usd_value,
             long_only=merged.get("long_only", True),
             short_only=merged.get("short_only", False),
             icf_enabled=merged.get("icf_enabled", False),
@@ -1277,6 +1280,9 @@ def build_lsi_engines(
         # Handle excluded_dow as list → first value for single exclusion
         excl_dow = merged.get("excluded_dow")
 
+        risk_usd_value = merged.get("risk_usd", risk.get("risk_usd", 250))
+        max_single_risk_usd_value = merged.get("max_single_risk_usd", 1.5 * risk_usd_value)
+
         engine = LSIEngine(
             name=sess_name,
             broker=broker,
@@ -1301,13 +1307,13 @@ def build_lsi_engines(
             lsi_stop_mode=merged.get("lsi_stop_mode", "absolute"),
             lsi_target_mode=merged.get("lsi_target_mode", "risk"),
             lsi_variant=merged.get("lsi_variant", "legacy-LSI"),
-            risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
+            risk_usd=risk_usd_value,
             point_value=exec_inst["point_value"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             qty_multiplier=merged.get("qty_multiplier", 1.0),
             min_tick=exec_inst["min_tick"],
-            max_single_risk_usd=merged.get("max_single_risk_usd", risk.get("max_single_risk_usd", 500.0)),
+            max_single_risk_usd=max_single_risk_usd_value,
             wide_stop_target_threshold_points=merged.get("wide_stop_target_threshold_points", 0.0),
             wide_stop_target_rr=merged.get("wide_stop_target_rr", 0.0),
             long_only=merged.get("long_only", True),

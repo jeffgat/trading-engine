@@ -258,6 +258,10 @@ function getDbRValue(trade: LiveTrade, config: ConfigResponse | null): number | 
     if (rr == null || tp1 == null) return null;
     return 0.5 * rr * tp1;
   }
+  if (et === "tp1_single") {
+    if (rr == null || tp1 == null) return null;
+    return rr * tp1;
+  }
   if (et === "tp2_direct") {
     if (rr == null) return null;
     return rr;

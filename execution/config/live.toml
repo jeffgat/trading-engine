@@ -27,7 +27,7 @@ risk_usd = 400              # Risk per trade in USD (fallback; per-session value
 min_qty = 1.0               # Minimum contract quantity
 qty_step = 1.0              # Contract quantity increment
 be_offset_ticks = 0         # BE at entry exactly (spec: 0 offset)
-max_single_risk_usd = 300   # Max $ risk when 1 contract exceeds risk_usd
+max_single_risk_usd = 600   # Legacy/global cap; session defaults now use 1.5x risk_usd unless overridden
 
 [sessions]
 enabled = ["NQ_NY", "NQ_Asia", "GC_NY", "ES_NY", "ES_Asia", "NQ_LDN"]

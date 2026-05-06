@@ -1050,6 +1050,8 @@ class LSIEngine:
 
         if exit_type == "sl":
             return stop_r
+        elif exit_type == "tp1_single":
+            return tp1_r
         elif exit_type == "tp1_be":
             return be_r if is_single else (tp1_r + be_r) / 2.0
         elif exit_type == "tp1_tp2":
@@ -1881,22 +1883,24 @@ class LSIEngine:
                     return
 
             if tp1_touched:
+                if levels.is_single_contract:
+                    self._tp1_hit = True
+                    self._request_checkpoint()
+                    self._tp1_bar_count = self._bar_count
+                    self._sync_position_cap()
+                    await self._exit_position(bar, "tp1_single")
+                    return
+
                 self._tp1_hit = True
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 self._sync_position_cap()
-                if levels.is_single_contract:
-                    self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f" % (dir_str, levels.tp1, levels.be))
-                    if self._should_send:
-                        await self.broker.send_tp1_single(
-                            direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
-                else:
-                    self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f"
-                                    % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
-                    if self._should_send:
-                        await self.broker.send_tp1_multi(
-                            direction=dir_str, total_qty=levels.qty, exit_qty=levels.half_qty, be_price=levels.be,
-                            tp2=levels.tp2, ticker=self.exec_ticker)
+                self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f"
+                                % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
+                if self._should_send:
+                    await self.broker.send_tp1_multi(
+                        direction=dir_str, total_qty=levels.qty, exit_qty=levels.half_qty, be_price=levels.be,
+                        tp2=levels.tp2, ticker=self.exec_ticker)
                 self._notify_state_change()
                 return
 
@@ -1924,10 +1928,15 @@ class LSIEngine:
         dir_str = "long" if (levels and levels.direction == 1) else "short"
         self._log_trade(exit_type.upper(), "dir=%s bar_time=%s" % (dir_str, bar.timestamp))
         self._set_trade_overlap(False, notify=False)
-        if exit_type in {"eod", "tp1_eod"}:
+        if exit_type in {"eod", "tp1_eod", "tp1_single"}:
             self._release_position_cap()
             if self._should_send:
                 await self.broker.send_flatten(ticker=self.exec_ticker)
+            if exit_type == "tp1_single":
+                self._schedule_post_exit_cleanup(
+                    reason="tp1_single_hit_5m",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
         else:
             cleanup_delay = self._broker_exit_cleanup_delay(1.0) if exit_type in {"sl", "tp2_direct"} else None
             self._schedule_post_exit_cleanup(
@@ -2064,26 +2073,29 @@ class LSIEngine:
                     return
 
             if tp1_touched:
+                if levels.is_single_contract:
+                    self._tp1_hit = True
+                    self._request_checkpoint()
+                    self._tp1_bar_count = self._bar_count
+                    self._sync_position_cap()
+                    await self._exit_position(tick, "tp1_single")
+                    return
+
                 self._tp1_hit = True
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 self._sync_position_cap()
-                if levels.is_single_contract:
-                    self._log_trade("TP1_BE_SINGLE", "dir=%s tp1=%.2f be=%.2f resolution=1s" % (dir_str, levels.tp1, levels.be))
-                    if self._should_send:
-                        await self.broker.send_tp1_single(direction=dir_str, qty=levels.qty, be_price=levels.be, ticker=self.exec_ticker)
-                else:
-                    self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f resolution=1s"
-                                    % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
-                    if self._should_send:
-                        await self.broker.send_tp1_multi(
-                            direction=dir_str,
-                            total_qty=levels.qty,
-                            exit_qty=levels.half_qty,
-                            be_price=levels.be,
-                            tp2=levels.tp2,
-                            ticker=self.exec_ticker,
-                        )
+                self._log_trade("TP1_PARTIAL", "dir=%s tp1=%.2f half=%.1f be=%.2f tp2=%.2f resolution=1s"
+                                % (dir_str, levels.tp1, levels.half_qty, levels.be, levels.tp2))
+                if self._should_send:
+                    await self.broker.send_tp1_multi(
+                        direction=dir_str,
+                        total_qty=levels.qty,
+                        exit_qty=levels.half_qty,
+                        be_price=levels.be,
+                        tp2=levels.tp2,
+                        ticker=self.exec_ticker,
+                    )
                 self._notify_state_change()
                 return
 

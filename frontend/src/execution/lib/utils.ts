@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const CHARTABLE_EVENTS = new Set([
-  "FILLED", "SL_HIT", "TP2_HIT", "TP2_DIRECT", "TP1_PARTIAL", "TP1_BE_SINGLE", "BE_HIT", "EOD_FLAT",
+  "FILLED", "SL_HIT", "TP2_HIT", "TP2_DIRECT", "TP1_PARTIAL", "TP1_BE_SINGLE", "TP1_SINGLE_EXIT", "BE_HIT", "EOD_FLAT",
 ]);
 
 export function parseSessionName(session: string): { instrument: string; sessionLabel: string } {
