@@ -124,6 +124,7 @@ class LSIEngine:
         # Risk params
         risk_usd: float = 250.0,
         point_value: float = 2.0,
+        commission_per_contract: float = 0.0,
         min_qty: float = 1.0,
         qty_step: float = 1.0,
         qty_multiplier: float = 1.0,
@@ -242,6 +243,7 @@ class LSIEngine:
         # Risk
         self.risk_usd = risk_usd
         self.point_value = point_value
+        self.commission_per_contract = commission_per_contract
         self.min_qty = min_qty
         self.qty_step = qty_step
         self.qty_multiplier = qty_multiplier
@@ -977,7 +979,7 @@ class LSIEngine:
 
     def _resolve_asset_tag(self) -> str:
         prefix = self.name.split("_", maxsplit=1)[0].upper()
-        if prefix in {"NQ", "ES", "GC"}:
+        if prefix in {"NQ", "ES", "GC", "CL"}:
             return prefix.lower()
 
         ticker_map = {
@@ -987,6 +989,8 @@ class LSIEngine:
             "MES": "es",
             "GC": "gc",
             "MGC": "gc",
+            "CL": "cl",
+            "MCL": "cl",
         }
         return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
 
@@ -1019,6 +1023,7 @@ class LSIEngine:
             timestamp=(exit_timestamp or datetime.now()).isoformat(),
             config_name=self.config_name,
             r_result=self._r_result,
+            **self._trade_accounting_fields(),
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
             ticker=self._asset_tag.upper(),
             exec_ticker=self.exec_ticker,
@@ -1066,6 +1071,31 @@ class LSIEngine:
         elif exit_type == "eod":
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
         return 0.0
+
+    def _trade_accounting_fields(self) -> dict:
+        levels = self._levels
+        if levels is None or self._r_result is None:
+            return {
+                "net_r_result": None,
+                "gross_pnl_usd": None,
+                "commission_per_contract": self.commission_per_contract,
+                "commission_usd": 0.0,
+                "net_pnl_usd": None,
+            }
+
+        risk_pts = abs(levels.entry - levels.stop)
+        gross_risk_usd = risk_pts * levels.qty * self.point_value
+        gross_pnl_usd = self._r_result * gross_risk_usd
+        commission_usd = 2.0 * levels.qty * self.commission_per_contract
+        net_pnl_usd = gross_pnl_usd - commission_usd
+        net_r_result = net_pnl_usd / gross_risk_usd if gross_risk_usd > 0 else self._r_result
+        return {
+            "net_r_result": net_r_result,
+            "gross_pnl_usd": gross_pnl_usd,
+            "commission_per_contract": self.commission_per_contract,
+            "commission_usd": commission_usd,
+            "net_pnl_usd": net_pnl_usd,
+        }
 
     # ------------------------------------------------------------------
     # FVG detection (3-candle pattern, no ORB filter)
@@ -2195,6 +2225,7 @@ class LSIEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "commission_per_contract": self.commission_per_contract,
             "exit_mode": self.exit_mode,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,

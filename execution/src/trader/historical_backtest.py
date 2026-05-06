@@ -31,6 +31,8 @@ from .gates import normalize_regime_gates, set_daily_history_provider
 from .main import (
     SESSION_CONFIGS,
     LSI_SESSION_CONFIGS,
+    INSTRUMENTS,
+    SIGNAL_TO_EXEC,
     build_engines,
     build_lsi_engines,
     load_exec_configs,
@@ -186,6 +188,12 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             config_dict[f"{prefix}_regime_gates"] = list(regime_gates)
             if len(regime_gates) == 1:
                 config_dict[f"{prefix}_regime_gate"] = regime_gates[0]
+        sess_instrument = merged.get("instrument", "NQ")
+        exec_ticker = merged.get("exec_ticker") or SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
+        exec_inst = INSTRUMENTS.get(exec_ticker, INSTRUMENTS.get(sess_instrument, {}))
+        config_dict[f"{prefix}_exec_ticker"] = exec_ticker
+        if exec_inst:
+            config_dict[f"{prefix}_commission_per_contract"] = exec_inst["commission"]
 
     for session_name, overrides in exec_config.lsi_session_overrides.items():
         merged = {**LSI_SESSION_CONFIGS.get(session_name, {}), **overrides}
@@ -221,6 +229,12 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             config_dict[f"{prefix}_regime_gates"] = list(regime_gates)
             if len(regime_gates) == 1:
                 config_dict[f"{prefix}_regime_gate"] = regime_gates[0]
+        sess_instrument = merged.get("instrument", "NQ")
+        exec_ticker = SIGNAL_TO_EXEC.get(sess_instrument, sess_instrument)
+        exec_inst = INSTRUMENTS.get(exec_ticker, INSTRUMENTS.get(sess_instrument, {}))
+        config_dict[f"{prefix}_exec_ticker"] = exec_ticker
+        if exec_inst:
+            config_dict[f"{prefix}_commission_per_contract"] = exec_inst["commission"]
 
     return config_dict
 
@@ -277,6 +291,8 @@ def _compute_summary(trades: list[dict]) -> dict[str, Any]:
             "loss_count": 0,
             "be_count": 0,
             "win_rate": 0.0,
+            "gross_pnl_usd": 0.0,
+            "total_commission_usd": 0.0,
             "total_pnl_usd": 0.0,
             "avg_pnl_usd": 0.0,
             "avg_win_usd": 0.0,
@@ -285,9 +301,11 @@ def _compute_summary(trades: list[dict]) -> dict[str, Any]:
             "largest_loss_usd": 0.0,
             "profit_factor": 0.0,
             "avg_r": 0.0,
+            "avg_net_r": 0.0,
             "avg_win_r": 0.0,
             "avg_loss_r": 0.0,
             "total_r": 0.0,
+            "total_net_r": 0.0,
             "max_drawdown_usd": 0.0,
             "max_drawdown_pct": 0.0,
             "max_drawdown_r": 0.0,
@@ -313,6 +331,15 @@ def _compute_summary(trades: list[dict]) -> dict[str, Any]:
 
     pnl_usd = np.array([float(trade["pnl_usd"]) for trade in trades], dtype=float)
     r_values = np.array([float(trade["r_multiple"]) for trade in trades], dtype=float)
+    net_r_values = np.array([
+        float(trade.get("net_r_multiple", trade["r_multiple"]))
+        for trade in trades
+    ], dtype=float)
+    gross_pnl_usd = np.array([
+        float(trade.get("gross_pnl_usd", float(trade["pnl_usd"]) + float(trade.get("commission_usd", 0.0))))
+        for trade in trades
+    ], dtype=float)
+    commission_usd = np.array([float(trade.get("commission_usd", 0.0)) for trade in trades], dtype=float)
     wins = pnl_usd > 0
     losses = pnl_usd < 0
     breakevens = pnl_usd == 0
@@ -371,6 +398,8 @@ def _compute_summary(trades: list[dict]) -> dict[str, Any]:
         "loss_count": int(np.sum(losses)),
         "be_count": int(np.sum(breakevens)),
         "win_rate": float(np.mean(wins)) if len(trades) else 0.0,
+        "gross_pnl_usd": float(np.sum(gross_pnl_usd)),
+        "total_commission_usd": float(np.sum(commission_usd)),
         "total_pnl_usd": float(np.sum(pnl_usd)),
         "avg_pnl_usd": float(np.mean(pnl_usd)) if len(trades) else 0.0,
         "avg_win_usd": float(np.mean(pnl_usd[wins])) if wins.any() else 0.0,
@@ -379,9 +408,11 @@ def _compute_summary(trades: list[dict]) -> dict[str, Any]:
         "largest_loss_usd": float(np.min(pnl_usd)) if len(trades) else 0.0,
         "profit_factor": abs(float(np.sum(pnl_usd[wins])) / float(np.sum(pnl_usd[losses]))) if losses.any() and float(np.sum(pnl_usd[losses])) != 0 else 0.0,
         "avg_r": avg_r,
+        "avg_net_r": float(np.mean(net_r_values)) if len(trades) else 0.0,
         "avg_win_r": float(np.mean(r_values[wins])) if wins.any() else 0.0,
         "avg_loss_r": float(np.mean(r_values[losses])) if losses.any() else 0.0,
         "total_r": total_r,
+        "total_net_r": float(np.sum(net_r_values)),
         "max_drawdown_usd": max_dd,
         "max_drawdown_pct": max_dd_pct,
         "max_drawdown_r": max_dd_r,
@@ -465,7 +496,12 @@ class ReplayRecorder:
             qty = float(levels.qty)
             r_multiple = float(record.r_result or 0.0)
             pnl_points = r_multiple * risk_points
-            pnl_usd = pnl_points * qty * float(engine.point_value)
+            gross_pnl_usd = pnl_points * qty * float(engine.point_value)
+            commission_per_contract = float(getattr(engine, "commission_per_contract", 0.0) or 0.0)
+            commission_usd = 2.0 * qty * commission_per_contract
+            pnl_usd = gross_pnl_usd - commission_usd
+            gross_risk_usd = risk_points * qty * float(engine.point_value)
+            net_r_multiple = pnl_usd / gross_risk_usd if gross_risk_usd > 0 else r_multiple
             trade = {
                 "date": _format_trade_date(record.date),
                 "session": record.session,
@@ -476,8 +512,13 @@ class ReplayRecorder:
                 "tp2_price": round(float(levels.tp2), 4),
                 "exit_type": record.exit_type,
                 "pnl_usd": round(pnl_usd, 2),
+                "net_pnl_usd": round(pnl_usd, 2),
+                "gross_pnl_usd": round(gross_pnl_usd, 2),
+                "commission_per_contract": round(commission_per_contract, 4),
+                "commission_usd": round(commission_usd, 2),
                 "pnl_points": round(pnl_points, 4),
                 "r_multiple": round(r_multiple, 3),
+                "net_r_multiple": round(net_r_multiple, 3),
                 "qty": qty,
                 "gap_size": round(float(getattr(levels, "gap_size", 0.0) or 0.0), 4),
                 "risk_points": round(risk_points, 4),

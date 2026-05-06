@@ -20,6 +20,7 @@ from .config import (
     LDN_SESSION,
 )
 from .data.instruments import get_instrument, list_instruments
+from .data.fees import get_fee_schedule
 from .data.loader import load_5m_data, load_1m_for_5m
 from .engine.simulator import run_backtest, EXIT_NO_FILL
 from .errors import (
@@ -324,8 +325,10 @@ def _parse_window_override(
 @app.get("/api/instruments")
 def get_instruments():
     instruments = list_instruments()
-    return ok([
-        {
+    payload = []
+    for inst in instruments.values():
+        fee_schedule = get_fee_schedule(inst.symbol)
+        item = {
             "symbol": inst.symbol,
             "point_value": inst.point_value,
             "min_tick": inst.min_tick,
@@ -333,8 +336,13 @@ def get_instruments():
             "data_file": inst.data_file,
             "exchange_tz": inst.exchange_tz,
         }
-        for inst in instruments.values()
-    ])
+        if fee_schedule is not None:
+            item["commission_per_side_min"] = fee_schedule.per_side_min
+            item["commission_per_side_max"] = fee_schedule.per_side_max
+            item["round_turn_commission"] = fee_schedule.round_turn_midpoint
+            item["fee_notes"] = fee_schedule.notes
+        payload.append(item)
+    return ok(payload)
 
 
 @app.get("/api/sessions")

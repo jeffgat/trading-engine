@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..config import Instrument
+from .fees import estimated_commission_per_side
 
 NQ = Instrument(
     symbol="NQ",
@@ -17,7 +18,7 @@ MNQ = Instrument(
     symbol="MNQ",
     point_value=2.0,
     min_tick=0.25,
-    commission=0.05,
+    commission=estimated_commission_per_side("MNQ"),
     data_file="NQ_5m.csv",  # micro uses same price data as full-size
     exchange_tz="America/New_York",
 )
@@ -31,12 +32,30 @@ ES = Instrument(
     exchange_tz="America/New_York",
 )
 
+MES = Instrument(
+    symbol="MES",
+    point_value=5.0,
+    min_tick=0.25,
+    commission=estimated_commission_per_side("MES"),
+    data_file="ES_5m.csv",  # micro uses same price data as full-size
+    exchange_tz="America/New_York",
+)
+
 CL = Instrument(
     symbol="CL",
     point_value=1000.0,
     min_tick=0.01,
     commission=0.05,
     data_file="CL_5m.csv",
+    exchange_tz="America/New_York",
+)
+
+MCL = Instrument(
+    symbol="MCL",
+    point_value=100.0,
+    min_tick=0.01,
+    commission=estimated_commission_per_side("MCL"),
+    data_file="CL_5m.csv",  # micro uses same price data as full-size
     exchange_tz="America/New_York",
 )
 
@@ -55,6 +74,15 @@ GC = Instrument(
     min_tick=0.10,
     commission=0.05,
     data_file="GC_5m.csv",
+    exchange_tz="America/New_York",
+)
+
+MGC = Instrument(
+    symbol="MGC",
+    point_value=10.0,
+    min_tick=0.10,
+    commission=estimated_commission_per_side("MGC"),
+    data_file="GC_5m.csv",  # micro uses same price data as full-size
     exchange_tz="America/New_York",
 )
 
@@ -89,9 +117,12 @@ _INSTRUMENTS: dict[str, Instrument] = {
     "NQ": NQ,
     "MNQ": MNQ,
     "ES": ES,
+    "MES": MES,
     "CL": CL,
+    "MCL": MCL,
     "YM": YM,
     "GC": GC,
+    "MGC": MGC,
     "6B": SIX_B,
     "RTY": RTY,
     "SI": SI,

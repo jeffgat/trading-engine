@@ -628,10 +628,14 @@ def run_backtest_qm(
                     config.point_value,
                     config.commission_per_contract,
                 )
-            pnl_usd = pnl_pts * pc.qty * config.point_value
+            gross_pnl_usd = pnl_pts * pc.qty * config.point_value
+            commission_usd = 0.0
             if exit_type != EXIT_NO_FILL:
-                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+                commission_usd = 2 * pc.qty * config.commission_per_contract
+            pnl_usd = gross_pnl_usd - commission_usd
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+            gross_risk_usd = pc.risk_pts * pc.qty * config.point_value
+            net_r_multiple = pnl_usd / gross_risk_usd if gross_risk_usd > 0 else 0.0
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
                 direction=pc.direction, signal_bar=pc.cand.signal_bar,
@@ -643,6 +647,9 @@ def run_backtest_qm(
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
                 fill_time=timestamps[fill_bar].isoformat() if fill_bar >= 0 else "",
                 exit_time=timestamps[exit_bar].isoformat() if exit_bar >= 0 else "",
+                gross_pnl_usd=gross_pnl_usd,
+                commission_usd=commission_usd,
+                net_r_multiple=net_r_multiple,
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:
@@ -1116,10 +1123,14 @@ def run_backtest_no_orb(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value, config.commission_per_contract,
                 )
-            pnl_usd = pnl_pts * pc.qty * config.point_value
+            gross_pnl_usd = pnl_pts * pc.qty * config.point_value
+            commission_usd = 0.0
             if exit_type != EXIT_NO_FILL:
-                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+                commission_usd = 2 * pc.qty * config.commission_per_contract
+            pnl_usd = gross_pnl_usd - commission_usd
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+            gross_risk_usd = pc.risk_pts * pc.qty * config.point_value
+            net_r_multiple = pnl_usd / gross_risk_usd if gross_risk_usd > 0 else 0.0
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
                 direction=pc.direction, signal_bar=pc.cand.signal_bar,
@@ -1131,6 +1142,9 @@ def run_backtest_no_orb(
                 gap_size=pc.gap_size, risk_points=pc.risk_pts,
                 fill_time=timestamps[fill_bar].isoformat() if fill_bar >= 0 else "",
                 exit_time=timestamps[exit_bar].isoformat() if exit_bar >= 0 else "",
+                gross_pnl_usd=gross_pnl_usd,
+                commission_usd=commission_usd,
+                net_r_multiple=net_r_multiple,
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:

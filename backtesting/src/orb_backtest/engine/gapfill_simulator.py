@@ -606,10 +606,14 @@ def run_gapfill_backtest(
                 fill_1m_f = -1.0
                 exit_1m_f = -1.0
 
-            pnl_usd = pnl_pts * pc.qty * config.point_value
+            gross_pnl_usd = pnl_pts * pc.qty * config.point_value
+            commission_usd = 0.0
             if exit_type != EXIT_NO_FILL:
-                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+                commission_usd = 2 * pc.qty * config.commission_per_contract
+            pnl_usd = gross_pnl_usd - commission_usd
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+            gross_risk_usd = pc.risk_pts * pc.qty * config.point_value
+            net_r_multiple = pnl_usd / gross_risk_usd if gross_risk_usd > 0 else 0.0
 
             all_results.append(TradeResult(
                 date=pc.cand.date_str,
@@ -638,6 +642,9 @@ def run_gapfill_backtest(
                     timestamps, exit_bar, timestamps_1m,
                     exit_1m_f if use_hierarchical else -1.0,
                 ),
+                gross_pnl_usd=gross_pnl_usd,
+                commission_usd=commission_usd,
+                net_r_multiple=net_r_multiple,
             ))
 
         def _append_no_fill(pc: _GapFillPreparedCandidate) -> None:

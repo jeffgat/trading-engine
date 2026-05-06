@@ -82,8 +82,8 @@ class TradeResult(NamedTuple):
     exit_type: int  # EXIT_* constant
     exit_bar: int  # bar index of final exit
     pnl_points: float  # total PnL in points
-    pnl_usd: float  # total PnL in USD
-    r_multiple: float  # PnL as multiple of risk
+    pnl_usd: float  # net total PnL in USD after commissions
+    r_multiple: float  # gross PnL as multiple of price risk
     qty: float
     half_qty: float
     gap_size: float
@@ -118,6 +118,9 @@ class TradeResult(NamedTuple):
     lsi_lrlr_fit_error_atr: float = 0.0
     lsi_lrlr_tp1_path_present: bool = False
     lsi_lrlr_nearest_tp1_gap_atr: float = 0.0
+    gross_pnl_usd: float = 0.0
+    commission_usd: float = 0.0
+    net_r_multiple: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -6857,10 +6860,14 @@ def run_backtest(
                     exit_type = EXIT_TP2_SINGLE
                 elif exit_type in (EXIT_TP1_TP2, EXIT_TP2_SINGLE):
                     exit_type = EXIT_SL
-            pnl_usd = pnl_pts * pc.qty * config.point_value
+            gross_pnl_usd = pnl_pts * pc.qty * config.point_value
+            commission_usd = 0.0
             if exit_type != EXIT_NO_FILL:
-                pnl_usd -= 2 * pc.qty * config.commission_per_contract
+                commission_usd = 2 * pc.qty * config.commission_per_contract
+            pnl_usd = gross_pnl_usd - commission_usd
             r_multiple = pnl_pts / pc.risk_pts if pc.risk_pts > 0 else 0.0
+            gross_risk_usd = pc.risk_pts * pc.qty * config.point_value
+            net_r_multiple = pnl_usd / gross_risk_usd if gross_risk_usd > 0 else 0.0
             all_results.append(TradeResult(
                 date=pc.cand.date_str, session=session.name,
                 direction=-pc.direction if reverse_dir else pc.direction,
@@ -6900,6 +6907,9 @@ def run_backtest(
                 lsi_lrlr_fit_error_atr=pc.cand.lsi_lrlr_fit_error_atr,
                 lsi_lrlr_tp1_path_present=pc.cand.lsi_lrlr_tp1_path_present,
                 lsi_lrlr_nearest_tp1_gap_atr=pc.cand.lsi_lrlr_nearest_tp1_gap_atr,
+                gross_pnl_usd=gross_pnl_usd,
+                commission_usd=commission_usd,
+                net_r_multiple=net_r_multiple,
             ))
 
         def _append_no_fill(pc: _PreparedCandidate) -> None:

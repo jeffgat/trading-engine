@@ -28,6 +28,15 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
     pnl_usd = np.array([t.pnl_usd for t in filled])
     pnl_pts = np.array([t.pnl_points for t in filled])
     r_multiples = np.array([t.r_multiple for t in filled])
+    net_r_multiples = np.array([
+        getattr(t, "net_r_multiple", 0.0) or t.r_multiple
+        for t in filled
+    ])
+    commission_usd = np.array([getattr(t, "commission_usd", 0.0) for t in filled])
+    gross_pnl_usd = np.array([
+        getattr(t, "gross_pnl_usd", 0.0) or (t.pnl_usd + getattr(t, "commission_usd", 0.0))
+        for t in filled
+    ])
 
     wins = pnl_usd > 0
     losses = pnl_usd < 0
@@ -95,6 +104,8 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "loss_count": int(np.sum(losses)),
         "be_count": int(np.sum(breakevens)),
         "win_rate": float(np.mean(wins)) if len(filled) > 0 else 0.0,
+        "gross_pnl_usd": float(np.sum(gross_pnl_usd)),
+        "total_commission_usd": float(np.sum(commission_usd)),
         "total_pnl_usd": float(np.sum(pnl_usd)),
         "avg_pnl_usd": float(np.mean(pnl_usd)),
         "avg_win_usd": float(np.mean(pnl_usd[wins])) if wins.any() else 0.0,
@@ -103,9 +114,11 @@ def compute_metrics(trades: list[TradeResult]) -> dict:
         "largest_loss_usd": float(np.min(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
         "profit_factor": abs(total_wins / total_losses) if total_losses != 0 else 0.0,
         "avg_r": avg_r,
+        "avg_net_r": float(np.mean(net_r_multiples)),
         "avg_win_r": float(np.mean(r_multiples[wins])) if wins.any() else 0.0,
         "avg_loss_r": float(np.mean(r_multiples[losses])) if losses.any() else 0.0,
         "total_r": net_r_total,
+        "total_net_r": float(np.sum(net_r_multiples)),
         "max_drawdown_usd": max_dd,
         "max_drawdown_pct": max_dd_pct,
         "max_drawdown_r": max_dd_r,
@@ -140,6 +153,8 @@ def _empty_metrics(total_signals: int) -> dict:
         "loss_count": 0,
         "be_count": 0,
         "win_rate": 0.0,
+        "gross_pnl_usd": 0.0,
+        "total_commission_usd": 0.0,
         "total_pnl_usd": 0.0,
         "avg_pnl_usd": 0.0,
         "avg_win_usd": 0.0,
@@ -148,9 +163,11 @@ def _empty_metrics(total_signals: int) -> dict:
         "largest_loss_usd": 0.0,
         "profit_factor": 0.0,
         "avg_r": 0.0,
+        "avg_net_r": 0.0,
         "avg_win_r": 0.0,
         "avg_loss_r": 0.0,
         "total_r": 0.0,
+        "total_net_r": 0.0,
         "max_drawdown_usd": 0.0,
         "max_drawdown_pct": 0.0,
         "max_drawdown_r": 0.0,
@@ -248,6 +265,12 @@ def recompute_summary(trade_dicts: list[dict]) -> dict:
     pnl_usd = np.array([t["pnl_usd"] for t in filled])
     pnl_pts = np.array([t["pnl_points"] for t in filled])
     r_multiples = np.array([t["r_multiple"] for t in filled])
+    commission_usd = np.array([t.get("commission_usd", 0.0) for t in filled])
+    gross_pnl_usd = np.array([
+        t.get("gross_pnl_usd", t["pnl_usd"] + t.get("commission_usd", 0.0))
+        for t in filled
+    ])
+    net_r_multiples = np.array([t.get("net_r_multiple", t["r_multiple"]) for t in filled])
 
     wins = pnl_usd > 0
     losses = pnl_usd < 0
@@ -327,6 +350,8 @@ def recompute_summary(trade_dicts: list[dict]) -> dict:
         "loss_count": int(np.sum(losses)),
         "be_count": int(np.sum(breakevens)),
         "win_rate": float(np.mean(wins)) if len(filled) > 0 else 0.0,
+        "gross_pnl_usd": float(np.sum(gross_pnl_usd)),
+        "total_commission_usd": float(np.sum(commission_usd)),
         "total_pnl_usd": float(np.sum(pnl_usd)),
         "avg_pnl_usd": float(np.mean(pnl_usd)),
         "avg_win_usd": float(np.mean(pnl_usd[wins])) if wins.any() else 0.0,
@@ -335,8 +360,12 @@ def recompute_summary(trade_dicts: list[dict]) -> dict:
         "largest_loss_usd": float(np.min(pnl_usd)) if len(pnl_usd) > 0 else 0.0,
         "profit_factor": profit_factor,
         "avg_r": avg_r,
+        "avg_net_r": float(np.mean(net_r_multiples)),
         "avg_win_r": float(np.mean(r_multiples[wins])) if wins.any() else 0.0,
         "avg_loss_r": float(np.mean(r_multiples[losses])) if losses.any() else 0.0,
+        "total_r": net_r_total,
+        "total_net_r": float(np.sum(net_r_multiples)),
+        "max_drawdown_r": max_dd_r,
         "max_drawdown_usd": max_dd,
         "max_drawdown_pct": max_dd_pct,
         "sharpe_ratio": sharpe,

@@ -29,6 +29,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
+from .fees import estimated_commission_per_side
+
 logger = logging.getLogger(__name__)
 
 # Default config path relative to execution/ directory
@@ -40,11 +42,33 @@ DEFAULT_CONFIG = Path(__file__).resolve().parent.parent.parent / "config" / "liv
 
 INSTRUMENTS = {
     "NQ": {"point_value": 20.0, "min_tick": 0.25, "commission": 0.05, "db_symbol": "NQ.FUT"},
-    "MNQ": {"point_value": 2.0, "min_tick": 0.25, "commission": 0.05, "db_symbol": "MNQ.FUT"},
+    "MNQ": {
+        "point_value": 2.0,
+        "min_tick": 0.25,
+        "commission": estimated_commission_per_side("MNQ"),
+        "db_symbol": "MNQ.FUT",
+    },
     "ES": {"point_value": 50.0, "min_tick": 0.25, "commission": 0.05, "db_symbol": "ES.FUT"},
-    "MES": {"point_value": 5.0, "min_tick": 0.25, "commission": 0.05, "db_symbol": "MES.FUT"},
+    "MES": {
+        "point_value": 5.0,
+        "min_tick": 0.25,
+        "commission": estimated_commission_per_side("MES"),
+        "db_symbol": "MES.FUT",
+    },
     "GC": {"point_value": 100.0, "min_tick": 0.10, "commission": 0.05, "db_symbol": "GC.FUT"},
-    "MGC": {"point_value": 10.0, "min_tick": 0.10, "commission": 0.05, "db_symbol": "MGC.FUT"},
+    "MGC": {
+        "point_value": 10.0,
+        "min_tick": 0.10,
+        "commission": estimated_commission_per_side("MGC"),
+        "db_symbol": "MGC.FUT",
+    },
+    "CL": {"point_value": 1000.0, "min_tick": 0.01, "commission": 0.05, "db_symbol": "CL.FUT"},
+    "MCL": {
+        "point_value": 100.0,
+        "min_tick": 0.01,
+        "commission": estimated_commission_per_side("MCL"),
+        "db_symbol": "MCL.FUT",
+    },
     "YM": {"point_value": 5.0, "min_tick": 1.0, "commission": 0.05, "db_symbol": "YM.FUT"},
     "MYM": {"point_value": 0.5, "min_tick": 1.0, "commission": 0.05, "db_symbol": "MYM.FUT"},
     "SI": {"point_value": 5000.0, "min_tick": 0.005, "commission": 0.05, "db_symbol": "SI.FUT"},
@@ -53,17 +77,19 @@ INSTRUMENTS = {
 
 # Signal instrument → execution instrument mapping.
 # We subscribe to full-size contracts (NQ, ES, GC) for signal data via DataBento
-# but execute on micro contracts (MNQ, MES, MGC) via TradersPost.
+# but execute on micro contracts (MNQ, MES, MGC, MCL) via TradersPost.
 SIGNAL_TO_EXEC: dict[str, str] = {
     "NQ": "MNQ",
     "ES": "MES",
     "GC": "MGC",
+    "CL": "MCL",
     "YM": "MYM",
     "SI": "SIL",
     # Micros map to themselves
     "MNQ": "MNQ",
     "MES": "MES",
     "MGC": "MGC",
+    "MCL": "MCL",
     "MYM": "MYM",
     "SIL": "SIL",
 }
@@ -1100,6 +1126,7 @@ def build_engines(
             atr_length=sess_atr_length,
             risk_usd=risk_usd_value,
             point_value=exec_inst["point_value"],
+            commission_per_contract=exec_inst["commission"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             be_offset_ticks=risk.get("be_offset_ticks", 0),
@@ -1309,6 +1336,7 @@ def build_lsi_engines(
             lsi_variant=merged.get("lsi_variant", "legacy-LSI"),
             risk_usd=risk_usd_value,
             point_value=exec_inst["point_value"],
+            commission_per_contract=exec_inst["commission"],
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             qty_multiplier=merged.get("qty_multiplier", 1.0),

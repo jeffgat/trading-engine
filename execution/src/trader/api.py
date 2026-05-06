@@ -329,16 +329,18 @@ def _signal_ticker_from_engine(engine: Any) -> str:
     if asset_tag:
         return str(asset_tag).upper()
     prefix = str(getattr(engine, "name", "")).split("_", maxsplit=1)[0].upper()
-    if prefix in {"NQ", "ES", "GC"}:
+    if prefix in {"NQ", "ES", "GC", "CL"}:
         return prefix
     exec_ticker = str(getattr(engine, "exec_ticker", "")).upper()
     ticker_map = {
         "MNQ": "NQ",
         "MES": "ES",
         "MGC": "GC",
+        "MCL": "CL",
         "NQ": "NQ",
         "ES": "ES",
         "GC": "GC",
+        "CL": "CL",
     }
     return ticker_map.get(exec_ticker, exec_ticker)
 
@@ -382,6 +384,14 @@ def _enrich_live_trades(trades: list[dict], state: "DashboardState") -> list[dic
             row["entry_timestamp"] = row.get("entry_timestamp") or getattr(history, "entry_timestamp", "")
             row["ticker"] = row.get("ticker") or getattr(history, "ticker", "")
             row["exec_ticker"] = row.get("exec_ticker") or getattr(history, "exec_ticker", "")
+            for field in (
+                "gross_pnl_usd",
+                "commission_per_contract",
+                "commission_usd",
+                "net_pnl_usd",
+                "net_r_result",
+            ):
+                row[field] = row.get(field) if row.get(field) is not None else getattr(history, field, None)
 
         engine = engines_by_key.get((config_name, session))
         if engine is not None:

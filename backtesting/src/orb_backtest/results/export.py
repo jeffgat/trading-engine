@@ -78,6 +78,18 @@ def _sessions_from_config(config: dict) -> list[str]:
     return sorted(result)
 
 
+def _trade_cost_fields(t: TradeResult) -> dict:
+    commission_usd = getattr(t, "commission_usd", 0.0)
+    gross_pnl_usd = getattr(t, "gross_pnl_usd", 0.0) or (t.pnl_usd + commission_usd)
+    net_r_multiple = getattr(t, "net_r_multiple", 0.0)
+    return {
+        "net_pnl_usd": round(t.pnl_usd, 2),
+        "gross_pnl_usd": round(gross_pnl_usd, 2),
+        "commission_usd": round(commission_usd, 2),
+        "net_r_multiple": round(net_r_multiple, 3),
+    }
+
+
 def generate_backtest_id(result: dict) -> str:
     """Generate a backtest ID: ``bt-{descriptor}-{hash6}``."""
     config = result.get("config", {})
@@ -301,6 +313,7 @@ def results_to_dict(
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
         config_dict["point_value"] = config.instrument.point_value
+        config_dict["commission_per_contract"] = config.commission_per_contract
 
     result = {
         "config": config_dict,
@@ -327,6 +340,7 @@ def results_to_dict(
                 "tp2_price": round(t.tp2_price, 4),
                 "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
                 "pnl_usd": round(t.pnl_usd, 2),
+                **_trade_cost_fields(t),
                 "pnl_points": round(t.pnl_points, 4),
                 "r_multiple": round(t.r_multiple, 3),
                 "qty": t.qty,
@@ -416,6 +430,7 @@ def vwap_results_to_dict(
     if config.instrument:
         config_dict["instrument"] = config.instrument.symbol
         config_dict["point_value"] = config.instrument.point_value
+        config_dict["commission_per_contract"] = config.commission_per_contract
 
     # Flatten VWAP-specific params to top level for DB column matching
     # Take from first session (for single-session configs)
@@ -454,6 +469,7 @@ def vwap_results_to_dict(
                 "tp2_price": round(t.tp2_price, 4),
                 "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
                 "pnl_usd": round(t.pnl_usd, 2),
+                **_trade_cost_fields(t),
                 "pnl_points": round(t.pnl_points, 4),
                 "r_multiple": round(t.r_multiple, 3),
                 "qty": t.qty,
@@ -568,6 +584,7 @@ def gapfill_results_to_dict(
                 "tp2_price": round(t.tp2_price, 4),
                 "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
                 "pnl_usd": round(t.pnl_usd, 2),
+                **_trade_cost_fields(t),
                 "pnl_points": round(t.pnl_points, 4),
                 "r_multiple": round(t.r_multiple, 3),
                 "qty": t.qty,
@@ -719,6 +736,7 @@ def _trades_to_minimal(trades: list[TradeResult]) -> list[dict]:
             "direction": "long" if t.direction == 1 else "short",
             "exit_type": EXIT_NAMES.get(t.exit_type, "unknown"),
             "pnl_usd": round(t.pnl_usd, 2),
+            **_trade_cost_fields(t),
             "r_multiple": round(t.r_multiple, 3),
         }
         for t in trades

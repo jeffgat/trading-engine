@@ -60,6 +60,11 @@ class TradeRecord:
     timestamp: str        # ISO format exit timestamp
     config_name: str = "" # execution config (e.g. "FAST", "SLOW")
     r_result: float | None = None
+    net_r_result: float | None = None
+    gross_pnl_usd: float | None = None
+    commission_per_contract: float = 0.0
+    commission_usd: float = 0.0
+    net_pnl_usd: float | None = None
     entry_timestamp: str = ""
     ticker: str = ""      # signal ticker displayed in dashboard (e.g. "NQ")
     exec_ticker: str = "" # execution contract routed to broker (e.g. "MNQ")
@@ -146,6 +151,7 @@ class ORBEngine:
         exit_mode: "split" for TP1 + runner, "single_target" for full exit at R:R.
         risk_usd: Risk per trade in USD.
         point_value: Dollar value per point (execution instrument).
+        commission_per_contract: Per-contract, per-side execution fee estimate.
         min_qty: Minimum contract quantity.
         qty_step: Contract quantity step.
         be_offset_ticks: Ticks above/below entry for BE stop.
@@ -186,6 +192,7 @@ class ORBEngine:
     qty_step: float
     be_offset_ticks: int
     min_tick: float
+    commission_per_contract: float = 0.0
     atr_length: int = 14
     exit_mode: str = "split"
 
@@ -417,7 +424,7 @@ class ORBEngine:
     def _resolve_asset_tag(self) -> str:
         """resolve canonical asset tag for trade logs."""
         prefix = self.name.split("_", maxsplit=1)[0].upper()
-        if prefix in {"NQ", "ES", "GC"}:
+        if prefix in {"NQ", "ES", "GC", "CL"}:
             return prefix.lower()
 
         ticker_map = {
@@ -427,6 +434,8 @@ class ORBEngine:
             "MES": "es",
             "GC": "gc",
             "MGC": "gc",
+            "CL": "cl",
+            "MCL": "cl",
         }
         return ticker_map.get(self.exec_ticker.upper(), self.exec_ticker.lower())
 
@@ -751,6 +760,7 @@ class ORBEngine:
             timestamp=(exit_timestamp or datetime.now()).isoformat(),
             config_name=self.config_name,
             r_result=self._r_result,
+            **self._trade_accounting_fields(),
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
             ticker=self._asset_tag.upper(),
             exec_ticker=self.exec_ticker,
@@ -830,6 +840,32 @@ class ORBEngine:
         elif exit_type == "eod":
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
         return 0.0
+
+    def _trade_accounting_fields(self) -> dict:
+        """Return fee-adjusted PnL fields for a completed trade record."""
+        levels = self._levels
+        if levels is None or self._r_result is None:
+            return {
+                "net_r_result": None,
+                "gross_pnl_usd": None,
+                "commission_per_contract": self.commission_per_contract,
+                "commission_usd": 0.0,
+                "net_pnl_usd": None,
+            }
+
+        risk_pts = abs(levels.entry - levels.stop)
+        gross_risk_usd = risk_pts * levels.qty * self.point_value
+        gross_pnl_usd = self._r_result * gross_risk_usd
+        commission_usd = 2.0 * levels.qty * self.commission_per_contract
+        net_pnl_usd = gross_pnl_usd - commission_usd
+        net_r_result = net_pnl_usd / gross_risk_usd if gross_risk_usd > 0 else self._r_result
+        return {
+            "net_r_result": net_r_result,
+            "gross_pnl_usd": gross_pnl_usd,
+            "commission_per_contract": self.commission_per_contract,
+            "commission_usd": commission_usd,
+            "net_pnl_usd": net_pnl_usd,
+        }
 
     def _orb_reentry_policy_allows(self, exit_type: str, r_result: float | None) -> bool:
         r = 0.0 if r_result is None else r_result
@@ -2185,6 +2221,7 @@ class ORBEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "commission_per_contract": self.commission_per_contract,
             "exit_mode": self.exit_mode,
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-06T14:26:08.814263Z",
+  "generated_at": "2026-05-06T17:24:12.581525Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 201,
-    "result_directories": 341,
+    "report_files": 202,
+    "result_directories": 342,
     "result_loose_files": 45
   },
   "assets": {
@@ -4847,6 +4847,13 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_exit_target_mfe_sweep_20260505"
         },
         {
+          "name": "ALPHA_V1_FEE_COMPARISON_20260506.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_FEE_COMPARISON_20260506.md",
+          "slug": "alpha_v1_fee_comparison_20260506",
+          "mtime_utc": "2026-05-06T17:23:41.364324Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_fee_comparison_20260506"
+        },
+        {
           "name": "ALPHA_V1_FINAL_TARGET_EXACT_SWEEP.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_FINAL_TARGET_EXACT_SWEEP.md",
           "slug": "alpha_v1_final_target_exact_sweep",
@@ -5486,6 +5493,18 @@
           "mfe_trades.csv",
           "ranked_variants.csv",
           "variant_manifest.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_fee_comparison_20260506",
+        "path": "backtesting/data/results/alpha_v1_fee_comparison_20260506",
+        "mtime_utc": "2026-05-06T17:23:41.363759Z",
+        "file_count": 3,
+        "primary_files": [
+          "summary.json",
+          "exact_trades.csv",
+          "fee_comparison_rows.csv"
         ],
         "assets": []
       },
@@ -7053,7 +7072,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-05-06T02:11:51.408842Z"
+        "mtime_utc": "2026-05-06T14:51:47.383365Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",
