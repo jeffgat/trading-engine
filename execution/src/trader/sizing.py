@@ -11,6 +11,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+ALLOWED_EXIT_MODES = frozenset({"split", "single_target"})
+
 
 @dataclass(frozen=True)
 class TradeLevels:
@@ -27,6 +29,7 @@ class TradeLevels:
     risk_pts: float
     direction: int  # +1 long, -1 short
     gap_size: float
+    exit_mode: str = "split"
 
 
 def _floor_to_step(x: float, step: float, round_up_threshold: float = 0.7) -> float:
@@ -64,6 +67,7 @@ def compute_trade_levels(
     target_rr: float | None = None,
     wide_stop_target_threshold_points: float = 0.0,
     wide_stop_target_rr: float = 0.0,
+    exit_mode: str = "split",
 ) -> TradeLevels | None:
     """Compute all trade levels and position size.
 
@@ -91,6 +95,11 @@ def compute_trade_levels(
         max_single_risk_usd: Max dollar risk for a 1-contract override when
             risk_usd isn't enough for 1 contract. Defaults to $500.
     """
+    if exit_mode not in ALLOWED_EXIT_MODES:
+        raise ValueError(f"exit_mode must be one of {sorted(ALLOWED_EXIT_MODES)}")
+    if exit_mode == "single_target" and not math.isclose(tp1_ratio, 1.0, rel_tol=0.0, abs_tol=1e-9):
+        raise ValueError("tp1_ratio must be 1.0 when exit_mode='single_target'")
+
     # Compute stop distance based on basis
     if stop_basis == "orb":
         stop_dist = (stop_orb_pct / 100.0) * orb_range
@@ -145,6 +154,8 @@ def compute_trade_levels(
     # Dual floor: clamp TP1 distance to minimum points
     if min_tp1_pts > 0:
         tp1_dist = max(tp1_dist, min_tp1_pts)
+    if exit_mode == "single_target":
+        tp1_dist = effective_rr * risk_pts
 
     tp1 = entry + tp1_dist * direction
     tp2 = entry + (effective_rr * risk_pts) * direction
@@ -163,4 +174,5 @@ def compute_trade_levels(
         risk_pts=risk_pts,
         direction=direction,
         gap_size=gap_size,
+        exit_mode=exit_mode,
     )

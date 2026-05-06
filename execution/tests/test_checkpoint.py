@@ -164,10 +164,17 @@ class TestTradeLevelsSerialization:
         assert restored.half_qty == levels.half_qty
         assert restored.is_single_contract == levels.is_single_contract
         assert restored.direction == levels.direction
+        assert restored.exit_mode == levels.exit_mode
 
     def test_none_levels(self):
         assert _serialize_levels(None) is None
         assert _deserialize_levels(None) is None
+
+    def test_legacy_levels_default_to_split_exit_mode(self):
+        data = _serialize_levels(_sample_trade_levels())
+        data.pop("exit_mode")
+        restored = _deserialize_levels(data)
+        assert restored.exit_mode == "split"
 
 
 class TestSweepEventSerialization:
@@ -268,6 +275,91 @@ class TestORBEngineCheckpoint:
         assert new_engine._orb_high == engine._orb_high
         assert new_engine._orb_low == engine._orb_low
         assert new_engine._armed_at == engine._armed_at
+
+    async def test_restore_ath_shadow_diagnostics(self):
+        broker = _mock_broker()
+        engine = _make_orb_engine(
+            broker,
+            ath_block_min_pct=0.5,
+            ath_block_max_pct=0.75,
+        )
+        await advance_to_armed(engine)
+        engine._ath_high = 5200.0
+        engine._ath_last_update = "2026-05-06T10:15:00-04:00"
+        engine._ath_last_close = 5166.2
+        engine._ath_last_gap_pct = 0.65
+        engine._ath_check_count = 3
+        engine._ath_block_count = 2
+        engine._ath_pass_count = 1
+        engine._ath_last_check = {
+            "direction": "long",
+            "bar_time": "2026-05-06T10:15:00-04:00",
+            "blocked": False,
+            "available": True,
+            "gap_pct": 0.42,
+            "ath_high": 5200.0,
+            "close": 5178.16,
+            "block_min_pct": 0.5,
+            "block_max_pct": 0.75,
+        }
+        engine._ath_last_block = {
+            "direction": "long",
+            "bar_time": "2026-05-06T09:55:00-04:00",
+            "blocked": True,
+            "available": True,
+            "gap_pct": 0.65,
+            "ath_high": 5200.0,
+            "close": 5166.2,
+            "block_min_pct": 0.5,
+            "block_max_pct": 0.75,
+        }
+
+        data = serialize_orb_engine(engine)
+        new_engine = _make_orb_engine(
+            _mock_broker(),
+            ath_block_min_pct=0.5,
+            ath_block_max_pct=0.75,
+        )
+
+        assert restore_orb_engine(new_engine, data) is True
+        assert new_engine._ath_high == 5200.0
+        assert new_engine._ath_last_update == "2026-05-06T10:15:00-04:00"
+        assert new_engine._ath_last_close == pytest.approx(5166.2)
+        assert new_engine._ath_last_gap_pct == pytest.approx(0.65)
+        assert new_engine._ath_check_count == 3
+        assert new_engine._ath_block_count == 2
+        assert new_engine._ath_pass_count == 1
+        assert new_engine._ath_last_check["blocked"] is False
+        assert new_engine._ath_last_block["direction"] == "long"
+
+    async def test_restore_ath_shadow_diagnostics_tolerates_null_legacy_values(self):
+        broker = _mock_broker()
+        engine = _make_orb_engine(
+            broker,
+            ath_block_min_pct=0.5,
+            ath_block_max_pct=0.75,
+        )
+        await advance_to_armed(engine)
+        data = serialize_orb_engine(engine)
+        data["ath_high"] = None
+        data["ath_last_close"] = None
+        data["ath_last_gap_pct"] = None
+        data["ath_check_count"] = None
+        data["ath_block_count"] = None
+        data["ath_pass_count"] = None
+
+        new_engine = _make_orb_engine(
+            _mock_broker(),
+            ath_block_min_pct=0.5,
+            ath_block_max_pct=0.75,
+        )
+
+        assert restore_orb_engine(new_engine, data) is True
+        assert new_engine.status_dict()["ath"]["high"] is None
+        assert new_engine.status_dict()["ath"]["current_gap_pct"] is None
+        assert new_engine.status_dict()["ath"]["check_count"] == 0
+        assert new_engine.status_dict()["ath"]["block_count"] == 0
+        assert new_engine.status_dict()["ath"]["pass_count"] == 0
 
     async def test_restore_armed_legacy_checkpoint_infers_armed_at(self):
         broker = _mock_broker()
@@ -428,6 +520,69 @@ class TestLSIEngineCheckpoint:
             result = restore_lsi_engine(new_engine, data)
         assert result is True  # restore succeeds (state is FLAT, not IDLE)
         assert new_engine._state == LSIState.FLAT
+
+    def test_flat_regime_gate_checkpoint_stays_flat_during_entry(self):
+        """A regime-blocked LSI session must not restart scanning mid-window."""
+        from unittest.mock import patch
+        broker = _mock_broker()
+        engine = _make_lsi_engine(broker)
+        engine._state = LSIState.FLAT
+        engine._current_date = "20260302"
+        engine._skip_reason = "regime_gate"
+        engine._blocking_gate = "block_full_medium_vol"
+        engine._regime_gate_status = {
+            "date": "20260302",
+            "allowed": False,
+            "blocking_gate": "block_full_medium_vol",
+            "evaluations": [],
+        }
+
+        data = serialize_lsi_engine(engine)
+        new_engine = _make_lsi_engine(_mock_broker())
+        fake_now = datetime(2026, 3, 2, 10, 30, tzinfo=ET)
+        with patch("trader.checkpoint.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            result = restore_lsi_engine(new_engine, data)
+
+        assert result is True
+        assert new_engine._state == LSIState.FLAT
+        assert new_engine._skip_reason == "regime_gate"
+        assert new_engine._blocking_gate == "block_full_medium_vol"
+
+    def test_flat_checkpoint_rechecks_regime_gate_when_skip_fields_missing(self):
+        """Older checkpoints can still preserve a currently-blocked session."""
+        from unittest.mock import patch
+
+        def _blocks(_date_key: str) -> bool:
+            return False
+
+        broker = _mock_broker()
+        engine = _make_lsi_engine(
+            broker,
+            regime_gate_checks=(("legacy_block", _blocks),),
+        )
+        engine._state = LSIState.FLAT
+        engine._current_date = "20260302"
+        data = serialize_lsi_engine(engine)
+        data.pop("skip_reason", None)
+        data.pop("blocking_gate", None)
+        data.pop("regime_gate_status", None)
+
+        new_engine = _make_lsi_engine(
+            _mock_broker(),
+            regime_gate_checks=(("legacy_block", _blocks),),
+        )
+        fake_now = datetime(2026, 3, 2, 10, 30, tzinfo=ET)
+        with patch("trader.checkpoint.datetime") as mock_dt:
+            mock_dt.now.return_value = fake_now
+            mock_dt.fromisoformat = datetime.fromisoformat
+            result = restore_lsi_engine(new_engine, data)
+
+        assert result is True
+        assert new_engine._state == LSIState.FLAT
+        assert new_engine._skip_reason == "regime_gate"
+        assert new_engine._blocking_gate == "legacy_block"
 
 
 # =============================================================================

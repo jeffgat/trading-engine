@@ -47,9 +47,11 @@
 - `HTF-LSI Pre-Entry TP2 + Fresh Sweep Cancel (Apr 2026)` -> `**DIAGNOSTIC ONLY — keep the current HTF-LSI lead unchanged**`
 - `Hunter Classic ORB Regime Gate Read (2026-05-02)` -> `**CONDITIONAL research lead — promising, not promoted**`
 - `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
+- `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
 
-## Reports (91)
+## Reports (92)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
+- [NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md) -> [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505)
 - [NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md) -> [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505)
 - [NQ_EVAL_FIT_1S_READ.md](../../reports/NQ_EVAL_FIT_1S_READ.md) -> [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read)
 - [NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md](../../reports/NQ_HTF_LSI_ATR_ORB_STOP_SWEEP.md) -> [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep)
@@ -141,8 +143,11 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (109)
+## Result Directories (113)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
+- [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
+- [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
+- [hot_regime_v1_nq_es_portfolio_search_20260505](../../../data/results/hot_regime_v1_nq_es_portfolio_search_20260505) (1 files; primary: summary.json)
 - [nq_asia_4leg_combo_sweep](../../../data/results/nq_asia_4leg_combo_sweep) (4 files; primary: summary.md, asia_combo_details.json, asia_combo_ranking.csv, asia_combo_ranking_practical.csv)
 - [nq_asia_lsi_4leg_combo_sweep](../../../data/results/nq_asia_lsi_4leg_combo_sweep) (4 files; primary: summary.md, asia_lsi_combo_details.json, asia_lsi_combo_ranking.csv, asia_lsi_combo_ranking_practical.csv)
 - [nq_bear_specialist_v1](../../../data/results/nq_bear_specialist_v1) (7 files; primary: summary.md, candidate_ranking.csv, regime_confusion_log.csv, selected_candidate_regime_attribution.csv, selected_candidate_specialist_readout.json)
@@ -159,6 +164,7 @@
 - [nq_bull_specialist_v1](../../../data/results/nq_bull_specialist_v1) (7 files; primary: summary.md, candidate_ranking.csv, regime_confusion_log.csv, selected_candidate_regime_attribution.csv, selected_candidate_specialist_readout.json)
 - [nq_combo_with_es_candidates](../../../data/results/nq_combo_with_es_candidates) (3 files; primary: summary.md, combo_es_candidate_details.json, combo_es_candidate_ranking.csv)
 - [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read) (1 files; primary: summary.json)
+- [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505) (8 files; primary: summary.json, leg_stats.csv, pre_best_full_outcomes.csv, pre_best_holdout_outcomes.csv, risk_sweep.csv)
 - [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505) (6 files; primary: summary.json, best_near_intact_by_candidate.csv, near_intact_candidates.csv, ranked_candidates.csv, variant_manifest.csv)
 - [nq_eval_fit_1s_read](../../../data/results/nq_eval_fit_1s_read) (3 files; primary: summary.json, candidate_summary.csv, trade_path_summary.csv)
 - [nq_htf_lsi_atr_orb_stop_sweep](../../../data/results/nq_htf_lsi_atr_orb_stop_sweep) (1 files; primary: summary.json)

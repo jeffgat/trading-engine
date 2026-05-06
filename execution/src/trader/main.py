@@ -21,11 +21,12 @@ import argparse
 import asyncio
 import json
 import logging
+import math
 import os
 import signal
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -475,6 +476,187 @@ SESSION_CONFIGS = {
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0,
     },
+    # --- GC Gold-X v14.4 reverse-engineered proxy, MGC execution ---
+    "GOLD_X": {
+        "engine_type": "gold_x",
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        # Entry end is exclusive; 13:05 allows the 13:00 FVG signal bar.
+        "entry_end": "13:05",
+        "flat_start": "16:55",
+        "flat_end": "17:00",
+        "instrument": "GC",
+        "exec_ticker": "MGC",
+        "atr_length": 40,
+        "risk_usd": 400,
+        "max_single_risk_usd": 400,
+        "max_contracts": 30,
+        "long_only": False,
+        "short_only": False,
+        "excluded_dow": None,
+        "goldx_mode": "both",
+        "goldx_classic_risk_usd": 400,
+        "goldx_classic_max_contracts": 20,
+        "goldx_fvg_risk_usd": 300,
+        "goldx_fvg_max_contracts": 30,
+        "goldx_classic_weekdays": [0, 3, 4],
+        "goldx_fvg_weekdays": [0, 1, 3],
+        "goldx_classic_signal_end": "10:45",
+        "goldx_fvg_signal_end": "13:00",
+        "goldx_enable_classic_proxy_filters": True,
+        "goldx_enable_classic_overextension_filter": True,
+        "goldx_classic_overextension_max_pct": 60.0,
+        "goldx_classic_cooldown_minutes": 50.0,
+        "goldx_classic_max_hold_minutes": 180,
+        "goldx_enable_fvg_ut_filter": True,
+        "goldx_fvg_min_size_points": 9.0,
+        "goldx_fvg_max_size_points": 60.0,
+        "goldx_fvg_max_orb_distance_points": 30.0,
+        "goldx_fvg_target_rr": 2.0,
+        "goldx_fvg_min_stop_points": 10.0,
+        "goldx_fvg_max_wait_bars": 30,
+        "goldx_fvg_max_wait_minutes": 200,
+        "goldx_fvg_selection_cooldown_minutes": 5.0,
+        "goldx_fvg_after_classic_entry_cooldown_minutes": 10.0,
+        "goldx_fvg_max_hold_minutes": 270,
+        # Compatibility fields for dashboard/reset paths shared with ORBEngine.
+        "stop_atr_pct": 0.0,
+        "stop_basis": "gold_x",
+        "stop_orb_pct": 0.0,
+        "min_gap_atr_pct": 0.0,
+        "max_gap_atr_pct": 0.0,
+        "gap_filter_basis": "gold_x",
+        "min_gap_orb_pct": 0.0,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "icf_enabled": False,
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+    },
+    # --- GC Gold-X SAFE: sparse FVG-only high-PF branch from 2026-05-05 ablation ---
+    "GOLD_X_SAFE": {
+        "engine_type": "gold_x",
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "13:05",
+        "flat_start": "16:55",
+        "flat_end": "17:00",
+        "instrument": "GC",
+        "exec_ticker": "MGC",
+        "atr_length": 40,
+        "risk_usd": 300,
+        "max_single_risk_usd": 300,
+        "max_contracts": 30,
+        "long_only": False,
+        "short_only": False,
+        "excluded_dow": None,
+        "goldx_mode": "fvg_only",
+        "goldx_classic_risk_usd": 400,
+        "goldx_classic_max_contracts": 20,
+        "goldx_fvg_risk_usd": 300,
+        "goldx_fvg_max_contracts": 30,
+        "goldx_classic_weekdays": [0, 3, 4],
+        "goldx_fvg_weekdays": [0, 1, 3],
+        "goldx_classic_signal_end": "10:45",
+        "goldx_fvg_signal_end": "13:00",
+        "goldx_enable_classic_proxy_filters": True,
+        "goldx_enable_classic_overextension_filter": True,
+        "goldx_classic_overextension_max_pct": 60.0,
+        "goldx_classic_cooldown_minutes": 50.0,
+        "goldx_classic_max_hold_minutes": 180,
+        "goldx_enable_fvg_ut_filter": True,
+        "goldx_fvg_min_size_points": 9.0,
+        "goldx_fvg_max_size_points": 60.0,
+        "goldx_fvg_max_orb_distance_points": 30.0,
+        "goldx_fvg_target_rr": 2.0,
+        "goldx_fvg_min_stop_points": 10.0,
+        "goldx_fvg_max_wait_bars": 30,
+        "goldx_fvg_max_wait_minutes": 200,
+        "goldx_fvg_selection_cooldown_minutes": 5.0,
+        "goldx_fvg_after_classic_entry_cooldown_minutes": 10.0,
+        "goldx_fvg_max_hold_minutes": 270,
+        # Compatibility fields for dashboard/reset paths shared with ORBEngine.
+        "stop_atr_pct": 0.0,
+        "stop_basis": "gold_x",
+        "stop_orb_pct": 0.0,
+        "min_gap_atr_pct": 0.0,
+        "max_gap_atr_pct": 0.0,
+        "gap_filter_basis": "gold_x",
+        "min_gap_orb_pct": 0.0,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "icf_enabled": False,
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+    },
+    # --- GC Gold-X ABLATED: combined branch with FVG UT proxy disabled ---
+    "GOLD_X_ABLATED": {
+        "engine_type": "gold_x",
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "13:05",
+        "flat_start": "16:55",
+        "flat_end": "17:00",
+        "instrument": "GC",
+        "exec_ticker": "MGC",
+        "atr_length": 40,
+        "risk_usd": 400,
+        "max_single_risk_usd": 400,
+        "max_contracts": 30,
+        "long_only": False,
+        "short_only": False,
+        "excluded_dow": None,
+        "goldx_mode": "both",
+        "goldx_classic_risk_usd": 400,
+        "goldx_classic_max_contracts": 20,
+        "goldx_fvg_risk_usd": 300,
+        "goldx_fvg_max_contracts": 30,
+        "goldx_classic_weekdays": [0, 3, 4],
+        "goldx_fvg_weekdays": [0, 1, 3],
+        "goldx_classic_signal_end": "10:45",
+        "goldx_fvg_signal_end": "13:00",
+        "goldx_enable_classic_proxy_filters": True,
+        "goldx_enable_classic_overextension_filter": True,
+        "goldx_classic_overextension_max_pct": 60.0,
+        "goldx_classic_cooldown_minutes": 50.0,
+        "goldx_classic_max_hold_minutes": 180,
+        "goldx_enable_fvg_ut_filter": False,
+        "goldx_fvg_min_size_points": 9.0,
+        "goldx_fvg_max_size_points": 60.0,
+        "goldx_fvg_max_orb_distance_points": 30.0,
+        "goldx_fvg_target_rr": 2.0,
+        "goldx_fvg_min_stop_points": 10.0,
+        "goldx_fvg_max_wait_bars": 30,
+        "goldx_fvg_max_wait_minutes": 200,
+        "goldx_fvg_selection_cooldown_minutes": 5.0,
+        "goldx_fvg_after_classic_entry_cooldown_minutes": 10.0,
+        "goldx_fvg_max_hold_minutes": 270,
+        # Compatibility fields for dashboard/reset paths shared with ORBEngine.
+        "stop_atr_pct": 0.0,
+        "stop_basis": "gold_x",
+        "stop_orb_pct": 0.0,
+        "min_gap_atr_pct": 0.0,
+        "max_gap_atr_pct": 0.0,
+        "gap_filter_basis": "gold_x",
+        "min_gap_orb_pct": 0.0,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "icf_enabled": False,
+        "fomc_exclusion": False,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0,
+    },
+}
+
+SESSION_CONFIGS["ES_NY_ATH_GATE"] = {
+    **SESSION_CONFIGS["ES_NY"],
+    "ath_block_min_pct": 0.5,
+    "ath_block_max_pct": 0.75,
 }
 
 
@@ -752,6 +934,57 @@ def apply_atr_values(
                 engine._daily_atr = atr
 
 
+def _engine_ath_gate_enabled(engine) -> bool:
+    return (
+        hasattr(engine, "seed_ath_high")
+        and float(getattr(engine, "ath_block_max_pct", 0.0) or 0.0)
+        > float(getattr(engine, "ath_block_min_pct", 0.0) or 0.0)
+    )
+
+
+def required_ath_seed_symbols(symbol_map: dict[str, list]) -> list[str]:
+    """Return feed symbols that have at least one enabled ATH-gated engine."""
+    return sorted(
+        symbol
+        for symbol, target_engines in symbol_map.items()
+        if any(_engine_ath_gate_enabled(engine) for engine in target_engines)
+    )
+
+
+def apply_ath_highs(
+    symbol_map: dict[str, list],
+    ath_highs_by_symbol: dict[str, float | None],
+) -> dict[str, int]:
+    """Seed ATH-gated engines from a per-symbol historical high map."""
+    seeded: dict[str, int] = {}
+    for symbol, target_engines in symbol_map.items():
+        high = ath_highs_by_symbol.get(symbol)
+        if high is None or not math.isfinite(float(high)) or float(high) <= 0.0:
+            continue
+        count = 0
+        for engine in target_engines:
+            if not _engine_ath_gate_enabled(engine):
+                continue
+            before = getattr(engine, "_ath_high", float("nan"))
+            engine.seed_ath_high(float(high))
+            after = getattr(engine, "_ath_high", float("nan"))
+            if after != before:
+                count += 1
+        if count:
+            seeded[symbol] = count
+    return seeded
+
+
+def _parse_ath_start_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        logger.warning("Invalid ath.start_date=%r; using lookback_years fallback", value)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Build engines from config
 # ---------------------------------------------------------------------------
@@ -860,6 +1093,7 @@ def build_engines(
             max_gap_atr_pct=merged.get("max_gap_atr_pct", 0),
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
+            exit_mode=merged.get("exit_mode", "split"),
             atr_length=sess_atr_length,
             risk_usd=merged.get("risk_usd", risk.get("risk_usd", 250)),
             point_value=exec_inst["point_value"],
@@ -883,6 +1117,8 @@ def build_engines(
             wide_stop_target_threshold_points=merged.get("wide_stop_target_threshold_points", 0.0),
             wide_stop_target_rr=merged.get("wide_stop_target_rr", 0.0),
             limit_cancel_on_pre_entry_target_touch=merged.get("limit_cancel_on_pre_entry_target_touch", ""),
+            ath_block_min_pct=merged.get("ath_block_min_pct", 0.0),
+            ath_block_max_pct=merged.get("ath_block_max_pct", 0.0),
             excluded_dow=merged.get("excluded_dow"),
             fomc_exclusion=merged.get("fomc_exclusion", False),
             regime_gate=regime_gates[0] if len(regime_gates) == 1 else None,
@@ -925,6 +1161,49 @@ def build_engines(
                 fast_reentry_exhaustion_max_minutes=merged.get("fast_reentry_exhaustion_max_minutes", 10.1),
                 fast_reentry_exhaustion_max_extension_pct=merged.get("fast_reentry_exhaustion_max_extension_pct", 12.0),
                 fast_reentry_exhaustion_min_ema15_distance=merged.get("fast_reentry_exhaustion_min_ema15_distance", 50.0),
+            )
+        elif merged.get("engine_type") == "gold_x":
+            from .goldx_engine import GoldXEngine
+
+            engine = GoldXEngine(
+                **common_kwargs,
+                engine_type=merged.get("engine_type", "gold_x"),
+                goldx_mode=merged.get("goldx_mode", "both"),
+                goldx_classic_signal_end=merged.get("goldx_classic_signal_end", "10:45"),
+                goldx_fvg_signal_end=merged.get("goldx_fvg_signal_end", "13:00"),
+                goldx_classic_weekdays=merged.get("goldx_classic_weekdays", (0, 3, 4)),
+                goldx_fvg_weekdays=merged.get("goldx_fvg_weekdays", (0, 1, 3)),
+                goldx_classic_risk_usd=merged.get("goldx_classic_risk_usd", 400.0),
+                goldx_classic_max_contracts=merged.get("goldx_classic_max_contracts", 20.0),
+                goldx_classic_target_sd=merged.get("goldx_classic_target_sd", 1.0),
+                goldx_classic_hard_stop_buffer_points=merged.get("goldx_classic_hard_stop_buffer_points", 7.0),
+                goldx_classic_overextension_max_pct=merged.get("goldx_classic_overextension_max_pct", 60.0),
+                goldx_enable_classic_overextension_filter=merged.get("goldx_enable_classic_overextension_filter", True),
+                goldx_enable_classic_proxy_filters=merged.get("goldx_enable_classic_proxy_filters", True),
+                goldx_classic_cooldown_minutes=merged.get("goldx_classic_cooldown_minutes", 50.0),
+                goldx_classic_max_hold_minutes=merged.get("goldx_classic_max_hold_minutes", 180),
+                goldx_fvg_risk_usd=merged.get("goldx_fvg_risk_usd", 300.0),
+                goldx_fvg_max_contracts=merged.get("goldx_fvg_max_contracts", 30.0),
+                goldx_fvg_min_size_points=merged.get("goldx_fvg_min_size_points", 9.0),
+                goldx_fvg_max_size_points=merged.get("goldx_fvg_max_size_points", 60.0),
+                goldx_fvg_max_orb_distance_points=merged.get("goldx_fvg_max_orb_distance_points", 30.0),
+                goldx_fvg_target_rr=merged.get("goldx_fvg_target_rr", 2.0),
+                goldx_fvg_min_stop_points=merged.get("goldx_fvg_min_stop_points", 10.0),
+                goldx_fvg_bars_before_breakout=merged.get("goldx_fvg_bars_before_breakout", 2),
+                goldx_fvg_bars_after_breakout=merged.get("goldx_fvg_bars_after_breakout", 2),
+                goldx_fvg_max_wait_bars=merged.get("goldx_fvg_max_wait_bars", 30),
+                goldx_fvg_max_wait_minutes=merged.get("goldx_fvg_max_wait_minutes", 200),
+                goldx_fvg_selection_cooldown_minutes=merged.get("goldx_fvg_selection_cooldown_minutes", 5.0),
+                goldx_fvg_after_classic_entry_cooldown_minutes=merged.get(
+                    "goldx_fvg_after_classic_entry_cooldown_minutes", 10.0
+                ),
+                goldx_fvg_after_classic_exit_cooldown_minutes=merged.get(
+                    "goldx_fvg_after_classic_exit_cooldown_minutes", 0.0
+                ),
+                goldx_fvg_max_hold_minutes=merged.get("goldx_fvg_max_hold_minutes", 270),
+                goldx_enable_fvg_ut_filter=merged.get("goldx_enable_fvg_ut_filter", True),
+                goldx_ut_key_value=merged.get("goldx_ut_key_value", 2.0),
+                goldx_ut_atr_period=merged.get("goldx_ut_atr_period", 40),
             )
         else:
             engine = ORBEngine(**common_kwargs)
@@ -1011,6 +1290,7 @@ def build_lsi_engines(
             flat_end=merged["flat_end"],
             rr=merged["rr"],
             tp1_ratio=merged["tp1_ratio"],
+            exit_mode=merged.get("exit_mode", "split"),
             atr_length=sess_atr_length,
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
             min_stop_points=merged.get("min_stop_points", 0.0),
@@ -1343,6 +1623,38 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     }
     apply_atr_values(global_symbol_map, atr_values)
 
+    # Seed ATH-gated ORB engines from historical daily highs before any
+    # recovery/checkpoint path can evaluate a setup. This makes live startup
+    # match exact replay's expanding-ATH context without using future bars.
+    ath_highs: dict[str, float | None] = {}
+    ath_seed_symbols = required_ath_seed_symbols(global_symbol_map)
+    if ath_seed_symbols:
+        ath_cfg = config.get("ath", {})
+        try:
+            ath_lookback_years = int(ath_cfg.get("lookback_years", 20))
+        except (TypeError, ValueError):
+            logger.warning("Invalid ath.lookback_years=%r; using 20", ath_cfg.get("lookback_years"))
+            ath_lookback_years = 20
+        ath_infos = feed.refresh_ath_highs(
+            symbols=ath_seed_symbols,
+            start_date=_parse_ath_start_date(ath_cfg.get("start_date")),
+            lookback_years=ath_lookback_years,
+        )
+        ath_highs = {info.symbol: info.ath_high for info in ath_infos}
+        seeded = apply_ath_highs(global_symbol_map, ath_highs)
+        logger.info(
+            "ATH seed refresh complete: highs=%s seeded_engines=%s",
+            {
+                info.symbol: {
+                    "ath": info.ath_high,
+                    "last_date": str(info.last_daily_date) if info.last_daily_date else None,
+                    "bars": info.bars_used,
+                }
+                for info in ath_infos
+            },
+            seeded,
+        )
+
     # recover current-day opening ranges / session state from recent intraday history
     intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
     now_et = datetime.now(tz=ET)
@@ -1373,6 +1685,9 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             checkpoint_restored,
         )
         apply_atr_values(global_symbol_map, atr_values)
+        if ath_highs:
+            seeded = apply_ath_highs(global_symbol_map, ath_highs)
+            logger.info("ATH seeds re-applied after checkpoint restore: %s", seeded)
 
     for cfg_name, cfg_engines in engines_by_config.items():
         if not cfg_engines:

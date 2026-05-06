@@ -218,6 +218,17 @@ class ATRRefreshInfo:
     bars_used: int
 
 
+@dataclass
+class ATHRefreshInfo:
+    symbol: str
+    ath_high: float | None
+    last_daily_date: date | None
+    refreshed_at: str
+    bars_used: int
+    start_date: date
+    end_date: date
+
+
 # ---------------------------------------------------------------------------
 # 1m → 5m bar aggregator
 # ---------------------------------------------------------------------------
@@ -463,6 +474,63 @@ class DataBentoFeed:
         """
         self.refresh_atr_daily(lookback_days=lookback_days)
 
+    def _daily_bars_from_history_frame(
+        self,
+        sym: str,
+        df,
+    ) -> list[tuple[date, float, float, float, float]]:
+        import pandas as pd
+
+        if df.empty:
+            return []
+
+        df = df.reset_index()
+        if "ts_event" not in df.columns:
+            logger.warning("Daily bars missing ts_event for %s", sym)
+            return []
+
+        if "symbol" in df.columns:
+            df = df[~df["symbol"].astype(str).str.contains("-", na=False)]
+
+        df["ts_event"] = pd.to_datetime(df["ts_event"], utc=True, errors="coerce")
+        df = df[df["ts_event"].notna()]
+        if df.empty:
+            return []
+
+        df["bar_date"] = df["ts_event"].dt.date
+        daily = (
+            df.sort_values("volume", ascending=False)
+            .groupby("bar_date")
+            .first()
+            .sort_index()
+        )
+
+        return [
+            (d, float(row["open"]), float(row["high"]),
+             float(row["low"]), float(row["close"]))
+            for d, row in daily.iterrows()
+        ]
+
+    def _fetch_daily_history_bars(
+        self,
+        sym: str,
+        *,
+        start: date,
+        end: date,
+    ) -> list[tuple[date, float, float, float, float]]:
+        import databento as db
+
+        client = db.Historical(key=self.api_key)
+        data = client.timeseries.get_range(
+            dataset=self.dataset,
+            symbols=[sym],
+            schema="ohlcv-1d",
+            stype_in="parent",
+            start=start.isoformat(),
+            end=end.isoformat(),
+        )
+        return self._daily_bars_from_history_frame(sym, data.to_df())
+
     def _refresh_atr_from_daily_bars(
         self,
         sym: str,
@@ -504,8 +572,6 @@ class DataBentoFeed:
         end_date: date | None = None,
     ) -> list[ATRRefreshInfo]:
         """Refresh ATR using daily bars up to the last completed day."""
-        import databento as db
-
         end = end_date or (date.today() - timedelta(days=1))
         start = end - timedelta(days=lookback_days)
         refreshed: list[ATRRefreshInfo] = []
@@ -516,51 +582,73 @@ class DataBentoFeed:
                     "Refreshing ATR for %s: fetching %d days ending %s",
                     sym, lookback_days, end.isoformat(),
                 )
-                client = db.Historical(key=self.api_key)
-                data = client.timeseries.get_range(
-                    dataset=self.dataset,
-                    symbols=[sym],
-                    schema="ohlcv-1d",
-                    stype_in="parent",
-                    start=start.isoformat(),
-                    end=end.isoformat(),
-                )
-                df = data.to_df()
-
-                # Filter to outright contracts only (no spreads with "-")
-                if "symbol" in df.columns:
-                    df = df[~df["symbol"].str.contains("-", na=False)]
-
-                if df.empty:
+                bars = self._fetch_daily_history_bars(sym, start=start, end=end)
+                if not bars:
                     logger.warning("No daily bars returned for %s", sym)
                     refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
                     continue
-
-                df = df.reset_index()
-                if "ts_event" not in df.columns:
-                    logger.warning("Daily bars missing ts_event for %s", sym)
-                    refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
-                    continue
-
-                df["bar_date"] = df["ts_event"].dt.date
-                daily = (
-                    df.sort_values("volume", ascending=False)
-                    .groupby("bar_date")
-                    .first()
-                    .sort_index()
-                )
-
-                bars = [
-                    (d, float(row["open"]), float(row["high"]),
-                     float(row["low"]), float(row["close"]))
-                    for d, row in daily.iterrows()
-                ]
 
                 info = self._refresh_atr_from_daily_bars(sym, bars)
                 refreshed.append(info)
             except Exception:
                 logger.exception("Failed to refresh ATR for %s", sym)
                 refreshed.append(self._refresh_atr_from_daily_bars(sym, []))
+
+        return refreshed
+
+    def _ath_refresh_from_daily_bars(
+        self,
+        sym: str,
+        bars: list[tuple[date, float, float, float, float]],
+        *,
+        start: date,
+        end: date,
+    ) -> ATHRefreshInfo:
+        highs = [float(high) for _d, _o, high, _l, _c in bars if math.isfinite(float(high))]
+        return ATHRefreshInfo(
+            symbol=sym,
+            ath_high=max(highs) if highs else None,
+            last_daily_date=bars[-1][0] if bars else None,
+            refreshed_at=datetime.now(tz=ET).isoformat(),
+            bars_used=len(bars),
+            start_date=start,
+            end_date=end,
+        )
+
+    def refresh_ath_highs(
+        self,
+        *,
+        symbols: list[str] | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        lookback_years: int = 20,
+    ) -> list[ATHRefreshInfo]:
+        """Fetch daily history and return the expanding ATH seed per symbol."""
+        end = end_date or (date.today() - timedelta(days=1))
+        start = start_date or (end - timedelta(days=365 * lookback_years))
+        target_symbols = [
+            sym for sym in (symbols or self.symbols)
+            if sym in self.history_symbols or sym in self.symbols
+        ]
+        refreshed: list[ATHRefreshInfo] = []
+
+        for sym in target_symbols:
+            try:
+                logger.info(
+                    "Refreshing ATH for %s: fetching daily highs %s -> %s",
+                    sym, start.isoformat(), end.isoformat(),
+                )
+                bars = self._fetch_daily_history_bars(sym, start=start, end=end)
+                if not bars:
+                    logger.warning("No ATH seed bars returned for %s", sym)
+                refreshed.append(
+                    self._ath_refresh_from_daily_bars(sym, bars, start=start, end=end)
+                )
+            except Exception:
+                logger.exception("Failed to refresh ATH for %s", sym)
+                refreshed.append(
+                    self._ath_refresh_from_daily_bars(sym, [], start=start, end=end)
+                )
 
         return refreshed
 

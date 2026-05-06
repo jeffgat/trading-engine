@@ -26,6 +26,33 @@ export interface RegimeGateStatus {
   evaluations: RegimeGateEvaluation[];
 }
 
+export interface AthGateCheck {
+  direction: string;
+  bar_time: string;
+  blocked: boolean;
+  available?: boolean;
+  gap_pct?: number | null;
+  ath_high?: number | null;
+  close?: number | null;
+  block_min_pct: number;
+  block_max_pct: number;
+}
+
+export interface AthGateStatus {
+  enabled: boolean;
+  high?: number | null;
+  last_update?: string | null;
+  last_close?: number | null;
+  current_gap_pct?: number | null;
+  block_min_pct: number;
+  block_max_pct: number;
+  check_count?: number;
+  block_count?: number;
+  pass_count?: number;
+  last_check?: AthGateCheck | null;
+  last_block?: AthGateCheck | null;
+}
+
 export interface SessionStatus {
   session: string;
   state: string;
@@ -45,6 +72,7 @@ export interface SessionStatus {
   skip_reason?: string | null;
   blocking_gate?: string | null;
   regime_gate_status?: RegimeGateStatus | null;
+  ath?: AthGateStatus | null;
   // Engine type — absent for continuation, may be "ifvg" or "lsi" for LSI
   type?: "ifvg" | "lsi";
   // ORB fields (continuation only)
@@ -147,6 +175,7 @@ export interface SessionConfig {
   atr_length?: number;
   rr: number;
   tp1_ratio: number;
+  exit_mode?: string;
   long_only: boolean;
   regime_gate?: string | null;
   regime_gates?: string[];

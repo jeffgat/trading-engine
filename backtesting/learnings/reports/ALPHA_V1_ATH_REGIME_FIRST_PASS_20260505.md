@@ -99,12 +99,87 @@ This is not optimization. It only tests the most obvious weak bucket from the fi
 | 2025+ | skip_pct_0p5_1_all | 57 | 366 | 111.50 | 5.20 | 0.30 | 1.87 | -8.50 |
 | 2025+ | skip_lsi_atr_0p5_1 | 4 | 419 | 105.40 | -0.90 | 0.25 | 1.67 | -10.20 |
 
+## Yearly Dead-Zone Stability
+
+Dead zone = signal-time `0.5-1%` below futures ATH, removed from all legs.
+
+| Year | Base R | Dead Trades | Dead R | Dead Avg | Gated R | Delta R | DD Delta |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2016 | 30.40 | 42 | -6.80 | -0.16 | 37.30 | 6.80 | 3.10 |
+| 2017 | 59.30 | 63 | 3.90 | 0.06 | 55.40 | -3.90 | 1.40 |
+| 2018 | 44.90 | 29 | -0.60 | -0.02 | 45.50 | 0.60 | 0.00 |
+| 2019 | 39.50 | 41 | -0.20 | -0.01 | 39.70 | 0.20 | -0.30 |
+| 2020 | 60.20 | 30 | 4.60 | 0.15 | 55.60 | -4.60 | 2.00 |
+| 2021 | 41.70 | 50 | 0.40 | 0.01 | 41.30 | -0.40 | -1.90 |
+| 2022 | 70.40 | 1 | 0.30 | 0.27 | 70.10 | -0.30 | 0.00 |
+| 2023 | 74.50 | 6 | 4.50 | 0.74 | 70.00 | -4.50 | 0.00 |
+| 2024 | 52.30 | 62 | 1.90 | 0.03 | 50.40 | -1.90 | 0.00 |
+| 2025 | 97.50 | 48 | -6.60 | -0.14 | 104.10 | 6.60 | 2.70 |
+| 2026 | 8.70 | 9 | 1.40 | 0.16 | 7.30 | -1.40 | 0.00 |
+
+## Rolling Two-Year Check
+
+| Window | Base R | Dead Trades | Dead R | Dead Avg | Gated R | Delta R | DD Delta |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2016-2017 | 89.70 | 105 | -3.00 | -0.03 | 92.70 | 3.00 | 1.80 |
+| 2017-2018 | 104.20 | 92 | 3.20 | 0.04 | 101.00 | -3.20 | 0.00 |
+| 2018-2019 | 84.40 | 70 | -0.80 | -0.01 | 85.20 | 0.80 | 0.00 |
+| 2019-2020 | 99.70 | 71 | 4.40 | 0.06 | 95.30 | -4.40 | 2.00 |
+| 2020-2021 | 101.90 | 80 | 5.00 | 0.06 | 96.90 | -5.00 | 2.00 |
+| 2021-2022 | 112.10 | 51 | 0.60 | 0.01 | 111.50 | -0.60 | -2.70 |
+| 2022-2023 | 144.90 | 7 | 4.70 | 0.68 | 140.20 | -4.70 | 0.00 |
+| 2023-2024 | 126.80 | 68 | 6.40 | 0.09 | 120.40 | -6.40 | 0.00 |
+| 2024-2025 | 149.80 | 110 | -4.70 | -0.04 | 154.50 | 4.70 | 0.00 |
+| 2025-2026 | 106.30 | 57 | -5.20 | -0.09 | 111.50 | 5.20 | 2.70 |
+
+## Daily-R Gate Comparison
+
+| Window | Profile | Trades | Removed | Net R | Delta R | Sharpe | DD R | DD Delta |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| full | baseline | 3470 | 0 | 579.50 | 0.00 | 2.04 | -14.50 | 0.00 |
+| full | skip_pct_0p5_1_all | 3089 | 381 | 576.90 | -2.60 | 2.14 | -14.50 | -0.00 |
+| 2024+ | baseline | 781 | 0 | 158.60 | 0.00 | 2.50 | -14.40 | 0.00 |
+| 2024+ | skip_pct_0p5_1_all | 662 | 119 | 161.90 | 3.30 | 2.77 | -14.40 | 0.00 |
+| 2025+ | baseline | 423 | 0 | 106.30 | 0.00 | 3.11 | -10.90 | 0.00 |
+| 2025+ | skip_pct_0p5_1_all | 366 | 57 | 111.50 | 5.20 | 3.50 | -8.20 | 2.70 |
+
+## Worst 90-Day Windows
+
+| Profile | Start | End | Net R | DD R | Net $ | DD $ |
+| --- | --- | --- | --- | --- | --- | --- |
+| baseline | 2023-02-01 | 2023-05-01 | 3.30 | -14.50 | 610.00 | -3795.00 |
+| baseline | 2022-12-22 | 2023-03-21 | 5.70 | -14.50 | 822.00 | -3883.00 |
+| baseline | 2023-01-18 | 2023-04-17 | 6.20 | -14.50 | 1325.00 | -3883.00 |
+| baseline | 2022-12-28 | 2023-03-27 | 9.40 | -14.50 | 1760.00 | -3883.00 |
+| baseline | 2022-12-05 | 2023-03-04 | -6.40 | -14.50 | -1612.00 | -3883.00 |
+| skip_pct_0p5_1_all | 2021-12-01 | 2022-02-28 | -10.00 | -14.50 | -2990.00 | -4099.00 |
+| skip_pct_0p5_1_all | 2021-12-02 | 2022-03-01 | -9.00 | -14.50 | -2595.00 | -4099.00 |
+| skip_pct_0p5_1_all | 2021-12-03 | 2022-03-02 | -7.40 | -14.50 | -2114.00 | -4099.00 |
+| skip_pct_0p5_1_all | 2021-12-04 | 2022-03-03 | -6.80 | -14.50 | -1994.00 | -4099.00 |
+| skip_pct_0p5_1_all | 2021-12-05 | 2022-03-04 | -6.20 | -14.50 | -1860.00 | -4099.00 |
+
+## Funded First-Payout Comparison
+
+This uses the same simple 14-day staggered first-payout model as the reentry promotion packet and current ALPHA leg risk sizing from the source trade export.
+
+| Window | Profile | Accounts | Pay% | Breach% | Payouts | Breaches | Open | EV/acct | Med PayD | MCBch |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| full | baseline | 260 | 73.80 | 24.60 | 192 | 64 | 4 | 219.00 | 37.00 | 10 |
+| full | skip_pct_0p5_1_all | 260 | 70.00 | 27.70 | 182 | 72 | 6 | 200.00 | 33.00 | 9 |
+| 2024+ | baseline | 59 | 81.40 | 11.90 | 48 | 7 | 4 | 257.00 | 32.00 | 4 |
+| 2024+ | skip_pct_0p5_1_all | 59 | 64.40 | 25.40 | 38 | 15 | 6 | 172.00 | 28.50 | 9 |
+| 2025+ | baseline | 32 | 84.40 | 6.20 | 27 | 2 | 3 | 272.00 | 34.00 | 2 |
+| 2025+ | skip_pct_0p5_1_all | 32 | 84.40 | 0.00 | 27 | 0 | 5 | 272.00 | 30.00 | 0 |
+
 ## First-Pass Read
 
 1. The clearest broad weak zone is `0.5-1%` below futures ATH at signal time. Full history is basically flat (`381` trades for `+2.6R`), and skipping it raises average R and PF while preserving almost all full-history net R.
 2. The recent read is stronger: skipping `0.5-1%` improves `2024+` from `+158.6R` to `+161.9R`, and `2025+` from `+106.3R / -11.2R DD` to `+111.5R / -8.5R DD`.
-3. This is not a universal "near ATH is good" result. ES Asia likes the closest ATH band, NQ Asia is strongest in deeper ATH drawdowns or 1-2% below ATH, and NQ NY HTF-LSI is best around 2-5% below ATH.
-4. The next honest step is a pre-registered same-regime OOS check for `skip_pct_0p5_1_all`, plus leg-specific diagnostics for ES-near-ATH and HTF-LSI 2-5% behavior. Do not promote any threshold from this report directly.
+3. Funded-account behavior is the blocker: the broad skip worsens full-history payout rate (`73.8%` to `70.0%`) and 2024+ payout rate (`81.4%` to `64.4%`). It only clearly helps the opened 2025+ cohort by removing breaches while preserving payout count.
+4. Yearly attribution is mixed: the dead zone was harmful in 2016 and 2025, mildly harmful in 2018-2019, but helpful in 2017, 2020, 2023, 2024, and 2026 YTD. Treat this as a risk-shaping diagnostic, not a broad gate.
+5. This is not a universal "near ATH is good" result. ES Asia likes the closest ATH band, NQ Asia is strongest in deeper ATH drawdowns or 1-2% below ATH, and NQ NY HTF-LSI is best around 2-5% below ATH.
+6. The broad `skip_pct_0p5_1_all` gate is **NO-GO for immediate promotion** from this post-filter evidence. Better next steps are leg-specific ATH theses and exact engine replay only after a gate is narrowed enough to preserve account-flow quality.
+7. The gate remains `post_filter_only` / research-only until engine support can skip the setup before arming an order and exact replay can account for missed/alternate same-session opportunities.
 
 ## Artifacts
 
@@ -112,4 +187,11 @@ This is not optimization. It only tests the most obvious weak bucket from the fi
 - Bucket summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/bucket_summary.csv`
 - Baseline summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/baseline_summary.csv`
 - Filter probes: `data/results/alpha_v1_ath_regime_first_pass_20260505/filter_evaluation.csv`
+- Yearly dead-zone attribution: `data/results/alpha_v1_ath_regime_first_pass_20260505/yearly_dead_zone_attribution.csv`
+- Rolling two-year attribution: `data/results/alpha_v1_ath_regime_first_pass_20260505/rolling_2y_dead_zone_attribution.csv`
+- Daily-R comparison: `data/results/alpha_v1_ath_regime_first_pass_20260505/daily_r_comparison.csv`
+- Daily summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/daily_summary.csv`
+- Worst 90-day windows: `data/results/alpha_v1_ath_regime_first_pass_20260505/worst_90d_windows.csv`
+- Funded payout summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/funded_first_payout_summary.csv`
+- Funded account outcomes: `data/results/alpha_v1_ath_regime_first_pass_20260505/funded_first_payout_accounts.csv`
 - Machine summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/summary.json`

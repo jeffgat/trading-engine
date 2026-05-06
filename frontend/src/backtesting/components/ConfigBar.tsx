@@ -155,6 +155,7 @@ export function ConfigBar({ config }: ConfigBarProps) {
         format={fmtNum}
         topLevel={config.tp1_ratio}
       />
+      <SimpleParam label="Exit Mode" value={config.exit_mode ?? "split"} />
     </div>
   );
 }

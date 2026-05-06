@@ -1,6 +1,7 @@
 export interface BacktestConfig {
   rr: number;
   tp1_ratio: number;
+  exit_mode?: string;
   risk_usd: number;
   atr_length: number;
   min_qty: number;
@@ -131,6 +132,7 @@ export interface BacktestHistoryItem {
   // Strategy params (global)
   rr: number;
   tp1_ratio: number;
+  exit_mode?: string;
   risk_usd: number;
   atr_length: number;
   min_qty: number;

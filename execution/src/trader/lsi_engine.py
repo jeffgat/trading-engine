@@ -110,6 +110,7 @@ class LSIEngine:
         # Strategy params
         rr: float = 3.0,
         tp1_ratio: float = 0.3,
+        exit_mode: str = "split",
         atr_length: int = 14,
         min_gap_atr_pct: float = 5.0,
         min_stop_points: float = 0.0,
@@ -181,6 +182,7 @@ class LSIEngine:
         # Strategy
         self.rr = rr
         self.tp1_ratio = tp1_ratio
+        self.exit_mode = exit_mode
         self.atr_length = atr_length
         self.min_gap_atr_pct = min_gap_atr_pct
         self.min_stop_points = min_stop_points
@@ -209,6 +211,21 @@ class LSIEngine:
             raise ValueError(
                 f"lsi_target_mode must be one of {sorted(VALID_LSI_TARGET_MODES)} "
                 f"(got {lsi_target_mode!r})"
+            )
+        if exit_mode not in {"split", "single_target"}:
+            raise ValueError(
+                "exit_mode must be one of 'split' or 'single_target' "
+                f"(got {exit_mode!r})"
+            )
+        if exit_mode == "single_target" and not math.isclose(
+            tp1_ratio,
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError(
+                "tp1_ratio must be 1.0 when exit_mode='single_target' "
+                f"(got {tp1_ratio!r})"
             )
         if lsi_variant not in VALID_LSI_VARIANTS:
             raise ValueError(
@@ -1565,6 +1582,8 @@ class LSIEngine:
         if self.lsi_target_mode == "structural":
             tp1_dist = max(tp1_dist, risk_pts)
             tp2_dist = max(tp2_dist, 1.5 * risk_pts)
+        if self.exit_mode == "single_target":
+            tp1_dist = tp2_dist
         return tp1_dist, tp2_dist
 
     # ------------------------------------------------------------------
@@ -1762,6 +1781,7 @@ class LSIEngine:
             risk_pts=risk_pts,
             direction=direction,
             gap_size=gap_size,
+            exit_mode=self.exit_mode,
         )
         self._levels = self._apply_position_cap(self._levels)
         if self._levels is None:
@@ -1853,6 +1873,12 @@ class LSIEngine:
             if sl_hit:
                 await self._exit_position(bar, "sl")
                 return
+
+            if self.exit_mode == "single_target":
+                target_hit = (is_long and bar.high >= levels.tp2) or (not is_long and bar.low <= levels.tp2)
+                if target_hit:
+                    await self._exit_position(bar, "tp2_direct")
+                    return
 
             if tp1_touched:
                 self._tp1_hit = True
@@ -2021,6 +2047,22 @@ class LSIEngine:
                 self._notify_state_change()
                 return
 
+            if self.exit_mode == "single_target":
+                target_touched = (is_long and tick.high >= levels.tp2) or (not is_long and tick.low <= levels.tp2)
+                if target_touched:
+                    self._log_trade("SINGLE_TARGET_HIT", "dir=%s target=%.2f resolution=1s" % (dir_str, levels.tp2))
+                    self._set_trade_overlap(False, notify=False)
+                    self._schedule_post_exit_cleanup(
+                        reason="single_target_1s",
+                        delay_s=self._broker_exit_cleanup_delay(1.0),
+                    )
+                    self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
+                    self._reset_active_setup()
+                    self._set_post_exit_state(tick.timestamp.time())
+                    self._request_checkpoint()
+                    self._notify_state_change()
+                    return
+
             if tp1_touched:
                 self._tp1_hit = True
                 self._request_checkpoint()
@@ -2141,6 +2183,7 @@ class LSIEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "exit_mode": self.exit_mode,
             "paused": self.paused,
             "excluded_dow": self.excluded_dow,
             "skip_reason": self._skip_reason,

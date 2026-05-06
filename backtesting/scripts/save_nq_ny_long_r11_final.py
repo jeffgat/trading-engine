@@ -13,8 +13,11 @@ Monte Carlo: 99.1% survival at -25R ruin
 Verdict: CONDITIONAL — 4/5 passed. Phase 3 (avg annual R 8.1 < 12.0) failed.
 """
 
+import argparse
 import sys
 import time
+
+import pandas as pd
 
 sys.path.insert(0, "src")
 
@@ -27,6 +30,8 @@ from orb_backtest.results.export import results_to_dict, save_backtest_result
 from orb_backtest.results.metrics import compute_metrics
 
 DOW_EXCL = {4}  # excl Friday
+DEFAULT_START = "2016-04-17"
+DEFAULT_END_EXCLUSIVE = "2026-03-25"
 
 
 def make_config():
@@ -64,24 +69,54 @@ def make_config():
     )
 
 
+def _load_1m_with_fallback(filename: str, start: str | None, end: str | None):
+    try:
+        return load_1m_for_5m(filename, start=start, end=end)
+    except FileNotFoundError:
+        df_1s = load_1s_for_5m(filename, start=start, end=end)
+        df_1m = (
+            df_1s.resample("1min")
+            .agg(
+                open=("open", "first"),
+                high=("high", "max"),
+                low=("low", "min"),
+                close=("close", "last"),
+                volume=("volume", "sum"),
+            )
+            .dropna(subset=["open"])
+        )
+        return df_1m
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Save NQ NY ORB R11 Final to the experiments DB.")
+    parser.add_argument("--name", default=None, help="Dashboard experiment name override.")
+    parser.add_argument("--start", default=DEFAULT_START, help="Inclusive start date.")
+    parser.add_argument("--end-exclusive", default=DEFAULT_END_EXCLUSIVE, help="Exclusive end date.")
+    args = parser.parse_args()
+
     config = make_config()
+    if args.name:
+        from dataclasses import replace
+
+        config = replace(config, name=args.name)
 
     print(f"Saving: {config.name}")
     print(f"Config: stop=7.0% | rr=3.5 | gap=2.5% | tp1=0.4 | ATR=12")
     print(f"Long only | DOW excl Fri | ICF off | 1s mag")
+    print(f"Date window: {args.start} <= trade date < {args.end_exclusive}")
 
     print("\nLoading data...", flush=True)
     t0 = time.time()
-    df_5m = load_5m_data("NQ_5m.csv")
-    df_1m = load_1m_for_5m("NQ_5m.csv")
-    df_1s = load_1s_for_5m("NQ_5m.csv")
+    df_5m = load_5m_data("NQ_5m.csv", start=args.start)
+    df_1m = _load_1m_with_fallback("NQ_5m.csv", start=args.start, end=args.end_exclusive)
+    df_1s = load_1s_for_5m("NQ_5m.csv", start=args.start, end=args.end_exclusive)
     print(f"  5m: {len(df_5m):,} | 1m: {len(df_1m) if df_1m is not None else 0:,} | "
           f"1s: {len(df_1s) if df_1s is not None else 0:,} [{time.time()-t0:.1f}s]")
 
     print("\nRunning backtest...", flush=True)
     t0 = time.time()
-    trades = run_backtest(df_5m, config, start_date="2016-01-01", df_1m=df_1m, df_1s=df_1s)
+    trades = run_backtest(df_5m, config, start_date=args.start, end_date=args.end_exclusive, df_1m=df_1m, df_1s=df_1s)
     trades = apply_dow_filter(trades, DOW_EXCL)
     m = compute_metrics(trades)
     print(f"  Completed in {time.time()-t0:.1f}s")

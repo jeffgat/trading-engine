@@ -447,6 +447,23 @@ R by year: 2016:+18  2017:+25  2018:+4  2019:+11  2020:+16  2021:+20  2022:+15  
 - **Least-bad wide examples**: `ATR 12% / rr 6.0 / TP1_R 1.5` widened to `21.3` median ticks and nearly retained full R (`+124.5R`), but last-1y collapsed to `+5.3R`, last-1y PF fell to `1.08`, and DD worsened to roughly `-20.4R` full / `-17.1R` last-1y. `ORB 50% / rr 5.0 / TP1_R 2.5` widened to `18.5` ticks with `+114.9R` full and `+14.6R` last-1y, but still worsened full DD to `-17.2R`.
 - **Operating read**: The narrow ES_NY stop is uncomfortable but not an obvious optimization error. If live stopouts are the concern, risk down or pause ES_NY rather than widening its stop. `deployability=live_native`, `exact_replay_required=yes_before_live_promotion`.
 
+### NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md`
+- **Scope**: Paired current ES_NY ORB with frozen NQ NY ORB R11 and swept only per-leg dollar risk (`$100-$650` by `$50`) under the `$50k` funded-account first-payout model. No ES_NY parameters were optimized.
+- **ES_NY standalone in the common ALPHA window (`2016-04-17` to `2026-03-24`)**: `846` fills, `+126.6R`, `PF 1.39`, `-10.9R` DD, `61.0%` WR, median stop `12.0` ticks, `6.4%` full TP, `46.9%` TP1-BE, `38.2%` SL.
+- **Conservative pair sizing**: `NQ $150 / ES $150` had pre-holdout payout `83.3%`, breach `0.0%`, EV `$316.67`, avg payout `198d`; holdout payout `75.0%`, breach `0.0%`, EV `$275.00`, avg payout `186d`.
+- **Sprint pair sizing**: `NQ $250 / ES $350` had pre-holdout payout `74.1%`, breach `23.7%`, EV `$270.61`, avg payout `79d`; holdout payout `59.4%`, breach `21.9%`, EV `$196.88`, avg payout `70d`.
+- **Operating read**: The historical risk sweep likes ES risk in the sprint sleeve because ES_NY contributes more frequent partial wins and stronger recent-window stats, but this conflicts with the weak post-cutoff live sample at `$400`. Treat `ES $150` as conservative probation sizing and `ES $350` as research/sprint sizing only after fresh exact replay includes post-`2026-03-24` live-like data. Avoid defaulting to `ES $400+` while current live behavior remains poor. `deployability=live_native`; `exact_replay_required=yes_before_live_promotion`.
+
+### ES_NY ORB Exit Deep-Dive (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md`
+- **Scope**: Replayed ES_NY under true single-target/full-position TP1, no-BE, delayed-BE, and pre-trade bucket diagnostics before moving on to NQ Asia or NQ HTF-LSI exit optimization.
+- **Baseline in common ALPHA window (`2016-04-17` to `2026-03-24`)**: `846` fills, `+126.6R`, `PF 1.39`, `-10.9R` DD, `61.0%` WR, `6.4%` full TP, `46.9%` TP1-BE.
+- **Best research policies**: true full-position TP1 at `1R` improved to `+222.5R`, `PF 1.72`, `-8.0R` DD; delayed BE after `1.5R` improved to `+213.5R`, `PF 1.68`, `-9.3R` DD.
+- **Operating read**: ES_NY's problem is not simply that TP2 is too far; the current partial-and-immediate-BE runner management is the uncomfortable part. `exit_mode=single_target` now makes the true full-position TP1 branch `deployability=live_native`, pending exact replay before deployment. Delayed-BE remains `research_only`. Pre-trade bucket gating is secondary because the weak buckets were positive, not toxic.
+
 ---
 
 ### NY LSI (Liquidity Sweep Inversion) — Long Only
@@ -962,3 +979,36 @@ Shared cross-asset transfer run reconfirmed that **ES Asia-B should stay ungated
 - **Hot structural follow-up** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_FOLLOWUP_20260503.md`
   - Window: `2025-03-24` to `2026-03-24`. Targeted second pass around positive structural gates from the hot structural sequence.
   - ES NY ORB: best refined structural `exclude_fomc_cpi` -> 174 fills, `125.97R`, delta `10.0R`, Calmar `10.497`, PF `2.017`, DD `-12.0R`, surface `n/a`; TESTING-only.
+
+### ALPHA_V1 ATH Regime Findings (2026-05-05)
+
+Reports: `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_FIRST_PASS_20260505.md` and `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_LEG_TARGETS_20260505.md`
+
+- `ES NY ORB` has the cleanest actionable ATH dead zone: signal-time `0.5-1%` below futures ATH was negative (`95` trades, `-5.2R`, `-0.055R` avg). Skipping only that bucket improves portfolio R by `+5.2R` full history and `+5.6R` in `2025+`; ES NY standalone full-history first-payout rate improves from `64.2%` to `68.5%`, and `2025+` improves from `43.8%` payout / `37.5%` breach to `81.2%` payout / `0.0%` breach. Status: `post_filter_only`; exact replay and live ATH gate support required.
+- `ES Asia ORB` near-ATH quality is real but not enough for a replacement gate. The `0-0.5%` bucket produced `325` trades, `+61.1R`, `0.188R` avg versus `0.103R` baseline, but keeping only that bucket cuts `-84.8R` from the ALPHA_V1 portfolio and stretches standalone median payout time to `655` days. Treat as attribution/risk context, not a promoted gate.
+
+### ES NY ATH Exact Replay (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ES_NY_ATH_EXACT_REPLAY_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_es_ny_ath_exact_replay_20260505/`
+
+The `ES NY ORB` signal-time `0.5-1.0%` below futures ATH skip was promoted from post-filter research into the live/exact `ORBEngine` as a causal pre-arm gate (`ath_block_min_pct/max_pct`) and exact-replayed on ES futures data from `2016-04-17` through `2026-03-24`.
+
+Exact trade results confirm the dead-zone edge: baseline `849` trades / `+145.8R` / `-12.0R DD` becomes `774` trades / `+155.0R` / `-12.0R DD`. The recent improvement is stronger: `2024+` improves by `+8.5R` with DD improving from `-9.0R` to `-7.5R`; `2025+` improves by `+9.5R` with the same DD improvement.
+
+Funded-account read is **not** clean enough for production promotion. Full-history standalone payout worsens from `65.0%` payout / `32.7%` breach to `60.4%` payout / `37.3%` breach, even though `2024+` improves to `84.7%` payout / `5.1%` breach and `2025+` improves to `75.0%` payout / `9.4%` breach. Status: `post_filter_only` until production live has a trusted ATH seed source; recent-flow watchlist only. Next research target: rolling split diagnostics plus nearby exact band sensitivity before any dry-run recommendation.
+
+### ES NY ATH Band Sensitivity (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ES_NY_ATH_BAND_SENSITIVITY_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_es_ny_ath_band_sensitivity_20260505/`
+
+Exact sensitivity around the ES NY ATH dead zone tested `0.25-0.75%`, `0.50-0.75%`, `0.75-1.00%`, `0.50-1.00%`, and `0.50-1.25%` as live-engine pre-arm ATH blocks. **Best candidate is `0.50-0.75%` below expanding ES futures ATH.**
+
+`0.50-0.75%` improves full-history exact R by `+11.5R` (`+145.8R` to `+157.3R`) while improving full-history payout from `65.0%` to `67.3%`; this fixes the full-history payout damage from the wider `0.50-1.00%` gate. Recent behavior remains useful: `2024+` `+5.0R` and payout `84.7%`; `2025+` `+10.0R` and payout `75.0%`. Rolling 2-year stability: `7/10` windows improve, median rolling delta `+1.75R`, worst window `-6.92R` in `2019-2020`.
+
+Alternatives: `0.25-0.75%` has the best payout safety (`70.0%` full payout, zero `2025+` breaches) but rolling stability is poor (`4/10` positive, `-1.86R` median). `0.75-1.00%` is steadier but too weak in `2025+` (`+1.5R`). Reject `0.50-1.25%`; it removes too much trade flow and hurts full-history account behavior.
+
+Implementation update: production startup can now refresh the ES futures ATH seed from DataBento daily OHLCV, seed only ATH-gated engines, and preserve a higher checkpoint/live ATH if one exists. Added `ALPHA_V1-ES-NY-ATH-SHADOW` as an enabled ES_NY-only no-webhook dry-run profile with `ath_block_min_pct=0.5` and `ath_block_max_pct=0.75`. Status is now `deployability=live_native`; `live_support_notes=exact/live engine gate plus startup ATH seed source are implemented, profile is shadow-only/no-webhook pending forward observation`; `exact_replay_required=completed_through_2026-03-24_and_repeat_before_live_promotion_if_data_extends_materially`. Shadow diagnostics are available in the engine `ath` status payload: `current_gap_pct`, `check_count`, `block_count`, `pass_count`, `last_check`, and `last_block`. TESTING now includes `ES_NY_ATH_GATE`, and the execution frontend shows a dedicated ATH Gate panel so blocked and passed setup decisions can be confirmed during forward testing.

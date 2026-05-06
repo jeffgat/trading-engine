@@ -41,6 +41,22 @@ def test_parse_trade_log_line_normalizes_legacy_alpha_v1_config_name():
     assert parsed["config"] == "ALPHA_V1-A"
 
 
+def test_parse_trade_log_line_recognizes_silver_asset_tag():
+    line = (
+        "2026-05-04 20:37:00 | TESTING | sil | SI_Asia | REGIME_GATE_BLOCKED | "
+        "gate=block_bull_medium_vol date=20260504"
+    )
+
+    parsed = parse_trade_log_line(line)
+
+    assert parsed is not None
+    assert parsed["config"] == "TESTING"
+    assert parsed["asset"] == "sil"
+    assert parsed["session"] == "SI_Asia"
+    assert parsed["event"] == "REGIME_GATE_BLOCKED"
+    assert parsed["details"]["gate"] == "block_bull_medium_vol"
+
+
 def test_dashboard_state_asia_tp1_hit_for_date_accepts_alpha_v1_alias():
     state = DashboardState()
     state.trade_history = [

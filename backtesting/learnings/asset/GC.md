@@ -852,6 +852,17 @@ EMA-cross frequency is a valid precision lever, but symmetric caps force a recal
 Sequence and ablation probes did not beat the side-specific EMA-cross branch. Same-day same-side timing conflicts explain only 6 of 18 missing export entries, and "replace with later signal" variants degrade F1 sharply. Simple filter relaxations recover a handful of missing trades but add too many extras: disabling EMA-cross reaches 232 matches but expands to 302 local trades, while disabling RG/divergence/squeeze similarly worsens precision. Treat the remaining Gold-X gap as exact private Classic marker/filter state, not a sequencing rule.
 
 **2026-04-29 marker-case update**: User provided GC 5m TradingView export `COMEX_GC1!, 5_0fe5c.csv` around the 2026-02-23 missing Classic long. This confirmed the hidden Classic marker behavior directly: `Shapes=0` on the 09:45 breakout bar that local proxies accepted, and `Shapes=1` on the 10:05 breakout bar that TradingView entered at 10:10. Overlaying only the Feb 23 regular-session window improves overall parity from **227/245 to 228/245** and Classic parity from **210/228 to 211/228**, while preserving FVG at **17/17**. Do not use the whole current-chart CSV as a blanket overlay because it changes unrelated 2026 marker state and reduces FVG recall; use targeted windows as marker truth-table cases.
+
+**2026-05-05 available-data ablation**: `backtesting/data/results/goldx_ablation_available_20260505`. On the 2016-01-03 to 2026-04-29 available GC 5m dataset, the saved Gold-X proxy baseline produces 460 trades, **$58,029 net**, PF **1.73**, and max closed DD **-$10,731.60**. The edge is split between a high-frequency/low-quality Classic component and a sparse/high-quality FVG component:
+
+| Variant | Trades | Net | PF | Max DD | Notes |
+|---------|--------|-----|----|--------|-------|
+| Combined baseline | 460 | $58,029 | 1.73 | -$10,732 | Current reverse-engineered proxy |
+| Classic only | 438 | $31,478 | 1.45 | -$12,409 | Meaningful absolute P&L but lower quality |
+| FVG only | 24 | $31,984 | 4.24 | -$6,667 | Highest quality; sparse and mostly post-2025 |
+| Raw structure all filters off | 1,613 | $51,638 | 1.19 | -$18,120 | Edge exists, but most filters are quality gates |
+
+Filter conclusions from the ablation: disabling the FVG UT proxy improved baseline net to **$64,741.80** with only two extra trades, suggesting the UT reconstruction is likely over-filtering or mis-specified. Relaxing the Classic EMA-cross short-side cap also improves net (**$62k-$63k**) but adds 26-40 trades and lowers PF slightly, so it is an aggressiveness lever rather than clean evidence. The biggest quality gates are Classic squeeze/overextension and FVG marker/selection state: removing them materially degrades net or PF. All Gold-X rows remain `research_only` until the reverse-engineered marker/proxy logic is rebuilt as causal live-native pre-trade gates and exact-replayed.
 - **Hot one-year strategy workflow** (2026-05-03): `backtesting/learnings/reports/HOT_ONE_YEAR_STRATEGY_WORKFLOW_20260503.md`
   - Window: `2025-03-24` to `2026-03-24`. TESTING-only, overfit-aware Calmar optimization; Bailey-style deflation intentionally skipped.
   - GC NY ORB: `combo__orb15m__entry_1100__flat_1530__rr10p0_tp0p2__stop_orb_50p0__gap_atr_3p0__atr7__dir_long__dow_baseline__icf_off__cap2_any__fvg_first` with `gate_none` -> 30 fills, `25.73R`, Calmar `12.864`, PF `2.749`, DD `-2.0R`, surface `soft_curve`.

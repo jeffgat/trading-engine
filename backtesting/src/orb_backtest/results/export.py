@@ -173,6 +173,7 @@ def results_to_dict(
     config_dict = {
         "rr": config.rr,
         "tp1_ratio": config.tp1_ratio,
+        "exit_mode": config.exit_mode,
         "risk_usd": config.risk_usd,
         "atr_length": config.atr_length,
 

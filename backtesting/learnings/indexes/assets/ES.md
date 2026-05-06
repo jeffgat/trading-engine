@@ -36,6 +36,8 @@
 - `DB Entry` -> `UNSPECIFIED`
 - `ALPHA_V1-A Live Retention Note (2026-05-05)` -> `CONDITIONAL — keep in research portfolio, demote or pause live risk at `$400``
 - `ES_NY ORB Wide-Stop Target Sweep (2026-05-05)` -> `UNSPECIFIED`
+- `NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)` -> `UNSPECIFIED`
+- `ES_NY ORB Exit Deep-Dive (2026-05-05)` -> `UNSPECIFIED`
 - `NY LSI (Liquidity Sweep Inversion) — Long Only` -> `**NO-GO** (thin edge, parameter instability, structural negative year)`
 - `London LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (2/5 pipeline phases — PF ceiling, no WF transferability)`
 - `Asia LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (definitive — losing strategy, no edge)`
@@ -46,20 +48,30 @@
 - `ES ORB 3-Session Discovery (Regime-Gated) — Phase-One Complete (2026-04-01)` -> `UNSPECIFIED`
 - `ES Asia-B Phase-One Pipeline — STRONG (2026-04-01)` -> `UNSPECIFIED`
 - `Regime-Gate Transfer Confirmation (2026-04-01)` -> `UNSPECIFIED`
+- `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
+- `ES NY ATH Exact Replay (2026-05-05)` -> `UNSPECIFIED`
+- `ES NY ATH Band Sensitivity (2026-05-05)` -> `UNSPECIFIED`
 
-## Reports (4)
+## Reports (5)
+- [ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md](../../reports/ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md) -> [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505)
 - [ES_NY_HTF_LSI_ANCHOR_EXPLORE.md](../../reports/ES_NY_HTF_LSI_ANCHOR_EXPLORE.md) -> [es_ny_htf_lsi_anchor_explore](../../../data/results/es_ny_htf_lsi_anchor_explore)
 - [ES_NY_HTF_LSI_BROAD_DISCOVERY.md](../../reports/ES_NY_HTF_LSI_BROAD_DISCOVERY.md) -> [es_ny_htf_lsi_broad_discovery](../../../data/results/es_ny_htf_lsi_broad_discovery)
 - [ES_NY_HTF_LSI_PHASE_ONE.md](../../reports/ES_NY_HTF_LSI_PHASE_ONE.md) -> [es_ny_htf_lsi_phase_one](../../../data/results/es_ny_htf_lsi_phase_one)
 - [ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [es_ny_htf_lsi_stitched_followup](../../../data/results/es_ny_htf_lsi_stitched_followup)
 
-## Result Directories (9)
+## Result Directories (15)
+- [alpha_v1_es_ny_ath_band_sensitivity_20260505](../../../data/results/alpha_v1_es_ny_ath_band_sensitivity_20260505) (18 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_trades.csv, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_trades.csv)
+- [alpha_v1_es_ny_ath_exact_replay_20260505](../../../data/results/alpha_v1_es_ny_ath_exact_replay_20260505) (9 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P5_1_EXACT_raw_result.json, ALPHA_V1_ES_NY_BASELINE_EXACT_raw_result.json, added_gated_trades.csv, baseline_trades.csv)
 - [es_asia_b_phase_one](../../../data/results/es_asia_b_phase_one) (1 files; primary: phase_one_results.json)
+- [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [es_ny_htf_lsi_anchor_explore](../../../data/results/es_ny_htf_lsi_anchor_explore) (1 files; primary: summary.json)
 - [es_ny_htf_lsi_broad_discovery](../../../data/results/es_ny_htf_lsi_broad_discovery) (6 files; primary: summary.json, stage_a_structural.json, stage_b_trade_cap.json, stage_c_oat.json, stage_d_grid.json)
 - [es_ny_htf_lsi_phase_one](../../../data/results/es_ny_htf_lsi_phase_one) (1 files; primary: phase_one_results.json)
 - [es_ny_htf_lsi_stitched_followup](../../../data/results/es_ny_htf_lsi_stitched_followup) (1 files; primary: summary.json)
 - [es_orb_discovery_3session](../../../data/results/es_orb_discovery_3session) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [es_orb_discovery_pipeline](../../../data/results/es_orb_discovery_pipeline) (2 files; primary: phase_one_results.json, discovery_pipeline_results.json)
+- [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
+- [hot_regime_v1_nq_es_portfolio_search_20260505](../../../data/results/hot_regime_v1_nq_es_portfolio_search_20260505) (1 files; primary: summary.json)
 - [nq_combo_with_es_candidates](../../../data/results/nq_combo_with_es_candidates) (3 files; primary: summary.md, combo_es_candidate_details.json, combo_es_candidate_ranking.csv)
+- [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505) (8 files; primary: summary.json, leg_stats.csv, pre_best_full_outcomes.csv, pre_best_holdout_outcomes.csv, risk_sweep.csv)
 - [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505) (6 files; primary: summary.json, best_near_intact_by_candidate.csv, near_intact_candidates.csv, ranked_candidates.csv, variant_manifest.csv)

@@ -156,6 +156,7 @@ class BacktestRequest(BaseModel):
     notes: Optional[str] = None
     rr: Optional[float] = None
     tp1_ratio: Optional[float] = None
+    exit_mode: Optional[str] = None
     risk_usd: Optional[float] = None
     atr_length: Optional[int] = None
     strategy: Optional[str] = None
@@ -518,7 +519,7 @@ def run_backtest_endpoint(req: BacktestRequest):
     # Apply param overrides
     overrides = {}
     for field in (
-        "rr", "tp1_ratio", "risk_usd", "atr_length",
+        "rr", "tp1_ratio", "exit_mode", "risk_usd", "atr_length",
         "strategy", "direction_filter", "use_bar_magnifier", "reverse_direction",
         "swing_n_bars",
         "name", "notes",

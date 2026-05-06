@@ -117,6 +117,13 @@ def _seed_daily_bars(symbol: str, replay_start: datetime, lookback_days: int = 9
     ]
 
 
+def _seed_ath_high(symbol: str, replay_start: datetime) -> float | None:
+    df_5m = _read_parquet_frame(symbol, "5m", end=replay_start)
+    if df_5m.empty:
+        return None
+    return float(df_5m["high"].max())
+
+
 def _daily_history_provider_from_trackers(
     trackers: dict[str, DailyHistoryTracker],
 ):
@@ -165,10 +172,13 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "atr_length",
             "rr",
             "tp1_ratio",
+            "exit_mode",
             "stop_atr_pct",
             "stop_orb_pct",
             "min_gap_atr_pct",
             "min_gap_orb_pct",
+            "ath_block_min_pct",
+            "ath_block_max_pct",
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
@@ -192,6 +202,7 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "atr_length",
             "rr",
             "tp1_ratio",
+            "exit_mode",
             "min_gap_atr_pct",
             "min_stop_points",
             "qty_multiplier",
@@ -668,6 +679,12 @@ async def run_profile_backtest(
         daily_history_by_symbol[symbol] = tracker
         for calc in atr_by_symbol[symbol].values():
             calc.seed_daily(seed_daily)
+
+        ath_seed = _seed_ath_high(symbol.split(".")[0], replay_start)
+        if ath_seed is not None:
+            for engine in symbol_map.get(symbol, []):
+                if hasattr(engine, "seed_ath_high"):
+                    engine.seed_ath_high(ath_seed)
 
         frame_end = datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=ET)
         bars_5m = _read_parquet_frame(symbol.split(".")[0], "5m", start=replay_start, end=frame_end)

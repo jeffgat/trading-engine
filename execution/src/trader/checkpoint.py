@@ -103,6 +103,7 @@ def _serialize_levels(levels: Any) -> dict | None:
         "risk_pts": levels.risk_pts,
         "direction": levels.direction,
         "gap_size": levels.gap_size,
+        "exit_mode": getattr(levels, "exit_mode", "split"),
     }
 
 
@@ -112,6 +113,15 @@ def _deserialize_levels(data: dict | None) -> Any:
         return None
     from .sizing import TradeLevels
     return TradeLevels(**data)
+
+
+def _float_or_nan(value: Any) -> float:
+    if value is None:
+        return float("nan")
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
 
 
 def _serialize_sweep(sweep: Any) -> dict | None:
@@ -166,13 +176,23 @@ def _deserialize_gap(data: dict | None) -> Any:
 
 def serialize_orb_engine(engine: Any) -> dict:
     """Snapshot an ORBEngine's mutable state."""
-    return {
-        "engine_type": "orb",
+    engine_type = getattr(engine, "engine_type", "orb")
+    data = {
+        "engine_type": engine_type,
         "state": engine._state.value,
         "current_date": engine._current_date,
         "orb_high": engine._orb_high,
         "orb_low": engine._orb_low,
         "daily_atr": engine._daily_atr,
+        "ath_high": engine._ath_high,
+        "ath_last_update": engine._ath_last_update,
+        "ath_last_close": getattr(engine, "_ath_last_close", float("nan")),
+        "ath_last_gap_pct": getattr(engine, "_ath_last_gap_pct", float("nan")),
+        "ath_check_count": getattr(engine, "_ath_check_count", 0),
+        "ath_block_count": getattr(engine, "_ath_block_count", 0),
+        "ath_pass_count": getattr(engine, "_ath_pass_count", 0),
+        "ath_last_check": getattr(engine, "_ath_last_check", None),
+        "ath_last_block": getattr(engine, "_ath_last_block", None),
         "bar_count": engine._bar_count,
         "long_fvg_found": engine._long_fvg_found,
         "short_fvg_found": engine._short_fvg_found,
@@ -188,6 +208,45 @@ def serialize_orb_engine(engine: Any) -> dict:
         "exit_type": engine._exit_type,
         "r_result": engine._r_result,
     }
+    if engine_type == "gold_x":
+        data.update({
+            "goldx_active_family": getattr(engine, "_goldx_active_family", None),
+            "goldx_max_hold_at": (
+                engine._goldx_max_hold_at.isoformat()
+                if getattr(engine, "_goldx_max_hold_at", None)
+                else None
+            ),
+            "goldx_quartile_stop": getattr(engine, "_goldx_quartile_stop", None),
+            "goldx_fvg_expiry_at": (
+                engine._goldx_fvg_expiry_at.isoformat()
+                if getattr(engine, "_goldx_fvg_expiry_at", None)
+                else None
+            ),
+            "goldx_last_classic_entry": (
+                engine._goldx_last_classic_entry.isoformat()
+                if getattr(engine, "_goldx_last_classic_entry", None)
+                else None
+            ),
+            "goldx_last_classic_exit": (
+                engine._goldx_last_classic_exit.isoformat()
+                if getattr(engine, "_goldx_last_classic_exit", None)
+                else None
+            ),
+            "goldx_last_fvg_selection": (
+                engine._goldx_last_fvg_selection.isoformat()
+                if getattr(engine, "_goldx_last_fvg_selection", None)
+                else None
+            ),
+            "goldx_pending_breakouts": [
+                {
+                    "timestamp": item.timestamp.isoformat(),
+                    "bar_index": item.bar_index,
+                    "direction": item.direction,
+                }
+                for item in getattr(engine, "_goldx_pending_breakouts", [])
+            ],
+        })
+    return data
 
 
 def restore_orb_engine(engine: Any, data: dict) -> bool:
@@ -220,6 +279,24 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     engine._orb_high = data.get("orb_high", float("nan"))
     engine._orb_low = data.get("orb_low", float("nan"))
     engine._daily_atr = data.get("daily_atr", 0.0)
+    engine._ath_high = _float_or_nan(data.get("ath_high", float("nan")))
+    engine._ath_last_update = data.get("ath_last_update", "")
+    engine._ath_last_close = _float_or_nan(data.get("ath_last_close", float("nan")))
+    engine._ath_last_gap_pct = _float_or_nan(data.get("ath_last_gap_pct", float("nan")))
+    try:
+        engine._ath_check_count = int(data.get("ath_check_count", 0) or 0)
+    except (TypeError, ValueError):
+        engine._ath_check_count = 0
+    try:
+        engine._ath_block_count = int(data.get("ath_block_count", 0) or 0)
+    except (TypeError, ValueError):
+        engine._ath_block_count = 0
+    try:
+        engine._ath_pass_count = int(data.get("ath_pass_count", 0) or 0)
+    except (TypeError, ValueError):
+        engine._ath_pass_count = 0
+    engine._ath_last_check = data.get("ath_last_check")
+    engine._ath_last_block = data.get("ath_last_block")
     engine._bar_count = data.get("bar_count", 0)
     engine._long_fvg_found = data.get("long_fvg_found", False)
     engine._short_fvg_found = data.get("short_fvg_found", False)
@@ -241,6 +318,37 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     engine.paused = data.get("paused", False)
     engine._exit_type = data.get("exit_type")
     engine._r_result = data.get("r_result")
+    if getattr(engine, "engine_type", None) == "gold_x":
+        engine._goldx_active_family = data.get("goldx_active_family")
+        goldx_max_hold_at = data.get("goldx_max_hold_at")
+        engine._goldx_max_hold_at = datetime.fromisoformat(goldx_max_hold_at) if goldx_max_hold_at else None
+        engine._goldx_quartile_stop = data.get("goldx_quartile_stop")
+        goldx_fvg_expiry_at = data.get("goldx_fvg_expiry_at")
+        engine._goldx_fvg_expiry_at = datetime.fromisoformat(goldx_fvg_expiry_at) if goldx_fvg_expiry_at else None
+        last_classic_entry = data.get("goldx_last_classic_entry")
+        engine._goldx_last_classic_entry = (
+            datetime.fromisoformat(last_classic_entry) if last_classic_entry else None
+        )
+        last_classic_exit = data.get("goldx_last_classic_exit")
+        engine._goldx_last_classic_exit = (
+            datetime.fromisoformat(last_classic_exit) if last_classic_exit else None
+        )
+        last_fvg_selection = data.get("goldx_last_fvg_selection")
+        engine._goldx_last_fvg_selection = (
+            datetime.fromisoformat(last_fvg_selection) if last_fvg_selection else None
+        )
+        try:
+            from .goldx_engine import _GoldXBreakout
+            engine._goldx_pending_breakouts = [
+                _GoldXBreakout(
+                    timestamp=datetime.fromisoformat(item["timestamp"]),
+                    bar_index=int(item["bar_index"]),
+                    direction=int(item["direction"]),
+                )
+                for item in data.get("goldx_pending_breakouts", [])
+            ]
+        except (KeyError, TypeError, ValueError):
+            engine._goldx_pending_breakouts = []
 
     # Time-validate: ensure the restored state is still appropriate
     now = datetime.now(tz=ET)
@@ -340,6 +448,9 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "paused": engine.paused,
         "exit_type": engine._exit_type,
         "r_result": engine._r_result,
+        "skip_reason": getattr(engine, "_skip_reason", None),
+        "blocking_gate": getattr(engine, "_blocking_gate", None),
+        "regime_gate_status": getattr(engine, "_regime_gate_status", None),
         "fvg_to_inversion_bars": engine._fvg_to_inversion_bars,
         "sweep_to_inversion_bars": engine._sweep_to_inversion_bars,
     }
@@ -415,6 +526,9 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     engine.paused = data.get("paused", False)
     engine._exit_type = data.get("exit_type")
     engine._r_result = data.get("r_result")
+    engine._skip_reason = data.get("skip_reason", getattr(engine, "_skip_reason", None))
+    engine._blocking_gate = data.get("blocking_gate", getattr(engine, "_blocking_gate", None))
+    engine._regime_gate_status = data.get("regime_gate_status", getattr(engine, "_regime_gate_status", None))
     engine._fvg_to_inversion_bars = data.get("fvg_to_inversion_bars")
     engine._sweep_to_inversion_bars = data.get("sweep_to_inversion_bars")
 
@@ -484,6 +598,30 @@ def _validate_lsi_state(engine: Any, checkpoint_state: Any, now_t) -> Any:
                 engine.name,
             )
             return LSIState.IDLE
+
+        now = datetime.now(tz=ET)
+        same_session_date = engine._current_date == now.strftime("%Y%m%d")
+        if engine._crosses_midnight:
+            yesterday = (now - timedelta(days=1)).strftime("%Y%m%d")
+            same_session_date = same_session_date or (
+                engine._current_date == yesterday and now_t < engine._flat_end_t
+            )
+        blocking_gate = getattr(engine, "_blocking_gate", None)
+        if same_session_date and blocking_gate is None and getattr(engine, "regime_gate_checks", ()):
+            blocking_gate = engine._blocking_regime_gate_name(engine._current_date)
+            if blocking_gate is not None:
+                engine._record_regime_gate_status(engine._current_date, blocking_gate)
+
+        if same_session_date and (
+            getattr(engine, "_skip_reason", None) == "regime_gate"
+            or blocking_gate
+        ):
+            logger.info(
+                "[%s] Checkpoint was FLAT due to regime gate - keeping FLAT",
+                engine.name,
+            )
+            return LSIState.FLAT
+
         if (
             engine._in_entry(now_t)
             and engine._levels is None
@@ -614,7 +752,7 @@ def restore_engines(
                 continue
 
             engine_type = engine_data.get("engine_type", "orb")
-            if engine_type == "orb":
+            if engine_type in {"orb", "hunter_orb", "gold_x"}:
                 if restore_orb_engine(engine, engine_data):
                     restored += 1
             elif engine_type == "lsi":

@@ -120,6 +120,26 @@ function PriceRow({ label, value }: { label: string; value: number | null | unde
   );
 }
 
+function formatPct(value: number | null | undefined) {
+  return value == null ? "—" : `${value.toFixed(3)}%`;
+}
+
+function formatAthTime(value: string | null | undefined) {
+  if (!value) return "—";
+  return value.length >= 16 ? value.slice(11, 16) : value;
+}
+
+function GateRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-text-muted text-xs">{label}</span>
+      <span className={`font-mono text-xs text-right ${tone ?? "text-text-secondary"}`}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function SessionCard({ engine, strategyType, sessionConfig, onPause, onResume }: SessionCardProps) {
   const [saving, setSaving] = useState(false);
   const isLsi = strategyType === "lsi";
@@ -136,6 +156,20 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
   const skippedToday = isSkippedToday(engine);
   const regimeBlocked = engine.skip_reason === "regime_gate" && engine.regime_gate_status?.allowed === false;
   const regimeEval = getPrimaryRegimeEvaluation(engine);
+  const ath = engine.ath;
+  const athEnabled = ath?.enabled === true;
+  const athLastCheck = ath?.last_check ?? null;
+  const athLastBlocked = athLastCheck?.blocked === true;
+  const athHasSeed = ath?.high != null;
+  const athStatusLabel = !athHasSeed
+    ? "No Seed"
+    : athLastCheck == null
+    ? "Watching"
+    : athLastBlocked
+    ? "Blocked"
+    : athLastCheck.available === false
+    ? "No Check"
+    : "Passed";
   const tp1HitResult = getTp1HitResult(sessionConfig);
   const stateColor = regimeBlocked && engine.state === "flat"
     ? "bg-amber-500/20 text-amber-300"
@@ -221,6 +255,11 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
           <Badge variant="outline" className={`border-0 ${stateColor}`}>
             {stateLabel}
           </Badge>
+          {athEnabled && athLastBlocked && (
+            <Badge variant="outline" className="border-0 bg-amber-500/20 text-amber-300">
+              ATH Blocked
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="flex flex-col flex-1 gap-3">
@@ -298,6 +337,66 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
                   {regimeEval.reason}
                 </span>
               </div>
+            )}
+          </div>
+        )}
+
+        {athEnabled && (
+          <div className="rounded-md border border-border/50 bg-bg-secondary p-2 space-y-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-text-muted font-medium">ATH Gate</span>
+              <span
+                className={`text-xs font-medium ${
+                  athStatusLabel === "Blocked"
+                    ? "text-amber-300"
+                    : athStatusLabel === "Passed"
+                    ? "text-profit"
+                    : athStatusLabel === "No Seed"
+                    ? "text-loss"
+                    : "text-text-muted"
+                }`}
+              >
+                {athStatusLabel}
+              </span>
+            </div>
+            <GateRow
+              label="Blocked Band"
+              value={`${formatPct(ath?.block_min_pct)}-${formatPct(ath?.block_max_pct)}`}
+            />
+            <GateRow label="Now From ATH" value={formatPct(ath?.current_gap_pct)} />
+            <GateRow
+              label="Last Check"
+              value={
+                athLastCheck
+                  ? `${athLastCheck.available === false ? "No Seed" : athLastCheck.blocked ? "Blocked" : "Passed"} ${formatPct(athLastCheck.gap_pct)}`
+                  : "—"
+              }
+              tone={
+                athLastBlocked
+                  ? "text-amber-300"
+                  : athLastCheck?.available === false
+                  ? "text-loss"
+                  : athLastCheck
+                  ? "text-profit"
+                  : undefined
+              }
+            />
+            {athLastCheck && (
+              <GateRow
+                label="Check Time"
+                value={`${formatAthTime(athLastCheck.bar_time)} ${athLastCheck.direction.toUpperCase()}`}
+              />
+            )}
+            <GateRow
+              label="Checks"
+              value={`${ath?.check_count ?? 0} (${ath?.block_count ?? 0} blocked / ${ath?.pass_count ?? 0} passed)`}
+            />
+            {ath?.last_block && !athLastBlocked && (
+              <GateRow
+                label="Last Block"
+                value={`${formatPct(ath.last_block.gap_pct)} @ ${formatAthTime(ath.last_block.bar_time)}`}
+                tone="text-amber-300"
+              />
             )}
           </div>
         )}
@@ -400,7 +499,11 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
         {/* Flat with no trade */}
         {engine.state === "flat" && !hasLevels && (
           <div className="text-center text-text-muted text-xs py-2">
-            {regimeBlocked ? "Blocked by regime gate." : "No setup today"}
+            {regimeBlocked
+              ? "Blocked by regime gate."
+              : athLastBlocked
+              ? "Last setup skipped by ATH gate."
+              : "No setup today"}
           </div>
         )}
 

@@ -43,6 +43,10 @@ ALLOWED_LSI_CONFIRMATION_MODES = (
     "cisd",
     "inversion_or_cisd",
 )
+ALLOWED_EXIT_MODES = (
+    "split",
+    "single_target",
+)
 
 
 @dataclass(frozen=True)
@@ -117,6 +121,7 @@ class StrategyConfig:
     risk_usd: float = 5000.0
     rr: float = 2.5
     tp1_ratio: float = 0.5
+    exit_mode: str = "split"
     min_qty: float = 1.0
     qty_step: float = 1.0
     # ATR
@@ -331,6 +336,16 @@ class StrategyConfig:
                 f"tp1_ratio * rr must be >= 1.0 (got {self.tp1_ratio} * {self.rr} = "
                 f"{self.tp1_ratio * self.rr:.3f}). TP1 distance from entry must be "
                 f"at least as far as the stop loss distance."
+            )
+        if self.exit_mode not in ALLOWED_EXIT_MODES:
+            raise ValueError(
+                "exit_mode must be one of "
+                f"{list(ALLOWED_EXIT_MODES)} (got {self.exit_mode!r})"
+            )
+        if self.exit_mode == "single_target" and self.tp1_ratio != 1.0:
+            raise ValueError(
+                "tp1_ratio must be 1.0 when exit_mode='single_target' "
+                f"(got {self.tp1_ratio!r})"
             )
         if self.ref_lsi_gap_entry_edge not in {"near", "far"}:
             raise ValueError(

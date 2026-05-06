@@ -1,6 +1,8 @@
 # ALPHA_V1 Portfolio
 
-Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. As of 2026-04-12, the NQ NY leg has been swapped from the archived legacy `NQ_NY_LSI` branch to the current preferred **live / discretionary** NQ NY LSI profile: the `ALPHA_V1` HTF-LSI override (`08:30-13:30`, `rr=3.5`, `tp1=0.4`, `risk_usd=400`). This should be treated as the active operating profile. The standalone `HTF_LSI_5M_LAG24` block remains the frozen canonical research anchor for the underlying HTF-LSI thesis.
+Separate-account portfolio optimized for prop firm payout extraction. Each leg runs on its own independent funded account. As of 2026-04-12, the NQ NY leg has been swapped from the archived legacy `NQ_NY_LSI` branch to the current preferred **live / discretionary** NQ NY LSI profile: the `ALPHA_V1` HTF-LSI override (`08:30-13:30`, `rr=3.5`, `tp1=0.4`, risk governed by the sizing table below). This should be treated as the active operating profile. The standalone `HTF_LSI_5M_LAG24` block remains the frozen canonical research anchor for the underlying HTF-LSI thesis.
+
+2026-05-06 operating update: **NQ NY ORB R11** is added as a fifth live-native ALPHA leg, but only as a risk-split NY ORB sleeve beside a reduced **ES_NY ORB** allocation. Keep both NY ORB legs on their exact-replayed split ladders; solve the ES_NY discomfort with lower risk, not single-target compression.
 
 Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and current HTF-LSI exact replay (updated 2026-04-12).
 
@@ -22,14 +24,27 @@ Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and
 
 ### Risk Sizing Per Leg
 
-Risk is differentiated per leg based on actual trade-level prop sims. For the new NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep; a full four-leg exact rerun on the tightened live row is still pending.
+Risk is differentiated per leg based on actual trade-level prop sims. For the NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep; the 2026-05-06 recent annual payout sim stitched exact cached trade streams for the four active ALPHA legs plus exact NQ R11. This is still not a freshly exported five-leg execution profile, but it is the current operating sizing read.
 
 | Leg | Sprint Risk | Pay% | PayD | MCBch | EV$/acct | Rationale |
 |-----|------------|------|------|-------|----------|-----------|
 | NQ NY HTF-LSI lag24 | $300 | 90.6% | 304d | 9 | +$2,076 | Canonical LSI swap-in; recent 2024-2026 packet stayed strong at 98.0% / 176d |
 | NQ Asia ORB | $300 | 96.9% | 132d | 2 | +$2,362 | $400 → 90.4% with 6 MCBch. $300 fixes it |
-| ES Asia Cont | $200 | 98.4% | 323d | 3 | +$2,430 | Weak R production. $400 → 85.4% with 6 MCBch |
-| ES NY Cont | $300 | 91.9% | 210d | 5 | +$2,137 | Lumpy wins. $400 → 82.7% with 7 MCBch |
+| ES Asia Cont | $150 | 95.7%* | 52d* | 2* | +$276* | Trimmed from `$200` in the annual payout sim to reduce breach clustering while preserving speed |
+| NQ NY ORB R11 | $150 | 95.7%* | 52d* | 2* | +$276* | Added NY ORB companion leg; exact split replay `+148.3R`, `PF 1.51`, `-6.45R` DD |
+| ES NY Cont | $100 | 95.7%* | 52d* | 2* | +$276* | Demoted from the `$400` live override; keep it as a small NY ORB satellite only |
+
+\* Five-leg recent annual sim row for `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`: average resolved 2024-2025 payout time `52d`, resolved payout `95.7%`, resolved breach `4.3%`, max consecutive breaches `2`, average EV/start `+$276`. Partial `2026_YTD` had `2` payouts, `0` breaches, and `4` open accounts through `2026-03-24`.
+
+### Risk Combination Suggestions
+
+These are operating risk menus. The 2026-05-06 annual sim uses exact cached ALPHA_V1-A trades plus exact NQ R11 split trades, but not a single exported five-leg execution profile.
+
+| Mode | NQ NY HTF-LSI | NQ Asia ORB | ES Asia ORB | NQ NY ORB R11 | ES NY ORB | Read |
+|------|---------------|-------------|-------------|---------------|-----------|------|
+| Fast-safe annual default | $300 | $300 | $150 | $150 | $100 | Best current tradeoff: `52d` avg 2024-2025 payout, `95.7%` resolved payout, `4.3%` resolved breach |
+| Balanced NY sleeve challenger | $300 | $300 | $200 | $250 | $200 | Fast but less comfortable: `47d` in 2024 and `28d` in 2025, but partial `2026_YTD` resolved at `2` payouts / `3` breaches / `1` open |
+| Aggressive sprint | $500 | $400 | $150 | $250 | $300 | Very fast (`27d` avg 2024-2025) but breach jumps to `14.2%`; not the default if minimizing breach is the priority |
 
 **Current combined-account exact packet with HTF swap (legacy `NQ_NY_LSI` replaced by `HTF_LSI_5M_LAG24` at `$300`; other legs unchanged):**
 
@@ -204,6 +219,43 @@ R by year: 2016:+15.4 | 2017:+25.9 | 2018:+4.6 | 2019:+11.0 | 2020:+16.6 | 2021:
 
 DB: `bt-es-ny-cont-long-2016-2026-final-650260`
 
+---
+
+### Leg 5: ORB/NQ_NY-R11
+
+**Tier 2 - NY ORB companion leg; risk-split with ES_NY**
+
+Execution note: `NQ NY ORB R11` is now a live-native ALPHA candidate because the exact split replay completed through `2026-03-24`. It should run the split ladder, not the single-target exit: exact split beat single by `+11.6R` with effectively the same drawdown.
+
+| Param | Value |
+|-------|-------|
+| strategy | continuation |
+| session | NY (09:30-09:50 ORB, entry 09:50-12:00, flat 15:30) |
+| direction | long only |
+| rr | 3.5 |
+| tp1_ratio | 0.4 |
+| atr_length | 12 |
+| stop_atr_pct | 7.0% |
+| min_gap_atr_pct | 2.5% |
+| DOW exclusion | Friday |
+| exit_mode | split |
+| magnifier | 1s |
+
+| Metric | Exact Full History | Exact Last 2Y | Exact Last 1Y |
+|--------|--------------------|---------------|---------------|
+| Trades | 554 | 110 | 49 |
+| Win Rate | 52.2% | 49.1% | 44.9% |
+| PF | 1.51 | 1.37 | 1.18 |
+| Net R | +148.3 | +20.4 | +4.7 |
+| Max DD | -6.45R | -6.0R | -6.0R |
+| Full TP | 20.9% | 19.1% | 16.3% |
+| TP1-BE | 29.2% | 27.3% | 24.5% |
+| SL | 47.7% | 50.9% | 55.1% |
+
+Frontend ID: `bt-alpha-v1-exact-split-nq-ny-orb-r11-2016-04-17-to-1a7130`
+
+Operating conclusion: add NQ R11 as the stronger side of the NY ORB pair, but do not stack it at full risk beside a full-size ES_NY. The prior sleeve `NQ R11 $250 / ES_NY $200` is now a sprint challenger; the 2026-05-06 annual payout sim default is `NQ R11 $150 / ES_NY $100` inside the five-leg menu.
+
 ### ES_NY ORB Live Retention Review (2026-05-05)
 
 Live `ALPHA_V1-A` currently risks `$400` on `ES_NY`, while the original ALPHA sizing table marked `$300` as the preferred sprint risk and explicitly noted that `$400` reduced first-payout quality (`82.7%` payout, `7` max consecutive breaches). Treat `$400` ES_NY as an aggressive live override, not the canonical ALPHA risk.
@@ -214,6 +266,8 @@ Live DB sample after the local data cutoff is weak and matches the discretionary
 
 **Operating conclusion:** do not permanently delete ES_NY ORB on this sample alone, but do not keep it at `$400` while it is failing live. Demote to `$200-$300` or pause until fresh post-2026-03-24 data can be exact-replayed. If ALPHA_V1 needs a leg removed for simplicity or drawdown relief, ES_NY is the first ORB leg to cut because it is positive but least essential: the portfolio remains profitable without it, and the current live sizing magnifies its worst behavioral mode.
 
+2026-05-06 sizing action: the initial ALPHA operating table demoted ES_NY to `$200` and paired it with added `NQ NY ORB R11` at `$250`; the later recent annual payout sim supersedes that as the default and further reduces the NY ORB sleeve to `NQ R11 $150 / ES_NY $100`.
+
 ### NY ORB Wide-Stop Target Sweep (2026-05-05)
 
 Report: `backtesting/learnings/reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md`
@@ -222,7 +276,125 @@ Focused sweep across `794` valid configs tested whether **NQ NY ORB R11** and **
 
 **Conclusion: do not widen either NY ORB as an ALPHA_V1 replacement.** Zero rows widened the actual median stop by at least `20%` while preserving full-history, last-1y, last-2y, PF, DD, and negative-year quality. NQ R11's least-bad actual widening (`ATR 9%`, about `1.29x` wider) cost roughly `26R-30R` full-history. ES_NY's first meaningful wider families (`ATR 10%+`, `ATR 12%+`, `ORB 50%+`) either damaged recent performance or materially increased DD; `ATR 6%` and `ORB 25%` mostly hit the same `12`-tick median stop because the `3pt` floor dominated.
 
-Operating implication: if NY ORB stopouts are emotionally or live-operationally uncomfortable, solve that with **risk sizing**, not wider stops. ES_NY remains the first ORB leg to risk down or pause when live behavior is bad. NQ NY ORB R11 remains a separate conditional candidate that needs exact execution replay before live promotion; widening its stop is not the upgrade path. Both tested branches are `deployability=live_native` mechanically, but `exact_replay_required=yes_before_live_promotion`.
+Operating implication: if NY ORB stopouts are emotionally or live-operationally uncomfortable, solve that with **risk sizing**, not wider stops. ES_NY remains the first ORB leg to risk down or pause when live behavior is bad. NQ NY ORB R11 is now exact-replayed and promoted only as a risk-split companion leg; widening its stop is not the upgrade path. Both tested branches are `deployability=live_native`; exact split replay is complete through `2026-03-24`.
+
+### ALPHA_V1 Exit Target MFE Sweep (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_EXIT_TARGET_MFE_SWEEP_20260505.md`
+
+Three-pass exit optimization reviewed the active `ALPHA_V1` legs plus **NQ NY ORB R11**: baseline MFE diagnostics, true engine replay of `rr`/TP1-distance-only variants, then Calmar/edge-first ranking versus each leg's baseline. Entries, stops, sessions, DOW filters, ORB windows, and gap filters were held fixed. MFE touch rates were treated as diagnostic only; promotion decisions came from full engine replay. All rows are mechanically `deployability=live_native`, but any live target change still requires exact execution replay.
+
+Key MFE read: low full-TP rate is not automatically a reason to shorten every target. `NQ Asia RR6` only reaches current `6R` on `5.3%` of trades, but TP1-hit trades have p75 MFE `4.47R` and p90 `6.08R`, so the runner is real. `ES_NY RR5` has the clearest "TP2 too far" symptom (`59.8%` TP1-hit, only `10.7%` TP2/TP1 conversion), but the closer-target engine sweep still failed to preserve enough edge.
+
+Promotion read:
+- **NQ Asia ORB** is the strongest target-compression candidate: `rr=3.0 / TP1=2.0R` improves full-history R from `+213.5R` to `+217.6R`, keeps PF essentially flat (`1.55` to `1.55`), raises full TP from `5.1%` to `22.7%`, cuts TP1-BE from `14.7%` to `8.6%`, and keeps recent 2y slightly better (`+53.2R` to `+54.8R`). DD worsens only `+0.43R` (`10.2R` to `10.6R`). This is the one target change worth exact replay.
+- **NQ NY HTF-LSI** has a smoother closer-target candidate: `rr=2.0 / TP1=1.4R` raises full TP from `6.2%` to `21.0%` and improves DD (`10.9R` to `10.0R`) while giving up only `-2.6R` full-history. It is plausible for a smoother payout profile, but because it is not an ORB leg and slightly reduces R, treat it as a secondary exact-replay candidate rather than an automatic replacement.
+- **ES Asia ORB** does not need compression. `rr=1.25 / TP1=1.0R` raises full TP (`21.7%` to `28.4%`) but loses `-7.9R` and worsens DD. Some farther-target rows improve full R slightly, which argues the current `rr=1.5` is already close enough rather than too far.
+- **ES_NY ORB** remains uncomfortable but not fixed by shorter TP2. Best loose closer row `rr=4.0 / TP1=1.0R` raises full TP only to `8.0%` while cutting `-13.6R`, lowering PF (`1.39` to `1.34`), and slightly worsening DD. Keep the current target if the leg stays active; solve live discomfort with risk sizing or gating, not target compression.
+- **NQ NY ORB R11** should keep its current `rr=3.5 / TP1=1.4R`. The best loose closer row `rr=3.0 / TP1=1.4R` gives up `-10.6R` and lowers PF (`1.50` to `1.46`) for only a small full-TP lift (`18.1%` to `20.6%`).
+
+### ES/NQ NY ORB Exit Deep-Dive (2026-05-05)
+
+Report: `backtesting/learnings/reports/ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md`
+
+Artifacts: `backtesting/data/results/es_nq_ny_orb_exit_deepdive_20260505/`
+
+Follow-up on **ES_NY ORB** and **NQ NY ORB R11** tested true single-target/full-position TP1, no-BE, delayed-BE, and pre-trade bucket diagnostics. The previous `rr`/TP1 compression pass was too narrow: the missed branch is runner management, not just a closer final TP2.
+
+Best research rows:
+- **ES_NY ORB true full-position TP1 at 1R**: `+222.5R`, `PF 1.72`, `-8.0R` DD versus baseline `+126.6R`, `PF 1.39`, `-10.9R` DD. Last-2y improves `+36.9R`; last-1y improves `+16.8R`.
+- **ES_NY ORB delayed BE after 1.5R**: `+213.5R`, `PF 1.68`, `-9.3R` DD. This is strong but changes the risk path because some partial winners become `tp1_sl` givebacks.
+- **NQ NY ORB R11 full-position TP1 at 1.4R**: `+155.2R`, `PF 1.61`, `-6.4R` DD versus baseline `+129.4R`, `PF 1.50`, `-6.0R` DD.
+- **NQ NY ORB R11 delayed BE after 1.5R**: `+160.7R`, `PF 1.63`, `-6.0R` DD, but recent-year lift is less clean than ES.
+
+Implementation update: `exit_mode=single_target` is now supported in research and live execution, with `tp1_ratio=1.0` required so `rr` is the sole target. The single-target rows above are now `deployability=live_native` candidates pending exact replay. Delayed-BE and no-BE rows remain `research_only`. The existing `wide_stop_full_exit_at_tp1` path is still not equivalent; a quick engine-native sanity check with a tiny threshold produced only `+51.4R`/`PF 1.16`/`-14.5R` DD for ES and `+81.8R`/`PF 1.32`/`-7.2R` DD for NQ.
+
+Operating conclusion: before spending more effort optimizing **NQ Asia ORB** or **NQ NY HTF-LSI** exits, exact-replay the proper `exit_mode=single_target` path for ES_NY and NQ R11. Pre-trade buckets did not reveal an obvious negative skip slice; the weak buckets were still positive, so gating is secondary to exit-policy parity.
+
+### ALPHA_V1 Native Single-Target Sweep (2026-05-06)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_SINGLE_TARGET_SWEEP_20260506.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_single_target_sweep_20260506/`
+
+Follow-up tested the now-native `exit_mode=single_target` path across all five reviewed legs: active `NQ NY HTF-LSI`, `NQ Asia ORB`, `ES Asia ORB`, `ES_NY ORB`, and conditional `NQ NY ORB R11`. For each leg, the current split ladder was compared against a full-position single target at the current TP1 distance, then a focused RR-only single-target sweep. All entries, stops, sessions, DOW filters, ORB windows, gap filters, and magnifier settings were held fixed.
+
+Best operating rows:
+- **ES_NY ORB**: `single_target 1.0R` is a material upgrade: current split `+126.6R / PF 1.39 / -10.9R DD / 6.4% target`; single target `+186.4R / PF 1.57 / -8.0R DD / 59.8% target`. Exact replay this before any live change.
+- **NQ NY ORB R11**: `single_target 1.4R` was the research-engine preferred R11 exit: current split `+129.4R / PF 1.50 / -6.0R DD / 18.1% target`; single target `+149.2R / PF 1.58 / -6.4R DD / 52.4% target`. This read was superseded by exact replay, where the split ladder won on edge.
+- **ES Asia ORB**: native single target changes the earlier split-compression read. `single_target 1.25R` improved to `+173.7R / PF 1.32 / -13.6R DD / 32.2% target` versus current split `+145.9R / PF 1.28 / -12.3R DD / 21.7% target`. This is promising but a tradeoff, not automatic: it adds `+27.9R` and PF, but gives back `+1.35R` DD.
+- **NQ Asia ORB**: keep split structure. Single target at current TP1 (`1.8R`) loses `-33.5R` and adds a negative year. Best Calmar-ish single row (`2.0R`) still loses `-10.4R`, lowers PF, and slightly worsens DD. High single targets can raise raw R (`6.0R -> +274.0R`) but DD expands to `-15.6R` and Calmar falls, so this is not a cleaner replacement.
+- **NQ NY HTF-LSI**: keep split structure. Single at current TP1 (`1.4R`) loses `-5.4R`, adds a negative year, and weakens recent 1y. The best smoother row (`1.5R`) lowers DD but loses `-9.0R` and PF; treat it as inferior unless a future prop-sim specifically values lower DD over edge.
+
+Deployment label: single-target rows are mechanically `live_native` because `exit_mode=single_target` is now supported in research and execution with `tp1_ratio=1.0`; any selected row still has `exact_replay_required=yes_before_live_change`.
+
+### ALPHA_V1 Single-Target Exact Replay + Phase-One Sizing (2026-05-06)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_SINGLE_TARGET_EXACT_PROP_20260506.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_single_target_exact_prop_20260506/`
+
+Exact replay completed for the three native single-target candidates using temporary live-engine profiles only; `execution/config/exec_configs.json` was not edited. Funded model was the standard phase-one account: `$50k` start, `$2k` EOD trailing DD capped at `$50k`, first payout at `$52.5k`, `$500` first withdrawal, `$100` account/reset cost, and account starts every `14` calendar days.
+
+Exact replay supersedes the optimistic research sweep for promotion decisions:
+- **ES NY ORB single 1.0R** exact replay: `849` trades, `+101.6R`, `PF 1.28`, `55.8%` WR, `-12.2R` DD, `55.0%` target. This is a large haircut versus research (`+186.4R`, `PF 1.57`, `-8.0R` DD). Treat the single-target ES upgrade as weaker than expected; do not increase ES NY risk based on the research row alone.
+- **NQ NY ORB R11 single 1.4R** exact replay: `554` trades, `+136.7R`, `PF 1.47`, `52.2%` WR, `-6.4R` DD, `51.6%` target. This is close enough to the research thesis to remain the cleaner NY ORB promotion candidate.
+- **ES Asia ORB single 1.25R** exact replay: `1,428` trades, `+219.6R`, `PF 1.34`, `52.0%` WR, `-15.0R` DD, `47.6%` target. Exact replay is stronger than research on R/PF but carries a bigger DD footprint than the split baseline.
+
+Phase-one sizing read:
+- **Practical sprint sizing**: ES NY `$175` (`79.2%` payout / `9.2%` breach / avg payout `403d`), NQ R11 `$325` (`88.5%` / `6.5%` / `187d`), ES Asia `$200` (`90.8%` / `5.4%` / `189d`).
+- **Conservative standalone sizing**: ES NY `$150` (`83.8%` payout / `0.0%` breach / `496d`), NQ R11 `$300` (`92.7%` / `0.0%` / `209d`), ES Asia `$125` (`94.6%` / `0.0%` / `295d`).
+
+Operating conclusion from this pass alone: **NQ R11 single 1.4R** and **ES Asia single 1.25R** were the serious candidates for dry-run sizing review, while ES NY single 1.0R was positive but no longer looked like the clean replacement implied by research. This read is superseded for exit-policy selection by the next exact split-vs-single comparison, which showed NQ R11's split ladder still has better exact edge.
+
+### ALPHA_V1 Exact Single vs Split Target Comparison (2026-05-06)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_SINGLE_VS_SPLIT_EXACT_COMPARE_20260506.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_single_vs_split_exact_compare_20260506/`
+
+This follow-up exact-replayed the **split target counterparts** as single-leg live-engine profiles, then compared them to the cached exact single-target runs over the same `2016-04-17` to `2026-03-24` window. Split counterparts used the same session, stop, gap, DOW, and flat settings as the single-target candidates; only `exit_mode`, `rr`, and `tp1_ratio` changed back to the split ladder.
+
+Full-window exact comparison:
+- **ES NY ORB**: single `1.0R` produced `+101.6R / PF 1.28 / -12.2R DD / 55.0% target`; split `rr 5 / tp1 0.2` produced `+145.8R / PF 1.40 / -12.0R DD / 10.1% full target / 37.7% TP1-BE`. Exact verdict: **keep split if this leg stays active**. Single target feels cleaner but gives up `-44.2R` and PF.
+- **NQ NY ORB R11**: single `1.4R` produced `+136.7R / PF 1.47 / -6.4R DD / 51.6% target`; split `rr 3.5 / tp1 0.4` produced `+148.3R / PF 1.51 / -6.45R DD / 20.9% full target / 29.2% TP1-BE`. Exact verdict: **keep split** unless smoother all-or-nothing payouts are explicitly worth giving up `-11.6R`.
+- **ES Asia ORB**: single `1.25R` produced `+219.6R / PF 1.34 / -15.0R DD / 47.6% target`; split `rr 1.5 / tp1 0.7` produced `+181.4R / PF 1.30 / -12.5R DD / 35.4% full target / 14.2% TP1-BE`. Exact verdict: **single target is the only true R/PF upgrade**, but it expands DD by `+2.5R`; size down if promoted.
+
+Operating conclusion: do **not** promote ES NY or NQ R11 single-target exits on edge grounds. ES NY and NQ R11 split ladders remain the better exact-engine structures despite the awkward TP1-BE profile. ES Asia single `1.25R` remains a valid challenger if accepting the DD tradeoff. All rows are `deployability=live_native`; split exact replay is complete through `2026-03-24`.
+
+### NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)
+
+Report: `backtesting/learnings/reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md`
+
+The frozen ORB-only NY pair was evaluated with **NQ NY ORB R11** (`ATR 7% / rr 3.5 / tp1 0.4`, long, no Friday) plus current **ES_NY ORB** (`ATR 5% / rr 5.0 / tp1 0.2`, long, no Thursday). The sweep varied only per-leg dollar risk from `$100` to `$650` by `$50`; no signal, stop, target, DOW, or session parameters were optimized. Funded model: `$50k` account, `$2k` EOD trailing DD capped at `$50k`, first payout at `$52.5k`, `$500` first withdrawal, `$100` challenge/reset fee, starts every `14` calendar days. Holdout opened once at `2025-01-01`.
+
+Frozen stats over `2016-04-17` to `2026-03-24`: NQ R11 produced `552` fills, `+129.4R`, `PF 1.50`, `-6.0R` DD, `53.3%` WR, `18.1%` full TP, `33.0%` TP1-BE, `46.4%` SL. ES_NY produced `846` fills, `+126.6R`, `PF 1.39`, `-10.9R` DD, `61.0%` WR, only `6.4%` full TP, `46.9%` TP1-BE, `38.2%` SL.
+
+Sizing read:
+- **Conservative / lowest-breach**: `NQ $150 / ES $150` -> pre-holdout payout `83.3%`, breach `0.0%`, EV `$316.67`, avg payout `198d`; holdout payout `75.0%`, breach `0.0%`, EV `$275.00`, avg payout `186d`. This is robust but slow.
+- **Balanced ES-reduced default**: `NQ $250 / ES $200` -> pre-holdout payout `78.1%`, breach `18.9%`, EV `$290.35`, avg payout `116d`; holdout payout `81.2%`, breach `0.0%`, EV `$306.25`, avg payout `135d`. This is the preferred first pass if adding NQ R11 while reducing ES_NY.
+- **NQ-led sprint**: `NQ $350 / ES $150` -> pre-holdout payout `73.2%`, breach `23.7%`, EV `$275.00`, avg payout `100d`; holdout payout `81.2%`, breach `12.5%`, EV `$306.25`, avg payout `123d`, max consecutive holdout breaches `4`. This is the faster branch, but not the default.
+- **Too hot reference**: `NQ $400 / ES $400` -> pre-holdout breach `34.2%`, holdout breach `34.4%`; not recommended as the default NY ORB sleeve risk despite faster payouts.
+
+Operating conclusion: if adding NQ R11 beside ES_NY, run the pair as a deliberately risk-split NY ORB sleeve. Use `NQ $150 / ES $150` for conservative paper/live probation; use `NQ $250 / ES $200` as the balanced default; use `NQ $350 / ES $150` only if accepting a faster, breach-tolerant phase-one sprint profile. Because ES_NY has weak post-cutoff live behavior at `$400`, do not promote an ES-heavy live increase without fresh exact replay through post-`2026-03-24` data. Both legs are `deployability=live_native`; NQ R11 exact split replay is complete through `2026-03-24`.
+
+### ALPHA_V1 Recent Annual Payout Simulation (2026-05-06)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_RECENT_PAYOUT_SIM_20260506.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_recent_payout_sim_20260506/`
+
+This stitched cached exact trade streams for the four active `ALPHA_V1-A` legs plus exact split **NQ NY ORB R11**, then simulated phase-one accounts in calendar `2024`, `2025`, and partial `2026_YTD` through `2026-03-24`. Account model matched ALPHA docs: `$50k`, `$2k` EOD trailing DD capped at `$50k`, payout trigger `$52.5k`, first payout `$500`, account cost `$150`, starts every `14` days. Payout and breach rates are resolved-account rates; open accounts are tracked separately.
+
+Key result: payout speed is not the blocker. Even low-risk rows reached first payout inside the desired `2-3 month` window. Breach clustering is the blocker.
+
+| Risk Menu | 2024 | 2025 | 2026_YTD | Read |
+|-----------|------|------|----------|------|
+| `HTF 300 / NQ Asia 300 / ES Asia 150 / R11 150 / ES NY 100` | `91.3%` resolved payout, `8.7%` breach, `56.7d` avg payout | `100%` resolved payout, `0%` breach, `47.3d` avg payout | `2` payout / `0` breach / `4` open | Best fast-safe default |
+| `HTF 300 / NQ Asia 300 / ES Asia 200 / R11 250 / ES NY 200` | `82.6%` payout, `17.4%` breach, `47.2d` | `84.6%` payout, `15.4%` breach, `27.7d` | `2` payout / `3` breach / `1` open | Fast but too much 2026 NY stress |
+| `HTF 500 / NQ Asia 400 / ES Asia 150 / R11 250 / ES NY 300` | `87.0%` payout, `13.0%` breach, `32.8d` | `84.6%` payout, `15.4%` breach, `21.2d` | `3` payout / `2` breach / `1` open | Very fast, but breach is no longer minimized |
+
+Operating conclusion: revise the live-study default toward **lower NY ORB risk**, not higher. Preferred paper/live candidate is `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`. The prior `NQ R11 $250 / ES_NY $200` sleeve remains a speed challenger, but partial 2026 makes it too breach-prone for the default if the objective is fastest payout while minimizing breach rates.
 
 ---
 
@@ -481,7 +653,7 @@ Artifacts: `backtesting/data/results/alpha_v1_ath_regime_first_pass_20260505/`
 
 Scope was the active ALPHA_V1 baseline trade set from the 2026-05-02 reentry promotion packet: `3,470` filled trades across `NQ NY HTF-LSI`, `NQ Asia ORB`, `ES Asia ORB`, and `ES NY ORB`, annotated with point-in-time ATH features from local continuous futures data only.
 
-**First read: promising as attribution, not yet a live filter.** The clearest broad weak bucket is signal-time `0.5-1%` below futures ATH. Full history is almost flat in that zone (`381` trades, `+2.6R`, `0.01R` avg, `46.7%` WR), while the full portfolio baseline is `+579.5R`, `0.167R` avg, `54.0%` WR. A simple skip probe preserves full-history net R (`+576.9R`) while raising avg R to `0.187` and PF from `1.41` to `1.46`; in `2025+`, the same skip improves `+106.3R / -11.2R DD` to `+111.5R / -8.5R DD`.
+**First read: useful attribution, but the broad skip gate is NO-GO for immediate promotion.** The clearest weak bucket is signal-time `0.5-1%` below futures ATH. Full history is almost flat in that zone (`381` trades, `+2.6R`, `0.01R` avg, `46.7%` WR), while the full portfolio baseline is `+579.5R`, `0.167R` avg, `54.0%` WR. A simple skip probe preserves full-history net R (`+576.9R`) while raising avg R to `0.187` and PF from `1.41` to `1.46`; in `2025+`, the same skip improves `+106.3R / -11.2R DD` to `+111.5R / -8.5R DD`. However, the funded first-payout model gets worse outside the most recent cohort: full-history payout rate falls from `73.8%` to `70.0%`, and `2024+` falls from `81.4%` to `64.4%`. The 2025+ cohort is the exception (`84.4%` payout unchanged, breaches `2` to `0`).
 
 Leg-level behavior is not a universal "near ATH good" rule:
 - `ES Asia ORB` likes the closest ATH band: `0-0.5%` below ATH produced `325` trades, `+61.1R`, `0.188R` avg, with much lower SL rate (`21.2%`) than its baseline.
@@ -489,7 +661,49 @@ Leg-level behavior is not a universal "near ATH good" rule:
 - `NQ NY HTF-LSI` is strongest around `2-5%` below futures ATH (`102` trades, `+42.1R`, `0.412R` avg).
 - `ES NY ORB` also dislikes the `0.5-1%` band, but has good buckets both very near ATH and far below ATH.
 
-**Next step:** pre-register and validate `skip_pct_0p5_1_all` with same-regime OOS and a full-calendar gated-system run before any execution work. Separately diagnose ES-near-ATH and HTF-LSI `2-5%` behavior as leg-specific theses.
+**Next step:** do not promote `skip_pct_0p5_1_all` broadly. Continue with leg-specific ATH theses and exact-engine replay only after a narrower gate preserves account-flow quality. Separately diagnose ES-near-ATH and HTF-LSI `2-5%` behavior.
+
+### ATH Regime Leg Targets Follow-Up (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_LEG_TARGETS_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_ath_regime_leg_targets_20260505/`
+
+Second pass tested the leg-specific targets as post-filter research profiles on the same `3,470` ALPHA_V1 trades. **Best next exact-replay candidate is the surgical `ES NY ORB` skip of signal-time `0.5-1%` below futures ATH.** It removes only `95` ES NY trades, improves full-history portfolio R by `+5.2R`, improves `2025+` by `+5.6R`, and raises ES NY standalone full-history first-payout rate from `64.2%` to `68.5%`. Recent standalone behavior is much stronger: `2025+` ES NY baseline is `43.8%` payout / `37.5%` breach, while the gated profile is `81.2%` payout / `0.0%` breach. Caveat: combined-account full-history payout worsens (`73.8%` to `70.8%`), so this should be evaluated as a leg-specific separate-account gate, not a broad portfolio overlay.
+
+`combo_negative_only_skip` (skip ES NY `0.5-1%` plus NQ HTF-LSI `0.5-1%`) is the best portfolio-R overlay: `+6.1R` full history and `+5.6R` in `2025+`. It improves the `2025+` combined-account read (`84.4%` payout / `6.3%` breach -> `87.5%` payout / `3.1%` breach), but full-history combined payout falls from `73.8%` to `71.9%`. Treat it as a recent-flow watchlist, not a promotion.
+
+The attractive whitelist pockets are mostly **flow-starvation traps**. `NQ HTF-LSI` `1-5%` and `2-5%` whitelists have excellent trade quality and no standalone first-payout breaches, but cut portfolio R by `-30.5R` to `-50.5R` and slow payout cadence. `ES Asia` `0-0.5%` below ATH is a real quality pocket (`0.188R` avg vs `0.103R` baseline), but converting the leg into a near-ATH-only specialist cuts `-84.8R` from the portfolio and stretches standalone median payout time to `655` days. `NQ Asia` top-bucket gates improve full-history standalone quality but fail the recent test (`2025+` loses roughly `-23R` to `-26R`).
+
+Deployability: all ATH gates remain `post_filter_only`; exact replay and live/exact engine support for a futures ATH pre-trade gate are required before any dry-run or live promotion.
+
+### ES NY ATH Exact Replay (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ES_NY_ATH_EXACT_REPLAY_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_es_ny_ath_exact_replay_20260505/`
+
+The ES NY `0.5-1.0%` below ATH dead-zone gate was implemented in the live/exact `ORBEngine` as `ath_block_min_pct/max_pct` and exact-replayed as a causal pre-arm gate. Exact replay seeds the expanding ES futures ATH from all pre-window local 5m futures bars, then updates it from each completed 5m signal bar before checking the gate.
+
+Result: **trade-level thesis confirmed, account-flow promotion not yet confirmed.** ES NY exact full-history improves from `849` trades / `+145.8R` to `774` trades / `+155.0R` (`+9.2R`, `+3,168.70` exact PnL), with unchanged max DD at `-12.0R`. Recent windows improve more: `2024+` rises from `+34.4R / -9.0R DD` to `+42.9R / -7.5R DD`, and `2025+` rises from `+18.0R / -9.0R DD` to `+27.5R / -7.5R DD`. The gate removed `95` baseline trades and allowed `20` later replacement trades after skipped setups.
+
+Funded first-payout read is mixed. Full-history standalone payout worsens from `65.0%` payout / `32.7%` breach to `60.4%` payout / `37.3%` breach, but recent cohorts improve: `2024+` becomes `84.7%` payout / `5.1%` breach and `2025+` becomes `75.0%` payout / `9.4%` breach. Status: `post_filter_only` until production live has a trusted ATH seed source; not production-promoted. Next step is rolling split diagnostics and nearby exact band sensitivity (`0.25-0.75%`, `0.5-0.75%`, `0.75-1.0%`, `0.5-1.25%`) before any dry-run proposal.
+
+### ES NY ATH Band Sensitivity (2026-05-05)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ES_NY_ATH_BAND_SENSITIVITY_20260505.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_es_ny_ath_band_sensitivity_20260505/`
+
+Exact-engine sensitivity tested five causal ATH block bands around the ES NY dead zone: `0.25-0.75%`, `0.50-0.75%`, `0.75-1.00%`, `0.50-1.00%`, and `0.50-1.25%` below expanding ES futures ATH. This replaces the earlier broad-band read with a sharper conclusion: **`0.50-0.75%` is the best all-around candidate.**
+
+`0.50-0.75%` improved ES NY exact full-history from `849` trades / `+145.8R` / `65.0%` payout to `808` trades / `+157.3R` / `67.3%` payout. Recent windows still improve: `2024+` rises by `+5.0R` and payout by `+10.2pp`; `2025+` rises by `+10.0R` and payout by `+15.6pp`. Rolling 2-year diagnostics are acceptable but not perfect: `7/10` windows improve, median rolling delta is `+1.75R`, worst window is `-6.92R` in `2019-2020`.
+
+The alternatives each have a flaw. `0.25-0.75%` is best for payout safety (`70.0%` full payout, `81.2%` `2025+` payout, zero `2025+` breaches) but only improves `4/10` rolling windows and has negative median rolling delta (`-1.86R`), making it more recent-flow specialist than stable default. `0.75-1.00%` is steadier but leaves too much recent R on the table (`2025+` only `+1.5R`). The original `0.50-1.00%` remains too wide because full-history payout worsens; `0.50-1.25%` is rejected.
+
+Implementation update: the live startup path now refreshes a futures ATH seed from DataBento daily OHLCV, applies it only to engines with an enabled ATH gate, and re-applies after checkpoint restore without lowering a higher live/checkpoint ATH. Added execution profile `ALPHA_V1-ES-NY-ATH-SHADOW`: enabled, ES_NY only, no webhooks, `ath_block_min_pct=0.5`, `ath_block_max_pct=0.75`. This makes the candidate mechanically `deployability=live_native`; `live_support_notes=causal pre-arm ATH gate plus DataBento daily seed source are supported, but profile is dry-run/shadow because it has no webhooks`; `exact_replay_required=completed_through_2026-03-24_and_repeat_before_live_promotion_if_data_extends_materially`.
+
+Operating status: forward shadow only. Do not merge this into the live webhook profile until shadow logs show the seeded ATH, intraday ATH updates, and skipped-arm counts match expectations in real time. Shadow diagnostics are exposed through the engine `ath` status payload: `high`, `last_update`, `last_close`, `current_gap_pct`, `check_count`, `block_count`, `pass_count`, `last_check`, and `last_block`. The execution frontend renders this as a separate ATH Gate panel, and TESTING now includes `ES_NY_ATH_GATE` so skipped and non-skipped ATH gate decisions can be verified side by side before promotion.
 
 ---
 
@@ -498,8 +712,8 @@ Leg-level behavior is not a universal "near ATH good" rule:
 1. **Long-biased**: All 4 legs are long-only. No short-side hedge. A sustained bear market hits all legs simultaneously.
 2. **NQ + ES concentration**: All 4 legs trade equity index futures (NQ or ES). No commodity diversification — GC is paused due to Apex ban.
 3. **Equity correlation in stress**: NQ and ES co-drawdown during risk-off events (March 2020 type). Without GC as a partial decorrelator, all legs are exposed to the same macro risk.
-4. **Portfolio-level projections are mixed-vintage**: Older lifecycle-style legacy figures should be treated as historical context only. The active NQ NY leg is now HTF-LSI, and the full four-leg exact rerun on the tightened live row is still pending.
-5. **The new HTF swap is a live-policy update, not a fully rerun portfolio dossier yet**: The NQ NY leg is backed by exact single-leg replay and replacement sizing packets, but the complete `ALPHA_V1` stack has not yet been rerun end-to-end on the tighter `08:30-13:30 / rr3.5 / tp0.4` row.
+4. **Portfolio-level projections are mixed-vintage**: Older lifecycle-style legacy figures should be treated as historical context only. The active NQ NY leg is now HTF-LSI, NQ NY ORB R11 has been added as a risk-split companion leg, and the full five-leg exact rerun on the tightened live row is still pending.
+5. **The HTF swap plus NQ R11 addition are live-policy updates, not a fully rerun portfolio dossier yet**: the NQ NY HTF leg is backed by exact single-leg replay and replacement sizing packets, and NQ R11 has exact split replay through `2026-03-24`, but the complete `ALPHA_V1` stack has not yet been rerun end-to-end on the five-leg risk menu.
 6. **Prop firm instrument restrictions**: Apex Trader Funding bans GC trading, removing the strongest non-equity diversifier from the portfolio. Monitor for policy changes or alternative prop firms that allow GC.
 
 ### Hot-Regime Ablation / Overfit Candidate Pass (2026-05-03)

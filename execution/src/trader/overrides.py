@@ -17,19 +17,21 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
     "orb_start", "orb_end", "entry_start", "entry_end",
     "flat_start", "flat_end", "excluded_dow",
     # Strategy
-    "rr", "tp1_ratio", "stop_atr_pct", "stop_orb_pct",
+    "rr", "tp1_ratio", "exit_mode", "stop_atr_pct", "stop_orb_pct",
     "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
     # Risk & sizing
     "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
     # Toggles
     "long_only", "short_only", "icf_enabled", "fomc_exclusion",
     "min_stop_pts", "min_tp1_pts",
+    # Regime filters
+    "ath_block_min_pct", "ath_block_max_pct",
 })
 
 # LSI-specific editable fields (for NQ_NY_LSI and future LSI sessions)
 LSI_EDITABLE_FIELDS: frozenset[str] = frozenset({
     "entry_start", "entry_end", "sweep_start", "sweep_end", "flat_start", "flat_end", "excluded_dow",
-    "rr", "tp1_ratio", "min_gap_atr_pct", "min_stop_points",
+    "rr", "tp1_ratio", "exit_mode", "min_gap_atr_pct", "min_stop_points",
     "fvg_window_right", "fvg_window_left", "lsi_entry_mode", "lsi_variant",
     "htf_level_tf_minutes", "htf_n_left", "htf_trade_max_per_session", "max_fvg_to_inversion_bars",
     "risk_usd", "min_qty", "max_single_risk_usd",

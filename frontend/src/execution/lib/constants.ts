@@ -87,6 +87,7 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
   TESTING: {
     NQ_NY_LSI: "LSI/NQ_NY-RR2",
     GC_Asia: "ORB/GC_ASIA-RR2.5",
+    ES_NY_ATH_GATE: "ORB/ES_NY_ATH_GATE",
   },
 };
 

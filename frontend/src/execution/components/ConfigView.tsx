@@ -500,6 +500,7 @@ function SessionConfigCard({
                 excluded_dow: cfg.excluded_dow,
                 rr: cfg.rr,
                 tp1_ratio: cfg.tp1_ratio,
+                exit_mode: cfg.exit_mode ?? 'split',
                 min_gap_atr_pct: cfg.min_gap_atr_pct,
                 min_stop_points: cfg.min_stop_points,
                 max_bars_after_sweep: cfg.max_bars_after_sweep,
@@ -520,6 +521,7 @@ function SessionConfigCard({
                 excluded_dow: cfg.excluded_dow,
                 rr: cfg.rr,
                 tp1_ratio: cfg.tp1_ratio,
+                exit_mode: cfg.exit_mode ?? 'split',
                 stop_atr_pct: cfg.stop_atr_pct,
                 stop_orb_pct: cfg.stop_orb_pct,
                 min_gap_atr_pct: cfg.min_gap_atr_pct,
@@ -573,6 +575,7 @@ function SessionConfigCard({
     const timeFields = isLsi
         ? ['entry_start', 'entry_end', 'flat_start', 'flat_end']
         : ['orb_start', 'orb_end', 'entry_start', 'entry_end', 'flat_start', 'flat_end'];
+    const stringFields = ['exit_mode'];
 
     const handleSave = async () => {
         setCardError(null);
@@ -586,6 +589,9 @@ function SessionConfigCard({
             }
             for (const f of numericFields) {
                 allFields[f] = Number(draft[f]);
+            }
+            for (const f of stringFields) {
+                allFields[f] = String(draft[f] ?? 'split');
             }
             const dowDraft = draft.excluded_dow;
             if (
@@ -745,6 +751,26 @@ function SessionConfigCard({
                             type="number"
                             overridden={isOverridden('tp1_ratio')}
                         />
+                        <div className="grid grid-cols-[110px_1fr] items-center gap-2 py-1">
+                            <label className="text-[11px] uppercase tracking-wider text-text-muted">
+                                Exit Mode{isOverridden('exit_mode') ? ' *' : ''}
+                            </label>
+                            <Select
+                                value={String(draft.exit_mode ?? 'split')}
+                                onValueChange={(value) =>
+                                    setDraft((d) => ({ ...d, exit_mode: value }))
+                                }>
+                                <SelectTrigger className="h-7 border-border bg-bg-secondary text-xs">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="split">Split</SelectItem>
+                                    <SelectItem value="single_target">
+                                        Single Target
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                         {isLsi ? (
                             <>
                                 <EditableField
@@ -1053,6 +1079,15 @@ function SessionConfigCard({
                         label="TP1 Ratio"
                         value={cfg.tp1_ratio.toString()}
                         overridden={isOverridden('tp1_ratio')}
+                    />
+                    <ConfigItem
+                        label="Exit Mode"
+                        value={
+                            (cfg.exit_mode ?? 'split') === 'single_target'
+                                ? 'Single Target'
+                                : 'Split'
+                        }
+                        overridden={isOverridden('exit_mode')}
                     />
                     {isLsi ? (
                         <>

@@ -108,6 +108,32 @@ class TestTPLevels:
         assert levels is not None
         assert levels.tp2 < levels.tp1
 
+    def test_single_target_sets_tp1_equal_tp2(self):
+        levels = make_levels(
+            entry=19500,
+            direction=1,
+            rr=1.4,
+            tp1_ratio=1.0,
+            exit_mode="single_target",
+        )
+        assert levels is not None
+        assert levels.exit_mode == "single_target"
+        assert levels.tp1 == pytest.approx(levels.tp2)
+
+    def test_single_target_rejects_partial_tp1_ratio(self):
+        with pytest.raises(ValueError, match="tp1_ratio must be 1.0"):
+            make_levels(
+                entry=19500,
+                direction=1,
+                rr=2.0,
+                tp1_ratio=0.5,
+                exit_mode="single_target",
+            )
+
+    def test_invalid_exit_mode_rejected(self):
+        with pytest.raises(ValueError, match="exit_mode must be one of"):
+            make_levels(entry=19500, direction=1, exit_mode="tp1_only")
+
 
 # =============================================================================
 # Breakeven offset tests

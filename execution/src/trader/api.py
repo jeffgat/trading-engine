@@ -546,7 +546,21 @@ def parse_trade_log_line(line: str) -> dict | None:
     #   new:    TIMESTAMP | CONFIG | ASSET | SESSION | EVENT | details
     #   legacy: TIMESTAMP | [ASSET |] SESSION | EVENT | details
     # Assets are always lowercase short symbols; configs are uppercase.
-    _ASSETS = {"nq", "es", "gc", "cl", "ym", "mnq", "mes", "mym", "mgc", "mcl", "rty"}
+    _ASSETS = {
+        "nq",
+        "es",
+        "gc",
+        "cl",
+        "ym",
+        "si",
+        "mnq",
+        "mes",
+        "mym",
+        "mgc",
+        "mcl",
+        "sil",
+        "rty",
+    }
     remaining = parts[1:]
 
     # If first field is not an asset and not a session (sessions contain "_"),
@@ -1026,6 +1040,10 @@ def create_app(state: DashboardState) -> FastAPI:
             raise HTTPException(422, detail=errors)
         if not valid_fields:
             raise HTTPException(400, "No valid fields to update")
+        try:
+            _validate_exit_mode_update(engine, valid_fields)
+        except ValueError as exc:
+            raise HTTPException(422, detail=str(exc)) from exc
 
         # Safety: reject if engine is mid-trade (covers both ORBEngine and LSIEngine states)
         blocked_states = {"armed_limit", "filled", "managing"}
@@ -1388,12 +1406,34 @@ def _find_engine(state: DashboardState, name: str, config_name: str | None = Non
     return None
 
 
+def _validate_exit_mode_update(engine, fields: dict) -> None:
+    import math
+
+    next_exit_mode = fields.get("exit_mode", getattr(engine, "exit_mode", "split"))
+    next_tp1_ratio = fields.get("tp1_ratio", getattr(engine, "tp1_ratio", 0.0))
+    if next_exit_mode not in {"split", "single_target"}:
+        raise ValueError("exit_mode must be one of 'split' or 'single_target'")
+    try:
+        next_tp1_ratio_value = float(next_tp1_ratio)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tp1_ratio must be numeric") from exc
+    if next_exit_mode == "single_target" and not math.isclose(
+        next_tp1_ratio_value,
+        1.0,
+        rel_tol=0.0,
+        abs_tol=1e-9,
+    ):
+        raise ValueError("tp1_ratio must be 1.0 when exit_mode='single_target'")
+
+
 def _apply_overrides_to_engine(engine, fields: dict) -> None:
     """Apply override fields to a live ORBEngine or LSIEngine."""
     from .engine import _parse_time
 
     time_fields = {"orb_start", "orb_end", "entry_start", "entry_end",
                    "flat_start", "flat_end"}
+
+    _validate_exit_mode_update(engine, fields)
 
     for key, value in fields.items():
         setattr(engine, key, value)
@@ -1428,6 +1468,8 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
                 setattr(engine, key, risk.get("min_qty", 1.0))
             elif key == "lsi_variant":
                 setattr(engine, key, "legacy-LSI")
+            elif key == "exit_mode":
+                setattr(engine, key, "split")
     else:
         defaults = SESSION_CONFIGS.get(session_name, {})
         for key in EDITABLE_FIELDS:
@@ -1441,6 +1483,8 @@ def _apply_defaults_to_engine(engine, session_name: str, config: dict) -> None:
                 setattr(engine, key, risk.get("max_single_risk_usd", 500.0))
             elif key == "be_offset_ticks":
                 setattr(engine, key, risk.get("be_offset_ticks", 0))
+            elif key == "exit_mode":
+                setattr(engine, key, "split")
 
     # Re-parse cached time objects
     if hasattr(engine, "_orb_start_t"):
@@ -1464,10 +1508,14 @@ def _defaults_for_session(name: str) -> dict:
     cfg = LSI_SESSION_CONFIGS.get(name)
     if cfg is not None:
         from .overrides import LSI_EDITABLE_FIELDS
-        return {k: v for k, v in cfg.items() if k in LSI_EDITABLE_FIELDS}
+        defaults = {k: v for k, v in cfg.items() if k in LSI_EDITABLE_FIELDS}
+        defaults.setdefault("exit_mode", "split")
+        return defaults
 
     cfg = SESSION_CONFIGS.get(name, {})
-    return {k: v for k, v in cfg.items() if k in EDITABLE_FIELDS}
+    defaults = {k: v for k, v in cfg.items() if k in EDITABLE_FIELDS}
+    defaults.setdefault("exit_mode", "split")
+    return defaults
 
 
 def _session_info(engine) -> dict:
@@ -1486,6 +1534,7 @@ def _session_info(engine) -> dict:
             "atr_length": engine.atr_length,
             "rr": engine.rr,
             "tp1_ratio": engine.tp1_ratio,
+            "exit_mode": getattr(engine, "exit_mode", "split"),
             "min_gap_atr_pct": engine.min_gap_atr_pct,
             "min_stop_points": engine.min_stop_points,
             "fvg_window_right": engine.fvg_window_right,
@@ -1530,6 +1579,7 @@ def _session_info(engine) -> dict:
         "min_gap_orb_pct": engine.min_gap_orb_pct,
         "rr": engine.rr,
         "tp1_ratio": engine.tp1_ratio,
+        "exit_mode": getattr(engine, "exit_mode", "split"),
         "risk_usd": engine.risk_usd,
         "point_value": engine.point_value,
         "min_qty": engine.min_qty,
@@ -1548,4 +1598,6 @@ def _session_info(engine) -> dict:
         "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
         "regime_gates": regime_gates,
         "structure_gate": getattr(engine, "structure_gate", None),
+        "ath_block_min_pct": getattr(engine, "ath_block_min_pct", 0.0),
+        "ath_block_max_pct": getattr(engine, "ath_block_max_pct", 0.0),
     }

@@ -6658,6 +6658,12 @@ def run_backtest(
                 and risk_pts >= config.wide_stop_target_threshold_points
             ):
                 tp2_dist = tp1_dist
+            sim_is_single = is_single
+            sim_half_qty = half_qty
+            if config.exit_mode == "single_target":
+                tp1_dist = tp2_dist
+                sim_is_single = True
+                sim_half_qty = qty
             if direction == 1:
                 tp1 = entry + tp1_dist
                 tp2 = entry + tp2_dist
@@ -6723,8 +6729,8 @@ def run_backtest(
                 be_price=be,
                 risk_pts=risk_pts,
                 qty=qty,
-                half_qty=half_qty,
-                is_single=is_single,
+                half_qty=sim_half_qty,
+                is_single=sim_is_single,
                 gap_size=cand.gap_size,
                 entry_bar_start=entry_bar_start,
                 entry_bar_end=entry_bar_end,

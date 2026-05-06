@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from typing import Callable
@@ -142,6 +143,7 @@ class ORBEngine:
         gap_filter_basis: "atr" or "orb" — how to filter gap size.
         rr: Reward/risk ratio.
         tp1_ratio: Fraction of target for TP1.
+        exit_mode: "split" for TP1 + runner, "single_target" for full exit at R:R.
         risk_usd: Risk per trade in USD.
         point_value: Dollar value per point (execution instrument).
         min_qty: Minimum contract quantity.
@@ -185,6 +187,7 @@ class ORBEngine:
     be_offset_ticks: int
     min_tick: float
     atr_length: int = 14
+    exit_mode: str = "split"
 
     # Stop basis: "atr" or "orb"
     stop_basis: str = "atr"
@@ -215,6 +218,11 @@ class ORBEngine:
     wide_stop_target_threshold_points: float = 0.0
     wide_stop_target_rr: float = 0.0
     limit_cancel_on_pre_entry_target_touch: str = ""
+
+    # Optional all-time-high distance block, checked on the closed signal bar
+    # before an order is armed. Disabled unless max > min.
+    ath_block_min_pct: float = 0.0
+    ath_block_max_pct: float = 0.0
 
     # Day-of-week exclusion (0=Mon..6=Sun, None=no exclusion)
     excluded_dow: int | list[int] | None = None
@@ -279,6 +287,15 @@ class ORBEngine:
     _blocking_gate: str | None = field(default=None, init=False)
     _regime_gate_status: dict | None = field(default=None, init=False)
     _last_regime_gate_audit: tuple[str, bool] | None = field(default=None, init=False)
+    _ath_high: float = field(default=float("nan"), init=False)
+    _ath_last_update: str = field(default="", init=False)
+    _ath_last_close: float = field(default=float("nan"), init=False)
+    _ath_last_gap_pct: float = field(default=float("nan"), init=False)
+    _ath_check_count: int = field(default=0, init=False)
+    _ath_block_count: int = field(default=0, init=False)
+    _ath_pass_count: int = field(default=0, init=False)
+    _ath_last_check: dict | None = field(default=None, init=False)
+    _ath_last_block: dict | None = field(default=None, init=False)
     _daily_atr: float = field(default=0.0, init=False)
     _asset_tag: str = field(default="", init=False)
     _exit_type: str | None = field(default=None, init=False)
@@ -335,6 +352,21 @@ class ORBEngine:
                 "after_nonpositive_first, after_sl_first, or after_full_target_first "
                 f"(got {self.orb_reentry_policy!r})"
             )
+        if self.exit_mode not in {"split", "single_target"}:
+            raise ValueError(
+                "exit_mode must be one of 'split' or 'single_target' "
+                f"(got {self.exit_mode!r})"
+            )
+        if self.exit_mode == "single_target" and not math.isclose(
+            self.tp1_ratio,
+            1.0,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError(
+                "tp1_ratio must be 1.0 when exit_mode='single_target' "
+                f"(got {self.tp1_ratio!r})"
+            )
         if self.wide_stop_target_threshold_points < 0.0:
             raise ValueError(
                 "wide_stop_target_threshold_points must be >= 0 "
@@ -360,6 +392,21 @@ class ORBEngine:
             raise ValueError(
                 "limit_cancel_on_pre_entry_target_touch must be one of '', 'tp1', or 'tp2' "
                 f"(got {self.limit_cancel_on_pre_entry_target_touch!r})"
+            )
+        if self.ath_block_min_pct < 0.0:
+            raise ValueError(
+                "ath_block_min_pct must be >= 0 "
+                f"(got {self.ath_block_min_pct!r})"
+            )
+        if self.ath_block_max_pct < 0.0:
+            raise ValueError(
+                "ath_block_max_pct must be >= 0 "
+                f"(got {self.ath_block_max_pct!r})"
+            )
+        if self.ath_block_max_pct > 0.0 and self.ath_block_max_pct <= self.ath_block_min_pct:
+            raise ValueError(
+                "ath_block_max_pct must be > ath_block_min_pct when enabled "
+                f"(got min={self.ath_block_min_pct!r}, max={self.ath_block_max_pct!r})"
             )
 
     @property
@@ -476,6 +523,74 @@ class ORBEngine:
         """Request a state checkpoint to disk for crash recovery."""
         if self.on_checkpoint is not None:
             self.on_checkpoint()
+
+    @property
+    def _ath_gate_enabled(self) -> bool:
+        return self.ath_block_max_pct > self.ath_block_min_pct
+
+    def seed_ath_high(self, value: float) -> None:
+        """Seed expanding ATH state from historical data before live/replay bars."""
+        if math.isfinite(value) and value > 0.0:
+            if not math.isfinite(self._ath_high) or value > self._ath_high:
+                self._ath_high = value
+
+    def _update_ath_state(self, bar: Bar) -> None:
+        if not math.isfinite(bar.high) or bar.high <= 0.0:
+            return
+        if not math.isfinite(self._ath_high) or bar.high > self._ath_high:
+            self._ath_high = bar.high
+        self._ath_last_update = bar.timestamp.isoformat()
+        if math.isfinite(bar.close) and math.isfinite(self._ath_high) and self._ath_high > 0.0:
+            self._ath_last_close = bar.close
+            self._ath_last_gap_pct = (self._ath_high - bar.close) / self._ath_high * 100.0
+
+    def _ath_gap_pct_for_bar(self, bar: Bar) -> float | None:
+        if not self._ath_gate_enabled:
+            return None
+        if not math.isfinite(self._ath_high) or self._ath_high <= 0.0:
+            return None
+        if not math.isfinite(bar.close):
+            return None
+        return (self._ath_high - bar.close) / self._ath_high * 100.0
+
+    def _ath_gate_blocks(self, bar: Bar) -> tuple[bool, float | None]:
+        gap_pct = self._ath_gap_pct_for_bar(bar)
+        if gap_pct is None:
+            return False, None
+        blocked = self.ath_block_min_pct <= gap_pct <= self.ath_block_max_pct
+        return blocked, gap_pct
+
+    def _record_ath_gate_check(
+        self,
+        bar: Bar,
+        gap_pct: float | None,
+        direction: str,
+        *,
+        blocked: bool,
+    ) -> None:
+        gap = float(gap_pct) if gap_pct is not None else float("nan")
+        available = math.isfinite(gap)
+        self._ath_check_count += 1
+        if blocked:
+            self._ath_block_count += 1
+        elif available:
+            self._ath_pass_count += 1
+        check = {
+            "direction": direction,
+            "bar_time": bar.timestamp.isoformat(),
+            "blocked": blocked,
+            "available": available,
+            "gap_pct": gap if math.isfinite(gap) else None,
+            "ath_high": self._ath_high if math.isfinite(self._ath_high) else None,
+            "close": bar.close if math.isfinite(bar.close) else None,
+            "block_min_pct": self.ath_block_min_pct,
+            "block_max_pct": self.ath_block_max_pct,
+        }
+        self._ath_last_check = check
+        if blocked:
+            self._ath_last_block = check
+        self._request_checkpoint()
+        self._notify_state_change()
 
     def _position_cap_key(self) -> str:
         return self.position_limit_key or f"{self.config_name or 'DEFAULT'}:{self.name}"
@@ -1154,6 +1269,7 @@ class ORBEngine:
             max_single_risk_usd=self.max_single_risk_usd,
             wide_stop_target_threshold_points=self.wide_stop_target_threshold_points,
             wide_stop_target_rr=self.wide_stop_target_rr,
+            exit_mode=self.exit_mode,
         )
 
     # ------------------------------------------------------------------
@@ -1170,6 +1286,10 @@ class ORBEngine:
 
         # Store daily ATR
         self._daily_atr = daily_atr
+        # ATH state is maintained from all completed 5m bars for the signal
+        # instrument, including overnight bars. The signal check below uses
+        # the current closed bar, matching the post-filter research context.
+        self._update_ath_state(bar)
 
         # Skip if not in RTH
         if not self._in_rth(bar_time):
@@ -1358,6 +1478,31 @@ class ORBEngine:
                             ),
                         )
                         return
+                    ath_blocked, ath_gap_pct = self._ath_gate_blocks(bar)
+                    if self._ath_gate_enabled:
+                        self._record_ath_gate_check(
+                            bar,
+                            ath_gap_pct,
+                            "long",
+                            blocked=ath_blocked,
+                        )
+                    if ath_blocked:
+                        self._log_trade(
+                            "ATH_GATE_BLOCKED",
+                            (
+                                "gap_pct=%.3f min=%.3f max=%.3f ath=%.2f "
+                                "close=%.2f bar_time=%s"
+                            )
+                            % (
+                                ath_gap_pct if ath_gap_pct is not None else float("nan"),
+                                self.ath_block_min_pct,
+                                self.ath_block_max_pct,
+                                self._ath_high,
+                                bar.close,
+                                bar.timestamp.isoformat(),
+                            ),
+                        )
+                        return
                     self._long_fvg_found = True
                     levels = self._compute_setup_levels(entry=entry, direction=1, gap_size=gap_size)
                     if levels is not None:
@@ -1413,6 +1558,31 @@ class ORBEngine:
         if (not self.long_only or self.short_only) and not self._short_fvg_found:
             detected, entry, gap_size = self._check_short_fvg()
             if detected and self._gap_valid(gap_size):
+                ath_blocked, ath_gap_pct = self._ath_gate_blocks(bar)
+                if self._ath_gate_enabled:
+                    self._record_ath_gate_check(
+                        bar,
+                        ath_gap_pct,
+                        "short",
+                        blocked=ath_blocked,
+                    )
+                if ath_blocked:
+                    self._log_trade(
+                        "ATH_GATE_BLOCKED",
+                        (
+                            "gap_pct=%.3f min=%.3f max=%.3f ath=%.2f "
+                            "close=%.2f bar_time=%s"
+                        )
+                        % (
+                            ath_gap_pct if ath_gap_pct is not None else float("nan"),
+                            self.ath_block_min_pct,
+                            self.ath_block_max_pct,
+                            self._ath_high,
+                            bar.close,
+                            bar.timestamp.isoformat(),
+                        ),
+                    )
+                    return
                 self._short_fvg_found = True
                 levels = self._compute_setup_levels(entry=entry, direction=-1, gap_size=gap_size)
                 if levels is not None:
@@ -1561,6 +1731,29 @@ class ORBEngine:
             self._request_checkpoint()
             self._notify_state_change()
             return
+
+        if self.exit_mode == "single_target" and not self._tp1_hit:
+            target_hit = False
+            if is_long and bar.high >= levels.tp2:
+                target_hit = True
+            elif not is_long and bar.low <= levels.tp2:
+                target_hit = True
+
+            if target_hit:
+                self._log_trade(
+                    "SINGLE_TARGET_HIT",
+                    "dir=%s target=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, levels.tp2, bar.timestamp),
+                )
+                self._schedule_post_exit_cleanup(
+                    reason="single_target_5m",
+                    delay_s=self._broker_exit_cleanup_delay(1.0),
+                )
+                self._emit_trade_record("tp2_direct", exit_timestamp=bar.timestamp)
+                self._set_post_exit_state(bar.timestamp.time(), "tp2_direct")
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
 
         # Check TP1
         tp1_touched = False
@@ -1818,6 +2011,25 @@ class ORBEngine:
                 self._notify_state_change()
                 return
 
+            if self.exit_mode == "single_target":
+                target_touched = (is_long and tick.high >= levels.tp2) or \
+                                 (not is_long and tick.low <= levels.tp2)
+                if target_touched:
+                    self._log_trade(
+                        "SINGLE_TARGET_HIT",
+                        "dir=%s target=%.2f tick_time=%s resolution=1s"
+                        % (direction_str, levels.tp2, tick.timestamp),
+                    )
+                    self._schedule_post_exit_cleanup(
+                        reason="single_target_1s",
+                        delay_s=self._broker_exit_cleanup_delay(1.0),
+                    )
+                    self._emit_trade_record("tp2_direct", exit_timestamp=tick.timestamp)
+                    self._set_post_exit_state(tick.timestamp.time(), "tp2_direct")
+                    self._request_checkpoint()
+                    self._notify_state_change()
+                    return
+
             if tp1_touched:
                 self._tp1_hit = True
                 self._request_checkpoint()
@@ -1952,6 +2164,7 @@ class ORBEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "exit_mode": self.exit_mode,
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,
@@ -1962,4 +2175,20 @@ class ORBEngine:
             "skip_reason": self._skip_reason,
             "blocking_gate": self._blocking_gate,
             "regime_gate_status": self._regime_gate_status,
+            "ath": {
+                "enabled": self._ath_gate_enabled,
+                "high": self._ath_high if math.isfinite(self._ath_high) else None,
+                "last_update": self._ath_last_update or None,
+                "last_close": self._ath_last_close if math.isfinite(self._ath_last_close) else None,
+                "current_gap_pct": (
+                    self._ath_last_gap_pct if math.isfinite(self._ath_last_gap_pct) else None
+                ),
+                "block_min_pct": self.ath_block_min_pct,
+                "block_max_pct": self.ath_block_max_pct,
+                "check_count": self._ath_check_count,
+                "block_count": self._ath_block_count,
+                "pass_count": self._ath_pass_count,
+                "last_check": self._ath_last_check,
+                "last_block": self._ath_last_block,
+            },
         }

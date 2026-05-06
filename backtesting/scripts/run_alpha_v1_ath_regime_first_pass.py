@@ -29,6 +29,15 @@ WINDOWS = {
     "2024+": "2024-01-01",
     "2025+": "2025-01-01",
 }
+FUNDED_PROFILE = {
+    "starting_balance_usd": 50_000.0,
+    "trailing_drawdown_usd": 2_000.0,
+    "max_trailing_breach_usd": 50_000.0,
+    "first_payout_floor_usd": 52_500.0,
+    "first_payout_amount_usd": 500.0,
+    "challenge_fee_usd": 150.0,
+    "cohort_spacing_days": 14,
+}
 
 
 PCT_BUCKETS = [
@@ -446,6 +455,370 @@ def _frame_metrics(frame: pd.DataFrame) -> dict[str, Any]:
     }
 
 
+def _series_drawdown(series: pd.Series) -> float:
+    if series.empty:
+        return 0.0
+    equity = series.astype(float).cumsum()
+    drawdown = equity - equity.cummax()
+    return float(drawdown.min())
+
+
+def _series_sharpe(series: pd.Series) -> float:
+    if len(series) < 2:
+        return 0.0
+    values = series.astype(float)
+    std = float(values.std(ddof=1))
+    if std <= 0:
+        return 0.0
+    return float(values.mean() / std * np.sqrt(252.0))
+
+
+def _daily_profile_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(
+            columns=[
+                "date",
+                "baseline_trades",
+                "gated_trades",
+                "removed_trades",
+                "baseline_r",
+                "gated_r",
+                "removed_r",
+                "baseline_usd",
+                "gated_usd",
+                "removed_usd",
+            ]
+        )
+
+    work = frame.copy()
+    work["exit_day"] = pd.to_datetime(work["exit_date"])
+    grouped = (
+        work.groupby("exit_day")
+        .agg(
+            baseline_trades=("r_multiple", "size"),
+            baseline_r=("r_multiple", "sum"),
+            baseline_usd=("pnl_usd_current", "sum"),
+        )
+        .sort_index()
+    )
+    kept = work[work["ath_pct_bucket"] != "0.5-1%"]
+    kept_grouped = (
+        kept.groupby("exit_day")
+        .agg(
+            gated_trades=("r_multiple", "size"),
+            gated_r=("r_multiple", "sum"),
+            gated_usd=("pnl_usd_current", "sum"),
+        )
+        .sort_index()
+    )
+    out = grouped.join(kept_grouped, how="outer").fillna(0.0)
+    out["removed_trades"] = out["baseline_trades"] - out["gated_trades"]
+    out["removed_r"] = out["baseline_r"] - out["gated_r"]
+    out["removed_usd"] = out["baseline_usd"] - out["gated_usd"]
+
+    full_idx = pd.date_range(out.index.min(), out.index.max(), freq="D")
+    out = out.reindex(full_idx, fill_value=0.0)
+    out.index.name = "date"
+    return out.reset_index()
+
+
+def _daily_summary_rows(daily: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for window, start in WINDOWS.items():
+        window_daily = daily if start is None else daily[daily["date"] >= pd.Timestamp(start)]
+        for profile, r_col, usd_col, trade_col in (
+            ("baseline", "baseline_r", "baseline_usd", "baseline_trades"),
+            ("skip_pct_0p5_1_all", "gated_r", "gated_usd", "gated_trades"),
+        ):
+            series = window_daily.set_index("date")[r_col].astype(float)
+            usd_series = window_daily.set_index("date")[usd_col].astype(float)
+            net_r = float(series.sum()) if not series.empty else 0.0
+            dd_r = _series_drawdown(series)
+            rows.append(
+                {
+                    "window": window,
+                    "profile": profile,
+                    "trades": int(window_daily[trade_col].sum()) if not window_daily.empty else 0,
+                    "net_r": net_r,
+                    "net_usd_current": float(usd_series.sum()) if not usd_series.empty else 0.0,
+                    "avg_daily_r": float(series.mean()) if not series.empty else 0.0,
+                    "sharpe": _series_sharpe(series),
+                    "max_dd_r": dd_r,
+                    "max_dd_usd_current": _series_drawdown(usd_series),
+                    "calmar": net_r / abs(dd_r) if dd_r else 0.0,
+                    "active_days": int((series != 0).sum()) if not series.empty else 0,
+                    "removed_trades": int(window_daily["removed_trades"].sum()) if profile != "baseline" else 0,
+                }
+            )
+    baseline_lookup = {
+        row["window"]: row for row in rows if row["profile"] == "baseline"
+    }
+    for row in rows:
+        base = baseline_lookup[row["window"]]
+        row["delta_net_r"] = row["net_r"] - base["net_r"]
+        row["delta_max_dd_r"] = row["max_dd_r"] - base["max_dd_r"]
+        row["delta_sharpe"] = row["sharpe"] - base["sharpe"]
+    return pd.DataFrame(rows)
+
+
+def _worst_rolling_windows(daily: pd.DataFrame, *, days: int = 90) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    if daily.empty:
+        return pd.DataFrame(rows)
+    indexed = daily.set_index("date")
+    for profile, r_col, usd_col in (
+        ("baseline", "baseline_r", "baseline_usd"),
+        ("skip_pct_0p5_1_all", "gated_r", "gated_usd"),
+    ):
+        profile_rows: list[dict[str, Any]] = []
+        for i in range(0, max(0, len(indexed) - days + 1)):
+            window = indexed.iloc[i : i + days]
+            profile_rows.append(
+                {
+                    "profile": profile,
+                    "start": window.index[0].date().isoformat(),
+                    "end": window.index[-1].date().isoformat(),
+                    "net_r": float(window[r_col].sum()),
+                    "max_dd_r": _series_drawdown(window[r_col]),
+                    "net_usd_current": float(window[usd_col].sum()),
+                    "max_dd_usd_current": _series_drawdown(window[usd_col]),
+                }
+            )
+        profile_rows.sort(key=lambda row: (row["max_dd_r"], row["net_r"]))
+        rows.extend(profile_rows[:10])
+    return pd.DataFrame(rows)
+
+
+def _yearly_gate_attribution(signal: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    work = signal.copy()
+    work["year"] = pd.to_datetime(work["exit_date"]).dt.year
+    for year, year_df in work.groupby("year", sort=True):
+        for leg in [*sorted(year_df["leg"].unique()), "portfolio"]:
+            leg_df = year_df if leg == "portfolio" else year_df[year_df["leg"] == leg]
+            dead = leg_df[leg_df["ath_pct_bucket"] == "0.5-1%"]
+            kept = leg_df[leg_df["ath_pct_bucket"] != "0.5-1%"]
+            base_m = _frame_metrics(leg_df)
+            dead_m = _frame_metrics(dead)
+            kept_m = _frame_metrics(kept)
+            rows.append(
+                {
+                    "year": int(year),
+                    "leg": leg,
+                    "baseline_trades": base_m["trades"],
+                    "baseline_net_r": base_m["net_r"],
+                    "baseline_avg_r": base_m["avg_r"],
+                    "baseline_max_dd_r": base_m["max_dd_r"],
+                    "dead_zone_trades": dead_m["trades"],
+                    "dead_zone_net_r": dead_m["net_r"],
+                    "dead_zone_avg_r": dead_m["avg_r"],
+                    "dead_zone_win_rate": dead_m["win_rate"],
+                    "gated_trades": kept_m["trades"],
+                    "gated_net_r": kept_m["net_r"],
+                    "gated_avg_r": kept_m["avg_r"],
+                    "gated_max_dd_r": kept_m["max_dd_r"],
+                    "delta_net_r": kept_m["net_r"] - base_m["net_r"],
+                    "delta_avg_r": kept_m["avg_r"] - base_m["avg_r"],
+                    "delta_max_dd_r": kept_m["max_dd_r"] - base_m["max_dd_r"],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _rolling_2y_gate_attribution(signal: pd.DataFrame) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    years = sorted(pd.to_datetime(signal["exit_date"]).dt.year.unique())
+    for start_year in years:
+        end_year = start_year + 1
+        if end_year not in years:
+            continue
+        mask = (pd.to_datetime(signal["exit_date"]).dt.year >= start_year) & (
+            pd.to_datetime(signal["exit_date"]).dt.year <= end_year
+        )
+        window_df = signal[mask]
+        dead = window_df[window_df["ath_pct_bucket"] == "0.5-1%"]
+        kept = window_df[window_df["ath_pct_bucket"] != "0.5-1%"]
+        base_m = _frame_metrics(window_df)
+        dead_m = _frame_metrics(dead)
+        kept_m = _frame_metrics(kept)
+        rows.append(
+            {
+                "window": f"{start_year}-{end_year}",
+                "baseline_trades": base_m["trades"],
+                "baseline_net_r": base_m["net_r"],
+                "baseline_avg_r": base_m["avg_r"],
+                "baseline_max_dd_r": base_m["max_dd_r"],
+                "dead_zone_trades": dead_m["trades"],
+                "dead_zone_net_r": dead_m["net_r"],
+                "dead_zone_avg_r": dead_m["avg_r"],
+                "dead_zone_win_rate": dead_m["win_rate"],
+                "gated_trades": kept_m["trades"],
+                "gated_net_r": kept_m["net_r"],
+                "gated_avg_r": kept_m["avg_r"],
+                "gated_max_dd_r": kept_m["max_dd_r"],
+                "delta_net_r": kept_m["net_r"] - base_m["net_r"],
+                "delta_avg_r": kept_m["avg_r"] - base_m["avg_r"],
+                "delta_max_dd_r": kept_m["max_dd_r"] - base_m["max_dd_r"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _filtered_trade_rows(signal: pd.DataFrame, *, profile: str) -> pd.DataFrame:
+    if profile == "baseline":
+        return signal.copy()
+    if profile == "skip_pct_0p5_1_all":
+        return signal[signal["ath_pct_bucket"] != "0.5-1%"].copy()
+    raise ValueError(f"Unknown profile {profile!r}")
+
+
+def _simulate_first_payouts(frame: pd.DataFrame, *, start: str, end: str, profile: str) -> pd.DataFrame:
+    trades = frame[(frame["exit_date"] >= start) & (frame["exit_date"] <= end)].copy()
+    if trades.empty:
+        return pd.DataFrame()
+    trades = trades.sort_values(["exit_ts", "leg", "fill_ts"])
+    first_start = pd.Timestamp(start).normalize()
+    last_start = pd.Timestamp(end).normalize()
+    cohort_starts = pd.date_range(
+        first_start,
+        last_start,
+        freq=f"{int(FUNDED_PROFILE['cohort_spacing_days'])}D",
+    )
+    rows: list[dict[str, Any]] = []
+    for account_id, cohort_start in enumerate(cohort_starts, start=1):
+        balance = float(FUNDED_PROFILE["starting_balance_usd"])
+        floor = balance - float(FUNDED_PROFILE["trailing_drawdown_usd"])
+        high_eod = balance
+        current_day: str | None = None
+        trade_count = 0
+        worst_intraday_dd = 0.0
+        outcome = "open"
+        outcome_date = pd.Timestamp(end).date().isoformat()
+
+        account_trades = trades[trades["exit_ts"] >= cohort_start]
+        for _, row in account_trades.iterrows():
+            trade_day = str(row["exit_date"])
+            if current_day is not None and trade_day != current_day:
+                high_eod = max(high_eod, balance)
+                floor = max(
+                    floor,
+                    min(
+                        high_eod - float(FUNDED_PROFILE["trailing_drawdown_usd"]),
+                        float(FUNDED_PROFILE["max_trailing_breach_usd"]),
+                    ),
+                )
+            current_day = trade_day
+            balance += float(row["pnl_usd_current"])
+            trade_count += 1
+            worst_intraday_dd = min(worst_intraday_dd, balance - high_eod)
+            if balance <= floor:
+                outcome = "breach"
+                outcome_date = trade_day
+                break
+            if balance >= float(FUNDED_PROFILE["first_payout_floor_usd"]):
+                outcome = "payout"
+                outcome_date = trade_day
+                break
+
+        if current_day is not None and outcome == "open":
+            high_eod = max(high_eod, balance)
+            floor = max(
+                floor,
+                min(
+                    high_eod - float(FUNDED_PROFILE["trailing_drawdown_usd"]),
+                    float(FUNDED_PROFILE["max_trailing_breach_usd"]),
+                ),
+            )
+
+        net_after_fee = (
+            float(FUNDED_PROFILE["first_payout_amount_usd"]) - float(FUNDED_PROFILE["challenge_fee_usd"])
+            if outcome == "payout"
+            else -float(FUNDED_PROFILE["challenge_fee_usd"])
+        )
+        rows.append(
+            {
+                "profile": profile,
+                "account_id": account_id,
+                "start_date": cohort_start.date().isoformat(),
+                "outcome": outcome,
+                "outcome_date": outcome_date,
+                "days_to_outcome": int((pd.Timestamp(outcome_date) - cohort_start).days),
+                "trades_to_outcome": trade_count,
+                "ending_balance": round(balance, 2),
+                "ending_floor": round(floor, 2),
+                "worst_intraday_dd_usd": round(worst_intraday_dd, 2),
+                "net_after_fee_usd": round(net_after_fee, 2),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _summarize_payouts(outcomes: pd.DataFrame, *, profile: str, window: str) -> dict[str, Any]:
+    if outcomes.empty:
+        return {
+            "profile": profile,
+            "window": window,
+            "accounts": 0,
+            "payouts": 0,
+            "breaches": 0,
+            "open": 0,
+            "payout_rate_pct": 0.0,
+            "breach_rate_pct": 0.0,
+            "ev_per_account_usd": 0.0,
+            "median_days_to_payout": None,
+            "median_trades_to_payout": None,
+            "max_consecutive_breaches": 0,
+        }
+    payouts = outcomes[outcomes["outcome"] == "payout"]
+    breaches = outcomes[outcomes["outcome"] == "breach"]
+    max_run = 0
+    current_run = 0
+    for outcome in outcomes["outcome"].tolist():
+        if outcome == "breach":
+            current_run += 1
+            max_run = max(max_run, current_run)
+        else:
+            current_run = 0
+    return {
+        "profile": profile,
+        "window": window,
+        "accounts": int(len(outcomes)),
+        "payouts": int(len(payouts)),
+        "breaches": int(len(breaches)),
+        "open": int((outcomes["outcome"] == "open").sum()),
+        "payout_rate_pct": float(len(payouts) / len(outcomes) * 100.0),
+        "breach_rate_pct": float(len(breaches) / len(outcomes) * 100.0),
+        "ev_per_account_usd": float(outcomes["net_after_fee_usd"].mean()),
+        "median_days_to_payout": float(payouts["days_to_outcome"].median()) if not payouts.empty else None,
+        "median_trades_to_payout": float(payouts["trades_to_outcome"].median()) if not payouts.empty else None,
+        "max_consecutive_breaches": int(max_run),
+    }
+
+
+def _payout_comparison(signal: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    account_rows: list[pd.DataFrame] = []
+    summary_rows: list[dict[str, Any]] = []
+    max_end = pd.to_datetime(signal["exit_date"]).max().date().isoformat()
+    for window, start in WINDOWS.items():
+        window_start = FULL_START if start is None else start
+        for profile in ("baseline", "skip_pct_0p5_1_all"):
+            profile_frame = _filtered_trade_rows(signal, profile=profile)
+            outcomes = _simulate_first_payouts(
+                profile_frame,
+                start=window_start,
+                end=max_end,
+                profile=profile,
+            )
+            if not outcomes.empty:
+                outcomes["window"] = window
+                account_rows.append(outcomes)
+            summary_rows.append(_summarize_payouts(outcomes, profile=profile, window=window))
+    return (
+        pd.concat(account_rows, ignore_index=True) if account_rows else pd.DataFrame(),
+        pd.DataFrame(summary_rows),
+    )
+
+
 def _filter_evaluations(annotated: pd.DataFrame) -> pd.DataFrame:
     signal = annotated[annotated["context"] == "signal"].copy()
     filter_specs = [
@@ -585,11 +958,110 @@ def _filter_report_rows(filter_eval: pd.DataFrame) -> list[dict[str, Any]]:
     return rows
 
 
+def _yearly_report_rows(yearly: pd.DataFrame) -> list[dict[str, Any]]:
+    portfolio = yearly[yearly["leg"] == "portfolio"].copy()
+    rows: list[dict[str, Any]] = []
+    for _, row in portfolio.sort_values("year").iterrows():
+        rows.append(
+            {
+                "Year": int(row["year"]),
+                "Base R": round(float(row["baseline_net_r"]), 1),
+                "Dead Trades": int(row["dead_zone_trades"]),
+                "Dead R": round(float(row["dead_zone_net_r"]), 1),
+                "Dead Avg": round(float(row["dead_zone_avg_r"]), 3),
+                "Gated R": round(float(row["gated_net_r"]), 1),
+                "Delta R": round(float(row["delta_net_r"]), 1),
+                "DD Delta": round(float(row["delta_max_dd_r"]), 1),
+            }
+        )
+    return rows
+
+
+def _rolling_report_rows(rolling: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for _, row in rolling.sort_values("window").iterrows():
+        rows.append(
+            {
+                "Window": row["window"],
+                "Base R": round(float(row["baseline_net_r"]), 1),
+                "Dead Trades": int(row["dead_zone_trades"]),
+                "Dead R": round(float(row["dead_zone_net_r"]), 1),
+                "Dead Avg": round(float(row["dead_zone_avg_r"]), 3),
+                "Gated R": round(float(row["gated_net_r"]), 1),
+                "Delta R": round(float(row["delta_net_r"]), 1),
+                "DD Delta": round(float(row["delta_max_dd_r"]), 1),
+            }
+        )
+    return rows
+
+
+def _daily_report_rows(daily_summary: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for _, row in daily_summary.iterrows():
+        rows.append(
+            {
+                "Window": row["window"],
+                "Profile": row["profile"],
+                "Trades": int(row["trades"]),
+                "Removed": int(row["removed_trades"]),
+                "Net R": round(float(row["net_r"]), 1),
+                "Delta R": round(float(row["delta_net_r"]), 1),
+                "Sharpe": round(float(row["sharpe"]), 2),
+                "DD R": round(float(row["max_dd_r"]), 1),
+                "DD Delta": round(float(row["delta_max_dd_r"]), 1),
+            }
+        )
+    return rows
+
+
+def _payout_report_rows(payout_summary: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for _, row in payout_summary.iterrows():
+        rows.append(
+            {
+                "Window": row["window"],
+                "Profile": row["profile"],
+                "Accounts": int(row["accounts"]),
+                "Pay%": round(float(row["payout_rate_pct"]), 1),
+                "Breach%": round(float(row["breach_rate_pct"]), 1),
+                "Payouts": int(row["payouts"]),
+                "Breaches": int(row["breaches"]),
+                "Open": int(row["open"]),
+                "EV/acct": round(float(row["ev_per_account_usd"]), 0),
+                "Med PayD": None if pd.isna(row["median_days_to_payout"]) else round(float(row["median_days_to_payout"]), 1),
+                "MCBch": int(row["max_consecutive_breaches"]),
+            }
+        )
+    return rows
+
+
+def _worst_window_report_rows(worst_90d: pd.DataFrame) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for _, row in worst_90d.sort_values(["profile", "max_dd_r", "net_r"]).groupby("profile").head(5).iterrows():
+        rows.append(
+            {
+                "Profile": row["profile"],
+                "Start": row["start"],
+                "End": row["end"],
+                "Net R": round(float(row["net_r"]), 1),
+                "DD R": round(float(row["max_dd_r"]), 1),
+                "Net $": round(float(row["net_usd_current"]), 0),
+                "DD $": round(float(row["max_dd_usd_current"]), 0),
+            }
+        )
+    return rows
+
+
 def _write_report(
     annotated: pd.DataFrame,
     summary: pd.DataFrame,
     baseline: pd.DataFrame,
     filter_eval: pd.DataFrame,
+    yearly: pd.DataFrame,
+    rolling_2y: pd.DataFrame,
+    daily_summary: pd.DataFrame,
+    worst_90d: pd.DataFrame,
+    payout_summary: pd.DataFrame,
 ) -> None:
     full_signal = baseline[(baseline["context"] == "signal") & (baseline["window"] == "full")]
     base_rows = [
@@ -616,6 +1088,11 @@ def _write_report(
         limit=10,
     )
     filter_rows = _filter_report_rows(filter_eval)
+    yearly_rows = _yearly_report_rows(yearly)
+    rolling_rows = _rolling_report_rows(rolling_2y)
+    daily_rows = _daily_report_rows(daily_summary)
+    worst_rows = _worst_window_report_rows(worst_90d)
+    payout_rows = _payout_report_rows(payout_summary)
 
     portfolio_pct = summary[
         (summary["context"] == "signal")
@@ -686,12 +1163,39 @@ This is not optimization. It only tests the most obvious weak bucket from the fi
 
 {_markdown_table(filter_rows, ["Window", "Filter", "Removed", "Trades", "Net R", "Delta R", "Avg R", "PF", "DD R"])}
 
+## Yearly Dead-Zone Stability
+
+Dead zone = signal-time `0.5-1%` below futures ATH, removed from all legs.
+
+{_markdown_table(yearly_rows, ["Year", "Base R", "Dead Trades", "Dead R", "Dead Avg", "Gated R", "Delta R", "DD Delta"])}
+
+## Rolling Two-Year Check
+
+{_markdown_table(rolling_rows, ["Window", "Base R", "Dead Trades", "Dead R", "Dead Avg", "Gated R", "Delta R", "DD Delta"])}
+
+## Daily-R Gate Comparison
+
+{_markdown_table(daily_rows, ["Window", "Profile", "Trades", "Removed", "Net R", "Delta R", "Sharpe", "DD R", "DD Delta"])}
+
+## Worst 90-Day Windows
+
+{_markdown_table(worst_rows, ["Profile", "Start", "End", "Net R", "DD R", "Net $", "DD $"])}
+
+## Funded First-Payout Comparison
+
+This uses the same simple 14-day staggered first-payout model as the reentry promotion packet and current ALPHA leg risk sizing from the source trade export.
+
+{_markdown_table(payout_rows, ["Window", "Profile", "Accounts", "Pay%", "Breach%", "Payouts", "Breaches", "Open", "EV/acct", "Med PayD", "MCBch"])}
+
 ## First-Pass Read
 
 1. The clearest broad weak zone is `0.5-1%` below futures ATH at signal time. Full history is basically flat (`381` trades for `+2.6R`), and skipping it raises average R and PF while preserving almost all full-history net R.
 2. The recent read is stronger: skipping `0.5-1%` improves `2024+` from `+158.6R` to `+161.9R`, and `2025+` from `+106.3R / -11.2R DD` to `+111.5R / -8.5R DD`.
-3. This is not a universal "near ATH is good" result. ES Asia likes the closest ATH band, NQ Asia is strongest in deeper ATH drawdowns or 1-2% below ATH, and NQ NY HTF-LSI is best around 2-5% below ATH.
-4. The next honest step is a pre-registered same-regime OOS check for `skip_pct_0p5_1_all`, plus leg-specific diagnostics for ES-near-ATH and HTF-LSI 2-5% behavior. Do not promote any threshold from this report directly.
+3. Funded-account behavior is the blocker: the broad skip worsens full-history payout rate (`73.8%` to `70.0%`) and 2024+ payout rate (`81.4%` to `64.4%`). It only clearly helps the opened 2025+ cohort by removing breaches while preserving payout count.
+4. Yearly attribution is mixed: the dead zone was harmful in 2016 and 2025, mildly harmful in 2018-2019, but helpful in 2017, 2020, 2023, 2024, and 2026 YTD. Treat this as a risk-shaping diagnostic, not a broad gate.
+5. This is not a universal "near ATH is good" result. ES Asia likes the closest ATH band, NQ Asia is strongest in deeper ATH drawdowns or 1-2% below ATH, and NQ NY HTF-LSI is best around 2-5% below ATH.
+6. The broad `skip_pct_0p5_1_all` gate is **NO-GO for immediate promotion** from this post-filter evidence. Better next steps are leg-specific ATH theses and exact engine replay only after a gate is narrowed enough to preserve account-flow quality.
+7. The gate remains `post_filter_only` / research-only until engine support can skip the setup before arming an order and exact replay can account for missed/alternate same-session opportunities.
 
 ## Artifacts
 
@@ -699,6 +1203,13 @@ This is not optimization. It only tests the most obvious weak bucket from the fi
 - Bucket summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/bucket_summary.csv`
 - Baseline summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/baseline_summary.csv`
 - Filter probes: `data/results/alpha_v1_ath_regime_first_pass_20260505/filter_evaluation.csv`
+- Yearly dead-zone attribution: `data/results/alpha_v1_ath_regime_first_pass_20260505/yearly_dead_zone_attribution.csv`
+- Rolling two-year attribution: `data/results/alpha_v1_ath_regime_first_pass_20260505/rolling_2y_dead_zone_attribution.csv`
+- Daily-R comparison: `data/results/alpha_v1_ath_regime_first_pass_20260505/daily_r_comparison.csv`
+- Daily summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/daily_summary.csv`
+- Worst 90-day windows: `data/results/alpha_v1_ath_regime_first_pass_20260505/worst_90d_windows.csv`
+- Funded payout summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/funded_first_payout_summary.csv`
+- Funded account outcomes: `data/results/alpha_v1_ath_regime_first_pass_20260505/funded_first_payout_accounts.csv`
 - Machine summary: `data/results/alpha_v1_ath_regime_first_pass_20260505/summary.json`
 """
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -710,11 +1221,25 @@ def main() -> None:
     annotated = _load_and_annotate_trades()
     summary, baseline = _summaries(annotated)
     filter_eval = _filter_evaluations(annotated)
+    signal = annotated[annotated["context"] == "signal"].copy()
+    yearly = _yearly_gate_attribution(signal)
+    rolling_2y = _rolling_2y_gate_attribution(signal)
+    daily_comparison = _daily_profile_frame(signal)
+    daily_summary = _daily_summary_rows(daily_comparison)
+    worst_90d = _worst_rolling_windows(daily_comparison)
+    payout_accounts, payout_summary = _payout_comparison(signal)
 
     annotated.to_csv(RESULT_DIR / "annotated_trades.csv", index=False)
     summary.to_csv(RESULT_DIR / "bucket_summary.csv", index=False)
     baseline.to_csv(RESULT_DIR / "baseline_summary.csv", index=False)
     filter_eval.to_csv(RESULT_DIR / "filter_evaluation.csv", index=False)
+    yearly.to_csv(RESULT_DIR / "yearly_dead_zone_attribution.csv", index=False)
+    rolling_2y.to_csv(RESULT_DIR / "rolling_2y_dead_zone_attribution.csv", index=False)
+    daily_comparison.to_csv(RESULT_DIR / "daily_r_comparison.csv", index=False)
+    daily_summary.to_csv(RESULT_DIR / "daily_summary.csv", index=False)
+    worst_90d.to_csv(RESULT_DIR / "worst_90d_windows.csv", index=False)
+    payout_accounts.to_csv(RESULT_DIR / "funded_first_payout_accounts.csv", index=False)
+    payout_summary.to_csv(RESULT_DIR / "funded_first_payout_summary.csv", index=False)
 
     payload = {
         "source_trades": str(SOURCE_TRADES.relative_to(ROOT)),
@@ -725,9 +1250,20 @@ def main() -> None:
         "features": ["ath_pct_bucket", "ath_atr_bucket", "room_to_ath_r_bucket", "ath_age_bucket"],
         "windows": list(WINDOWS.keys()),
         "filter_probe": "skip_pct_0p5_1_all",
+        "funded_profile": FUNDED_PROFILE,
     }
     (RESULT_DIR / "summary.json").write_text(json.dumps(payload, indent=2))
-    _write_report(annotated, summary, baseline, filter_eval)
+    _write_report(
+        annotated,
+        summary,
+        baseline,
+        filter_eval,
+        yearly,
+        rolling_2y,
+        daily_summary,
+        worst_90d,
+        payout_summary,
+    )
 
     full_portfolio = baseline[
         (baseline["context"] == "signal") & (baseline["window"] == "full") & (baseline["leg"] == "portfolio")

@@ -27,9 +27,11 @@ from trader.main import (
     _checkpoint_shutdown_flat,
     _required_regime_daily_symbols,
     apply_atr_values,
+    apply_ath_highs,
     build_engines,
     build_lsi_engines,
     load_exec_configs,
+    required_ath_seed_symbols,
 )
 
 
@@ -99,6 +101,27 @@ def test_build_engines_applies_session_date_overrides():
     assert engine.half_day_flat_end == "12:45"
 
 
+def test_build_engines_applies_exit_mode_override():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {"half_days": [], "excluded": []},
+        "sessions": {},
+    }
+
+    engines, _, _ = build_engines(
+        config,
+        broker,
+        config_name="TEST",
+        session_list=["NQ_NY"],
+        exec_overrides={"NQ_NY": {"rr": 1.4, "tp1_ratio": 1.0, "exit_mode": "single_target"}},
+    )
+
+    engine = engines[0]
+    assert engine.exit_mode == "single_target"
+    assert engine.tp1_ratio == 1.0
+
+
 def test_build_lsi_engines_applies_session_date_overrides():
     broker = MagicMock()
     config = {
@@ -137,6 +160,30 @@ def test_build_lsi_engines_applies_session_date_overrides():
     assert engine._half_day_flat_start_t.minute == 35
     assert engine._half_day_flat_end_t.hour == 12
     assert engine._half_day_flat_end_t.minute == 40
+
+
+def test_build_lsi_engines_applies_exit_mode_override():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0},
+        "dates": {"half_days": [], "excluded": []},
+    }
+
+    symbol_map: dict[str, list] = {}
+    atr_lengths: dict[str, int] = {}
+    engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name="TEST",
+        lsi_list=["NQ_Asia_LSI"],
+        lsi_overrides={"NQ_Asia_LSI": {"rr": 1.4, "tp1_ratio": 1.0, "exit_mode": "single_target"}},
+    )
+
+    engine = engines[0]
+    assert engine.exit_mode == "single_target"
+    assert engine.tp1_ratio == 1.0
 
 
 def test_build_lsi_engines_applies_legacy_lsi_variant_override():
@@ -304,6 +351,97 @@ def test_build_engines_respects_long_only_override():
     )
 
     assert engines[0].long_only is False
+
+
+def test_build_engines_applies_ath_gate_overrides():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+
+    engines, _, _ = build_engines(
+        config,
+        broker,
+        config_name="FAST_V2",
+        session_list=["ES_NY"],
+        exec_overrides={"ES_NY": {"ath_block_min_pct": 0.5, "ath_block_max_pct": 1.0}},
+    )
+
+    assert engines[0].ath_block_min_pct == 0.5
+    assert engines[0].ath_block_max_pct == 1.0
+
+
+def test_es_ny_ath_gate_session_config_tracks_es_ny_with_gate_enabled():
+    base = SESSION_CONFIGS["ES_NY"]
+    ath = SESSION_CONFIGS["ES_NY_ATH_GATE"]
+
+    for key, value in base.items():
+        if key.startswith("ath_block_"):
+            continue
+        assert ath[key] == value
+    assert ath["ath_block_min_pct"] == 0.5
+    assert ath["ath_block_max_pct"] == 0.75
+
+
+def test_required_ath_seed_symbols_only_includes_enabled_ath_gates():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+
+    _engines, sym_map, _ = build_engines(
+        config,
+        broker,
+        config_name="ATH_TEST",
+        session_list=["NQ_NY", "ES_NY"],
+        exec_overrides={"ES_NY": {"ath_block_min_pct": 0.5, "ath_block_max_pct": 0.75}},
+    )
+
+    assert required_ath_seed_symbols(sym_map) == ["ES.FUT"]
+
+
+def test_apply_ath_highs_seeds_gated_engines_without_lowering_existing_high():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {
+            "half_days": ["20250703"],
+            "excluded": [],
+            "half_day_flat_start": "12:50",
+            "half_day_flat_end": "13:00",
+        },
+        "sessions": {},
+    }
+
+    engines, sym_map, _ = build_engines(
+        config,
+        broker,
+        config_name="ATH_TEST",
+        session_list=["ES_NY"],
+        exec_overrides={"ES_NY": {"ath_block_min_pct": 0.5, "ath_block_max_pct": 0.75}},
+    )
+    engine = engines[0]
+
+    assert apply_ath_highs(sym_map, {"ES.FUT": 5200.0}) == {"ES.FUT": 1}
+    assert engine._ath_high == 5200.0
+    assert apply_ath_highs(sym_map, {"ES.FUT": 5000.0}) == {}
+    assert engine._ath_high == 5200.0
+    assert apply_ath_highs(sym_map, {"ES.FUT": 5300.0}) == {"ES.FUT": 1}
+    assert engine._ath_high == 5300.0
 
 
 def test_build_engines_normalizes_multi_regime_gates():
@@ -578,7 +716,7 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     assert fast_v2.webhook_url == ""
 
 
-def test_alpha_v1_a_and_alpha_v1_c_only_differ_by_risk_sizes():
+def test_alpha_v1_c_is_disabled_conservative_clone_without_default_webhook():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
     aggressive = configs["ALPHA_V1-A"]
@@ -593,7 +731,8 @@ def test_alpha_v1_a_and_alpha_v1_c_only_differ_by_risk_sizes():
     assert aggressive.enabled is True
     assert conservative.enabled is False
     assert aggressive.max_open_contracts == conservative.max_open_contracts
-    assert aggressive.webhooks[0].label == conservative.webhooks[0].label == "Account 1"
+    assert aggressive.webhooks[0].label == "Account 1"
+    assert conservative.webhooks == []
     assert _without_risk(aggressive.session_overrides) == _without_risk(conservative.session_overrides)
     assert _without_risk(aggressive.lsi_session_overrides) == _without_risk(conservative.lsi_session_overrides)
     assert aggressive.session_overrides["NQ_Asia"]["risk_usd"] == 250
@@ -606,6 +745,20 @@ def test_alpha_v1_a_and_alpha_v1_c_only_differ_by_risk_sizes():
     assert conservative.session_overrides["ES_Asia"]["risk_usd"] == 200
     assert conservative.session_overrides["ES_NY"]["risk_usd"] == 200
     assert conservative.lsi_session_overrides["NQ_NY_LSI"]["risk_usd"] == 150
+
+
+def test_alpha_v1_es_ny_ath_shadow_is_dry_run_gate_profile():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    shadow = configs["ALPHA_V1-ES-NY-ATH-SHADOW"]
+
+    assert shadow.enabled is True
+    assert shadow.webhooks == []
+    assert set(shadow.session_overrides) == {"ES_NY"}
+    assert shadow.lsi_session_overrides == {}
+    assert shadow.session_overrides["ES_NY"]["ath_block_min_pct"] == 0.5
+    assert shadow.session_overrides["ES_NY"]["ath_block_max_pct"] == 0.75
+    assert shadow.session_overrides["ES_NY"]["risk_usd"] == 400
 
 
 def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
@@ -628,6 +781,31 @@ def test_testing_exec_config_includes_hunter_orb_dry_run_leg():
     assert testing.session_overrides["H_ORB_ABLATED"]["rejection_wick_max_pct"] == 20.0
     assert testing.session_overrides["H_ORB_ABLATED"]["reentry_policy"] == "all_nonoverlap"
     assert testing.session_overrides["H_ORB_ABLATED"]["reduced_target_rr"] == 2.0
+    assert "ES_NY_ATH_GATE" in testing.session_overrides
+    assert testing.session_overrides["ES_NY_ATH_GATE"]["risk_usd"] == 400
+    assert testing.session_overrides["ES_NY_ATH_GATE"]["max_single_risk_usd"] == 400
+    assert testing.session_overrides["ES_NY_ATH_GATE"]["ath_block_min_pct"] == 0.5
+    assert testing.session_overrides["ES_NY_ATH_GATE"]["ath_block_max_pct"] == 0.75
+
+
+def test_testing_exec_config_includes_goldx_dry_run_legs():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+
+    testing = configs["TESTING"]
+
+    assert testing.webhook_url == ""
+    assert "GOLD_X" in testing.session_overrides
+    assert testing.session_overrides["GOLD_X"]["goldx_mode"] == "both"
+    assert testing.session_overrides["GOLD_X"]["goldx_classic_risk_usd"] == 400
+    assert testing.session_overrides["GOLD_X"]["goldx_fvg_risk_usd"] == 300
+    assert testing.session_overrides["GOLD_X"]["goldx_enable_fvg_ut_filter"] is True
+    assert "GOLD_X_SAFE" in testing.session_overrides
+    assert testing.session_overrides["GOLD_X_SAFE"]["goldx_mode"] == "fvg_only"
+    assert testing.session_overrides["GOLD_X_SAFE"]["goldx_fvg_risk_usd"] == 300
+    assert testing.session_overrides["GOLD_X_SAFE"]["goldx_enable_fvg_ut_filter"] is True
+    assert "GOLD_X_ABLATED" in testing.session_overrides
+    assert testing.session_overrides["GOLD_X_ABLATED"]["goldx_mode"] == "both"
+    assert testing.session_overrides["GOLD_X_ABLATED"]["goldx_enable_fvg_ut_filter"] is False
 
 
 def test_hot_regime_v1_exec_config_is_dry_run_hot_candidate_portfolio():
@@ -732,6 +910,56 @@ def test_hunter_orb_safe_defaults_match_10y_safe_branch():
     assert config["reentry_max_extension_pct"] is None
     assert config["enable_fast_reentry_exhaustion_filter"] is False
     assert config["reduced_target_rr"] == 1.0
+
+
+def test_goldx_safe_and_ablated_defaults_match_ablation_branches():
+    safe = SESSION_CONFIGS["GOLD_X_SAFE"]
+    ablated = SESSION_CONFIGS["GOLD_X_ABLATED"]
+
+    assert safe["engine_type"] == "gold_x"
+    assert safe["instrument"] == "GC"
+    assert safe["exec_ticker"] == "MGC"
+    assert safe["goldx_mode"] == "fvg_only"
+    assert safe["goldx_fvg_risk_usd"] == 300
+    assert safe["goldx_enable_fvg_ut_filter"] is True
+    assert safe["goldx_fvg_min_size_points"] == 9.0
+    assert safe["goldx_fvg_max_orb_distance_points"] == 30.0
+
+    assert ablated["engine_type"] == "gold_x"
+    assert ablated["goldx_mode"] == "both"
+    assert ablated["goldx_classic_risk_usd"] == 400
+    assert ablated["goldx_fvg_risk_usd"] == 300
+    assert ablated["goldx_enable_fvg_ut_filter"] is False
+
+
+def test_goldx_variants_build_as_goldx_engines():
+    from trader.goldx_engine import GoldXEngine
+
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+    testing = configs["TESTING"]
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {"half_days": [], "excluded": []},
+        "sessions": {},
+    }
+
+    engines, symbol_map, atr_lengths = build_engines(
+        config,
+        broker,
+        config_name=testing.name,
+        session_list=["GOLD_X", "GOLD_X_SAFE", "GOLD_X_ABLATED"],
+        exec_overrides=testing.session_overrides,
+    )
+
+    assert {engine.name for engine in engines} == {"GOLD_X", "GOLD_X_SAFE", "GOLD_X_ABLATED"}
+    assert all(isinstance(engine, GoldXEngine) for engine in engines)
+    by_name = {engine.name: engine for engine in engines}
+    assert by_name["GOLD_X"].exec_ticker == "MGC"
+    assert by_name["GOLD_X_SAFE"].goldx_mode == "fvg_only"
+    assert by_name["GOLD_X_ABLATED"].goldx_enable_fvg_ut_filter is False
+    assert "GC.FUT" in symbol_map
+    assert 40 in atr_lengths["GC.FUT"]
 
 
 def test_checkpoint_shutdown_flat_marks_orb_engine_flat():

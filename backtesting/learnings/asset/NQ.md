@@ -997,6 +997,23 @@ Re-optimization with dual floors has been completed as NY Continuation Short v2.
 - **Conclusion**: NO-GO for replacing R11 with a wider stop. Zero rows widened the actual median stop by at least `20%` while preserving full-history, last-1y, last-2y, PF, DD, and negative-year quality. The least-bad actual widening was the `ATR 9%` family (`~70.6` median ticks, `1.29x` wider), but its best full-history rows gave up roughly `26R-30R` versus baseline. Example: `ATR 9% / rr 3.0 / TP1_R 1.25` -> `+96.2R`, `PF 1.42`, `-10.4R` DD, last-1y `+10.6R`, last-2y `+19.8R`.
 - **Operating read**: R11's stop is already part of the edge. If NQ NY ORB is added beside ES NY ORB, size it down as a second NY ORB leg rather than widening the stop to make it feel like Asia. `deployability=live_native`, `exact_replay_required=yes_before_live_promotion`.
 
+#### NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md`
+- **Scope**: Paired frozen NQ R11 with current ES_NY ORB and swept only per-leg dollar risk (`$100-$650` by `$50`) under the `$50k` funded-account first-payout model. No R11 parameters were optimized.
+- **R11 standalone in the common ALPHA window (`2016-04-17` to `2026-03-24`)**: `552` fills, `+129.4R`, `PF 1.50`, `-6.0R` DD, `53.3%` WR, median stop `54.9` ticks, `18.1%` full TP, `33.0%` TP1-BE, `46.4%` SL.
+- **Conservative pair sizing**: `NQ $150 / ES $150` had pre-holdout payout `83.3%`, breach `0.0%`, EV `$316.67`, avg payout `198d`; holdout payout `75.0%`, breach `0.0%`, EV `$275.00`, avg payout `186d`.
+- **Sprint pair sizing**: `NQ $250 / ES $350` had pre-holdout payout `74.1%`, breach `23.7%`, EV `$270.61`, avg payout `79d`; holdout payout `59.4%`, breach `21.9%`, EV `$196.88`, avg payout `70d`.
+- **Operating read**: R11 is a valid NQ side of a split NY ORB sleeve, but only after exact execution replay. If used with ES_NY, treat `NQ $150` as conservative probation sizing and `NQ $250` as the faster phase-one sizing. `deployability=live_native`; `exact_replay_required=yes_before_live_promotion`.
+
+#### NQ NY ORB R11 Exit Deep-Dive (2026-05-05)
+
+- **Report**: `backtesting/learnings/reports/ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md`
+- **Scope**: Replayed R11 under true single-target/full-position TP1, no-BE, delayed-BE, and pre-trade bucket diagnostics before moving on to NQ Asia or NQ HTF-LSI exit optimization.
+- **Baseline in common ALPHA window (`2016-04-17` to `2026-03-24`)**: `552` fills, `+129.4R`, `PF 1.50`, `-6.0R` DD, `53.3%` WR, `18.1%` full TP, `33.0%` TP1-BE.
+- **Best research policies**: full-position exit at current TP1 (`1.4R`) improved to `+155.2R`, `PF 1.61`, `-6.4R` DD; delayed BE after `1.5R` improved to `+160.7R`, `PF 1.63`, `-6.0R` DD.
+- **Operating read**: The simple closer-TP2 sweep was not the right branch. R11 has upside from changing runner management. `exit_mode=single_target` now makes the true single-target/full-position TP1 branch `deployability=live_native`, pending exact replay before deployment. Delayed-BE remains `research_only`. Gating is lower priority because the weakest pre-trade buckets were still positive.
+
 #### Optimization History
 - **R1-R7**: 7 rounds of variable sweeps. R2 adopted 5 changes simultaneously — destructive (crashed Calmar). R3 reverted all 5. Lesson: max 2-3 adoptions at once. **R7 CONVERGED** at Calmar 14.45.
 - **Grid R1**: 540 combos. Winner: stop=7.0, rr=3.25, gap=2.5, tp1=0.45 (Calmar 16.45, +2.00). Adopted.
@@ -2963,3 +2980,11 @@ All candidates re-run ungated vs gated (medium-vol avoidance: skip `bull_medium_
 - **Hot structural follow-up** (2026-05-03): `backtesting/learnings/reports/HOT_STRUCTURAL_FOLLOWUP_20260503.md`
   - Window: `2025-03-24` to `2026-03-24`. Targeted second pass around positive structural gates from the hot structural sequence.
   - NQ NY ORB: best refined structural `exclude_cpi` -> 76 fills, `64.95R`, delta `1.0R`, Calmar `12.99`, PF `2.327`, DD `-5.0R`, surface `n/a`; TESTING-only.
+
+### ALPHA_V1 ATH Regime Findings (2026-05-05)
+
+Reports: `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_FIRST_PASS_20260505.md` and `backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_LEG_TARGETS_20260505.md`
+
+- `NQ NY HTF-LSI` is strongest in the `1-5%` below futures ATH area (`1-2%` + `2-5%`: `166` trades, `+62.1R`, `0.374R` avg), and the pure `2-5%` pocket is even higher average (`102` trades, `+42.1R`, `0.412R` avg). However, whitelisting those buckets cuts portfolio R by `-30.5R` to `-50.5R` and slows payout cadence. The surgical skip of weak `0.5-1%` and `5-10%` buckets is safer but only adds `+0.3R` full history and loses `-2.2R` in `2025+`. Status: research attribution, not promotion.
+- `NQ Asia ORB` does not support a simple ATH gate. Full-history top-bucket whitelists improve standalone average R, but the recent window fails: `2025+` loses roughly `-23R` to `-26R` depending on the gate. Do not prioritize NQ Asia ATH filtering until new data or a different regime thesis supports it.
+- Portfolio-level `combo_negative_only_skip` includes a small NQ HTF-LSI skip of the `0.5-1%` bucket alongside the ES NY dead-zone skip. It is the best portfolio-R overlay (`+6.1R` full history, `+5.6R` in `2025+`) but remains `post_filter_only` and full-history combined payout is worse, so exact replay is required before any consideration.

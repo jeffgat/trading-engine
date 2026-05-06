@@ -9,6 +9,7 @@ import math
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import pytest
 
 from trader.feed import (
@@ -416,6 +417,31 @@ class TestATRCalculator:
 
 
 class TestATRRefresh:
+    def test_daily_bars_from_history_frame_filters_spreads_and_chooses_volume(self):
+        feed = DataBentoFeed(symbols=["ES.FUT"], atr_length=3)
+        df = pd.DataFrame(
+            {
+                "symbol": ["ESH5", "ESM5", "ESH5-ESM5"],
+                "open": [100.0, 101.0, 90.0],
+                "high": [110.0, 115.0, 120.0],
+                "low": [95.0, 96.0, 80.0],
+                "close": [105.0, 106.0, 95.0],
+                "volume": [100, 200, 999],
+            },
+            index=pd.DatetimeIndex(
+                [
+                    "2025-01-02 00:00:00+00:00",
+                    "2025-01-02 00:00:00+00:00",
+                    "2025-01-02 00:00:00+00:00",
+                ],
+                name="ts_event",
+            ),
+        )
+
+        bars = feed._daily_bars_from_history_frame("ES.FUT", df)
+
+        assert bars == [(date(2025, 1, 2), 101.0, 115.0, 96.0, 106.0)]
+
     def test_refresh_atr_from_daily_bars(self):
         feed = DataBentoFeed(symbols=["NQ.FUT"], atr_length=3)
         bars = [
@@ -494,3 +520,23 @@ class TestATRRefresh:
         assert len(history_with_current) == 41
         assert history_with_current[-1][0] == date(2025, 2, 10)
         assert history_with_current[-1][-1] == pytest.approx(141.0)
+
+    def test_ath_refresh_from_daily_bars(self):
+        feed = DataBentoFeed(symbols=["ES.FUT"], atr_length=3)
+        bars = [
+            (date(2025, 1, 1), 100.0, 110.0, 90.0, 100.0),
+            (date(2025, 1, 2), 100.0, 125.0, 95.0, 120.0),
+            (date(2025, 1, 3), 120.0, 118.0, 110.0, 112.0),
+        ]
+
+        info = feed._ath_refresh_from_daily_bars(
+            "ES.FUT",
+            bars,
+            start=date(2025, 1, 1),
+            end=date(2025, 1, 4),
+        )
+
+        assert info.symbol == "ES.FUT"
+        assert info.ath_high == pytest.approx(125.0)
+        assert info.last_daily_date == date(2025, 1, 3)
+        assert info.bars_used == 3

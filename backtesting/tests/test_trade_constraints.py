@@ -75,6 +75,22 @@ class TestTP1Minimum:
         assert c.tp1_ratio * c.rr == 1.0
 
 
+class TestExitMode:
+    """single_target uses R:R as the only target, so TP1 must equal full target."""
+
+    def test_single_target_requires_tp1_ratio_one(self):
+        with pytest.raises(ValueError, match="tp1_ratio must be 1.0"):
+            StrategyConfig(rr=2.0, tp1_ratio=0.5, exit_mode="single_target")
+
+    def test_single_target_accepts_full_tp1_ratio(self):
+        c = StrategyConfig(rr=1.4, tp1_ratio=1.0, exit_mode="single_target")
+        assert c.exit_mode == "single_target"
+
+    def test_invalid_exit_mode_rejected(self):
+        with pytest.raises(ValueError, match="exit_mode must be one of"):
+            StrategyConfig(rr=2.0, tp1_ratio=1.0, exit_mode="full")
+
+
 class TestConstraintCombinations:
     """Edge cases combining both constraints."""
 

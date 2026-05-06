@@ -170,6 +170,46 @@ class TestScanningToArmed:
         assert engine._state == State.ARMED_LIMIT
         broker.send_entry.assert_called_once()
 
+    async def test_ath_gate_blocks_dead_zone_signal_and_keeps_scanning(self, broker):
+        eng = _make_orb_engine(broker, ath_block_min_pct=0.5, ath_block_max_pct=1.0)
+        eng.seed_ath_high(20000.0)
+        await advance_to_scanning(eng, orb_high=19750.0)
+
+        blocked_bars = [
+            make_bar("2025-01-15 09:50", 19755, 19770, 19740, 19765),
+            make_bar("2025-01-15 09:55", 19765, 19880, 19750, 19820),
+            make_bar("2025-01-15 10:00", 19820, 19890, 19805, 19850),
+        ]
+        for bar in blocked_bars:
+            await eng.on_bar(bar, 300.0)
+
+        assert eng._state == State.WAITING_FOR_GAP
+        assert eng._long_fvg_found is False
+        assert eng.status_dict()["ath"]["check_count"] == 1
+        assert eng.status_dict()["ath"]["block_count"] == 1
+        assert eng.status_dict()["ath"]["pass_count"] == 0
+        assert eng.status_dict()["ath"]["last_check"]["blocked"] is True
+        assert eng.status_dict()["ath"]["last_block"]["direction"] == "long"
+        assert eng.status_dict()["ath"]["last_block"]["gap_pct"] == pytest.approx(0.75)
+        broker.send_entry.assert_not_called()
+
+        allowed_bars = [
+            make_bar("2025-01-15 10:05", 19850, 19900, 19860, 19880),
+            make_bar("2025-01-15 10:10", 19880, 19930, 19870, 19920),
+            make_bar("2025-01-15 10:15", 19920, 19940, 19910, 19920),
+        ]
+        for bar in allowed_bars:
+            await eng.on_bar(bar, 300.0)
+
+        assert eng._state == State.ARMED_LIMIT
+        assert eng.status_dict()["ath"]["current_gap_pct"] == pytest.approx(0.4)
+        assert eng.status_dict()["ath"]["check_count"] == 2
+        assert eng.status_dict()["ath"]["block_count"] == 1
+        assert eng.status_dict()["ath"]["pass_count"] == 1
+        assert eng.status_dict()["ath"]["last_check"]["blocked"] is False
+        assert eng.status_dict()["ath"]["last_check"]["gap_pct"] == pytest.approx(0.4)
+        broker.send_entry.assert_called_once()
+
     async def test_send_entry_action_is_buy(self, engine, broker):
         await advance_to_armed(engine, orb_high=19530.0)
         call_args = broker.send_entry.call_args
@@ -501,6 +541,32 @@ class TestManagingExits5m:
         assert records[0].exit_type == "tp1_tp2"
         assert records[0].tp1_hit is True
 
+    async def test_single_target_exits_full_position_without_tp1(self, broker):
+        records = []
+        eng = _make_orb_engine(
+            broker,
+            rr=1.0,
+            tp1_ratio=1.0,
+            exit_mode="single_target",
+            risk_usd=2000,
+            stop_atr_pct=5.0,
+        )
+        eng.on_trade_exit = records.append
+        eng, entry_price = await advance_to_managing(eng, atr=100.0, orb_high=19530.0)
+        target = eng._levels.tp2
+        bar = make_bar("2025-01-15 10:10", target - 3, target + 5, entry_price + 1, target)
+
+        await eng.on_bar(bar, 100.0)
+        await _flush_cleanup_tasks()
+
+        broker.send_tp1_multi.assert_not_called()
+        broker.send_tp1_single.assert_not_called()
+        broker.send_cancel.assert_called()
+        broker.send_flatten.assert_called()
+        assert records[0].exit_type == "tp2_direct"
+        assert records[0].tp1_hit is False
+        assert records[0].r_result == pytest.approx(1.0)
+
     async def test_be_hit_after_tp1_exits(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
         eng._tp1_hit = True
@@ -764,6 +830,31 @@ class TestTickPath:
         call_kwargs = broker.send_tp1_multi.call_args.kwargs
         assert call_kwargs["total_qty"] == pytest.approx(eng._levels.qty)
         assert call_kwargs["exit_qty"] == pytest.approx(eng._levels.half_qty)
+
+    async def test_tick_single_target_exits_without_tp1(self, broker):
+        records = []
+        eng = _make_orb_engine(
+            broker,
+            rr=1.4,
+            tp1_ratio=1.0,
+            exit_mode="single_target",
+            risk_usd=2000,
+            stop_atr_pct=5.0,
+        )
+        eng.on_trade_exit = records.append
+        eng, entry_price = await advance_to_managing(eng, atr=100.0, orb_high=19530.0)
+        target = eng._levels.tp2
+        tick_ts = eng._fill_timestamp + timedelta(seconds=2)
+        tick = Bar(timestamp=tick_ts, open=target - 2, high=target + 3, low=entry_price + 1, close=target, volume=10)
+
+        await eng.on_tick(tick, 100.0)
+        await _flush_cleanup_tasks()
+
+        broker.send_tp1_multi.assert_not_called()
+        broker.send_tp1_single.assert_not_called()
+        assert records[0].exit_type == "tp2_direct"
+        assert records[0].tp1_hit is False
+        assert records[0].r_result == pytest.approx(1.4)
 
     async def test_tick_sl_wins_over_tp1(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)

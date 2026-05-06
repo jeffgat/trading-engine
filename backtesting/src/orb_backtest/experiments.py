@@ -58,6 +58,7 @@ PARAM_COLUMNS: dict[str, str] = {
     # Global
     "rr": "REAL",
     "tp1_ratio": "REAL",
+    "exit_mode": "TEXT",
     "risk_usd": "REAL",
     "atr_length": "INTEGER",
 
@@ -141,7 +142,7 @@ PARAM_COLUMNS: dict[str, str] = {
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)
-_GLOBAL_PARAMS = {"rr", "tp1_ratio", "risk_usd", "atr_length",
+_GLOBAL_PARAMS = {"rr", "tp1_ratio", "exit_mode", "risk_usd", "atr_length",
                   "min_qty", "qty_step", "point_value",
                   "htf_level_tf_minutes", "htf_n_left",
                   "htf_trade_max_per_session", "htf_lsi_inversion_ordinal",
@@ -497,6 +498,7 @@ _SAFE_PARAM_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 _DEFAULT_PARAMS: dict[str, object] = {
     "rr": 2.5,
     "tp1_ratio": 0.5,
+    "exit_mode": "split",
 
     "atr_length": 14,
 }
