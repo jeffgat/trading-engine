@@ -57,6 +57,9 @@ TOML
     scp "$LOCAL_DEPLOY/main-db.service" "$DROPLET:/etc/systemd/system/main-db.service"
     ssh "$DROPLET" "systemctl daemon-reload && systemctl enable main-db"
 
+    echo "--- Disabling legacy experiments-db service if present ---"
+    ssh "$DROPLET" "systemctl disable --now experiments-db 2>/dev/null || true"
+
     echo "=== Setup complete. Now run without --setup to deploy. ==="
     exit 0
 fi
@@ -102,6 +105,9 @@ ssh "$DROPLET" "cd $REMOTE_DIR && uv sync"
 echo "--- Syncing systemd service ---"
 scp "$LOCAL_DEPLOY/main-db.service" "$DROPLET:/etc/systemd/system/main-db.service"
 ssh "$DROPLET" "systemctl daemon-reload && systemctl enable main-db"
+
+echo "--- Disabling legacy experiments-db service if present ---"
+ssh "$DROPLET" "systemctl disable --now experiments-db 2>/dev/null || true"
 
 echo "--- Restarting service ---"
 ssh "$DROPLET" "systemctl restart main-db"

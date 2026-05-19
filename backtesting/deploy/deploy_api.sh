@@ -55,8 +55,16 @@ fi"
     echo "=== Setup complete. Fill R2 values in $REMOTE_DIR/.env if you want server-side data sync, then run deploy. ==="
 fi
 
-echo "--- Ensuring MAIN_DB_URL exists in remote .env ---"
-ssh "$DROPLET" "if [ -f $REMOTE_DIR/.env ] && ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
+echo "--- Ensuring remote .env exists ---"
+ssh "$DROPLET" "mkdir -p $REMOTE_DIR/data/raw $REMOTE_DIR/data/cache $REMOTE_DIR/data/results $REMOTE_DIR/data/optimizations && if [ ! -f $REMOTE_DIR/.env ]; then cat > $REMOTE_DIR/.env <<'ENV'
+BACKTEST_API_HOST=0.0.0.0
+BACKTEST_API_PORT=8200
+MAIN_DB_URL=http://127.0.0.1:8100
+EXPERIMENTS_DB_URL=http://127.0.0.1:8100
+R2_BUCKET_NAME=orb-backtests-data
+ENV
+fi
+if ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
 
 echo "=== Deploying backtester API from $LOCAL_DIR ==="
 
@@ -66,7 +74,7 @@ rsync -avz --delete \
     --exclude '__pycache__/' \
     --exclude '*.pyc' \
     --exclude '.env' \
-    --exclude 'data/' \
+    --exclude '/data/' \
     --exclude '.pytest_cache/' \
     "$LOCAL_DIR/" "$DROPLET:$REMOTE_DIR/"
 
