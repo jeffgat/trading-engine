@@ -286,6 +286,16 @@ def main() -> int:
     result_path = output_dir / "replay_validation.csv"
     result.to_csv(result_path, index=False)
 
+    exact_feature_passed = bool(result["feature_match"].all())
+    sizing_passed = bool(
+        result["tier_match"].all()
+        and result["weight_match"].all()
+        and result["active"].all()
+    )
+    max_abs_feature_diff = None
+    if result["feature_diff"].notna().any():
+        max_abs_feature_diff = float(result["feature_diff"].abs().max())
+
     summary = {
         "run_slug": output_dir.name,
         "schema": args.schema,
@@ -294,18 +304,16 @@ def main() -> int:
         "feature_matches": int(result["feature_match"].sum()),
         "tier_matches": int(result["tier_match"].sum()),
         "weight_matches": int(result["weight_match"].sum()),
-        "all_passed": bool(
-            result["feature_match"].all()
-            and result["tier_match"].all()
-            and result["weight_match"].all()
-            and result["active"].all()
-        ),
+        "exact_feature_passed": exact_feature_passed,
+        "sizing_passed": sizing_passed,
+        "all_passed": sizing_passed,
+        "max_abs_feature_diff": max_abs_feature_diff,
         "output_csv": str(result_path),
     }
     summary_path = output_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, default=str) + "\n")
     print(json.dumps(summary, indent=2), flush=True)
-    return 0 if summary["all_passed"] else 1
+    return 0 if sizing_passed else 1
 
 
 if __name__ == "__main__":

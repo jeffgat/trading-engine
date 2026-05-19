@@ -51,7 +51,7 @@
 - `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
 - `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
 
-## Reports (115)
+## Reports (116)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
 - [NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md) -> [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505)
 - [NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md) -> [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505)
@@ -144,6 +144,7 @@
 - [NQ_NY_LSI_PURE_1M_EXACT_MBP10_SHADOW_20260516.md](../../reports/NQ_NY_LSI_PURE_1M_EXACT_MBP10_SHADOW_20260516.md) -> [nq_ny_lsi_pure_1m_exact_mbp10_shadow_20260516](../../../data/results/nq_ny_lsi_pure_1m_exact_mbp10_shadow_20260516)
 - [NQ_NY_LSI_PURE_1M_LIQUIDITY_VACUUM_EXACT_SHADOW_20260517.md](../../reports/NQ_NY_LSI_PURE_1M_LIQUIDITY_VACUUM_EXACT_SHADOW_20260517.md) -> [nq_ny_lsi_pure_1m_liquidity_vacuum_exact_shadow_20260517](../../../data/results/nq_ny_lsi_pure_1m_liquidity_vacuum_exact_shadow_20260517)
 - [NQ_NY_LSI_PURE_1M_MBP10_FETCH_AND_REPLAY_VALIDATION_20260516.md](../../reports/NQ_NY_LSI_PURE_1M_MBP10_FETCH_AND_REPLAY_VALIDATION_20260516.md)
+- [NQ_NY_LSI_PURE_1M_MBP1_REPLAY_VALIDATION_20260519.md](../../reports/NQ_NY_LSI_PURE_1M_MBP1_REPLAY_VALIDATION_20260519.md)
 - [NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_LIVE_SCOPE_20260515.md](../../reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_LIVE_SCOPE_20260515.md)
 - [NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_MIN_IMPL_VALIDATION_20260516.md](../../reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_MIN_IMPL_VALIDATION_20260516.md) -> [nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516](../../../data/results/nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516)
 - [NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_STRESS_20260515.md](../../reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_STRESS_20260515.md) -> [nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515](../../../data/results/nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515)
@@ -168,7 +169,7 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (136)
+## Result Directories (139)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
@@ -277,6 +278,9 @@
 - [nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516](../../../data/results/nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516) (4 files; primary: summary.json, period_metrics.csv, tier_metrics.csv, validated_trades.csv)
 - [nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515](../../../data/results/nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515) (8 files; primary: summary.json, account_outcomes.csv, account_summary.csv, bootstrap_summary.csv, monthly_metrics.csv)
 - [nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_20260516](../../../data/results/nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_20260516) (2 files; primary: summary.json, replay_validation.csv)
+- [nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_all_20260519](../../../data/results/nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_all_20260519) (2 files; primary: summary.json, replay_validation.csv)
+- [nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260516](../../../data/results/nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260516) (2 files; primary: summary.json, replay_validation.csv)
+- [nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260519](../../../data/results/nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260519) (2 files; primary: summary.json, replay_validation.csv)
 - [nq_ny_lsi_sweep_reclaim_velocity_20260515](../../../data/results/nq_ny_lsi_sweep_reclaim_velocity_20260515) (9 files; primary: summary.json, frozen_thresholds.csv, monthly_breakdown.csv, orderbook_price_correlation.csv, risk_tier_summary.csv)
 - [nq_ny_reference_lsi_3m_failure_analysis](../../../data/results/nq_ny_reference_lsi_3m_failure_analysis) (1 files; primary: failure_analysis.json)
 - [nq_ny_reference_lsi_3m_phase_one](../../../data/results/nq_ny_reference_lsi_3m_phase_one) (1 files; primary: phase_one_results.json)

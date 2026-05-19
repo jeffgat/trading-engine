@@ -7,6 +7,7 @@
 - **Data**: 2016-01 to 2026-02 (~10 years, 5m + 1m + 1s parquet). Previous data extended to 2015 but is no longer available in current parquet files.
 - **Liquidity**: Both NY and Asia sessions are viable. Asia session runs 20:00-07:00 ET (cross-midnight).
 - **1s data note**: NQ_1s.parquet uses `.v.0` (volume roll) instead of `.c.0` (calendar roll). Mismatches only affect ~20 days in 2016 around quarterly rolls. From 2017 onward, all prices match 1m/5m perfectly. Impact on backtests is negligible — the 1s magnifier only resolves ambiguous bars within the same candle.
+- **Order-book data note (2026-05-19)**: The pure 1m LSI midpoint-velocity survivor can use DataBento `mbp-1` instead of `mbp-10`. MBP-1 replay on the 21 holdout morning-prefix windows matched `21/21` frozen tiers and `21/21` risk weights, with one harmless raw feature drift of `+0.05` ticks/second (`1.80` to `1.85`, still `high`). MBP-1 does not validate deeper-book liquidity-vacuum or absorption variants.
 
 ## Strategies Tested
 

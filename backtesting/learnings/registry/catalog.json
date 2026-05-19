@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-18T13:21:52.340522Z",
+  "generated_at": "2026-05-19T22:49:58.917916Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 234,
-    "result_directories": 374,
+    "report_files": 235,
+    "result_directories": 377,
     "result_loose_files": 45
   },
   "assets": {
@@ -2527,7 +2527,7 @@
           "name": "NQ_NY_HTF_LSI_LAG24_EXACT_REPLAY.md",
           "path": "backtesting/learnings/reports/NQ_NY_HTF_LSI_LAG24_EXACT_REPLAY.md",
           "slug": "nq_ny_htf_lsi_lag24_exact_replay",
-          "mtime_utc": "2026-05-16T16:25:39.912933Z",
+          "mtime_utc": "2026-05-19T19:37:38.225543Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_lag24_exact_replay"
         },
         {
@@ -2639,21 +2639,21 @@
           "name": "NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md",
           "slug": "nq_ny_lsi_3m_trapped_reversal_exact_probe_20260517",
-          "mtime_utc": "2026-05-17T04:23:55.856895Z",
+          "mtime_utc": "2026-05-19T19:37:38.225736Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_3M_TRAPPED_REVERSAL_STRESS_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_3M_TRAPPED_REVERSAL_STRESS_20260515.md",
           "slug": "nq_ny_lsi_3m_trapped_reversal_stress_20260515",
-          "mtime_utc": "2026-05-15T18:32:07.020600Z",
+          "mtime_utc": "2026-05-19T19:37:38.225956Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_3m_trapped_reversal_stress_20260515"
         },
         {
           "name": "NQ_NY_LSI_BROAD_DISCRETIONARY_CHALLENGER_MATRIX_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_BROAD_DISCRETIONARY_CHALLENGER_MATRIX_20260517.md",
           "slug": "nq_ny_lsi_broad_discretionary_challenger_matrix_20260517",
-          "mtime_utc": "2026-05-17T02:17:46.815710Z",
+          "mtime_utc": "2026-05-19T19:37:38.226171Z",
           "matched_result_directory": null
         },
         {
@@ -2695,28 +2695,28 @@
           "name": "NQ_NY_LSI_CISD_TARGET_SWEEP_20260504.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_CISD_TARGET_SWEEP_20260504.md",
           "slug": "nq_ny_lsi_cisd_target_sweep_20260504",
-          "mtime_utc": "2026-05-16T15:49:08.263032Z",
+          "mtime_utc": "2026-05-19T19:37:38.226428Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_cisd_target_sweep_20260504"
         },
         {
           "name": "NQ_NY_LSI_CORRECTED_CANDIDATE_RETEST_20260516.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_CORRECTED_CANDIDATE_RETEST_20260516.md",
           "slug": "nq_ny_lsi_corrected_candidate_retest_20260516",
-          "mtime_utc": "2026-05-17T01:37:55.686896Z",
+          "mtime_utc": "2026-05-19T19:37:38.226630Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_corrected_candidate_retest_20260516"
         },
         {
           "name": "NQ_NY_LSI_DISCRETIONARY_SIGNAL_ROADMAP_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_DISCRETIONARY_SIGNAL_ROADMAP_20260515.md",
           "slug": "nq_ny_lsi_discretionary_signal_roadmap_20260515",
-          "mtime_utc": "2026-05-16T00:47:47.413952Z",
+          "mtime_utc": "2026-05-19T22:49:53.064326Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_DYNAMIC_SIZING_PHASE_ONE_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_DYNAMIC_SIZING_PHASE_ONE_20260515.md",
           "slug": "nq_ny_lsi_dynamic_sizing_phase_one_20260515",
-          "mtime_utc": "2026-05-15T16:05:01.038287Z",
+          "mtime_utc": "2026-05-19T19:37:38.227097Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_dynamic_sizing_phase_one_20260515"
         },
         {
@@ -2730,119 +2730,126 @@
           "name": "NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md",
           "slug": "nq_ny_lsi_orderbook_feature_lab_20260514",
-          "mtime_utc": "2026-05-14T14:01:48.333943Z",
+          "mtime_utc": "2026-05-19T19:37:38.227537Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_feature_lab_20260514"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_IMPULSE_20260513.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_20260513.md",
           "slug": "nq_ny_lsi_orderbook_impulse_20260513",
-          "mtime_utc": "2026-05-13T17:43:23.373545Z",
+          "mtime_utc": "2026-05-19T19:37:38.228410Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_impulse_20260513"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_20260514.md",
           "slug": "nq_ny_lsi_orderbook_impulse_frozen_replay_20260514",
-          "mtime_utc": "2026-05-14T01:39:49.897233Z",
+          "mtime_utc": "2026-05-19T19:37:38.228829Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_impulse_frozen_replay_20260514"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_FULL_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_FULL_20260514.md",
           "slug": "nq_ny_lsi_orderbook_impulse_frozen_replay_full_20260514",
-          "mtime_utc": "2026-05-14T02:33:27.776647Z",
+          "mtime_utc": "2026-05-19T19:37:38.229063Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_impulse_frozen_replay_full_20260514"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_IMPULSE_VALIDATION_FULL_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_VALIDATION_FULL_20260514.md",
           "slug": "nq_ny_lsi_orderbook_impulse_validation_full_20260514",
-          "mtime_utc": "2026-05-14T02:31:59.743080Z",
+          "mtime_utc": "2026-05-19T19:37:38.229277Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_impulse_validation_full_20260514"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_IMPULSE_VALIDATION_PARTIAL_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_VALIDATION_PARTIAL_20260514.md",
           "slug": "nq_ny_lsi_orderbook_impulse_validation_partial_20260514",
-          "mtime_utc": "2026-05-14T01:37:57.323350Z",
+          "mtime_utc": "2026-05-19T19:37:38.229477Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_impulse_validation_partial_20260514"
         },
         {
           "name": "NQ_NY_LSI_ORDERBOOK_RISK_TIERS_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_RISK_TIERS_20260515.md",
           "slug": "nq_ny_lsi_orderbook_risk_tiers_20260515",
-          "mtime_utc": "2026-05-15T15:39:29.991394Z",
+          "mtime_utc": "2026-05-19T19:37:38.229691Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_orderbook_risk_tiers_20260515"
         },
         {
           "name": "NQ_NY_LSI_ORDERFLOW_SIDE_BRANCH_PROVIDER_VALIDATION_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERFLOW_SIDE_BRANCH_PROVIDER_VALIDATION_20260517.md",
           "slug": "nq_ny_lsi_orderflow_side_branch_provider_validation_20260517",
-          "mtime_utc": "2026-05-17T02:40:04.036273Z",
+          "mtime_utc": "2026-05-19T19:37:38.229881Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_CHALLENGER_BRANCHES_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_CHALLENGER_BRANCHES_20260517.md",
           "slug": "nq_ny_lsi_pure_1m_challenger_branches_20260517",
-          "mtime_utc": "2026-05-17T01:54:45.369247Z",
+          "mtime_utc": "2026-05-19T19:37:38.230059Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_EXACT_EXECUTION_PARITY_20260516.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_EXACT_EXECUTION_PARITY_20260516.md",
           "slug": "nq_ny_lsi_pure_1m_exact_execution_parity_20260516",
-          "mtime_utc": "2026-05-16T16:26:15.723937Z",
+          "mtime_utc": "2026-05-19T19:37:38.230234Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_EXACT_MBP10_SHADOW_20260516.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_EXACT_MBP10_SHADOW_20260516.md",
           "slug": "nq_ny_lsi_pure_1m_exact_mbp10_shadow_20260516",
-          "mtime_utc": "2026-05-16T16:44:18.262092Z",
+          "mtime_utc": "2026-05-19T19:37:38.230414Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_pure_1m_exact_mbp10_shadow_20260516"
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_LIQUIDITY_VACUUM_EXACT_SHADOW_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_LIQUIDITY_VACUUM_EXACT_SHADOW_20260517.md",
           "slug": "nq_ny_lsi_pure_1m_liquidity_vacuum_exact_shadow_20260517",
-          "mtime_utc": "2026-05-17T02:41:17.087466Z",
+          "mtime_utc": "2026-05-19T19:37:38.230601Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_pure_1m_liquidity_vacuum_exact_shadow_20260517"
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_MBP10_FETCH_AND_REPLAY_VALIDATION_20260516.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_MBP10_FETCH_AND_REPLAY_VALIDATION_20260516.md",
           "slug": "nq_ny_lsi_pure_1m_mbp10_fetch_and_replay_validation_20260516",
-          "mtime_utc": "2026-05-16T15:49:08.836222Z",
+          "mtime_utc": "2026-05-19T19:37:38.230827Z",
+          "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_LSI_PURE_1M_MBP1_REPLAY_VALIDATION_20260519.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_MBP1_REPLAY_VALIDATION_20260519.md",
+          "slug": "nq_ny_lsi_pure_1m_mbp1_replay_validation_20260519",
+          "mtime_utc": "2026-05-19T22:49:27.700760Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_LIVE_SCOPE_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_LIVE_SCOPE_20260515.md",
           "slug": "nq_ny_lsi_pure_1m_orderbook_velocity_live_scope_20260515",
-          "mtime_utc": "2026-05-16T00:31:48.343350Z",
+          "mtime_utc": "2026-05-19T19:37:38.231089Z",
           "matched_result_directory": null
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_MIN_IMPL_VALIDATION_20260516.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_MIN_IMPL_VALIDATION_20260516.md",
           "slug": "nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516",
-          "mtime_utc": "2026-05-16T15:20:35.866558Z",
+          "mtime_utc": "2026-05-19T19:37:38.231324Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_pure_1m_orderbook_velocity_min_impl_validation_20260516"
         },
         {
           "name": "NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_STRESS_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_STRESS_20260515.md",
           "slug": "nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515",
-          "mtime_utc": "2026-05-15T18:35:33.683405Z",
+          "mtime_utc": "2026-05-19T19:37:38.231538Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_pure_1m_orderbook_velocity_stress_20260515"
         },
         {
           "name": "NQ_NY_LSI_SWEEP_RECLAIM_VELOCITY_20260515.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_SWEEP_RECLAIM_VELOCITY_20260515.md",
           "slug": "nq_ny_lsi_sweep_reclaim_velocity_20260515",
-          "mtime_utc": "2026-05-15T16:01:33.078872Z",
+          "mtime_utc": "2026-05-19T19:37:38.231779Z",
           "matched_result_directory": "backtesting/data/results/nq_ny_lsi_sweep_reclaim_velocity_20260515"
         },
         {
@@ -4491,6 +4498,45 @@
           ]
         },
         {
+          "name": "nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_all_20260519",
+          "path": "backtesting/data/results/nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_all_20260519",
+          "mtime_utc": "2026-05-19T22:46:31.267921Z",
+          "file_count": 2,
+          "primary_files": [
+            "summary.json",
+            "replay_validation.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260516",
+          "path": "backtesting/data/results/nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260516",
+          "mtime_utc": "2026-05-19T22:43:42.143411Z",
+          "file_count": 2,
+          "primary_files": [
+            "summary.json",
+            "replay_validation.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260519",
+          "path": "backtesting/data/results/nq_ny_lsi_pure_1m_velocity_mbp1_replay_validation_20260519",
+          "mtime_utc": "2026-05-19T22:48:24.965297Z",
+          "file_count": 2,
+          "primary_files": [
+            "summary.json",
+            "replay_validation.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
           "name": "nq_ny_lsi_sweep_reclaim_velocity_20260515",
           "path": "backtesting/data/results/nq_ny_lsi_sweep_reclaim_velocity_20260515",
           "mtime_utc": "2026-05-15T16:01:33.046651Z",
@@ -5395,7 +5441,7 @@
           "name": "ALPHA_V1_ES_ASIA_B_DIRECT_COMPARE_20260516.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ES_ASIA_B_DIRECT_COMPARE_20260516.md",
           "slug": "alpha_v1_es_asia_b_direct_compare_20260516",
-          "mtime_utc": "2026-05-16T16:00:14.749534Z",
+          "mtime_utc": "2026-05-19T19:37:38.223632Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_es_asia_b_direct_compare_20260516"
         },
         {
@@ -5416,14 +5462,14 @@
           "name": "ALPHA_V1_ES_NY_RUNNER_TRAIL_EXACT_20260511.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_EXACT_20260511.md",
           "slug": "alpha_v1_es_ny_runner_trail_exact_20260511",
-          "mtime_utc": "2026-05-11T16:29:49.572399Z",
+          "mtime_utc": "2026-05-19T19:37:38.223840Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_es_ny_runner_trail_exact_20260511"
         },
         {
           "name": "ALPHA_V1_ES_NY_RUNNER_TRAIL_SWEEP_20260511.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_SWEEP_20260511.md",
           "slug": "alpha_v1_es_ny_runner_trail_sweep_20260511",
-          "mtime_utc": "2026-05-11T16:07:27.387086Z",
+          "mtime_utc": "2026-05-19T19:37:38.224051Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_es_ny_runner_trail_sweep_20260511"
         },
         {
@@ -5472,21 +5518,21 @@
           "name": "ALPHA_V1_HUNTER_025_SHADOW_SPEC_20260516.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_HUNTER_025_SHADOW_SPEC_20260516.md",
           "slug": "alpha_v1_hunter_025_shadow_spec_20260516",
-          "mtime_utc": "2026-05-16T16:35:07.657705Z",
+          "mtime_utc": "2026-05-19T19:37:38.224255Z",
           "matched_result_directory": null
         },
         {
           "name": "ALPHA_V1_HUNTER_CAP_FIX_20260517.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_HUNTER_CAP_FIX_20260517.md",
           "slug": "alpha_v1_hunter_cap_fix_20260517",
-          "mtime_utc": "2026-05-17T02:19:41.088652Z",
+          "mtime_utc": "2026-05-19T19:37:38.224471Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_hunter_cap_fix_20260517"
         },
         {
           "name": "ALPHA_V1_HUNTER_PARITY_DEBUG_20260517.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_HUNTER_PARITY_DEBUG_20260517.md",
           "slug": "alpha_v1_hunter_parity_debug_20260517",
-          "mtime_utc": "2026-05-18T13:20:51.211798Z",
+          "mtime_utc": "2026-05-19T19:37:38.224661Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_hunter_parity_debug_20260517"
         },
         {
@@ -5500,7 +5546,7 @@
           "name": "ALPHA_V1_NEXT_STEPS_20260516.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_NEXT_STEPS_20260516.md",
           "slug": "alpha_v1_next_steps_20260516",
-          "mtime_utc": "2026-05-16T16:17:55.258073Z",
+          "mtime_utc": "2026-05-19T19:37:38.224889Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_next_steps_20260516"
         },
         {
@@ -5626,14 +5672,14 @@
           "name": "ALPHA_V1_PRIORITIES_1_5_20260516.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_PRIORITIES_1_5_20260516.md",
           "slug": "alpha_v1_priorities_1_5_20260516",
-          "mtime_utc": "2026-05-17T01:49:40.396353Z",
+          "mtime_utc": "2026-05-19T19:37:38.225114Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_priorities_1_5_20260516"
         },
         {
           "name": "ALPHA_V1_R11_STRUCTURE_GATE_ENGINE_REPLAY_20260516.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_R11_STRUCTURE_GATE_ENGINE_REPLAY_20260516.md",
           "slug": "alpha_v1_r11_structure_gate_engine_replay_20260516",
-          "mtime_utc": "2026-05-16T16:31:17.248678Z",
+          "mtime_utc": "2026-05-19T19:37:38.225335Z",
           "matched_result_directory": "backtesting/data/results/alpha_v1_r11_structure_gate_engine_replay_20260516"
         },
         {

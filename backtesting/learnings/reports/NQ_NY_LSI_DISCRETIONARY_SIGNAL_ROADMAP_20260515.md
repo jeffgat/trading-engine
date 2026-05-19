@@ -39,6 +39,7 @@ These paths are cheaper to iterate because they use existing bar/magnifier data 
 - `2026-05-15`: `backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_STRESS_20260515.md` applied the same stricter stress to the pure 1m long order-book velocity survivor. Primary `0.5/1/1.5` stayed breach-clean with 1 tick/side slippage and stricter account rules: post-2023 payout `86.2%`, breach `0.0%`, EV `+4.64R`; holdout payout `58.6%`, breach `0.0%`, EV `+3.83R` (`+0.57R` vs baseline). This becomes the cleaner promotion candidate, but it still requires live MBP-10 streaming and dynamic sizing implementation.
 - `2026-05-15`: `backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_LIVE_SCOPE_20260515.md` scoped live MBP-10 feature streaming plus dynamic sizing for the pure 1m survivor first. The implementation path is: optional `mbp-10` feed subscription, rolling top-of-book feature cache, `dynamic_sizing_provider` injection into `LSIEngine`, trade metadata persistence, then exact replay/paper parity before promotion.
 - `2026-05-16`: `backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_ORDERBOOK_VELOCITY_MIN_IMPL_VALIDATION_20260516.md` completed the minimum no-fetch implementation validation. The new execution-facing sizing decision module reproduced all `54` frozen pure 1m replay rows with `0` tier/weight/weighted-R mismatches and required `0` new historical DataBento days.
+- `2026-05-19`: `backtesting/learnings/reports/NQ_NY_LSI_PURE_1M_MBP1_REPLAY_VALIDATION_20260519.md` retested the pure 1m velocity survivor with Standard-plan `mbp-1`. The 21 holdout morning-prefix windows cost `$0.5676`, downloaded `21/21` files, and matched `21/21` tiers plus `21/21` risk weights versus the frozen MBP-10 path. Treat MBP-1 as valid for the pure midpoint-velocity champion, but not for deeper-book liquidity-vacuum/absorption variants.
 
 ## DataBento Fetch Backlog
 
@@ -57,7 +58,7 @@ These are worth testing later, and the current instruction is to not discard the
 ## Promotion Rules
 
 - No-extra-fetch features can move fastest if they are live-native from existing bar data.
-- Order-book features remain `research_only` until live MBP-10 feature streaming, exact execution replay, and dynamic sizing support exist.
+- Top-of-book velocity features can use live MBP-1 streaming; deeper-book features remain `research_only` until live MBP-10/MBO feature streaming, exact execution replay, and dynamic sizing support exist.
 - Post-confirm order-book features are not entry filters. They can only be tested as add/hold/reduce logic unless a separate causal entry timestamp is defined.
 - Do not combine allDOW and no-Thursday additive overlays as independent edges; they are overlapping variants of the same 1m additive family.
 - Keep the 3m absorption-release result demoted unless a future formulation avoids zero-inflated tiers and passes validation before holdout.
