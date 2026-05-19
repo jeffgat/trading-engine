@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.6",
+    "@clerk/themes": "^2.4.57",
     "@radix-ui/react-dialog": "^1.1.15",
     "@tailwindcss/vite": "^4.2.1",
     "class-variance-authority": "^0.7.1",

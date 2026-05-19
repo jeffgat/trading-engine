@@ -1,5 +1,6 @@
 import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/clerk-react";
 import { LogIn } from "lucide-react";
+import { clerkAppearance } from "@/auth/clerkAppearance";
 import type { OwnerAuthState } from "@/auth/clerkConfig";
 
 interface AuthControlsProps {
@@ -34,7 +35,7 @@ function ClerkAuthControls({ state }: { state: OwnerAuthState }) {
       )}
 
       <SignedOut>
-        <SignInButton mode="modal">
+        <SignInButton mode="modal" appearance={clerkAppearance}>
           <button className="inline-flex min-h-9 items-center gap-2 rounded-md border border-profit/30 bg-bg-primary/80 px-3 font-mono text-sm font-semibold lowercase text-profit transition-colors hover:bg-profit/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40">
             <LogIn className="h-4 w-4" aria-hidden="true" />
             authenticate
