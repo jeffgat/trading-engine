@@ -8,6 +8,7 @@ on:
       - 'backtesting/deploy/deploy_db.sh'
       - 'backtesting/deploy/experiments_api.py'
       - 'backtesting/deploy/main-db.service'
+      - '.github/workflows/deploy-db.yml'
 
 jobs:
   deploy:

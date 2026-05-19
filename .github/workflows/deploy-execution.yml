@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'execution/**'
+      - '.github/workflows/deploy-execution.yml'
 
 jobs:
   deploy:
