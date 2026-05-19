@@ -12,9 +12,9 @@ import { useLiveTrades } from '@/execution/hooks/useLiveTrades';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
 import { useMemo, useState } from 'react';
 
-type Tab = 'status' | 'trades' | 'performance' | 'logs' | 'config';
+export type ExecutionTab = 'status' | 'trades' | 'performance' | 'logs' | 'config';
 
-const TABS: { key: Tab; label: string }[] = [
+const TABS: { key: ExecutionTab; label: string }[] = [
     { key: 'status', label: 'Status' },
     { key: 'config', label: 'Config' },
     { key: 'trades', label: 'Trades' },
@@ -22,8 +22,15 @@ const TABS: { key: Tab; label: string }[] = [
     { key: 'logs', label: 'Logs' },
 ];
 
-export function ExecutionApp() {
-    const [activeTab, setActiveTab] = useState<Tab>('status');
+interface ExecutionAppProps {
+    forcedTab?: ExecutionTab;
+    hideTabNav?: boolean;
+    readOnly?: boolean;
+}
+
+export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }: ExecutionAppProps) {
+    const [localActiveTab, setLocalActiveTab] = useState<ExecutionTab>('status');
+    const activeTab = forcedTab ?? localActiveTab;
     const [activeConfig, setActiveConfig] = useState<string>('');
     const { connected, subscribe } = useWebSocket();
     const {
@@ -32,9 +39,6 @@ export function ExecutionApp() {
         configEngines,
         engines,
     } = useStatus(subscribe);
-    const tradeLogs = useTradeLogs(subscribe);
-    const liveTrades = useLiveTrades();
-    const mainLogs = useMainLogs(subscribe);
     const {
         config,
         loading: configLoading,
@@ -64,20 +68,22 @@ export function ExecutionApp() {
             <header className="sticky top-0 z-10 border-b border-border bg-bg-secondary/70 backdrop-blur-sm">
                 {/* Tab nav */}
                 <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2 sm:px-6">
-                    <nav className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-bg-primary/70 p-1">
-                        {TABS.map(({ key, label }) => (
-                            <button
-                                key={key}
-                                onClick={() => setActiveTab(key)}
-                                className={`min-h-9 shrink-0 rounded-md px-4 font-mono text-sm font-semibold lowercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40 ${
-                                    activeTab === key
-                                        ? 'bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]'
-                                        : 'text-text-secondary hover:bg-bg-card-hover hover:text-foreground'
-                                }`}>
-                                {label}
-                            </button>
-                        ))}
-                    </nav>
+                    {hideTabNav ? <div /> : (
+                        <nav className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-bg-primary/70 p-1">
+                            {TABS.map(({ key, label }) => (
+                                <button
+                                    key={key}
+                                    onClick={() => setLocalActiveTab(key)}
+                                    className={`min-h-9 shrink-0 rounded-md px-4 font-mono text-sm font-semibold lowercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40 ${
+                                        activeTab === key
+                                            ? 'bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]'
+                                            : 'text-text-secondary hover:bg-bg-card-hover hover:text-foreground'
+                                    }`}>
+                                    {label}
+                                </button>
+                            ))}
+                        </nav>
+                    )}
                     <ConnectionStatus connected={connected} />
                 </div>
 
@@ -94,43 +100,30 @@ export function ExecutionApp() {
                         activeConfig={activeConfig}
                         setActiveConfig={setActiveConfig}
                         config={config}
-                        onPause={pauseEngine}
-                        onResume={resumeEngine}
+                        onPause={readOnly ? undefined : pauseEngine}
+                        onResume={readOnly ? undefined : resumeEngine}
                     />
                 )}
                 {activeTab === 'trades' && (
-                    <TradeFeed
-                        entries={tradeLogs.entries}
-                        total={tradeLogs.total}
-                        loading={tradeLogs.loading}
-                        loadMore={tradeLogs.loadMore}
+                    <TradeFeedTab
+                        subscribe={subscribe}
                         activeConfig={activeConfig}
                         config={config}
                     />
                 )}
                 {activeTab === 'logs' && (
-                    <LogViewer
-                        mainEntries={mainLogs.entries}
-                        mainTotal={mainLogs.total}
-                        mainLoading={mainLogs.loading}
-                        loadMoreMain={mainLogs.loadMore}
-                        tradeEntries={tradeLogs.entries}
-                        tradeTotal={tradeLogs.total}
-                        tradeLoading={tradeLogs.loading}
-                        loadMoreTrade={tradeLogs.loadMore}
+                    <LogViewerTab
+                        subscribe={subscribe}
                         activeConfig={activeConfig}
                     />
                 )}
                 {activeTab === 'performance' && (
-                    <PerformanceView
-                        entries={tradeLogs.entries}
-                        loading={tradeLogs.loading}
+                    <PerformanceTab
+                        subscribe={subscribe}
                         config={config}
                         activeConfig={activeConfig}
                         configNames={configNames}
                         setActiveConfig={setActiveConfig}
-                        dbTrades={liveTrades.trades}
-                        dbLoading={liveTrades.loading}
                     />
                 )}
                 {activeTab === 'config' && (
@@ -152,5 +145,83 @@ export function ExecutionApp() {
                 )}
             </main>
         </>
+    );
+}
+
+function TradeFeedTab({
+    subscribe,
+    activeConfig,
+    config,
+}: {
+    subscribe: (type: string, cb: (data: unknown) => void) => () => void;
+    activeConfig: string;
+    config: ReturnType<typeof useConfig>['config'];
+}) {
+    const tradeLogs = useTradeLogs(subscribe);
+
+    return (
+        <TradeFeed
+            entries={tradeLogs.entries}
+            total={tradeLogs.total}
+            loading={tradeLogs.loading}
+            loadMore={tradeLogs.loadMore}
+            activeConfig={activeConfig}
+            config={config}
+        />
+    );
+}
+
+function LogViewerTab({
+    subscribe,
+    activeConfig,
+}: {
+    subscribe: (type: string, cb: (data: unknown) => void) => () => void;
+    activeConfig: string;
+}) {
+    const mainLogs = useMainLogs(subscribe);
+    const tradeLogs = useTradeLogs(subscribe);
+
+    return (
+        <LogViewer
+            mainEntries={mainLogs.entries}
+            mainTotal={mainLogs.total}
+            mainLoading={mainLogs.loading}
+            loadMoreMain={mainLogs.loadMore}
+            tradeEntries={tradeLogs.entries}
+            tradeTotal={tradeLogs.total}
+            tradeLoading={tradeLogs.loading}
+            loadMoreTrade={tradeLogs.loadMore}
+            activeConfig={activeConfig}
+        />
+    );
+}
+
+function PerformanceTab({
+    subscribe,
+    config,
+    activeConfig,
+    configNames,
+    setActiveConfig,
+}: {
+    subscribe: (type: string, cb: (data: unknown) => void) => () => void;
+    config: ReturnType<typeof useConfig>['config'];
+    activeConfig: string;
+    configNames: string[];
+    setActiveConfig: (config: string) => void;
+}) {
+    const tradeLogs = useTradeLogs(subscribe);
+    const liveTrades = useLiveTrades();
+
+    return (
+        <PerformanceView
+            entries={tradeLogs.entries}
+            loading={tradeLogs.loading}
+            config={config}
+            activeConfig={activeConfig}
+            configNames={configNames}
+            setActiveConfig={setActiveConfig}
+            dbTrades={liveTrades.trades}
+            dbLoading={liveTrades.loading}
+        />
     );
 }

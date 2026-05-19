@@ -137,6 +137,11 @@ def ok(result: Any) -> dict:
     return {"success": True, "result": result}
 
 
+@app.get("/api/health")
+def health():
+    return ok({"status": "healthy", "service": "orb-backtester-api"})
+
+
 @app.exception_handler(BacktestError)
 async def backtest_error_handler(request: Request, exc: BacktestError):
     return JSONResponse(

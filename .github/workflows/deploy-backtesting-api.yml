@@ -1,0 +1,58 @@
+name: Deploy Backtesting API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backtesting/src/**'
+      - 'backtesting/scripts/run_server.py'
+      - 'backtesting/pyproject.toml'
+      - 'backtesting/uv.lock'
+      - 'backtesting/deploy/deploy_api.sh'
+      - 'backtesting/deploy/orb-backtester.service'
+      - '.github/workflows/deploy-backtesting-api.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          known_hosts: ${{ secrets.DROPLET_KNOWN_HOSTS }}
+
+      - name: Deploy Backtesting API
+        run: |
+          DROPLET="root@143.110.148.234"
+          REMOTE_DIR="/opt/orb-backtester"
+
+          echo "--- Preparing remote directories and env ---"
+          ssh "$DROPLET" "mkdir -p $REMOTE_DIR/data/raw $REMOTE_DIR/data/cache $REMOTE_DIR/data/results $REMOTE_DIR/data/optimizations && if [ ! -f $REMOTE_DIR/.env ]; then printf 'BACKTEST_API_HOST=0.0.0.0\nBACKTEST_API_PORT=8200\nEXPERIMENTS_DB_URL=http://127.0.0.1:8100\nR2_BUCKET_NAME=orb-backtests-data\n' > $REMOTE_DIR/.env; fi"
+
+          echo "--- Syncing source files ---"
+          rsync -avz --delete \
+            --exclude '.venv/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '.env' \
+            --exclude 'data/' \
+            --exclude '.pytest_cache/' \
+            backtesting/ "$DROPLET:$REMOTE_DIR/"
+
+          echo "--- Installing dependencies ---"
+          ssh "$DROPLET" "cd $REMOTE_DIR && uv sync --extra storage --extra api"
+
+          echo "--- Installing service unit ---"
+          scp backtesting/deploy/orb-backtester.service "$DROPLET:/etc/systemd/system/orb-backtester.service"
+          ssh "$DROPLET" "systemctl daemon-reload && systemctl enable orb-backtester"
+
+          echo "--- Restarting service ---"
+          ssh "$DROPLET" "systemctl restart orb-backtester"
+
+          echo "--- Verifying ---"
+          sleep 3
+          ssh "$DROPLET" "systemctl is-active orb-backtester && curl -sf http://localhost:8200/api/health | head -c 200 || echo 'WARNING: service not responding yet'"
