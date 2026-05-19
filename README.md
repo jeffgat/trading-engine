@@ -247,3 +247,4 @@ npm run build    # outputs to frontend/dist/
 TradingView (Pine Script alerts) → TradersPost → Broker
 
 Optimal strategies are prefixed with `HEAD_`. Notes and ideas specific to each model are in `NOTES.md` within the respective directory.
+# trading-engine
