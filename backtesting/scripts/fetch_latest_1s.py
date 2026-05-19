@@ -18,6 +18,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from _env import load_backtesting_env
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 SYMBOL_MAP = {
@@ -220,9 +222,10 @@ def main():
         print("ERROR: databento not installed. Run: uv pip install databento")
         sys.exit(1)
 
+    load_backtesting_env()
     api_key = os.environ.get("DATABENTO_API_KEY")
     if not api_key:
-        print("ERROR: DATABENTO_API_KEY not set")
+        print("ERROR: DATABENTO_API_KEY not set. Add it to backtesting/.env.")
         sys.exit(1)
 
     client = db.Historical(api_key)

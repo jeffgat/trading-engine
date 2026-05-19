@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save ES Asia R5 Final to the experiments DB.
+"""Save ES Asia R5 Final to the main DB.
 
 Config: stop=3.0%, rr=2.0, gap=0.5%, tp1=0.5, ORB=10m (20:00-20:10),
         entry≤03:00, flat=06:45, ATR=5, direction=long, no-Thursday, ICF=OFF, 1s magnifier

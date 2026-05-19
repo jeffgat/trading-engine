@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ Asia Continuation Long R9 anchor to experiments DB.
+"""Save NQ Asia Continuation Long R9 anchor to main DB.
 
 GO config from full optimization (R1-R9 + Grid R1 + robust pipeline):
   stop_orb=100%, rr=6.0, gap_orb=10%, tp1=0.3, ORB=15m, entry<=22:30,

@@ -850,14 +850,22 @@ def load_config(path: Path) -> dict:
         return tomllib.load(f)
 
 
-def _env_or_key(cfg: dict, key: str, env_key: str | None = None) -> str:
-    """Get value from config or environment variable."""
+def _env_or_key(
+    cfg: dict,
+    key: str,
+    env_key: str | None = None,
+    *,
+    allow_config_value: bool = True,
+) -> str:
+    """Get a secret from an environment variable named directly or by config."""
     if env_key and env_key in os.environ:
         return os.environ[env_key]
     env_from_cfg = cfg.get(f"{key}_env")
     if env_from_cfg and env_from_cfg in os.environ:
         return os.environ[env_from_cfg]
-    return cfg.get(key, "")
+    if allow_config_value:
+        return cfg.get(key, "")
+    return ""
 
 
 def _string_set(value) -> set[str]:
@@ -904,7 +912,9 @@ def _resolve_orderbook_runtime_config(config: dict) -> dict:
 # Execution config profiles (FAST, SLOW, etc.)
 # ---------------------------------------------------------------------------
 
-EXEC_CONFIGS_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "exec_configs.json"
+EXECUTION_CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
+EXEC_CONFIGS_PATH = EXECUTION_CONFIG_DIR / "exec_configs.json"
+DEFAULT_MAIN_DB_URL = "http://143.110.148.234:8100"
 
 
 @dataclass
@@ -934,10 +944,9 @@ class ExecutionConfig:
         return self.webhooks[0].url if self.webhooks else ""
 
 
-def _parse_webhooks(data: dict) -> list[WebhookEntry]:
-    """Parse webhooks from exec config dict, migrating legacy webhook_url."""
-    # New format: webhooks array
-    if "webhooks" in data:
+def _parse_webhook_list(items: object) -> list[WebhookEntry]:
+    """Parse a list of webhook dictionaries into runtime entries."""
+    if isinstance(items, list):
         return [
             WebhookEntry(
                 url=w.get("url", ""),
@@ -945,9 +954,18 @@ def _parse_webhooks(data: dict) -> list[WebhookEntry]:
                 paused=w.get("paused", False),
                 multiplier=float(w.get("multiplier", 1.0)),
             )
-            for w in data["webhooks"]
-            if w.get("url")
+            for w in items
+            if isinstance(w, dict) and w.get("url")
         ]
+    return []
+
+
+def _parse_webhooks(data: dict) -> list[WebhookEntry]:
+    """Parse webhooks from exec config dict, migrating legacy webhook_url."""
+    # New format: webhooks array. This remains for legacy compatibility;
+    # production webhook URLs should live in the remote main DB.
+    if "webhooks" in data:
+        return _parse_webhook_list(data["webhooks"])
     # Legacy: single webhook_url string
     url = data.get("webhook_url", "")
     if url:
@@ -955,24 +973,144 @@ def _parse_webhooks(data: dict) -> list[WebhookEntry]:
     return []
 
 
-def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
+def _main_db_url() -> str:
+    return (
+        os.environ.get("MAIN_DB_URL")
+        or os.environ.get("EXPERIMENTS_DB_URL")
+        or DEFAULT_MAIN_DB_URL
+    ).rstrip("/")
+
+
+def _remote_exec_config_request(method: str, path: str, body: dict | None = None) -> dict:
+    """Call the remote main DB execution-config API."""
+    import urllib.error
+    import urllib.request
+
+    url = f"{_main_db_url()}{path}"
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data is not None else {}
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        result = json.loads(resp.read().decode())
+    if not result.get("success"):
+        raise RuntimeError(str(result.get("error", "unknown main DB error")))
+    return result.get("result", {})
+
+
+def load_exec_config_metadata_remote() -> dict[str, dict]:
+    """Load execution config metadata and webhook accounts from the remote main DB."""
+    try:
+        result = _remote_exec_config_request("GET", "/api/execution-configs")
+    except Exception as exc:
+        logger.warning("Could not load execution configs from remote main DB: %s", exc)
+        return {}
+
+    configs = result.get("configs", []) if isinstance(result, dict) else []
+    configs_by_name: dict[str, dict] = {}
+    for item in configs:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("config_name")
+        if not name:
+            continue
+        remote_config = item.get("config_json")
+        if isinstance(remote_config, str) and remote_config:
+            try:
+                remote_config = json.loads(remote_config)
+            except json.JSONDecodeError:
+                remote_config = None
+        configs_by_name[str(name)] = {
+            "enabled": item.get("enabled"),
+            "max_open_contracts": item.get("max_open_contracts"),
+            "config": remote_config if isinstance(remote_config, dict) else {},
+            "webhooks": _parse_webhook_list(item.get("webhooks", [])),
+        }
+    return configs_by_name
+
+
+def save_exec_webhooks_remote(config_name: str, webhooks: list[WebhookEntry]) -> list[WebhookEntry]:
+    """Persist webhook accounts for one execution config to the remote main DB."""
+    from urllib.parse import quote
+
+    result = _remote_exec_config_request(
+        "PUT",
+        f"/api/execution-configs/{quote(config_name, safe='')}/webhooks",
+        {
+            "webhooks": [
+                {
+                    "url": w.url,
+                    "label": w.label,
+                    "paused": w.paused,
+                    "multiplier": w.multiplier,
+                }
+                for w in webhooks
+            ]
+        },
+    )
+    return _parse_webhook_list(result.get("webhooks", []))
+
+
+def save_exec_config_metadata_remote(config: ExecutionConfig) -> None:
+    """Upsert non-secret execution config metadata into the remote main DB."""
+    from urllib.parse import quote
+
+    _remote_exec_config_request(
+        "PUT",
+        f"/api/execution-configs/{quote(config.name, safe='')}",
+        {
+            "enabled": config.enabled,
+            "max_open_contracts": config.max_open_contracts,
+            "config": {
+                "sessions": config.session_overrides,
+                "lsi_sessions": config.lsi_session_overrides,
+            },
+        },
+    )
+
+
+def sync_exec_config_metadata_remote(configs: list[ExecutionConfig]) -> None:
+    """Best-effort sync of file-backed execution config metadata to the remote main DB."""
+    for config in configs:
+        try:
+            save_exec_config_metadata_remote(config)
+        except Exception as exc:
+            logger.warning("[%s] Could not sync execution config metadata: %s", config.name, exc)
+
+
+def load_exec_configs(
+    config: dict | None = None,
+    *,
+    include_remote_webhooks: bool = False,
+) -> list[ExecutionConfig]:
     """Load execution configs from exec_configs.json.
 
     Falls back to a single DEFAULT config built from live.toml sessions
     if the file does not exist.
     """
+    remote_configs = load_exec_config_metadata_remote() if include_remote_webhooks else {}
     if EXEC_CONFIGS_PATH.exists():
         with open(EXEC_CONFIGS_PATH) as f:
             raw = json.load(f)
         configs = []
         for name, data in raw.items():
+            remote = remote_configs.get(name, {})
+            remote_config = remote.get("config") if isinstance(remote.get("config"), dict) else {}
+            base_webhooks = [] if include_remote_webhooks else _parse_webhooks(data)
             configs.append(ExecutionConfig(
                 name=name,
-                enabled=data.get("enabled", True),
-                max_open_contracts=float(data.get("max_open_contracts", 0.0)),
-                webhooks=_parse_webhooks(data),
-                session_overrides=data.get("sessions", {}),
-                lsi_session_overrides=data.get("lsi_sessions", {}),
+                enabled=(
+                    bool(remote["enabled"])
+                    if remote.get("enabled") is not None
+                    else data.get("enabled", True)
+                ),
+                max_open_contracts=float(
+                    remote["max_open_contracts"]
+                    if remote.get("max_open_contracts") is not None
+                    else data.get("max_open_contracts", 0.0)
+                ),
+                webhooks=remote["webhooks"] if name in remote_configs else base_webhooks,
+                session_overrides=remote_config.get("sessions", data.get("sessions", {})),
+                lsi_session_overrides=remote_config.get("lsi_sessions", data.get("lsi_sessions", {})),
             ))
         if configs:
             return configs
@@ -993,13 +1131,13 @@ def load_exec_configs(config: dict | None = None) -> list[ExecutionConfig]:
 
 
 def save_exec_configs(configs: list[ExecutionConfig]) -> None:
-    """Persist execution configs back to exec_configs.json."""
+    """Persist non-secret execution configs back to exec_configs.json."""
     raw: dict = {}
     for ec in configs:
         raw[ec.name] = {
             "enabled": ec.enabled,
             "max_open_contracts": ec.max_open_contracts,
-            "webhooks": [{"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier} for w in ec.webhooks],
+            "webhooks": [],
             "sessions": ec.session_overrides,
             "lsi_sessions": ec.lsi_session_overrides,
         }
@@ -1549,7 +1687,8 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         }
 
     # Load execution configs (FAST, SLOW, etc.)
-    exec_configs = load_exec_configs(config)
+    exec_configs = load_exec_configs(config, include_remote_webhooks=True)
+    sync_exec_config_metadata_remote(exec_configs)
     logger.info("Loaded %d execution config(s): %s", len(exec_configs), [ec.name for ec in exec_configs])
 
     # Build engines per execution config
@@ -1765,7 +1904,11 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             dashboard.orderbook_status = _orderbook_status_snapshot()
 
     # DataBento feed — subscribe to all symbols needed by active engines
-    api_key = _env_or_key(db_cfg, "api_key")
+    api_key = _env_or_key(db_cfg, "api_key", allow_config_value=False)
+    if not api_key:
+        logger.warning(
+            "DATABENTO_API_KEY is not set; add it to execution/.env or the process environment."
+        )
     feed_symbols = list(global_symbol_map.keys())
     daily_only_symbols = [
         symbol for symbol in _required_regime_daily_symbols(all_engines)

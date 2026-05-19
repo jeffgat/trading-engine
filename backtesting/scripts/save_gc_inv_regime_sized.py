@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC Inversion Longs v9 with regime-based sizing to experiments DB.
+"""Save GC Inversion Longs v9 with regime-based sizing to main DB.
 
 Model: 2x size when VIX < 18 AND DXY < SMA50 (prior day), 1x otherwise.
 Result: 117.7R total, -6.5R DD (vs baseline 74.7R, -5.2R DD).

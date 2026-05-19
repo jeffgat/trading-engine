@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC NY Inv Longs v9 Regime-Sized no BE offset to experiments DB.
+"""Save GC NY Inv Longs v9 Regime-Sized no BE offset to main DB.
 
 Config: v9 (QM=10% confirmed optimal) + regime sizing (2x when VIX<18 AND
 DXY<SMA50, prior day close). BE stop moves to exact entry.

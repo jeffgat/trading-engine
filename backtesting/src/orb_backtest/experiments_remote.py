@@ -1,33 +1,33 @@
-"""Remote experiments client — proxies all DB operations through the shared API.
+"""Remote main DB client — proxies DB operations through the main DB API.
 
-Set EXPERIMENTS_DB_URL=http://143.110.148.234:8100 to activate.
+Set MAIN_DB_URL=http://143.110.148.234:8100 to activate.
+EXPERIMENTS_DB_URL is still honored as a compatibility alias.
 All functions match the signatures in experiments.py so they can be swapped in.
 """
 
 from __future__ import annotations
 
-import logging
 import os
 import json
-import threading
 import urllib.request
 import urllib.error
-from urllib.parse import urlencode
-from typing import Any, Optional
+from urllib.parse import quote, urlencode
+from typing import Any
 
-_log = logging.getLogger(__name__)
-
-API_URL = os.environ.get("EXPERIMENTS_DB_URL", "").rstrip("/")
+API_URL = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL", "")
+).rstrip("/")
 
 # Timeout in seconds — large payloads (trades + equity curves) need more time.
 _TIMEOUT = 120
 
 
 def _request(method: str, path: str, body: dict | None = None) -> Any:
-    """Make an HTTP request to the experiments API."""
+    """Make an HTTP request to the main DB API."""
     url = f"{API_URL}{path}"
-    data = json.dumps(body).encode() if body else None
-    headers = {"Content-Type": "application/json"} if data else {}
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"Content-Type": "application/json"} if data is not None else {}
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
@@ -36,12 +36,12 @@ def _request(method: str, path: str, body: dict | None = None) -> Any:
             result = json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode() if e.fp else str(e)
-        raise RuntimeError(f"Experiments API error ({e.code}): {error_body}") from e
+        raise RuntimeError(f"Main DB API error ({e.code}): {error_body}") from e
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Cannot reach experiments API at {API_URL}: {e}") from e
+        raise RuntimeError(f"Cannot reach main DB API at {API_URL}: {e}") from e
 
     if not result.get("success"):
-        raise RuntimeError(f"Experiments API returned error: {result.get('error')}")
+        raise RuntimeError(f"Main DB API returned error: {result.get('error')}")
 
     return result.get("result")
 
@@ -147,8 +147,17 @@ def log_optimization(result_dict, result_id):
 
 
 def log_sweep_runs(all_results, optimization_id):
+    serialized_results = []
+    for item in all_results:
+        if isinstance(item, dict):
+            serialized_results.append(item)
+            continue
+        config, trades = item
+        from .results.export import results_to_dict
+        serialized_results.append(results_to_dict(trades, config, include_trades=False))
+
     resp = _post("/api/sweep-runs", {
-        "all_results": all_results,
+        "all_results": serialized_results,
         "optimization_id": optimization_id,
     })
     return resp.get("count")
@@ -297,6 +306,74 @@ def delete_regime_report(result_id):
         return False
 
 
+# --- Risk Engine Layouts ---
+
+def list_risk_engine_layouts():
+    return _get("/api/risk-engine/layouts")
+
+
+def save_risk_engine_layout(name, account_risk, strategies):
+    return _post("/api/risk-engine/layouts", {
+        "name": name,
+        "accountRisk": account_risk,
+        "strategies": strategies,
+    })
+
+
+def delete_risk_engine_layout(name):
+    try:
+        _delete(f"/api/risk-engine/layouts/{quote(str(name), safe='')}")
+        return True
+    except RuntimeError:
+        return False
+
+
+# --- Saved Configs CRUD ---
+
+def list_saved_configs(limit=200):
+    return _get(f"/api/configs?limit={limit}")
+
+
+def get_saved_config(config_id):
+    try:
+        return _get(f"/api/configs/{config_id}")
+    except RuntimeError:
+        return None
+
+
+def create_saved_config(name, notes, instrument, sessions, strategy, config):
+    return _post("/api/configs", {
+        "name": name,
+        "notes": notes,
+        "instrument": instrument,
+        "sessions": sessions,
+        "strategy": strategy,
+        "config": config,
+    })
+
+
+def update_saved_config(config_id, name, notes, instrument, sessions, strategy, config):
+    try:
+        return _put(f"/api/configs/{config_id}", {
+            "name": name,
+            "notes": notes,
+            "instrument": instrument,
+            "sessions": sessions,
+            "strategy": strategy,
+            "config": config,
+        })
+    except RuntimeError:
+        return None
+
+
+def delete_saved_config(config_id):
+    try:
+        _delete(f"/api/configs/{config_id}")
+        return True
+    except RuntimeError:
+        return False
+
+
 # --- Sync / Import ---
 
 def import_runs(rows):
@@ -347,3 +424,80 @@ def delete_live_trade(trade_id):
         return True
     except RuntimeError:
         return False
+
+
+# --- Execution Logs ---
+
+def log_execution_log(log_type, entry):
+    resp = _post(f"/api/execution-logs/{quote(str(log_type), safe='')}", {"entry": entry})
+    return resp.get("rowid")
+
+
+def log_execution_logs_batch(log_type, entries):
+    resp = _post(f"/api/execution-logs/{quote(str(log_type), safe='')}", {"entries": entries})
+    return resp.get("count", 0)
+
+
+def list_execution_logs(
+    log_type,
+    limit=500,
+    offset=0,
+    config="",
+    session="",
+    level="",
+    account="",
+    search="",
+):
+    params = urlencode({k: v for k, v in {
+        "limit": limit,
+        "offset": offset,
+        "config": config,
+        "session": session,
+        "level": level,
+        "account": account,
+        "search": search,
+    }.items() if v or k in {"limit", "offset"}})
+    result = _get(f"/api/execution-logs/{quote(str(log_type), safe='')}?{params}")
+    return result.get("entries", []), result.get("total", 0)
+
+
+def count_execution_logs(log_type):
+    result = _get(f"/api/execution-logs/{quote(str(log_type), safe='')}/count")
+    return result.get("count", 0)
+
+
+# --- Execution Configs ---
+
+def upsert_execution_config(config_name, enabled=None, max_open_contracts=None, config=None):
+    body = {}
+    if enabled is not None:
+        body["enabled"] = enabled
+    if max_open_contracts is not None:
+        body["max_open_contracts"] = max_open_contracts
+    if config is not None:
+        body["config"] = config
+    return _put(f"/api/execution-configs/{quote(str(config_name), safe='')}", body)
+
+
+def list_execution_configs_db():
+    result = _get("/api/execution-configs")
+    return result.get("configs", [])
+
+
+def replace_execution_config_webhooks(config_name, webhooks):
+    result = _put(
+        f"/api/execution-configs/{quote(str(config_name), safe='')}/webhooks",
+        {"webhooks": webhooks},
+    )
+    return result.get("webhooks", [])
+
+
+def patch_execution_config_webhook(config_name, webhook_index, updates):
+    try:
+        result = _patch(
+            f"/api/execution-configs/{quote(str(config_name), safe='')}/webhooks/{webhook_index}",
+            updates,
+        )
+        return result.get("webhook")
+    except RuntimeError:
+        return None

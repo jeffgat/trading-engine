@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY ICF=ON best clean config to the experiments DB.
+"""Save NQ NY ICF=ON best clean config to the main DB.
 
 Best clean config from 288-combo ICF=ON grid sweep (stop × rr × gap):
   stop=9.0%, rr=4.0, gap=3.5%, tp1=0.3, ORB=20m, ATR=12, dir=both, ICF=ON

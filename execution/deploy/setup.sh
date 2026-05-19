@@ -38,7 +38,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
     cat > "$APP_DIR/.env" <<'ENVEOF'
 # ORB Trader secrets — fill these in after setup
 DATABENTO_API_KEY=
-TRADERSPOST_WEBHOOK_URL=
+MAIN_DB_URL=http://127.0.0.1:8100
 ENVEOF
     chmod 600 "$APP_DIR/.env"
     echo "Created $APP_DIR/.env — fill in your API keys!"

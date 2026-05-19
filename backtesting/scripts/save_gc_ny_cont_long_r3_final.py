@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC NY Continuation Longs R3 final config to the experiment DB.
+"""Save GC NY Continuation Longs R3 final config to the main DB.
 
 R3 high-RR config with Friday exclusion:
   stop=4.5%, rr=9.0, tp1=0.35, ATR 7, gap=3.0%, max_gap_atr=30%

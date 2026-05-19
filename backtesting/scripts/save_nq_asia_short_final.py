@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ Asia Continuation Short R6 anchor to experiments DB.
+"""Save NQ Asia Continuation Short R6 anchor to main DB.
 
 NO-GO config from full optimization (R4-R6 + Grid R2 + robust pipeline):
   stop=3.5%, rr=3.75, gap=1.0%, tp1=0.6, ATR=30, ORB=10m, entry<=01:00,

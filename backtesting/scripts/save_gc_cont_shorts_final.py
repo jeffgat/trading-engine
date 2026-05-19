@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC Continuation Shorts final config to the experiment DB.
+"""Save GC Continuation Shorts final config to the main DB.
 
 WF mode params (use for live trading):
   rr=5.5, tp1=0.6, stop=2.5%, min_gap=5.5%

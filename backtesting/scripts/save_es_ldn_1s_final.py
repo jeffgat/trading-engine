@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save ES LDN Continuation Both final config to the experiment DB (post fill-bar fix).
+"""Save ES LDN Continuation Both final config to the main DB (post fill-bar fix).
 
 Anchor (from robust pipeline, post fill-bar fix re-optimization):
   stop=5.2%, rr=2.0, gap=1.25%, tp1=0.40

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC Inversion Longs v9 GO result to experiments DB."""
+"""Save GC Inversion Longs v9 GO result to main DB."""
 
 import sys
 from pathlib import Path

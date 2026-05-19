@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run grid sweep optimization across parameter combinations.
 
-Results are auto-saved to the experiment DB and viewable in the frontend dashboard.
+Results are auto-saved to the main DB and viewable in the frontend dashboard.
 
 Usage:
     # Sweep stop ATR% and min gap ATR%
@@ -78,7 +78,7 @@ def main():
                              "Defaults to --workers 1 to avoid IPC overhead with large 1s arrays.")
     parser.add_argument("--set", action="append", default=[],
                         help="Lock a param to a fixed value: name=value (e.g. --set rr=3.6)")
-    parser.add_argument("--name", default=None, help="Label for this sweep (saved to experiment DB)")
+    parser.add_argument("--name", default=None, help="Label for this sweep (saved to main DB)")
 
     args = parser.parse_args()
 
@@ -221,13 +221,13 @@ def main():
     else:
         print("No trades filled across any configuration!")
 
-    # Auto-save to experiment DB (viewable in frontend dashboard)
+    # Auto-save to main DB (viewable in frontend dashboard)
     grid_dict = grid_results_to_dict(results, swept_params=param_ranges)
     if args.name:
         grid_dict["name"] = args.name
     result_id = save_optimization_result(grid_dict)
 
-    # Log individual sweep runs to experiment DB
+    # Log individual sweep runs to main DB
     try:
         n_logged = log_sweep_runs(results, result_id)
         print(f"  Logged {n_logged} experiment rows to DB")

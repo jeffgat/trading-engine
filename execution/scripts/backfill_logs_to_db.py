@@ -1,4 +1,4 @@
-"""One-time backfill: parse all local log files and POST to the remote experiments DB.
+"""One-time backfill: parse all local log files and POST to the remote main DB.
 
 Usage (on the droplet):
     cd /opt/orb-trader
@@ -12,6 +12,7 @@ Or locally if logs are present:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -22,7 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from trader.api import parse_trade_log_line, parse_main_log_line, parse_webhook_log_line
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
-DB_URL = "http://143.110.148.234:8100"
+DB_URL = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL")
+    or "http://143.110.148.234:8100"
+).rstrip("/")
 BATCH_SIZE = 500
 
 

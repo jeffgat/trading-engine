@@ -29,8 +29,13 @@ logger = logging.getLogger(__name__)
 
 LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
 
-# Experiments DB URL for live trade persistence
-_EXPERIMENTS_DB_URL = "http://143.110.148.234:8100"
+# Main DB URL for live trade, log, and execution-config persistence.
+_DEFAULT_MAIN_DB_URL = "http://143.110.148.234:8100"
+_MAIN_DB_URL = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL")
+    or _DEFAULT_MAIN_DB_URL
+).rstrip("/")
 
 
 _LOG_TYPE_MAP = {"trade_log": "trades", "log": "main", "webhook_log": "webhooks"}
@@ -50,7 +55,7 @@ _LOG_BATCH_SIZE = 200
 
 
 def _log_writer_loop() -> None:
-    """Drain the log queue and batch-POST to the experiments DB."""
+    """Drain the log queue and batch-POST to the main DB."""
     import json
     import urllib.request
     import time
@@ -77,7 +82,7 @@ def _log_writer_loop() -> None:
             try:
                 payload = json.dumps({"entries": entries}).encode()
                 req = urllib.request.Request(
-                    f"{_EXPERIMENTS_DB_URL}/api/execution-logs/{lt}",
+                    f"{_MAIN_DB_URL}/api/execution-logs/{lt}",
                     data=payload,
                     headers={"Content-Type": "application/json"},
                     method="POST",
@@ -93,7 +98,7 @@ _log_writer_thread.start()
 
 
 def _write_log_to_db(log_type: str, entry: dict) -> None:
-    """Queue a parsed log entry for batch write to the experiments DB."""
+    """Queue a parsed log entry for batch write to the main DB."""
     try:
         _log_queue.put_nowait((log_type, entry))
     except _queue.Full:
@@ -162,7 +167,7 @@ def _fetch_logs_from_db_raw(
     offset: int = 0,
     **filters,
 ) -> dict:
-    """Fetch execution logs from the experiments DB API."""
+    """Fetch execution logs from the main DB API."""
     import json
     import urllib.request
     from urllib.parse import urlencode
@@ -172,7 +177,7 @@ def _fetch_logs_from_db_raw(
         "offset": offset,
         **filters,
     }.items() if v}
-    url = f"{_EXPERIMENTS_DB_URL}/api/execution-logs/{log_type}?{urlencode(params)}"
+    url = f"{_MAIN_DB_URL}/api/execution-logs/{log_type}?{urlencode(params)}"
     req = urllib.request.Request(url, method="GET")
     with urllib.request.urlopen(req, timeout=10) as resp:
         result = json.loads(resp.read().decode())
@@ -193,7 +198,7 @@ def _fetch_logs_from_db(
     offset: int = 0,
     **filters,
 ) -> dict:
-    """Fetch execution logs from the experiments DB API with config alias support."""
+    """Fetch execution logs from the main DB API with config alias support."""
     config_filter = filters.get("config", "")
     if log_type == "trades" and config_filter:
         query_names = _config_query_names(str(config_filter))
@@ -230,7 +235,7 @@ def _fetch_logs_from_db(
 
 
 def _write_trade_to_db(record: "TradeRecord") -> None:
-    """Write a trade record to the experiments DB (non-blocking)."""
+    """Write a trade record to the main DB (non-blocking)."""
     import threading
     from dataclasses import asdict
 
@@ -267,7 +272,7 @@ def _write_trade_to_db(record: "TradeRecord") -> None:
             }
             data = json.dumps(payload).encode()
             req = urllib.request.Request(
-                f"{_EXPERIMENTS_DB_URL}/api/live-trades",
+                f"{_MAIN_DB_URL}/api/live-trades",
                 data=data,
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -289,7 +294,7 @@ def _fetch_trades_from_db(
     date_to: str = "",
     limit: int = 500,
 ) -> list[dict]:
-    """Fetch live trades from the experiments DB API."""
+    """Fetch live trades from the main DB API."""
     import json
     import urllib.request
     from urllib.parse import urlencode
@@ -302,7 +307,7 @@ def _fetch_trades_from_db(
             "date_to": date_to,
             "limit": str(limit),
         }.items() if v}
-        url = f"{_EXPERIMENTS_DB_URL}/api/live-trades?{urlencode(params)}"
+        url = f"{_MAIN_DB_URL}/api/live-trades?{urlencode(params)}"
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read().decode())
@@ -465,7 +470,7 @@ class DashboardState:
         from .checkpoint import save_trade_history
         save_trade_history(self.trade_history)
 
-        # Dual-write to experiments DB (fire-and-forget)
+        # Fire-and-forget write to the main DB.
         _write_trade_to_db(record)
 
     def asia_tp1_hit_for_date(self, date: str, config_name: str = "") -> bool:
@@ -509,7 +514,7 @@ def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
     """Load execution config metadata from disk and merge live webhook state."""
     from .main import load_exec_configs
 
-    configs = load_exec_configs(state.config)
+    configs = load_exec_configs(state.config, include_remote_webhooks=True)
     meta: dict[str, dict] = {}
     for cfg in configs:
         live_meta = state.exec_configs.get(cfg.name, {})
@@ -867,7 +872,7 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         search: str = Query(""),
         config: str = Query("", description="Filter by execution config name"),
-        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
+        source: str = Query("db", description="'db' for main DB, 'local' for log files"),
     ):
         if source == "db":
             try:
@@ -890,7 +895,7 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         level: str = Query(""),
         search: str = Query(""),
-        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
+        source: str = Query("db", description="'db' for main DB, 'local' for log files"),
     ):
         if source == "db":
             try:
@@ -913,7 +918,7 @@ def create_app(state: DashboardState) -> FastAPI:
         offset: int = Query(0, ge=0),
         search: str = Query(""),
         account: str = Query("", description="Filter by account/config name"),
-        source: str = Query("db", description="'db' for experiments DB, 'local' for log files"),
+        source: str = Query("db", description="'db' for main DB, 'local' for log files"),
     ):
         if source == "db":
             try:
@@ -936,7 +941,7 @@ def create_app(state: DashboardState) -> FastAPI:
         date_from: str = Query("", description="Filter from date (YYYYMMDD)"),
         date_to: str = Query("", description="Filter to date (YYYYMMDD)"),
         limit: int = Query(500, ge=1, le=5000),
-        source: str = Query("db", description="'db' for experiments DB, 'memory' for in-memory"),
+        source: str = Query("db", description="'db' for main DB, 'memory' for in-memory"),
     ):
         if source == "memory":
             # Legacy: return in-memory trade history (JSON-backed, 7-day window)
@@ -955,7 +960,7 @@ def create_app(state: DashboardState) -> FastAPI:
                 "total": len(state.trade_history),
             }
 
-        # Default: read from experiments DB
+        # Default: read from main DB.
         try:
             trades = _fetch_trades_from_db(
                 session=session, config=config,
@@ -1009,7 +1014,7 @@ def create_app(state: DashboardState) -> FastAPI:
             import urllib.request
             payload = json.dumps({"trade": trade_dict}).encode()
             http_req = urllib.request.Request(
-                f"{_EXPERIMENTS_DB_URL}/api/live-trades",
+                f"{_MAIN_DB_URL}/api/live-trades",
                 data=payload,
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -1019,7 +1024,7 @@ def create_app(state: DashboardState) -> FastAPI:
             return {"success": True, "rowid": result.get("result", {}).get("rowid")}
         except Exception as exc:
             logger.error("Failed to log manual trade: %s", exc)
-            raise HTTPException(502, f"Failed to write to experiments DB: {exc}")
+            raise HTTPException(502, f"Failed to write to main DB: {exc}")
 
     @app.get("/api/config")
     async def get_config():
@@ -1108,26 +1113,41 @@ def create_app(state: DashboardState) -> FastAPI:
 
     @app.put("/api/config/exec/{config_name}/webhooks")
     async def update_exec_webhooks(config_name: str, body: "ExecWebhooksRequest"):
-        """Replace the webhooks list for an execution config and persist to disk."""
-        from .main import WebhookEntry, load_exec_configs, save_exec_configs
+        """Replace remote DB webhook accounts for an execution config."""
+        from .main import WebhookEntry, load_exec_configs, save_exec_webhooks_remote
         from .broker import TradersPostClient, MultiBroker
 
-        configs = load_exec_configs()
+        configs = load_exec_configs(include_remote_webhooks=True)
         target = next((c for c in configs if c.name == config_name), None)
         if target is None:
             raise HTTPException(404, f"Exec config '{config_name}' not found")
 
-        # Validate — reject empty URLs
+        # Validate — reject empty/malformed URLs.
         new_webhooks = []
         for w in body.webhooks:
             url = (w.get("url") or "").strip()
             label = (w.get("label") or "").strip()
             if not url:
                 raise HTTPException(422, "Each webhook must have a non-empty url")
-            new_webhooks.append(WebhookEntry(url=url, label=label))
+            if not url.startswith(("https://", "http://")):
+                raise HTTPException(422, "Webhook URLs must start with http:// or https://")
+            multiplier = float(w.get("multiplier", 1.0))
+            if multiplier <= 0:
+                raise HTTPException(422, "Webhook multipliers must be > 0")
+            new_webhooks.append(
+                WebhookEntry(
+                    url=url,
+                    label=label,
+                    paused=bool(w.get("paused", False)),
+                    multiplier=multiplier,
+                )
+            )
 
         target.webhooks = new_webhooks
-        save_exec_configs(configs)
+        try:
+            new_webhooks = save_exec_webhooks_remote(config_name, new_webhooks)
+        except Exception as exc:
+            raise HTTPException(502, f"Remote execution config DB unavailable: {exc}") from exc
 
         # Rebuild live runtime brokers so the change takes effect immediately.
         # Close old broker sessions first.
@@ -1156,6 +1176,12 @@ def create_app(state: DashboardState) -> FastAPI:
             eng.broker = new_multi
 
         # Update metadata so the API reflects the change immediately
+        state.exec_configs.setdefault(config_name, {
+            "enabled": target.enabled,
+            "max_open_contracts": target.max_open_contracts,
+            "sessions": list(target.session_overrides.keys()),
+            "lsi_sessions": list(target.lsi_session_overrides.keys()),
+        })
         state.exec_configs[config_name]["webhooks"] = [
             {"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier}
             for w in new_webhooks
@@ -1174,28 +1200,35 @@ def create_app(state: DashboardState) -> FastAPI:
     @app.patch("/api/config/exec/{config_name}/webhooks/{webhook_index}")
     async def patch_webhook(config_name: str, webhook_index: int, body: "WebhookPatchRequest"):
         """Update pause state or multiplier for a single webhook entry."""
-        from .main import load_exec_configs, save_exec_configs
+        from .main import load_exec_configs, save_exec_webhooks_remote
 
-        if config_name not in state.exec_configs:
+        configs = load_exec_configs(include_remote_webhooks=True)
+        target = next((c for c in configs if c.name == config_name), None)
+        if target is None:
             raise HTTPException(404, f"Exec config '{config_name}' not found")
 
-        wh_list = state.exec_configs[config_name].get("webhooks", [])
+        wh_list = state.exec_configs.get(config_name, {}).get("webhooks")
+        if wh_list is None:
+            wh_list = [
+                {"url": w.url, "label": w.label, "paused": w.paused, "multiplier": w.multiplier}
+                for w in target.webhooks
+            ]
         if webhook_index < 0 or webhook_index >= len(wh_list):
             raise HTTPException(404, f"Webhook index {webhook_index} out of range")
 
         if body.multiplier is not None and body.multiplier <= 0:
             raise HTTPException(422, "multiplier must be > 0")
 
-        # Persist to disk
-        configs = load_exec_configs()
-        target = next((c for c in configs if c.name == config_name), None)
-        if target and webhook_index < len(target.webhooks):
-            wh = target.webhooks[webhook_index]
-            if body.paused is not None:
-                wh.paused = body.paused
-            if body.multiplier is not None:
-                wh.multiplier = body.multiplier
-            save_exec_configs(configs)
+        # Persist to the remote execution config DB.
+        wh = target.webhooks[webhook_index]
+        if body.paused is not None:
+            wh.paused = body.paused
+        if body.multiplier is not None:
+            wh.multiplier = body.multiplier
+        try:
+            target.webhooks = save_exec_webhooks_remote(config_name, target.webhooks)
+        except Exception as exc:
+            raise HTTPException(502, f"Remote execution config DB unavailable: {exc}") from exc
 
         # Apply to live runtime broker (no restart needed)
         multi_broker = state.multi_brokers_by_config.get(config_name)
@@ -1207,6 +1240,13 @@ def create_app(state: DashboardState) -> FastAPI:
                 live_broker.multiplier = body.multiplier
 
         # Update in-memory metadata
+        state.exec_configs.setdefault(config_name, {
+            "enabled": target.enabled,
+            "max_open_contracts": target.max_open_contracts,
+            "sessions": list(target.session_overrides.keys()),
+            "lsi_sessions": list(target.lsi_session_overrides.keys()),
+            "webhooks": wh_list,
+        })
         wh_meta = state.exec_configs[config_name]["webhooks"][webhook_index]
         if body.paused is not None:
             wh_meta["paused"] = body.paused
@@ -1250,7 +1290,7 @@ def create_app(state: DashboardState) -> FastAPI:
     @app.patch("/api/config/exec/{config_name}/enabled")
     async def patch_exec_enabled(config_name: str, body: "EnabledPatchRequest"):
         """Toggle enabled state for an execution config (dry-run ↔ disabled)."""
-        from .main import load_exec_configs, save_exec_configs
+        from .main import load_exec_configs, save_exec_configs, save_exec_config_metadata_remote
 
         configs = load_exec_configs()
         target = next((c for c in configs if c.name == config_name), None)
@@ -1259,6 +1299,10 @@ def create_app(state: DashboardState) -> FastAPI:
 
         target.enabled = body.enabled
         save_exec_configs(configs)
+        try:
+            save_exec_config_metadata_remote(target)
+        except Exception as exc:
+            logger.warning("[%s] Could not sync enabled state to remote DB: %s", config_name, exc)
 
         # Update in-memory state
         if config_name in state.exec_configs:

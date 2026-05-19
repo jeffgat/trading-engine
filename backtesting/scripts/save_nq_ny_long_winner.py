@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY Long continuation winner to the experiments DB.
+"""Save NQ NY Long continuation winner to the main DB.
 
 Config: g=3.0 rr=2.25 tp1=0.7 stop=9% long-only 20m ORB entry 09:50-15:00
 In-sample: 1167 trades, 46.1% WR, PF 1.30, 182.0R (16.5 R/yr), DD -10.6R, Calmar 17.17

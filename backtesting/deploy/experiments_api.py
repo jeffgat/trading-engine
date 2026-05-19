@@ -1,4 +1,4 @@
-"""Standalone FastAPI service for the shared experiments DB.
+"""Standalone FastAPI service for the main DB.
 
 Run on the droplet at port 8100 alongside the execution service (port 8000).
 """
@@ -9,8 +9,17 @@ import os
 import sys
 from pathlib import Path
 
-# Point DB_PATH to the droplet's shared location BEFORE importing experiments
-os.environ["EXPERIMENTS_DB_PATH"] = "/opt/experiments-db/experiments.db"
+# Point DB_PATH to the droplet's main DB location BEFORE importing experiments.
+# This service is the canonical DB owner, so it must not route through itself.
+_main_db_path = (
+    os.environ.get("MAIN_DB_PATH")
+    or os.environ.get("EXPERIMENTS_DB_PATH")
+    or "/opt/main-db/main.db"
+)
+os.environ["MAIN_DB_PATH"] = _main_db_path
+os.environ["EXPERIMENTS_DB_PATH"] = _main_db_path
+os.environ["MAIN_DB_URL"] = ""
+os.environ["EXPERIMENTS_DB_URL"] = ""
 
 # Add the backtesting source to the path so we can import experiments
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -71,9 +80,13 @@ from orb_backtest.experiments import (
     log_execution_logs_batch,
     list_execution_logs,
     count_execution_logs,
+    upsert_execution_config,
+    list_execution_configs_db,
+    replace_execution_config_webhooks,
+    patch_execution_config_webhook,
 )
 
-app = FastAPI(title="Shared Experiments DB")
+app = FastAPI(title="Main DB")
 
 app.add_middleware(
     CORSMiddleware,
@@ -522,11 +535,90 @@ def get_execution_log_count(log_type: str):
     return ok({"count": count_execution_logs(log_type)})
 
 
+# --- Execution Configs ---
+
+class ExecutionConfigUpsertRequest(BaseModel):
+    enabled: Optional[bool] = None
+    max_open_contracts: Optional[float] = None
+    config: Optional[dict] = None
+
+
+class ExecutionWebhooksRequest(BaseModel):
+    webhooks: list[dict] = []
+
+
+class ExecutionWebhookPatchRequest(BaseModel):
+    label: Optional[str] = None
+    url: Optional[str] = None
+    paused: Optional[bool] = None
+    multiplier: Optional[float] = None
+
+
+def _validate_webhook_payload(webhooks: list[dict]) -> JSONResponse | None:
+    for webhook in webhooks:
+        url = str(webhook.get("url") or "").strip()
+        if not url:
+            return fail("Each webhook must include a url", 422)
+        if not url.startswith(("http://", "https://")):
+            return fail("Webhook URLs must start with http:// or https://", 422)
+        multiplier = float(webhook.get("multiplier", 1.0))
+        if multiplier <= 0:
+            return fail("Webhook multipliers must be > 0", 422)
+    return None
+
+
+@app.get("/api/execution-configs")
+def list_execution_configs_ep():
+    return ok({"configs": list_execution_configs_db()})
+
+
+@app.put("/api/execution-configs/{config_name}")
+def upsert_execution_config_ep(config_name: str, req: ExecutionConfigUpsertRequest):
+    row = upsert_execution_config(
+        config_name,
+        enabled=req.enabled,
+        max_open_contracts=req.max_open_contracts,
+        config=req.config,
+    )
+    return ok(row)
+
+
+@app.put("/api/execution-configs/{config_name}/webhooks")
+def replace_execution_webhooks_ep(config_name: str, req: ExecutionWebhooksRequest):
+    validation = _validate_webhook_payload(req.webhooks)
+    if validation is not None:
+        return validation
+    webhooks = replace_execution_config_webhooks(config_name, req.webhooks)
+    return ok({"config_name": config_name, "webhooks": webhooks})
+
+
+@app.patch("/api/execution-configs/{config_name}/webhooks/{webhook_index}")
+def patch_execution_webhook_ep(
+    config_name: str,
+    webhook_index: int,
+    req: ExecutionWebhookPatchRequest,
+):
+    updates = req.model_dump(exclude_unset=True)
+    if "url" in updates:
+        url = str(updates["url"] or "").strip()
+        if not url:
+            return fail("Webhook URL cannot be empty", 422)
+        if not url.startswith(("http://", "https://")):
+            return fail("Webhook URLs must start with http:// or https://", 422)
+        updates["url"] = url
+    if "multiplier" in updates and updates["multiplier"] is not None and updates["multiplier"] <= 0:
+        return fail("Webhook multiplier must be > 0", 422)
+    row = patch_execution_config_webhook(config_name, webhook_index, updates)
+    if row is None:
+        return fail("not found", 404)
+    return ok({"config_name": config_name, "webhook_index": webhook_index, "webhook": row})
+
+
 # --- DB Upload (one-time migration) ---
 
 @app.post("/api/upload-db")
 async def upload_db(request: Request):
-    """Replace the remote experiments.db with an uploaded file.
+    """Replace the remote main DB SQLite file with an uploaded file.
 
     Usage:
         curl -X POST http://143.110.148.234:8100/api/upload-db \
@@ -536,7 +628,7 @@ async def upload_db(request: Request):
     import shutil
     from datetime import datetime
 
-    db_path = Path(os.environ.get("EXPERIMENTS_DB_PATH", "/opt/experiments-db/experiments.db"))
+    db_path = Path(os.environ.get("MAIN_DB_PATH", "/opt/main-db/main.db"))
     backup_dir = db_path.parent / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -551,7 +643,7 @@ async def upload_db(request: Request):
     # Backup current DB before replacing
     if db_path.exists():
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        shutil.copy2(db_path, backup_dir / f"experiments_{ts}.db")
+        shutil.copy2(db_path, backup_dir / f"main_{ts}.db")
 
     # Write the new DB
     db_path.write_bytes(body)

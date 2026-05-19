@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY Short NO-GO diagnostic to the experiments DB.
+"""Save NQ NY Short NO-GO diagnostic to the main DB.
 
 Best config found: ORB-based orbstop=15%, rr=3.0, tp1=0.3, 20m ORB,
   with dual 10pt floors (min_stop_points=10, min_tp1_points=10).

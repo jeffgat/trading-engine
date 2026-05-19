@@ -3,7 +3,7 @@
 
 Setup:
     1. Sign up at https://databento.com (get $125 free credits)
-    2. Set your API key: export DATABENTO_API_KEY=db-xxxxxxxxxxxxxxxx
+    2. Set DATABENTO_API_KEY in backtesting/.env
     3. Install: uv pip install databento
 
 Usage:
@@ -39,6 +39,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _env import load_backtesting_env
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -69,13 +71,14 @@ DATASET = "GLBX.MDP3"  # CME Globex
 
 
 def get_api_key() -> str:
+    load_backtesting_env()
     key = os.environ.get("DATABENTO_API_KEY")
     if not key:
         print("ERROR: DATABENTO_API_KEY environment variable not set.")
         print()
         print("  1. Sign up at https://databento.com (free $125 credits)")
         print("  2. Go to https://databento.com/portal/keys")
-        print("  3. Run: export DATABENTO_API_KEY=db-your-key-here")
+        print("  3. Add DATABENTO_API_KEY to backtesting/.env")
         sys.exit(1)
     return key
 

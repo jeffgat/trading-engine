@@ -228,7 +228,7 @@ def main():
         print()
         _print_summary(metrics)
 
-    # Auto-save to experiment DB (viewable in frontend dashboard)
+    # Auto-save to main DB (viewable in frontend dashboard)
     result = results_to_dict(trades, config, include_trades=True, include_equity_curve=True)
     result_id = save_backtest_result(result)
     if not args.quiet:

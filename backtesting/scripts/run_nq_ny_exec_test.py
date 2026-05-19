@@ -114,7 +114,7 @@ def main():
         for month, r in sorted(metrics["r_by_month"].items()):
             print(f"    {month}: {r:>+8.1f}R")
 
-    # Save to DB (dual-write: local + remote)
+    # Save to DB (remote-only main DB)
     result_dict = results_to_dict(trades, config, include_trades=True, include_equity_curve=True)
     result_id = save_backtest_result(result_dict)
     print(f"\n  Saved to DB: {result_id}")

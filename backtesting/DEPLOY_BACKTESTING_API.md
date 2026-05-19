@@ -1,11 +1,11 @@
 # Deploy Backtesting API to DigitalOcean
 
-The droplet now has two backtesting-related services:
+The droplet has two backtesting-related services:
 
-- `experiments-db` on port `8100`: lightweight shared SQLite API.
+- `main-db` on port `8100`: the only SQLite owner, exposed through the main DB API.
 - `orb-backtester` on port `8200`: full FastAPI app for dashboard reads, candles, backtests, optimizations, news/regime reports, and saved configs.
 
-The frontend keeps using `/bt-api/*`. In local dev, Vite proxies that to `localhost:8000`. In Vercel, `frontend/vercel.json` rewrites it to `http://143.110.148.234:8200/api/*`.
+The frontend keeps using `/bt-api/*`. In local dev, Vite proxies that to the local backtesting API, which uses `MAIN_DB_URL=http://127.0.0.1:8100` on the droplet and the remote main DB by default elsewhere. In Vercel, `frontend/vercel.json` rewrites it to `http://143.110.148.234:8200/api/*`.
 
 ## First-Time Setup
 
@@ -16,6 +16,14 @@ bash backtesting/deploy/deploy_api.sh --setup
 ```
 
 This creates `/opt/orb-backtester`, installs the `orb-backtester` systemd service, and creates `/opt/orb-backtester/.env` if missing.
+
+The preferred DB env name is:
+
+```bash
+MAIN_DB_URL=http://127.0.0.1:8100
+```
+
+`EXPERIMENTS_DB_URL` is still accepted only as a compatibility alias.
 
 Make sure port `8200/tcp` is reachable from Vercel. If the droplet uses UFW, allow it:
 

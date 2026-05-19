@@ -35,6 +35,9 @@ rsync -avz --delete \
 echo "--- Installing dependencies ---"
 ssh "$DROPLET" "cd $REMOTE_DIR && uv sync"
 
+echo "--- Ensuring MAIN_DB_URL exists in remote .env ---"
+ssh "$DROPLET" "if [ -f $REMOTE_DIR/.env ] && ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
+
 echo "--- Restarting service ---"
 ssh "$DROPLET" "systemctl restart orb-trader"
 

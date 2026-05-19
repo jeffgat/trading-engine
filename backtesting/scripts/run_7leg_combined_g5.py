@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -47,8 +48,12 @@ from orb_backtest.analysis.gates import apply_dow_filter
 # ── Data directory ──────────────────────────────────────────────────────
 DATA_DIR = Path(__file__).resolve().parents[3] / ".." / "backtests" / "python" / "data" / "raw"
 
-# ── Remote DB API for pulling LSI trades ────────────────────────────────
-DB_API = "http://143.110.148.234:8100"
+# ── Main DB API for pulling LSI trades ─────────────────────────────────
+DB_API = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL")
+    or "http://143.110.148.234:8100"
+).rstrip("/")
 LSI_RESULT_ID = "bt-nq-ny-lsi-fvg-limit-v2-long-2016-2026-fi-5302c0"
 
 # ── Half-days ───────────────────────────────────────────────────────────

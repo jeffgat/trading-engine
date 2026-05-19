@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save RTY NY Continuation Longs final config to the experiment DB.
+"""Save RTY NY Continuation Longs final config to the main DB.
 
 Converged config from 7 rounds of variable sweeps + fine-tune grid (6,272 combos):
   stop=3.0%, rr=5.5, gap=1.0%, tp1=0.45, ATR 14, 15m ORB (09:30-09:45),

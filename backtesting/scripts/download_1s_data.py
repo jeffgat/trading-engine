@@ -19,6 +19,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from _env import load_backtesting_env
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 SYMBOL_MAP = {
@@ -81,9 +83,10 @@ def main() -> None:
 
     end = args.end or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    load_backtesting_env()
     api_key = os.environ.get("DATABENTO_API_KEY")
     if not api_key:
-        print("ERROR: DATABENTO_API_KEY not set")
+        print("ERROR: DATABENTO_API_KEY not set. Add it to backtesting/.env.")
         sys.exit(1)
 
     try:

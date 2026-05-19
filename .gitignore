@@ -1,0 +1,5 @@
+# Local environment files
+.env
+
+# Local assistant settings can include command-specific environment values.
+.claude/settings.local.json

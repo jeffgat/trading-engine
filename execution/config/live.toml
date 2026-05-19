@@ -12,7 +12,7 @@
 # Override per-session with exec_ticker in [sessions.<name>] if needed.
 
 [databento]
-# Set DATABENTO_API_KEY in your environment
+# Set DATABENTO_API_KEY in execution/.env or the process environment.
 api_key_env = "DATABENTO_API_KEY"
 dataset = "GLBX.MDP3"
 # Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, GC.FUT)
@@ -25,10 +25,6 @@ dynamic_sizing_enabled = false
 dynamic_sizing_shadow_enabled = true
 dynamic_sizing_sessions = ["NQ_NY_LSI_PURE_1M"]
 retention_seconds = 90.0
-
-[traderspost]
-# Set TRADERSPOST_WEBHOOK_URL in your environment
-webhook_url_env = "TRADERSPOST_WEBHOOK_URL"
 
 [risk]
 baseline_r = 400             # Baseline R denomination; all R values scaled as risk_usd/baseline_r

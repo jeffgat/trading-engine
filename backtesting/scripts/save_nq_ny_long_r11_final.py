@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY Long R11 Final to the experiments DB.
+"""Save NQ NY Long R11 Final to the main DB.
 
 Config: stop=7.0%, rr=3.5, gap=2.5%, tp1=0.4, ORB=20m (09:30-09:50),
         entry<=12:00, flat=15:30, ATR=12, direction=long, excl-Fri, ICF=OFF, 1s magnifier
@@ -89,7 +89,7 @@ def _load_1m_with_fallback(filename: str, start: str | None, end: str | None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Save NQ NY ORB R11 Final to the experiments DB.")
+    parser = argparse.ArgumentParser(description="Save NQ NY ORB R11 Final to the main DB.")
     parser.add_argument("--name", default=None, help="Dashboard experiment name override.")
     parser.add_argument("--start", default=DEFAULT_START, help="Inclusive start date.")
     parser.add_argument("--end-exclusive", default=DEFAULT_END_EXCLUSIVE, help="Exclusive end date.")

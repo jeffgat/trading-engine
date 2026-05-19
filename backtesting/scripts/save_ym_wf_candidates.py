@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save the two WF-validated YM NY candidates to the experiments DB.
+"""Save the two WF-validated YM NY candidates to the main DB.
 
 Candidates:
 1. 5m ORB + 11:30 cutoff + ATR10 (best risk-adjusted)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY R20 robust pipeline anchor config to the experiments DB.
+"""Save NQ NY R20 robust pipeline anchor config to the main DB.
 
 Config from R16-R20 optimization:
   stop=8.75%, rr=2.625, gap=2.25%, tp1=0.3, ORB=20m, ATR=12, dir=both

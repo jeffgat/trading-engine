@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ Asia R5 Final to the experiments DB.
+"""Save NQ Asia R5 Final to the main DB.
 
 Config: stop=3.7%, rr=1.75, gap=0.90%, tp1=0.10, ORB=10m (20:00-20:10),
         entry<=00:00, flat=01:00, ATR=5, direction=both, no-Thursday, ICF=OFF, 1s magnifier

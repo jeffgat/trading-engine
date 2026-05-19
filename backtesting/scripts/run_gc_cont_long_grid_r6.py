@@ -14,7 +14,7 @@ Grid sweep: stop × rr × min_gap × tp1 — 450 combos
   Total:   6 × 5 × 5 × 3 = 450
 
 Structural params fixed: ATR 16, 10m ORB, entry→11:00, FOMC excl.
-Results saved to experiment DB.
+Results saved to main DB.
 """
 
 import sys
@@ -196,7 +196,7 @@ if __name__ == "__main__":
 
     # ── Save to DB ────────────────────────────────────────────────────────────
 
-    print("\nSaving to experiment DB...")
+    print("\nSaving to main DB...")
     grid_result = grid_results_to_dict(
         [(r["cfg"], r["trades_list"]) for r in scored],
         swept_params={

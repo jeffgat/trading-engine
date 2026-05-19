@@ -1,4 +1,4 @@
-"""SQLite experiment tracking for backtest and optimization runs."""
+"""Main DB tracking for backtests, optimization runs, and execution state."""
 
 from __future__ import annotations
 
@@ -11,17 +11,33 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-import logging as _logging
 import os as _os
 
-# Default remote DB URL for dual-write — always send results to the shared DB
-# so every collaborator's backtests appear in the dashboard.
-# Override with EXPERIMENTS_DB_URL="" to disable.
-_os.environ.setdefault("EXPERIMENTS_DB_URL", "http://143.110.148.234:8100")
+DEFAULT_MAIN_DB_URL = "http://143.110.148.234:8100"
 DEFAULT_BACKTEST_RISK_USD = 5000.0
 
+
+def _resolve_main_db_url() -> str:
+    """Resolve the preferred main DB API URL.
+
+    MAIN_DB_URL is the canonical name. EXPERIMENTS_DB_URL remains as a
+    compatibility alias for older scripts and service env files.
+    """
+    if "MAIN_DB_URL" in _os.environ:
+        return _os.environ.get("MAIN_DB_URL", "").rstrip("/")
+    if "EXPERIMENTS_DB_URL" in _os.environ:
+        return _os.environ.get("EXPERIMENTS_DB_URL", "").rstrip("/")
+    return DEFAULT_MAIN_DB_URL
+
+
+MAIN_DB_URL = _resolve_main_db_url()
+if MAIN_DB_URL:
+    _os.environ["MAIN_DB_URL"] = MAIN_DB_URL
+    _os.environ.setdefault("EXPERIMENTS_DB_URL", MAIN_DB_URL)
+
 DB_PATH = Path(
-    _os.environ.get("EXPERIMENTS_DB_PATH")
+    _os.environ.get("MAIN_DB_PATH")
+    or _os.environ.get("EXPERIMENTS_DB_PATH")
     or str(Path(__file__).resolve().parents[2] / "data" / "results" / "experiments.db")
 )
 BACKUP_DIR = DB_PATH.parent / "backups"
@@ -29,7 +45,7 @@ MAX_BACKUPS = 20  # Keep last 20 backups
 
 
 def backup_db() -> Path | None:
-    """Create a timestamped backup of experiments.db before destructive operations.
+    """Create a timestamped backup of the local main DB before destructive operations.
 
     Returns the backup path, or None if the DB doesn't exist.
     Keeps the last MAX_BACKUPS backups, pruning oldest.
@@ -39,11 +55,11 @@ def backup_db() -> Path | None:
 
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = BACKUP_DIR / f"experiments_{ts}.db"
+    backup_path = BACKUP_DIR / f"main_{ts}.db"
     shutil.copy2(DB_PATH, backup_path)
 
     # Prune old backups
-    backups = sorted(BACKUP_DIR.glob("experiments_*.db"))
+    backups = sorted(BACKUP_DIR.glob("main_*.db"))
     while len(backups) > MAX_BACKUPS:
         backups.pop(0).unlink()
 
@@ -352,6 +368,29 @@ CREATE INDEX IF NOT EXISTS idx_exec_webhook_logs_ts ON execution_webhook_logs(ti
 CREATE INDEX IF NOT EXISTS idx_exec_webhook_logs_account ON execution_webhook_logs(account);
 """
 
+_EXECUTION_CONFIGS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS execution_configs (
+    config_name TEXT PRIMARY KEY,
+    enabled INTEGER,
+    max_open_contracts REAL,
+    config_json TEXT,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS execution_config_webhooks (
+    config_name TEXT NOT NULL,
+    webhook_index INTEGER NOT NULL,
+    label TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL,
+    paused INTEGER NOT NULL DEFAULT 0,
+    multiplier REAL NOT NULL DEFAULT 1.0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (config_name, webhook_index),
+    FOREIGN KEY (config_name) REFERENCES execution_configs(config_name) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_execution_config_webhooks_config
+    ON execution_config_webhooks(config_name);
+"""
+
 _REGIME_REPORTS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS regime_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -396,6 +435,7 @@ def init_db() -> Path:
         conn.executescript(_EXECUTION_TRADE_LOGS_SCHEMA)
         conn.executescript(_EXECUTION_MAIN_LOGS_SCHEMA)
         conn.executescript(_EXECUTION_WEBHOOK_LOGS_SCHEMA)
+        conn.executescript(_EXECUTION_CONFIGS_SCHEMA)
 
         # Migrate: add live execution display fields if missing
         live_existing = {row[1] for row in conn.execute("PRAGMA table_info(live_trades)").fetchall()}
@@ -573,7 +613,7 @@ def log_run(
     *,
     git_hash: str | None = None,
 ) -> int:
-    """Insert a single run into the experiment database.
+    """Insert a single run into the main DB.
 
     Args:
         result_dict: Structured result dict (as produced by results_to_dict).
@@ -2218,98 +2258,187 @@ def count_execution_logs(log_type: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Dual-write: always save locally, also send to remote when configured.
-# Read/query functions route to remote when EXPERIMENTS_DB_URL is set.
+# Execution config persistence
 # ---------------------------------------------------------------------------
-if _os.environ.get("EXPERIMENTS_DB_URL"):
-    from . import experiments_remote as _remote
 
-    # Preserve local functions before remote import overwrites them
-    _local_init_db = init_db
-    _local_log_run = log_run
-    _local_log_optimization = log_optimization
-    _local_log_sweep_runs = log_sweep_runs
-    _local_log_news_straddle_run = log_news_straddle_run
-    _local_log_regime_report = log_regime_report
-    _local_log_live_trade = log_live_trade
+def _utc_now_iso() -> str:
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
-    # Import all remote functions (overwrites reads/queries to use remote)
-    from .experiments_remote import *  # noqa: F401, F403
 
-    # Ensure local DB tables exist (remote init_db is a no-op health check)
-    _local_init_db()
+def _webhook_row_to_dict(row: sqlite3.Row) -> dict:
+    return {
+        "url": row["url"],
+        "label": row["label"] or "",
+        "paused": bool(row["paused"]),
+        "multiplier": float(row["multiplier"] if row["multiplier"] is not None else 1.0),
+    }
 
-    # Dual-write wrappers: always local + async remote (background thread).
-    # Remote writes run in a non-daemon thread so they complete before process exit.
-    # An atexit handler joins all pending threads (up to 30s) to ensure writes land.
-    import threading as _threading
-    import time as _time
-    import atexit as _atexit
 
-    _pending_threads: list[_threading.Thread] = []
-    _pending_lock = _threading.Lock()
+def _list_execution_config_webhooks(conn: sqlite3.Connection, config_name: str) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT webhook_index, label, url, paused, multiplier
+        FROM execution_config_webhooks
+        WHERE config_name = ?
+        ORDER BY webhook_index
+        """,
+        [config_name],
+    ).fetchall()
+    return [_webhook_row_to_dict(row) for row in rows]
 
-    def _flush_remote_writes():
-        """Wait for all pending remote writes to finish (called at process exit)."""
-        with _pending_lock:
-            threads = list(_pending_threads)
-        if threads:
-            _logging.getLogger(__name__).info(
-                "Waiting for %d remote write(s) to complete...", len(threads)
+
+def upsert_execution_config(
+    config_name: str,
+    *,
+    enabled: bool | None = None,
+    max_open_contracts: float | None = None,
+    config: dict | None = None,
+) -> dict:
+    """Create or update a remote execution config metadata row."""
+    init_db()
+    now = _utc_now_iso()
+    config_json = json.dumps(config) if config is not None else None
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            INSERT INTO execution_configs
+                (config_name, enabled, max_open_contracts, config_json, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(config_name) DO UPDATE SET
+                enabled = COALESCE(excluded.enabled, execution_configs.enabled),
+                max_open_contracts = COALESCE(excluded.max_open_contracts, execution_configs.max_open_contracts),
+                config_json = COALESCE(excluded.config_json, execution_configs.config_json),
+                updated_at = excluded.updated_at
+            """,
+            [
+                config_name,
+                None if enabled is None else int(enabled),
+                max_open_contracts,
+                config_json,
+                now,
+            ],
+        )
+        row = conn.execute(
+            "SELECT * FROM execution_configs WHERE config_name = ?",
+            [config_name],
+        ).fetchone()
+        result = dict(row)
+        result["enabled"] = None if row["enabled"] is None else bool(row["enabled"])
+        result["webhooks"] = _list_execution_config_webhooks(conn, config_name)
+        return result
+
+
+def list_execution_configs_db() -> list[dict]:
+    """List execution configs and attached webhook accounts from the DB."""
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM execution_configs ORDER BY config_name"
+        ).fetchall()
+        configs: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            item["enabled"] = None if row["enabled"] is None else bool(row["enabled"])
+            item["webhooks"] = _list_execution_config_webhooks(conn, row["config_name"])
+            configs.append(item)
+        return configs
+
+
+def replace_execution_config_webhooks(config_name: str, webhooks: list[dict]) -> list[dict]:
+    """Replace all webhook accounts for one execution config."""
+    init_db()
+    now = _utc_now_iso()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            INSERT INTO execution_configs (config_name, updated_at)
+            VALUES (?, ?)
+            ON CONFLICT(config_name) DO UPDATE SET updated_at = excluded.updated_at
+            """,
+            [config_name, now],
+        )
+        conn.execute(
+            "DELETE FROM execution_config_webhooks WHERE config_name = ?",
+            [config_name],
+        )
+        for idx, webhook in enumerate(webhooks):
+            conn.execute(
+                """
+                INSERT INTO execution_config_webhooks
+                    (config_name, webhook_index, label, url, paused, multiplier, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    config_name,
+                    idx,
+                    str(webhook.get("label") or ""),
+                    str(webhook.get("url") or ""),
+                    int(bool(webhook.get("paused", False))),
+                    float(webhook.get("multiplier", 1.0)),
+                    now,
+                ],
             )
-        for t in threads:
-            t.join(timeout=30)
+        return _list_execution_config_webhooks(conn, config_name)
 
-    _atexit.register(_flush_remote_writes)
 
-    def _remote_fire(fn, *args, **kwargs):
-        """Run a remote write in a background thread with one retry."""
-        def _worker():
-            try:
-                for attempt in (1, 2):
-                    try:
-                        fn(*args, **kwargs)
-                        return
-                    except Exception as exc:
-                        _logging.getLogger(__name__).warning(
-                            "Remote %s attempt %d failed: %s", fn.__name__, attempt, exc
-                        )
-                        if attempt < 2:
-                            _time.sleep(2)
-            finally:
-                with _pending_lock:
-                    _pending_threads.remove(t)
-        t = _threading.Thread(target=_worker)
-        t.start()
-        with _pending_lock:
-            _pending_threads.append(t)
+def patch_execution_config_webhook(
+    config_name: str,
+    webhook_index: int,
+    updates: dict,
+) -> dict | None:
+    """Patch pause/multiplier/label/url for a single webhook account."""
+    allowed = {"label", "url", "paused", "multiplier"}
+    fields = {k: v for k, v in updates.items() if k in allowed}
+    if not fields:
+        return None
 
-    def log_run(result_dict, result_id, run_type="backtest", *, git_hash=None):
-        local_id = _local_log_run(result_dict, result_id, run_type, git_hash=git_hash)
-        _remote_fire(_remote.log_run, result_dict, result_id, run_type, git_hash=git_hash)
-        return local_id
+    assignments = []
+    params: list = []
+    for key, value in fields.items():
+        assignments.append(f"{key} = ?")
+        if key == "paused":
+            params.append(int(bool(value)))
+        elif key == "multiplier":
+            params.append(float(value))
+        else:
+            params.append(str(value))
+    assignments.append("updated_at = ?")
+    params.append(_utc_now_iso())
+    params.extend([config_name, webhook_index])
 
-    def log_optimization(result_dict, result_id):
-        local_id = _local_log_optimization(result_dict, result_id)
-        _remote_fire(_remote.log_optimization, result_dict, result_id)
-        return local_id
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute(
+            f"""
+            UPDATE execution_config_webhooks
+            SET {", ".join(assignments)}
+            WHERE config_name = ? AND webhook_index = ?
+            """,
+            params,
+        )
+        if cur.rowcount == 0:
+            return None
+        row = conn.execute(
+            """
+            SELECT webhook_index, label, url, paused, multiplier
+            FROM execution_config_webhooks
+            WHERE config_name = ? AND webhook_index = ?
+            """,
+            [config_name, webhook_index],
+        ).fetchone()
+        return _webhook_row_to_dict(row) if row else None
 
-    def log_sweep_runs(all_results, optimization_id):
-        count = _local_log_sweep_runs(all_results, optimization_id)
-        _remote_fire(_remote.log_sweep_runs, all_results, optimization_id)
-        return count
 
-    def log_news_straddle_run(result_dict, result_id):
-        local_id = _local_log_news_straddle_run(result_dict, result_id)
-        _remote_fire(_remote.log_news_straddle_run, result_dict, result_id)
-        return local_id
-
-    def log_regime_report(result_dict, result_id):
-        local_id = _local_log_regime_report(result_dict, result_id)
-        _remote_fire(_remote.log_regime_report, result_dict, result_id)
-        return local_id
-
-    def log_live_trade(trade):
-        local_id = _local_log_live_trade(trade)
-        _remote_fire(_remote.log_live_trade, trade)
-        return local_id
+# ---------------------------------------------------------------------------
+# Remote-only mode.
+#
+# Client processes should use the main DB API exclusively when MAIN_DB_URL is
+# configured. The API service itself sets MAIN_DB_URL="" before importing this
+# module, so it remains the only process that writes the SQLite file directly.
+# ---------------------------------------------------------------------------
+if MAIN_DB_URL:
+    from .experiments_remote import *  # noqa: F401, F403

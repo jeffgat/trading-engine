@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY Long accepted config (WF mode params) to the experiments DB.
+"""Save NQ NY Long accepted config (WF mode params) to the main DB.
 
 Config: g=3.0 rr=2.0 tp1=0.6 stop=9% long-only 20m ORB entry 09:50-15:00
 These are the WF mode params from the Sharpe-objective robust pipeline.

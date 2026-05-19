@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC R6 pipeline results to the experiment DB.
+"""Save GC R6 pipeline results to the main DB.
 
 Saves two runs:
   1. Full-history IS (base config, stop=4.0%)

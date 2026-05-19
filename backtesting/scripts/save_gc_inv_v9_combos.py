@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save the 4 GC Inversion v9 combo test results to the experiments DB."""
+"""Save the 4 GC Inversion v9 combo test results to the main DB."""
 
 import sys
 from datetime import datetime

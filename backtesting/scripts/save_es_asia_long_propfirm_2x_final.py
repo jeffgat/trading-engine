@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save ES Asia Long Prop Firm 2x Risk config to experiments DB.
+"""Save ES Asia Long Prop Firm 2x Risk config to main DB.
 
 Config from prop firm phase 1 sweep (best balanced by success rate + Calmar):
   stop=2.5%, rr=1.75, gap=1.0%, tp1=0.3, ORB=10m (20:00-20:10),

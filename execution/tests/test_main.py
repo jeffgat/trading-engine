@@ -358,7 +358,10 @@ def test_build_exec_config_meta_reads_disk_configs(monkeypatch):
             self.session_overrides = {"NQ_NY": {}}
             self.lsi_session_overrides = {"NQ_NY_LSI": {}}
 
-    monkeypatch.setattr("trader.main.load_exec_configs", lambda config=None: [FakeConfig()])
+    monkeypatch.setattr(
+        "trader.main.load_exec_configs",
+        lambda config=None, **_kwargs: [FakeConfig()],
+    )
 
     state = DashboardState(
         config={},
@@ -798,7 +801,7 @@ def test_recommended_exec_configs_match_phase_one_subset_portfolios():
     assert fast_v2.webhook_url == ""
 
 
-def test_alpha_v1_c_is_disabled_conservative_clone_without_default_webhook():
+def test_alpha_v1_c_is_disabled_conservative_clone_without_tracked_webhook():
     configs = {cfg.name: cfg for cfg in load_exec_configs()}
 
     aggressive = configs["ALPHA_V1-A"]
@@ -817,7 +820,7 @@ def test_alpha_v1_c_is_disabled_conservative_clone_without_default_webhook():
     assert aggressive.enabled is True
     assert conservative.enabled is False
     assert aggressive.max_open_contracts == conservative.max_open_contracts
-    assert aggressive.webhooks[0].label == "Account 1"
+    assert aggressive.webhooks == []
     assert conservative.webhooks == []
     assert _without_sizing(aggressive.session_overrides) == _without_sizing(conservative.session_overrides)
     assert _without_sizing(aggressive.lsi_session_overrides) == _without_sizing(conservative.lsi_session_overrides)

@@ -48,7 +48,11 @@ BACKTEST_REPORTING_RISK_USD = 5000.0
 
 _INDEX_COL_CACHE: dict[Path, str] = {}
 _EMPTY_TICK_FRAME = pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
-EXPERIMENTS_DB_URL = os.environ.get("EXPERIMENTS_DB_URL", "http://143.110.148.234:8100").rstrip("/")
+MAIN_DB_URL = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL")
+    or "http://143.110.148.234:8100"
+).rstrip("/")
 
 
 def _parquet_index_column(path: Path) -> str:
@@ -506,7 +510,7 @@ def _post_run(result: dict, result_id: str) -> None:
         "run_type": "backtest",
     }
     req = urllib.request.Request(
-        f"{EXPERIMENTS_DB_URL}/api/runs",
+        f"{MAIN_DB_URL}/api/runs",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -515,7 +519,7 @@ def _post_run(result: dict, result_id: str) -> None:
         with urllib.request.urlopen(req, timeout=120) as resp:
             body = json.loads(resp.read().decode())
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Failed to save backtest to {EXPERIMENTS_DB_URL}: {exc}") from exc
+        raise RuntimeError(f"Failed to save backtest to {MAIN_DB_URL}: {exc}") from exc
     if not body.get("success"):
         raise RuntimeError(f"Remote save failed: {body.get('error')}")
 

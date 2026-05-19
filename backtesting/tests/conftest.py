@@ -12,7 +12,9 @@ def test_db_path(tmp_path_factory: pytest.TempPathFactory) -> str:
 
 @pytest.fixture(scope="session")
 def app(test_db_path: str):
+    os.environ["MAIN_DB_URL"] = ""
     os.environ["EXPERIMENTS_DB_URL"] = ""
+    os.environ["MAIN_DB_PATH"] = test_db_path
     os.environ["EXPERIMENTS_DB_PATH"] = test_db_path
     from orb_backtest.api import app as api_app
     return api_app

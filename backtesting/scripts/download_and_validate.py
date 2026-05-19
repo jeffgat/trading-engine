@@ -32,6 +32,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from _env import load_backtesting_env
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 # Databento continuous contract symbol mapping
@@ -89,11 +91,12 @@ CME_SPECIAL_CLOSURES = {
 
 
 def get_api_key() -> str:
+    load_backtesting_env()
     key = os.environ.get("DATABENTO_API_KEY")
     if not key:
         print("ERROR: DATABENTO_API_KEY environment variable not set.")
         print("  1. Go to https://databento.com/portal/keys")
-        print("  2. Run: export DATABENTO_API_KEY=db-your-key-here")
+        print("  2. Add DATABENTO_API_KEY to backtesting/.env")
         sys.exit(1)
     return key
 

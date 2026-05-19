@@ -23,8 +23,8 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/exec-api/, "/api"),
       },
       // Backtesting API — serve through the local FastAPI app.
-      // The local app already dual-writes/reads via the shared experiments DB,
-      // and compute endpoints like backtest/optimize need local data access.
+      // The app persists/query state through the remote main DB by default,
+      // while compute endpoints like backtest/optimize can still use local data.
       "/bt-api": {
         target: "http://localhost:8000",
         rewrite: (path) => path.replace(/^\/bt-api/, "/api"),

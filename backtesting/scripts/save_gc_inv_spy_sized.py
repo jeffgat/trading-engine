@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save GC Inversion Longs v9 with SPY regime sizing to experiments DB.
+"""Save GC Inversion Longs v9 with SPY regime sizing to main DB.
 
 Model: 2x size when VIX < 18 AND SPY > SMA20 (prior day), 1x otherwise.
 Result: 135.0R total, -8.3R DD.

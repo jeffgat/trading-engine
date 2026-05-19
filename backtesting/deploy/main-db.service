@@ -1,0 +1,14 @@
+[Unit]
+Description=Main DB API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/main-db
+ExecStart=/usr/local/bin/uv run python /opt/main-db/experiments_api.py
+Restart=always
+RestartSec=10
+EnvironmentFile=/opt/main-db/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ Asia R9 Restart Final to the experiments DB.
+"""Save NQ Asia R9 Restart Final to the main DB.
 
 Config: stop=4.0%, rr=3.0, gap=0.90%, tp1=0.6, ORB=15m (20:00-20:15),
         entry<=22:30, flat=04:00, ATR=5, direction=long, excl-Tue, ICF=ON, 1s magnifier

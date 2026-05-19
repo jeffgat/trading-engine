@@ -2,12 +2,7 @@
   "ALPHA_V1-A": {
     "enabled": false,
     "max_open_contracts": 20,
-    "webhooks": [
-      {
-        "url": "https://webhooks.traderspost.io/trading/webhook/bec59e1d-3b90-483e-a9cb-d9abae795727/f0a27e4f0013f55720819685d26f8edf",
-        "label": "Account 1"
-      }
-    ],
+    "webhooks": [],
     "sessions": {
       "NQ_NY": {
         "orb_start": "09:30",

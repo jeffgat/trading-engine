@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""Seed missed live trades into the experiments DB.
+"""Seed missed live trades into the main DB.
 
 Run after deploying the live-trades endpoint:
     python scripts/seed_missed_trades.py
 """
 
 import json
+import os
 import urllib.request
 
-API_URL = "http://143.110.148.234:8100"
+API_URL = (
+    os.environ.get("MAIN_DB_URL")
+    or os.environ.get("EXPERIMENTS_DB_URL")
+    or "http://143.110.148.234:8100"
+).rstrip("/")
 
 TRADES = [
     {

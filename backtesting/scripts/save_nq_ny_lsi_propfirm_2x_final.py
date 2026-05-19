@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save NQ NY LSI Prop Firm 2x Risk config to the experiments DB.
+"""Save NQ NY LSI Prop Firm 2x Risk config to the main DB.
 
 Best config from prop firm phase 1 grid sweep (2x risk sizing):
   rr=2.5, tp1=0.2, gap=3.75%, nl=5, long-only, Mon/Tue/Fri

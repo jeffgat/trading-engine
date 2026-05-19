@@ -198,7 +198,7 @@ def phase_b(atr, orb_end, entry_start):
     print(f"    Calmar={best_m['calmar_ratio']:.2f}, Sharpe={best_m['sharpe_ratio']:.3f}, DD={best_m['max_drawdown_r']:.1f}R")
     print(f"    Neg years={neg_years(best_m)}")
 
-    # Save to experiment DB
+    # Save to main DB
     grid_dict = grid_results_to_dict(results, swept_params=PARAM_RANGES)
     grid_dict["name"] = f"GC NY cont long grid r5 ATR{atr} {orb_end.replace(':','')}ORB"
     result_id = save_optimization_result(grid_dict)

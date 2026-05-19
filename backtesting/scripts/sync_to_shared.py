@@ -1,4 +1,4 @@
-"""Sync local experiments.db to the shared remote API.
+"""Sync a local experiments.db file to the remote main DB API.
 
 Reads all rows from the local runs and optimizations tables, then POSTs
 them to the remote /api/sync/import endpoint. Sends one row at a time
@@ -25,11 +25,12 @@ from pathlib import Path
 
 # Resolve the local DB path (same logic as experiments.py)
 LOCAL_DB = Path(
-    os.environ.get("EXPERIMENTS_DB_PATH")
+    os.environ.get("MAIN_DB_PATH")
+    or os.environ.get("EXPERIMENTS_DB_PATH")
     or str(Path(__file__).resolve().parents[1] / "data" / "results" / "experiments.db")
 )
 
-DEFAULT_URL = "http://143.110.148.234:8100"
+DEFAULT_MAIN_DB_URL = "http://143.110.148.234:8100"
 
 
 def read_all_rows(db_path: Path, table: str, exclude_cols: set[str] | None = None) -> list[dict]:
@@ -61,9 +62,16 @@ def post_import(api_url: str, runs: list[dict], optimizations: list[dict]) -> di
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync local experiments DB to shared remote API")
-    parser.add_argument("--url", default=os.environ.get("EXPERIMENTS_DB_URL", DEFAULT_URL),
-                        help="Remote API URL")
+    parser = argparse.ArgumentParser(description="Sync a local SQLite DB to the remote main DB API")
+    parser.add_argument(
+        "--url",
+        default=(
+            os.environ.get("MAIN_DB_URL")
+            or os.environ.get("EXPERIMENTS_DB_URL")
+            or DEFAULT_MAIN_DB_URL
+        ),
+        help="Remote main DB API URL",
+    )
     parser.add_argument("--runs-only", action="store_true",
                         help="Only sync runs table")
     parser.add_argument("--opts-only", action="store_true",

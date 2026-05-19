@@ -1,7 +1,7 @@
 [Unit]
 Description=ORB Backtester API
-After=network-online.target experiments-db.service
-Wants=network-online.target
+After=network-online.target main-db.service
+Wants=network-online.target main-db.service
 
 [Service]
 Type=simple

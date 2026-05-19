@@ -1,11 +1,13 @@
-name: Deploy Experiments DB API
+name: Deploy Main DB API
 
 on:
   push:
     branches: [main]
     paths:
       - 'backtesting/src/**'
+      - 'backtesting/deploy/deploy_db.sh'
       - 'backtesting/deploy/experiments_api.py'
+      - 'backtesting/deploy/main-db.service'
 
 jobs:
   deploy:
@@ -20,23 +22,6 @@ jobs:
           key: ${{ secrets.DROPLET_SSH_KEY }}
           known_hosts: ${{ secrets.DROPLET_KNOWN_HOSTS }}
 
-      - name: Deploy Experiments DB API
+      - name: Deploy Main DB API
         run: |
-          DROPLET="root@143.110.148.234"
-          REMOTE_DIR="/opt/experiments-db"
-
-          echo "--- Syncing backtesting source ---"
-          rsync -avz --delete \
-            --exclude '__pycache__/' \
-            --exclude '*.pyc' \
-            backtesting/src/ "$DROPLET:$REMOTE_DIR/src/"
-
-          echo "--- Syncing API script ---"
-          scp backtesting/deploy/experiments_api.py "$DROPLET:$REMOTE_DIR/experiments_api.py"
-
-          echo "--- Restarting service ---"
-          ssh "$DROPLET" "systemctl restart experiments-db"
-
-          echo "--- Verifying ---"
-          sleep 2
-          ssh "$DROPLET" "systemctl is-active experiments-db && curl -sf http://localhost:8100/api/health | head -c 200 || echo 'WARNING: service not responding yet'"
+          bash backtesting/deploy/deploy_db.sh

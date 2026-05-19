@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Save CL NY Continuation Both best config to the experiment DB.
+"""Save CL NY Continuation Both best config to the main DB.
 
 WF mode params (selected in ALL 7 folds):
   stop=0.75%, rr=7.0, gap=1.0%, tp1=0.7
