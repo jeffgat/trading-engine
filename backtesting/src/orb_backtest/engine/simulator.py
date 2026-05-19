@@ -40,6 +40,7 @@ from ..signals.htf_levels import compute_htf_unswept_levels
 from ..signals.reference_levels import compute_reference_levels, compute_data_sweep_levels
 from ..signals.swing import detect_swing_highs, detect_swing_lows
 from ..signals.lrlr import LRLRResult, detect_lrlr_cluster
+from ..signals.structure_15m import compute_all_15m_signals
 from ..signals.vwap import compute_session_vwap
 
 
@@ -65,6 +66,21 @@ EXIT_NAMES = {
     EXIT_TP2_SINGLE: "tp2_single",
     EXIT_BE_SL:      "be_sl",
 }
+
+RUNNER_TRAIL_DISABLED = 0
+RUNNER_TRAIL_STEP_R = 1
+RUNNER_TRAIL_RISK = 2
+RUNNER_TRAIL_ATR = 3
+
+
+def _runner_trail_mode_code(mode: str) -> int:
+    if mode == "step_r":
+        return RUNNER_TRAIL_STEP_R
+    if mode == "risk":
+        return RUNNER_TRAIL_RISK
+    if mode == "atr":
+        return RUNNER_TRAIL_ATR
+    return RUNNER_TRAIL_DISABLED
 
 
 class TradeResult(NamedTuple):
@@ -127,6 +143,62 @@ class TradeResult(NamedTuple):
 # Numba-compiled trade simulation
 # ---------------------------------------------------------------------------
 @nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
+def _apply_runner_trail_stop(
+    direction: int,
+    entry_price: float,
+    risk_pts: float,
+    current_stop: float,
+    high_price: float,
+    low_price: float,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
+) -> float:
+    """Ratchet a post-TP1 runner stop without ever loosening it."""
+    if trail_mode == RUNNER_TRAIL_DISABLED or risk_pts <= 0.0:
+        return current_stop
+
+    new_stop = current_stop
+    if trail_mode == RUNNER_TRAIL_STEP_R:
+        if trail_trigger_r <= 0.0 or trail_step_r <= 0.0:
+            return current_stop
+        if direction == 1:
+            mfe_r = (high_price - entry_price) / risk_pts
+        else:
+            mfe_r = (entry_price - low_price) / risk_pts
+        if mfe_r >= trail_trigger_r:
+            steps = math.floor((mfe_r - trail_trigger_r) / trail_step_r + 1e-9)
+            lock_r = trail_stop_r + steps * trail_step_r
+            if lock_r < 0.0:
+                lock_r = 0.0
+            if direction == 1:
+                new_stop = entry_price + lock_r * risk_pts
+            else:
+                new_stop = entry_price - lock_r * risk_pts
+    elif trail_mode == RUNNER_TRAIL_RISK:
+        if trail_gap_r <= 0.0:
+            return current_stop
+        if direction == 1:
+            new_stop = high_price - trail_gap_r * risk_pts
+        else:
+            new_stop = low_price + trail_gap_r * risk_pts
+    elif trail_mode == RUNNER_TRAIL_ATR:
+        if trail_atr_points <= 0.0:
+            return current_stop
+        if direction == 1:
+            new_stop = high_price - trail_atr_points
+        else:
+            new_stop = low_price + trail_atr_points
+
+    if direction == 1:
+        return max(current_stop, new_stop)
+    return min(current_stop, new_stop)
+
+
+@nb.njit(cache=True, fastmath=True, boundscheck=False, error_model='numpy')
 def _simulate_single_trade(
     high: np.ndarray,
     low: np.ndarray,
@@ -149,6 +221,12 @@ def _simulate_single_trade(
     pre_entry_cancel_requires_new_sweep: bool,
     pre_entry_new_high_sweep: np.ndarray,
     pre_entry_new_low_sweep: np.ndarray,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
     pre_entry_cancel_target_price: float = np.nan,
@@ -209,6 +287,7 @@ def _simulate_single_trade(
     tp1_hit = False
     be_triggered = False
     current_stop = stop_price
+    risk_pts = abs(entry_price - stop_price)
     remaining_qty = qty
     pnl_points = 0.0
 
@@ -232,6 +311,14 @@ def _simulate_single_trade(
             sl_hit = low[i] <= current_stop
             tp1_trigger = high[i] >= tp1_price and not tp1_hit
             tp2_trigger = high[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high[i], low[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low[i] <= current_stop
 
             if is_flat_bar and not sl_hit:
                 # EOD flat
@@ -255,6 +342,12 @@ def _simulate_single_trade(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high[i], low[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low[i] <= current_stop
                 if tp2_trigger:
                     pnl_points = tp2_price - entry_price
@@ -279,8 +372,14 @@ def _simulate_single_trade(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high[i], low[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return fill_bar, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
@@ -296,6 +395,14 @@ def _simulate_single_trade(
             sl_hit = high[i] >= current_stop
             tp1_trigger = low[i] <= tp1_price and not tp1_hit
             tp2_trigger = low[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high[i], low[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high[i] >= current_stop
 
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
@@ -316,6 +423,12 @@ def _simulate_single_trade(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high[i], low[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high[i] >= current_stop
                 if tp2_trigger:
                     pnl_points = entry_price - tp2_price
@@ -337,8 +450,14 @@ def _simulate_single_trade(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high[i], low[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return fill_bar, EXIT_TP1_BE, i, pnl_points, 0.0, 0.0
                     continue
 
@@ -469,6 +588,12 @@ def _simulate_exit_magnifier(
     is_single: bool,
     qty: float,
     half_qty: float,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
     internal_swing_level: float = 1e38,
 ) -> tuple:
     """Simulate exit on 1m bars. Returns (exit_type, exit_bar_1m, pnl_points).
@@ -502,6 +627,14 @@ def _simulate_exit_magnifier(
             sl_hit = low_1m[i] <= current_stop
             tp1_trigger = high_1m[i] >= tp1_price and not tp1_hit
             tp2_trigger = high_1m[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1m[i], low_1m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low_1m[i] <= current_stop
 
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
@@ -522,6 +655,12 @@ def _simulate_exit_magnifier(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points = tp2_price - entry_price
@@ -543,8 +682,14 @@ def _simulate_exit_magnifier(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low_1m[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low_1m[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return EXIT_TP1_BE, i, pnl_points
                     continue
 
@@ -560,6 +705,14 @@ def _simulate_exit_magnifier(
             sl_hit = high_1m[i] >= current_stop
             tp1_trigger = low_1m[i] <= tp1_price and not tp1_hit
             tp2_trigger = low_1m[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1m[i], low_1m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high_1m[i] >= current_stop
 
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
@@ -580,6 +733,12 @@ def _simulate_exit_magnifier(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points = entry_price - tp2_price
@@ -601,8 +760,14 @@ def _simulate_exit_magnifier(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high_1m[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high_1m[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return EXIT_TP1_BE, i, pnl_points
                     continue
 
@@ -645,6 +810,12 @@ def _simulate_single_trade_magnifier(
     pre_entry_cancel_requires_new_sweep: bool,
     pre_entry_new_high_sweep_1m: np.ndarray,
     pre_entry_new_low_sweep_1m: np.ndarray,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
     pre_entry_cancel_target_price: float = np.nan,
@@ -707,6 +878,8 @@ def _simulate_single_trade_magnifier(
         direction,
         entry_price, stop_price, tp1_price, tp2_price, be_price,
         is_single, qty, half_qty,
+        trail_mode, trail_trigger_r, trail_stop_r,
+        trail_step_r, trail_gap_r, trail_atr_points,
         internal_swing_level,
     )
 
@@ -751,6 +924,7 @@ def _drill_down_1s(
     end_1s: int,
     direction: int,
     entry_price: float,
+    risk_pts: float,
     current_stop: float,
     tp1_price: float,
     tp2_price: float,
@@ -761,6 +935,12 @@ def _drill_down_1s(
     half_qty: float,
     remaining_qty: float,
     pnl_points: float,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
 ) -> tuple:
     """Scan 1s sub-bars to resolve an ambiguous 1m bar.
 
@@ -773,6 +953,14 @@ def _drill_down_1s(
             sl_hit = low_1s[i] <= current_stop
             tp1_trigger = high_1s[i] >= tp1_price and not tp1_hit
             tp2_trigger = high_1s[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1s[i], low_1s[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low_1s[i] <= current_stop
 
             if sl_hit and not tp1_hit:
                 pnl_points += current_stop - entry_price
@@ -782,6 +970,12 @@ def _drill_down_1s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1s[i], low_1s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low_1s[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
@@ -799,8 +993,14 @@ def _drill_down_1s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low_1s[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1s[i], low_1s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low_1s[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
                 if tp1_hit:
@@ -814,6 +1014,14 @@ def _drill_down_1s(
             sl_hit = high_1s[i] >= current_stop
             tp1_trigger = low_1s[i] <= tp1_price and not tp1_hit
             tp2_trigger = low_1s[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1s[i], low_1s[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high_1s[i] >= current_stop
 
             if sl_hit and not tp1_hit:
                 pnl_points += entry_price - current_stop
@@ -823,6 +1031,12 @@ def _drill_down_1s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1s[i], low_1s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high_1s[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
@@ -839,8 +1053,14 @@ def _drill_down_1s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high_1s[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1s[i], low_1s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high_1s[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
                 if tp1_hit:
@@ -868,6 +1088,7 @@ def _drill_down_30s(
     end_30s: int,
     direction: int,
     entry_price: float,
+    risk_pts: float,
     current_stop: float,
     tp1_price: float,
     tp2_price: float,
@@ -878,6 +1099,12 @@ def _drill_down_30s(
     half_qty: float,
     remaining_qty: float,
     pnl_points: float,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
 ) -> tuple:
     """Scan 30s sub-bars to resolve an ambiguous 1m bar.
 
@@ -891,6 +1118,14 @@ def _drill_down_30s(
             sl_hit = low_30s[i] <= current_stop
             tp1_trigger = high_30s[i] >= tp1_price and not tp1_hit
             tp2_trigger = high_30s[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_30s[i], low_30s[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low_30s[i] <= current_stop
 
             if sl_hit and not tp1_hit:
                 pnl_points += current_stop - entry_price
@@ -900,6 +1135,12 @@ def _drill_down_30s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_30s[i], low_30s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low_30s[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
@@ -916,10 +1157,12 @@ def _drill_down_30s(
                         if e1s > s1s:
                             res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1s(
                                 high_1s, low_1s, close_1s, s1s, e1s,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -932,8 +1175,14 @@ def _drill_down_30s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low_30s[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_30s[i], low_30s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low_30s[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
@@ -949,6 +1198,14 @@ def _drill_down_30s(
             sl_hit = high_30s[i] >= current_stop
             tp1_trigger = low_30s[i] <= tp1_price and not tp1_hit
             tp2_trigger = low_30s[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_30s[i], low_30s[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high_30s[i] >= current_stop
 
             if sl_hit and not tp1_hit:
                 pnl_points += entry_price - current_stop
@@ -958,6 +1215,12 @@ def _drill_down_30s(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_30s[i], low_30s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high_30s[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
@@ -974,10 +1237,12 @@ def _drill_down_30s(
                         if e1s > s1s:
                             res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1s(
                                 high_1s, low_1s, close_1s, s1s, e1s,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -990,8 +1255,14 @@ def _drill_down_30s(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high_30s[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_30s[i], low_30s[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high_30s[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
@@ -1027,6 +1298,7 @@ def _drill_down_1m(
     flat_start_1m: int,
     direction: int,
     entry_price: float,
+    risk_pts: float,
     current_stop: float,
     tp1_price: float,
     tp2_price: float,
@@ -1037,6 +1309,12 @@ def _drill_down_1m(
     half_qty: float,
     remaining_qty: float,
     pnl_points: float,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
 ) -> tuple:
     """Scan 1m sub-bars for an ambiguous 5m bar or the fill bar's tail.
 
@@ -1054,6 +1332,14 @@ def _drill_down_1m(
             sl_hit = low_1m[i] <= current_stop
             tp1_trigger = high_1m[i] >= tp1_price and not tp1_hit
             tp2_trigger = high_1m[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1m[i], low_1m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low_1m[i] <= current_stop
 
             if is_flat and not sl_hit:
                 if tp1_hit:
@@ -1071,6 +1357,12 @@ def _drill_down_1m(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low_1m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
@@ -1089,10 +1381,12 @@ def _drill_down_1m(
                                 high_30s, low_30s, close_30s,
                                 high_1s, low_1s, close_1s,
                                 map_30s_1s, has_1s, s30, e30,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -1102,10 +1396,12 @@ def _drill_down_1m(
                         if e1s > s1s:
                             res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1s(
                                 high_1s, low_1s, close_1s, s1s, e1s,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -1118,8 +1414,14 @@ def _drill_down_1m(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low_1m[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low_1m[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
@@ -1134,6 +1436,14 @@ def _drill_down_1m(
             sl_hit = high_1m[i] >= current_stop
             tp1_trigger = low_1m[i] <= tp1_price and not tp1_hit
             tp2_trigger = low_1m[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_1m[i], low_1m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high_1m[i] >= current_stop
 
             if is_flat and not sl_hit:
                 if tp1_hit:
@@ -1151,6 +1461,12 @@ def _drill_down_1m(
                 if tp1_trigger:
                     tp1_hit = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high_1m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
@@ -1169,10 +1485,12 @@ def _drill_down_1m(
                                 high_30s, low_30s, close_30s,
                                 high_1s, low_1s, close_1s,
                                 map_30s_1s, has_1s, s30, e30,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -1182,10 +1500,12 @@ def _drill_down_1m(
                         if e1s > s1s:
                             res, et, pnl_points, tp1_hit, current_stop, remaining_qty = _drill_down_1s(
                                 high_1s, low_1s, close_1s, s1s, e1s,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             if res:
                                 return True, et, i, pnl_points, tp1_hit, current_stop, remaining_qty
@@ -1198,8 +1518,14 @@ def _drill_down_1m(
                     tp1_hit = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high_1m[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_1m[i], low_1m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high_1m[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return True, EXIT_TP1_BE, i, pnl_points, tp1_hit, current_stop, remaining_qty
                     continue
 
@@ -1252,6 +1578,12 @@ def _simulate_single_trade_hierarchical(
     pre_entry_cancel_requires_new_sweep: bool,
     pre_entry_new_high_sweep_5m: np.ndarray,
     pre_entry_new_low_sweep_5m: np.ndarray,
+    trail_mode: int,
+    trail_trigger_r: float,
+    trail_stop_r: float,
+    trail_step_r: float,
+    trail_gap_r: float,
+    trail_atr_points: float,
     internal_swing_level: float = 1e38,
     cancel_on_swing: bool = False,
     pre_entry_cancel_target_price: float = np.nan,
@@ -1352,9 +1684,11 @@ def _simulate_single_trade_hierarchical(
                 has_30s, has_1s,
                 fill_bar_1m, e1m,
                 flat_start_1m,
-                direction, entry_price, current_stop,
+                direction, entry_price, risk_pts, current_stop,
                 tp1_price, tp2_price, be_price,
                 tp1_hit, is_single, qty, half_qty, remaining_qty, pnl_points,
+                trail_mode, trail_trigger_r, trail_stop_r,
+                trail_step_r, trail_gap_r, trail_atr_points,
             )
             if res:
                 return fill_bar_5m, et, fill_bar_5m, pnl_points, float(fill_bar_1m), float(exit_1m)
@@ -1376,6 +1710,14 @@ def _simulate_single_trade_hierarchical(
             sl_hit = low_5m[i] <= current_stop
             tp1_trigger = high_5m[i] >= tp1_price and not tp1_hit
             tp2_trigger = high_5m[i] >= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_5m[i], low_5m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = low_5m[i] <= current_stop
 
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
@@ -1396,6 +1738,12 @@ def _simulate_single_trade_hierarchical(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_5m[i], low_5m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = low_5m[i] <= current_stop
                 if tp2_trigger:
                     pnl_points += tp2_price - entry_price
@@ -1417,10 +1765,12 @@ def _simulate_single_trade_hierarchical(
                                 map_1m_30s, map_30s_1s, map_1m_1s,
                                 has_30s, has_1s,
                                 s1m, e1m, flat_start_1m,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             pnl_points = pnl_out
                             tp1_hit = tp1_out
@@ -1439,8 +1789,14 @@ def _simulate_single_trade_hierarchical(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if low_5m[i] <= be_price:
-                        pnl_points += (be_price - entry_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_5m[i], low_5m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if low_5m[i] <= current_stop:
+                        pnl_points += (current_stop - entry_price) * (remaining_qty / qty)
                         return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     continue
 
@@ -1456,6 +1812,14 @@ def _simulate_single_trade_hierarchical(
             sl_hit = high_5m[i] >= current_stop
             tp1_trigger = low_5m[i] <= tp1_price and not tp1_hit
             tp2_trigger = low_5m[i] <= tp2_price
+            if tp1_hit:
+                current_stop = _apply_runner_trail_stop(
+                    direction, entry_price, risk_pts, current_stop,
+                    high_5m[i], low_5m[i],
+                    trail_mode, trail_trigger_r, trail_stop_r,
+                    trail_step_r, trail_gap_r, trail_atr_points,
+                )
+                sl_hit = high_5m[i] >= current_stop
 
             if is_flat_bar and not sl_hit:
                 if tp1_hit:
@@ -1476,6 +1840,12 @@ def _simulate_single_trade_hierarchical(
                     tp1_hit = True
                     be_triggered = True
                     current_stop = be_price
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_5m[i], low_5m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
                     sl_hit = high_5m[i] >= current_stop
                 if tp2_trigger:
                     pnl_points += entry_price - tp2_price
@@ -1496,10 +1866,12 @@ def _simulate_single_trade_hierarchical(
                                 map_1m_30s, map_30s_1s, map_1m_1s,
                                 has_30s, has_1s,
                                 s1m, e1m, flat_start_1m,
-                                direction, entry_price, current_stop,
+                                direction, entry_price, risk_pts, current_stop,
                                 tp1_price, tp2_price, be_price,
                                 tp1_hit, is_single, qty, half_qty,
                                 remaining_qty, pnl_points,
+                                trail_mode, trail_trigger_r, trail_stop_r,
+                                trail_step_r, trail_gap_r, trail_atr_points,
                             )
                             pnl_points = pnl_out
                             tp1_hit = tp1_out
@@ -1517,8 +1889,14 @@ def _simulate_single_trade_hierarchical(
                     be_triggered = True
                     current_stop = be_price
                     remaining_qty -= half_qty
-                    if high_5m[i] >= be_price:
-                        pnl_points += (entry_price - be_price) * (remaining_qty / qty)
+                    current_stop = _apply_runner_trail_stop(
+                        direction, entry_price, risk_pts, current_stop,
+                        high_5m[i], low_5m[i],
+                        trail_mode, trail_trigger_r, trail_stop_r,
+                        trail_step_r, trail_gap_r, trail_atr_points,
+                    )
+                    if high_5m[i] >= current_stop:
+                        pnl_points += (entry_price - current_stop) * (remaining_qty / qty)
                         return fill_bar_5m, EXIT_TP1_BE, i, pnl_points, float(fill_bar_1m), -1.0
                     continue
 
@@ -1559,6 +1937,7 @@ class _PreparedCandidate:
     entry_bar_end: int
     flat_bar_start: int
     last_bar: int
+    trail_atr_points: float = 0.0
     # Bar magnifier: 1m bar boundaries (-1 when magnifier is off)
     entry_start_1m: int = -1
     entry_end_1m: int = -1
@@ -2329,6 +2708,7 @@ def _build_htf_lsi_new_sweep_flags(
     in_sweep: np.ndarray,
     high_level_sources: list[dict],
     low_level_sources: list[dict],
+    stale_breach_consumes_pivot: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return per-bar flags for fresh HTF-LSI high-side and low-side sweeps."""
     n = len(high)
@@ -2351,10 +2731,12 @@ def _build_htf_lsi_new_sweep_flags(
             if state["consumed"] or instance_id < 0:
                 continue
             level_price = float(source["prices"][i])
-            if not np.isfinite(level_price) or high[i] <= level_price or not in_sweep[i]:
+            if not np.isfinite(level_price) or high[i] <= level_price:
                 continue
-            state["consumed"] = True
-            if in_entry[i]:
+            valid_sweep = bool(in_sweep[i])
+            if valid_sweep or stale_breach_consumes_pivot:
+                state["consumed"] = True
+            if valid_sweep and in_entry[i]:
                 new_high_sweep[i] = True
 
         for source in low_level_sources:
@@ -2367,10 +2749,12 @@ def _build_htf_lsi_new_sweep_flags(
             if state["consumed"] or instance_id < 0:
                 continue
             level_price = float(source["prices"][i])
-            if not np.isfinite(level_price) or low[i] >= level_price or not in_sweep[i]:
+            if not np.isfinite(level_price) or low[i] >= level_price:
                 continue
-            state["consumed"] = True
-            if in_entry[i]:
+            valid_sweep = bool(in_sweep[i])
+            if valid_sweep or stale_breach_consumes_pivot:
+                state["consumed"] = True
+            if valid_sweep and in_entry[i]:
                 new_low_sweep[i] = True
 
     return new_high_sweep, new_low_sweep
@@ -2469,6 +2853,7 @@ def _build_htf_lsi_pre_entry_cancel_sweep_flags(
         in_sweep=masks["in_sweep"],
         high_level_sources=high_level_sources,
         low_level_sources=low_level_sources,
+        stale_breach_consumes_pivot=config.lsi_stale_breach_consumes_pivot,
     )
 
 
@@ -2643,6 +3028,72 @@ def _compute_vwap_gate_masks(
     return long_ok, short_ok
 
 
+def _compute_structure_vwap_gate_masks(
+    df: pd.DataFrame,
+    session: SessionConfig,
+    vwap: np.ndarray,
+    daily_atr: np.ndarray,
+    orb_high: np.ndarray,
+    orb_low: np.ndarray,
+    orb_ready: np.ndarray,
+    session_day_id: np.ndarray,
+    gate_name: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return 15m structure + VWAP masks on the 5m signal-bar index."""
+    n = len(df)
+    long_ok = np.ones(n, dtype=bool)
+    short_ok = np.ones(n, dtype=bool)
+    if not gate_name:
+        return long_ok, short_ok
+
+    signals = compute_all_15m_signals(
+        df,
+        session,
+        vwap,
+        daily_atr,
+        orb_high,
+        orb_low,
+        orb_ready,
+        session_day_id,
+    )
+    close = signals["close"]
+    valid_vwap_atr = ~np.isnan(vwap) & ~np.isnan(daily_atr) & (daily_atr > 0.0)
+    long_dist = np.divide(
+        close - vwap,
+        daily_atr,
+        out=np.full(n, np.nan, dtype=np.float64),
+        where=valid_vwap_atr,
+    )
+    short_dist = np.divide(
+        vwap - close,
+        daily_atr,
+        out=np.full(n, np.nan, dtype=np.float64),
+        where=valid_vwap_atr,
+    )
+
+    if gate_name == "any2of3_vwap_d10":
+        long_ok = signals["hh_hl_any2of3_bull"] & (long_dist >= 0.10)
+        short_ok = signals["hh_hl_any2of3_bear"] & (short_dist >= 0.10)
+    elif gate_name == "hh_or_hl_vwap_d10":
+        long_ok = signals["hh_or_hl_bull"] & (long_dist >= 0.10)
+        short_ok = signals["hh_or_hl_bear"] & (short_dist >= 0.10)
+    elif gate_name == "score_gte2_vwap_d10":
+        long_ok = (signals["bull_score"] >= 2) & (long_dist >= 0.10)
+        short_ok = (signals["bear_score"] >= 2) & (short_dist >= 0.10)
+    elif gate_name == "hh_hl_2_vwap":
+        long_ok = signals["hh_hl_2_bull"] & (close > vwap)
+        short_ok = signals["hh_hl_2_bear"] & (close < vwap)
+    elif gate_name == "any2of3_vwap":
+        long_ok = signals["hh_hl_any2of3_bull"] & (close > vwap)
+        short_ok = signals["hh_hl_any2of3_bear"] & (close < vwap)
+    else:
+        raise ValueError(f"Unsupported structure_vwap_gate: {gate_name!r}")
+
+    long_ok &= valid_vwap_atr
+    short_ok &= valid_vwap_atr
+    return long_ok, short_ok
+
+
 def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
@@ -2763,6 +3214,21 @@ def _extract_setup_candidates(
         )
         valid_long &= vwap_long_ok
         valid_short &= vwap_short_ok
+
+    if config.strategy in {"continuation", "reversal"} and config.structure_vwap_gate:
+        struct_long_ok, struct_short_ok = _compute_structure_vwap_gate_masks(
+            df,
+            session,
+            vwap,
+            daily_atr,
+            orb_high,
+            orb_low,
+            orb_ready,
+            session_day_id,
+            config.structure_vwap_gate,
+        )
+        valid_long &= struct_long_ok
+        valid_short &= struct_short_ok
 
     # Exclude specific dates (vectorized via numpy isin)
     if exclude_mask is not None:
@@ -2938,6 +3404,7 @@ def _extract_setup_candidates(
             inversion_ordinal=config.htf_lsi_inversion_ordinal,
             max_fvg_to_inversion_bars=config.max_fvg_to_inversion_bars,
             htf_level_tf_minutes=config.htf_level_tf_minutes,
+            stale_breach_consumes_pivot=config.lsi_stale_breach_consumes_pivot,
             lrlr_settings=lrlr_settings,
         )
     elif config.strategy == "reference_lsi":
@@ -4286,6 +4753,7 @@ def _extract_htf_lsi_candidates(
     inversion_ordinal: int = 1,
     max_fvg_to_inversion_bars: int = 0,
     htf_level_tf_minutes: int = 60,
+    stale_breach_consumes_pivot: bool = True,
     lrlr_settings: _LSILRLRSettings | None = None,
 ) -> list[_SetupCandidate]:
     """Extract HTF-LSI candidates using HTF pivots and optional named reference levels."""
@@ -4374,10 +4842,14 @@ def _extract_htf_lsi_candidates(
                 continue
 
             level_price = float(source["prices"][i])
-            if not np.isfinite(level_price) or high[i] <= level_price or not in_sweep[i]:
+            if not np.isfinite(level_price) or high[i] <= level_price:
                 continue
 
-            state["consumed"] = True
+            valid_sweep = bool(in_sweep[i])
+            if valid_sweep or stale_breach_consumes_pivot:
+                state["consumed"] = True
+            if not valid_sweep:
+                continue
             level_key = (str(source["source_name"]), instance_id)
             if not in_entry[i] or level_key in armed_high_instances:
                 continue
@@ -4410,10 +4882,14 @@ def _extract_htf_lsi_candidates(
                 continue
 
             level_price = float(source["prices"][i])
-            if not np.isfinite(level_price) or low[i] >= level_price or not in_sweep[i]:
+            if not np.isfinite(level_price) or low[i] >= level_price:
                 continue
 
-            state["consumed"] = True
+            valid_sweep = bool(in_sweep[i])
+            if valid_sweep or stale_breach_consumes_pivot:
+                state["consumed"] = True
+            if not valid_sweep:
+                continue
             level_key = (str(source["source_name"]), instance_id)
             if not in_entry[i] or level_key in armed_low_instances:
                 continue
@@ -6451,6 +6927,8 @@ def run_backtest(
                     close_series.ewm(span=period, adjust=False, min_periods=period).mean().shift(1).to_numpy(dtype=np.float64)
                 )
 
+    runner_trail_mode = _runner_trail_mode_code(config.runner_trail_mode)
+
     for session in config.sessions:
         # Extract candidates (vectorized); reuses _signal_cache when provided
         candidates = _extract_setup_candidates(
@@ -6676,6 +7154,10 @@ def run_backtest(
                 tp2 = entry - tp2_dist
                 be = entry
 
+            trail_atr_points = 0.0
+            if runner_trail_mode == RUNNER_TRAIL_ATR:
+                trail_atr_points = (config.runner_trail_atr_pct / 100.0) * atr
+
             # Look up precomputed boundaries using the signal bar's session day
             sd = session_day_id[cand.signal_bar]
 
@@ -6739,6 +7221,7 @@ def run_backtest(
                 entry_bar_end=entry_bar_end,
                 flat_bar_start=flat_bar_start,
                 last_bar=last_bar,
+                trail_atr_points=trail_atr_points,
                 entry_start_1m=entry_start_1m,
                 entry_end_1m=entry_end_1m,
                 flat_start_1m=flat_start_1m_val,
@@ -6782,6 +7265,12 @@ def run_backtest(
                     pre_entry_cancel_requires_new_htf_lsi_sweep,
                     pre_entry_new_high_sweep_5m,
                     pre_entry_new_low_sweep_5m,
+                    runner_trail_mode,
+                    config.runner_trail_trigger_r,
+                    config.runner_trail_stop_r,
+                    config.runner_trail_step_r,
+                    config.runner_trail_gap_r,
+                    pc.trail_atr_points,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                     pc.pre_entry_cancel_target_price,
@@ -6799,6 +7288,12 @@ def run_backtest(
                     pre_entry_cancel_requires_new_htf_lsi_sweep,
                     pre_entry_new_high_sweep_1m,
                     pre_entry_new_low_sweep_1m,
+                    runner_trail_mode,
+                    config.runner_trail_trigger_r,
+                    config.runner_trail_stop_r,
+                    config.runner_trail_step_r,
+                    config.runner_trail_gap_r,
+                    pc.trail_atr_points,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                     pc.pre_entry_cancel_target_price,
@@ -6820,6 +7315,12 @@ def run_backtest(
                     pre_entry_cancel_requires_new_htf_lsi_sweep,
                     pre_entry_new_high_sweep_5m,
                     pre_entry_new_low_sweep_5m,
+                    runner_trail_mode,
+                    config.runner_trail_trigger_r,
+                    config.runner_trail_stop_r,
+                    config.runner_trail_step_r,
+                    config.runner_trail_gap_r,
+                    pc.trail_atr_points,
                     pc.internal_swing_level,
                     pc.cancel_on_swing,
                     pc.pre_entry_cancel_target_price,
@@ -6987,6 +7488,7 @@ def run_backtest(
                 entry_bar_end=pc.entry_bar_end,
                 flat_bar_start=pc.flat_bar_start,
                 last_bar=pc.last_bar,
+                trail_atr_points=pc.trail_atr_points,
                 entry_start_1m=pc.entry_start_1m,
                 entry_end_1m=pc.entry_end_1m,
                 flat_start_1m=pc.flat_start_1m,
@@ -7208,6 +7710,7 @@ def run_backtest(
                             entry_bar_end=pc.entry_bar_end,
                             flat_bar_start=pc.flat_bar_start,
                             last_bar=pc.last_bar,
+                            trail_atr_points=pc.trail_atr_points,
                             entry_start_1m=pc.entry_start_1m,
                             entry_end_1m=pc.entry_end_1m,
                             flat_start_1m=pc.flat_start_1m,

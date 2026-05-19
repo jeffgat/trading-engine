@@ -136,6 +136,7 @@ def _extract_candidates(
     entry_mode: str = "close",
     close_on_sweep_to_inversion_minutes: int = 0,
     confirmation_mode: str = "inversion",
+    stale_breach_consumes_pivot: bool = True,
 ) -> list[_SetupCandidate]:
     timestamps = df.index
     hour = timestamps.hour.values
@@ -173,6 +174,7 @@ def _extract_candidates(
         close_on_sweep_to_inversion_minutes=close_on_sweep_to_inversion_minutes,
         confirmation_mode=confirmation_mode,
         htf_level_tf_minutes=60,
+        stale_breach_consumes_pivot=stale_breach_consumes_pivot,
     )
 
 
@@ -296,7 +298,7 @@ def test_htf_lsi_pre_entry_breach_invalidates_without_arming() -> None:
     assert candidates == []
 
 
-def test_htf_lsi_breach_outside_broad_scan_does_not_consume() -> None:
+def test_htf_lsi_breach_outside_broad_scan_consumes_by_default() -> None:
     df = _df(
         [99.0, 99.0, 100.0, 100.0, 100.0],
         [101.0, 99.5, 100.0, 101.5, 100.5],
@@ -312,6 +314,31 @@ def test_htf_lsi_breach_outside_broad_scan_does_not_consume() -> None:
 
     htf_levels = _htf_level_arrays(len(df), high_price=100.0)
     candidates = _extract_candidates(df, fvg, htf_levels)
+
+    assert candidates == []
+
+
+def test_htf_lsi_breach_outside_broad_scan_can_preserve_legacy_mode() -> None:
+    df = _df(
+        [99.0, 99.0, 100.0, 100.0, 100.0],
+        [101.0, 99.5, 100.0, 101.5, 100.5],
+        [98.5, 98.5, 99.5, 99.5, 97.0],
+        [100.0, 99.0, 100.0, 100.0, 97.0],
+        start="08:25",
+    )
+    fvg = _empty_lsi_fvg(len(df))
+    fvg["long_fvg"][2] = True
+    fvg["long_fvg_bottom"][2] = 98.0
+    fvg["long_entry_price"][2] = 101.0
+    fvg["long_gap_size"][2] = 3.0
+
+    htf_levels = _htf_level_arrays(len(df), high_price=100.0)
+    candidates = _extract_candidates(
+        df,
+        fvg,
+        htf_levels,
+        stale_breach_consumes_pivot=False,
+    )
 
     assert len(candidates) == 1
     assert candidates[0].direction == -1
@@ -334,7 +361,7 @@ def test_htf_lsi_timed_hybrid_switches_entry_mode_at_threshold() -> None:
     fvg["long_entry_price"][2] = 101.0
     fvg["long_gap_size"][2] = 3.0
 
-    htf_levels = _htf_level_arrays(len(df), high_price=100.0)
+    htf_levels = _htf_level_arrays(len(df), high_price=101.0)
 
     limit_candidates = _extract_candidates(
         df,

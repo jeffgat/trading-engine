@@ -16,6 +16,17 @@ interface LogViewerProps {
   activeConfig: string;
 }
 
+const baseLogRowClass =
+  "grid items-start gap-3 border-b border-border/45 px-3 py-1 hover:bg-bg-card-hover";
+const mainLogRowClass = `${baseLogRowClass} min-w-[960px] grid-cols-[5.5rem_4rem_10rem_minmax(28rem,1fr)]`;
+const tradeLogRowClass = `${baseLogRowClass} min-w-[1180px] grid-cols-[5.5rem_minmax(4.5rem,9rem)_6.5rem_13rem_minmax(32rem,1fr)]`;
+
+function formatDetails(details: Record<string, string>) {
+  return Object.entries(details)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(" ");
+}
+
 export function LogViewer({
   mainEntries,
   mainTotal,
@@ -25,7 +36,6 @@ export function LogViewer({
   tradeTotal,
   tradeLoading,
   loadMoreTrade,
-  activeConfig: _activeConfig,
 }: LogViewerProps) {
   const [tab, setTab] = useState<"main" | "trade">("main");
   const [search, setSearch] = useState("");
@@ -171,20 +181,20 @@ export function LogViewer({
                 {filteredMain.map((entry, i) => (
                   <div
                     key={`${entry.timestamp}-${i}`}
-                    className="flex gap-2 border-b border-border/20 px-3 py-1 hover:bg-bg-card-hover"
+                    className={mainLogRowClass}
                   >
                     <span className="text-text-muted whitespace-nowrap">
                       {entry.timestamp.split(" ")[1] ?? entry.timestamp}
                     </span>
                     <span
-                      className={`w-12 text-right ${LOG_LEVEL_COLORS[entry.level.trim()] ?? "text-text-secondary"}`}
+                      className={`text-right ${LOG_LEVEL_COLORS[entry.level.trim()] ?? "text-text-secondary"}`}
                     >
                       {entry.level.trim()}
                     </span>
-                    <span className="text-text-muted truncate max-w-32">
+                    <span className="min-w-0 truncate text-text-muted" title={entry.logger}>
                       {entry.logger}
                     </span>
-                    <span className="text-text-secondary flex-1">
+                    <span className="min-w-0 break-words text-text-secondary">
                       {entry.message}
                     </span>
                   </div>
@@ -203,28 +213,30 @@ export function LogViewer({
                 {filteredTrade.map((entry, i) => (
                   <div
                     key={`${entry.timestamp}-${i}`}
-                    className="flex gap-2 border-b border-border/20 px-3 py-1 hover:bg-bg-card-hover"
+                    className={tradeLogRowClass}
                   >
                     <span className="text-text-muted whitespace-nowrap">
                       {entry.timestamp.split(" ")[1] ?? entry.timestamp}
                     </span>
                     {entry.config && (
                       <span
-                        className={`inline-flex items-center rounded border px-1 py-0 text-[10px] font-medium ${
+                        className={`inline-flex min-w-0 max-w-full items-center justify-self-start rounded border px-1.5 py-0 text-[10px] font-medium leading-4 ${
                           CONFIG_COLORS[entry.config] ?? "bg-text-muted/20 text-text-muted border-text-muted/30"
                         }`}
+                        title={entry.config}
                       >
-                        {entry.config}
+                        <span className="min-w-0 truncate">{entry.config}</span>
                       </span>
                     )}
-                    <span className="text-info w-10">{entry.session}</span>
-                    <span className="text-text-primary font-medium w-24">
+                    {!entry.config && <span />}
+                    <span className="min-w-0 truncate text-info" title={entry.session}>
+                      {entry.session}
+                    </span>
+                    <span className="min-w-0 truncate font-medium text-text-primary" title={entry.event}>
                       {entry.event}
                     </span>
-                    <span className="text-text-secondary flex-1">
-                      {Object.entries(entry.details)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join(" ")}
+                    <span className="min-w-0 break-words text-text-secondary">
+                      {formatDetails(entry.details)}
                     </span>
                   </div>
                 ))}

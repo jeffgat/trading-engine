@@ -200,7 +200,7 @@ export function BacktestDashboard() {
                             </div>
                         )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                         {/* Row actions */}
                         <button
                             onClick={() => activeId && starBacktest(activeId)}

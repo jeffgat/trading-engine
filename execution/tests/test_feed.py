@@ -235,6 +235,12 @@ class TestDataBentoFeedIngestion:
         assert "NQ.FUT" in feed._atrs
         assert "NQ.FUT" not in feed._aggregators
 
+    def test_mbp10_streaming_disabled_by_default(self):
+        feed = DataBentoFeed(symbols=["NQ.FUT"])
+
+        assert feed.enable_mbp10 is False
+        assert feed.on_orderbook is None
+
     def test_live_and_preload_use_identical_1m_ingestion(self):
         minutes = range(30, 45)  # interval-start stamped 09:30-09:44 bars
 
@@ -289,6 +295,66 @@ class TestDataBentoFeedIngestion:
         )
         assert completed is not None
         assert completed.timestamp == make_dt("2025-01-15", "20:15")
+
+    async def test_mbp10_record_emits_top_of_book_sample(self):
+        samples = []
+
+        async def on_orderbook(sample):
+            samples.append(sample)
+
+        class Level:
+            bid_px = 19500.25 * 1e9
+            ask_px = 19500.50 * 1e9
+
+        class Record:
+            instrument_id = 123
+            ts_event = int(make_dt("2025-01-15", "09:55").timestamp() * 1e9)
+            levels = [Level()]
+
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            enable_mbp10=True,
+            on_orderbook=on_orderbook,
+        )
+        feed._id_to_symbol[123] = "NQ.FUT"
+        feed._id_to_raw[123] = "NQH5"
+
+        await feed._handle_mbp10(Record())
+
+        assert len(samples) == 1
+        assert samples[0].symbol == "NQ.FUT"
+        assert samples[0].raw_symbol == "NQH5"
+        assert samples[0].bid == pytest.approx(19500.25)
+        assert samples[0].ask == pytest.approx(19500.50)
+        assert feed._front_month["NQ.FUT"] == 123
+
+    async def test_mbp10_record_skips_non_front_contract(self):
+        samples = []
+
+        async def on_orderbook(sample):
+            samples.append(sample)
+
+        class Level:
+            bid_px = 19500.25 * 1e9
+            ask_px = 19500.50 * 1e9
+
+        class Record:
+            instrument_id = 999
+            ts_event = int(make_dt("2025-01-15", "09:55").timestamp() * 1e9)
+            levels = [Level()]
+
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            enable_mbp10=True,
+            on_orderbook=on_orderbook,
+        )
+        feed._front_month["NQ.FUT"] = 123
+        feed._id_to_symbol[999] = "NQ.FUT"
+        feed._id_to_raw[999] = "NQM5"
+
+        await feed._handle_mbp10(Record())
+
+        assert samples == []
 
 
 # =============================================================================

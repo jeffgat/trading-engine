@@ -236,6 +236,42 @@ class TradersPostClient:
             "delay": 3,
         })
 
+    async def send_runner_stop_update(
+        self,
+        direction: str,
+        qty: float,
+        stop_price: float,
+        tp2: float,
+        ticker: str | None = None,
+    ) -> list[WebhookResult]:
+        """Replace the runner stop after TP1 and re-attach the runner TP2 limit."""
+        t = self._resolve_ticker(ticker)
+        close_action = "sell" if direction == "long" else "buy"
+        results = []
+
+        results.append(await self._post({
+            "ticker": t,
+            "action": close_action,
+            "orderType": "stop",
+            "stopPrice": stop_price,
+            "quantity": qty,
+            "sentiment": "flat",
+            "delay": 3,
+        }))
+
+        results.append(await self._post({
+            "ticker": t,
+            "action": close_action,
+            "orderType": "limit",
+            "limitPrice": tp2,
+            "quantity": qty,
+            "sentiment": "flat",
+            "cancel": False,
+            "delay": 5,
+        }))
+
+        return results
+
     # ------------------------------------------------------------------
     # Flatten / Cancel (Pine: lines 789-803)
     # ------------------------------------------------------------------
@@ -307,6 +343,18 @@ class MultiBroker:
 
         results = await asyncio.gather(*[_send_tp1_single(b) for b in active], return_exceptions=True)
         return results[0] if results else None
+
+    async def send_runner_stop_update(self, direction, qty, stop_price, tp2, ticker=None):
+        active = [b for b in self._brokers if not b.paused]
+        if not active:
+            return []
+
+        async def _send_runner_stop_update(b: TradersPostClient):
+            scaled_qty = max(1, round(qty * b.multiplier))
+            return await b.send_runner_stop_update(direction, scaled_qty, stop_price, tp2, ticker=ticker)
+
+        results = await asyncio.gather(*[_send_runner_stop_update(b) for b in active], return_exceptions=True)
+        return results[0] if results else []
 
     async def send_flatten(self, ticker=None):
         active = [b for b in self._brokers if not b.paused]

@@ -6,14 +6,6 @@
 - TP1 ratio values: `[0.4, 0.5, 0.6, 0.7, 0.8]`; rows with `rr * tp1_ratio < 1.0` skipped.
 - Deployability for swept rows: `live_native`; exact replay still required before execution-config promotion.
 
-## Verdict
-
-- Target tuning shows **incremental progress**, not a new regime of edge.
-- Best all-weekday additive score: `rr=2.50`, `tp1=0.40`; improves post-2023 by `+1.7R` and phase-one EV by `+0.12R`, but gives back `-0.6R` in 2025 and slightly worsens full-history DD.
-- Best no-Thursday additive practical row: `rr=2.50`, `tp1=0.40`; only adds `+0.4R` post-2023, but improves post-2023 phase-one payout from `71.3%` to `82.8%`, breach from `11.5%` to `8.0%`, and EV from `3.79R` to `4.18R`.
-- Best pure-CISD practical row: `rr=2.00`, `tp1=0.60`; improves post-2023 by `+4.5R`, PF to `2.00`, DD to `-2.4R`, 2025 by `+0.4R`, and phase-one EV to `4.74R` with `0.0%` breaches. This is the strongest target-sweep finding for pure CISD despite the full-history profile remaining modest.
-- Promotion read: advance `noThu additive rr=2.50/tp1=0.40` and `pure CISD rr=2.00/tp1=0.60` to exact replay / execution compatibility review. Keep `allDOW additive rr=2.00/tp1=0.50` as the plain benchmark.
-
 ## Top Rows
 
 | Rank | Candidate | Robust | Full R/PF/DD | V R/PF | H R/PF | Post-2023 R/PF/DD | 2025 R | Neg Years |
@@ -51,9 +43,9 @@
 ### add_1m_classic_atr10_b3_a7p5__both__noThu__cut1530
 - `rr=2.50`, `tp1=0.40`: post-2023 `32.7R` PF `1.67` DD `-6.6`; 2025 `7.0R`; delta post-2023 `+0.4R`, delta 2025 `-0.9R`; phase-one post-2023 payout `82.8%`, breach `8.0%`, EV `4.18R`.
 - `rr=2.00`, `tp1=0.50`: post-2023 `32.3R` PF `1.66` DD `-7.1`; 2025 `7.9R`; delta post-2023 `+0.0R`, delta 2025 `+0.0R`; phase-one post-2023 payout `71.3%`, breach `11.5%`, EV `3.79R`.
-- `rr=1.75`, `tp1=0.60`: post-2023 `32.5R` PF `1.65` DD `-6.3`; 2025 `7.9R`; delta post-2023 `+0.1R`, delta 2025 `-0.0R`.
-- `rr=1.50`, `tp1=0.70`: post-2023 `29.5R` PF `1.59` DD `-5.8`; 2025 `6.3R`; delta post-2023 `-2.8R`, delta 2025 `-1.6R`.
-- `rr=2.75`, `tp1=0.40`: post-2023 `33.1R` PF `1.62` DD `-8.5`; 2025 `6.1R`; delta post-2023 `+0.7R`, delta 2025 `-1.8R`.
+- `rr=1.75`, `tp1=0.60`: post-2023 `32.5R` PF `1.65` DD `-6.3`; 2025 `7.9R`; delta post-2023 `+0.1R`, delta 2025 `-0.0R`; phase-one post-2023 payout `74.7%`, breach `6.9%`, EV `4.16R`.
+- `rr=1.50`, `tp1=0.70`: post-2023 `29.5R` PF `1.59` DD `-5.8`; 2025 `6.3R`; delta post-2023 `-2.8R`, delta 2025 `-1.6R`; phase-one post-2023 payout `73.6%`, breach `5.7%`, EV `4.18R`.
+- `rr=2.75`, `tp1=0.40`: post-2023 `33.1R` PF `1.62` DD `-8.5`; 2025 `6.1R`; delta post-2023 `+0.7R`, delta 2025 `-1.8R`; phase-one post-2023 payout `77.0%`, breach `10.3%`, EV `3.94R`.
 
 ### pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200
 - `rr=1.50`, `tp1=0.80`: post-2023 `18.1R` PF `1.90` DD `-2.6`; 2025 `4.1R`; delta post-2023 `+2.7R`, delta 2025 `+1.7R`; phase-one post-2023 payout `88.5%`, breach `0.0%`, EV `4.67R`.
@@ -93,3 +85,4 @@
 - `pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200__rr2p5__tp1_0p5`: dScore `+0.15`, dPost23 `+3.7R`, dPF `+0.05`, d2025 `+0.4R`, dFullDD `-2.1`.
 - `pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200__rr1p75__tp1_0p6`: dScore `+0.15`, dPost23 `-0.8R`, dPF `-0.10`, d2025 `-0.3R`, dFullDD `+0.1`.
 - `pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200__rr2p0__tp1_0p5`: dScore `+0.00`, dPost23 `+0.0R`, dPF `+0.00`, d2025 `+0.0R`, dFullDD `+0.0`.
+

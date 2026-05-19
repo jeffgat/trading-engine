@@ -239,6 +239,7 @@ def _write_trade_to_db(record: "TradeRecord") -> None:
             import json
             import urllib.request
             trade_dict = asdict(record)
+            entry_context = trade_dict.get("entry_context") or {}
             # Remap fields for DB schema
             payload = {
                 "trade": {
@@ -258,6 +259,10 @@ def _write_trade_to_db(record: "TradeRecord") -> None:
                     "ticker": trade_dict.get("ticker", ""),
                     "exec_ticker": trade_dict.get("exec_ticker", ""),
                     "leg": trade_dict.get("leg") or trade_dict["session"],
+                    "notes": json.dumps(
+                        {"entry_context": entry_context},
+                        sort_keys=True,
+                    ) if entry_context else None,
                 }
             }
             data = json.dumps(payload).encode()
@@ -384,6 +389,7 @@ def _enrich_live_trades(trades: list[dict], state: "DashboardState") -> list[dic
             row["entry_timestamp"] = row.get("entry_timestamp") or getattr(history, "entry_timestamp", "")
             row["ticker"] = row.get("ticker") or getattr(history, "ticker", "")
             row["exec_ticker"] = row.get("exec_ticker") or getattr(history, "exec_ticker", "")
+            row["entry_context"] = row.get("entry_context") or getattr(history, "entry_context", {})
             for field in (
                 "gross_pnl_usd",
                 "commission_per_contract",
@@ -424,6 +430,7 @@ class DashboardState:
     trade_history: list[TradeRecord] = field(default_factory=list)
     exec_configs: dict[str, dict] = field(default_factory=dict)
     multi_brokers_by_config: dict[str, Any] = field(default_factory=dict)
+    orderbook_status: dict[str, Any] = field(default_factory=dict)
     _ws_clients: set[WebSocket] = field(default_factory=set, repr=False)
 
     def __post_init__(self) -> None:
@@ -494,6 +501,7 @@ class DashboardState:
             },
             "uptime_seconds": round(time.time() - self.start_time),
             "mode": self.mode,
+            "orderbook": self.orderbook_status,
         }
 
 
@@ -1551,10 +1559,19 @@ def _session_info(engine) -> dict:
             "exit_mode": getattr(engine, "exit_mode", "split"),
             "min_gap_atr_pct": engine.min_gap_atr_pct,
             "min_stop_points": engine.min_stop_points,
+            "stop_atr_pct": getattr(engine, "stop_atr_pct", 0.0),
             "fvg_window_right": engine.fvg_window_right,
             "fvg_window_left": engine.fvg_window_left,
             "lsi_entry_mode": engine.lsi_entry_mode,
+            "lsi_stop_mode": getattr(engine, "lsi_stop_mode", "absolute"),
+            "lsi_target_mode": getattr(engine, "lsi_target_mode", "risk"),
+            "lsi_confirmation_mode": getattr(engine, "lsi_confirmation_mode", "inversion"),
             "lsi_variant": engine.lsi_variant,
+            "lsi_reset_swing_window_on_new_day": getattr(engine, "lsi_reset_swing_window_on_new_day", True),
+            "base_bar_minutes": getattr(engine, "base_bar_minutes", 5),
+            "cisd_min_leg_bars": getattr(engine, "cisd_min_leg_bars", None),
+            "cisd_min_leg_atr_pct": getattr(engine, "cisd_min_leg_atr_pct", None),
+            "cisd_max_leg_bars": getattr(engine, "cisd_max_leg_bars", None),
             "htf_level_tf_minutes": engine.htf_level_tf_minutes,
             "htf_n_left": engine.htf_n_left,
             "htf_trade_max_per_session": engine.htf_trade_max_per_session,

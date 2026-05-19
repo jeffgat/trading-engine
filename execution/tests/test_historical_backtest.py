@@ -8,9 +8,11 @@ from trader.engine import Bar
 from trader.historical_backtest import (
     BACKTEST_REPORTING_RISK_USD,
     _build_config_dict,
+    _timeframe_for_minutes,
     run_profile_backtest_sync,
 )
 from trader.main import ExecutionConfig
+from trader.orderbook_features import DynamicSizingDecision
 
 
 def test_build_config_dict_uses_backtest_reporting_risk() -> None:
@@ -36,6 +38,10 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
                 "flat_end": "04:00",
                 "regime_gates": ["block_full_medium_vol"],
                 "lsi_variant": "legacy-LSI",
+                "lsi_confirmation_mode": "cisd",
+                "lsi_stop_mode": "atr_pct",
+                "stop_atr_pct": 15.0,
+                "base_bar_minutes": 1,
             }
         },
     )
@@ -50,6 +56,16 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
     assert config["nq_asia_lsi_regime_gates"] == ["block_full_medium_vol"]
     assert config["nq_asia_lsi_regime_gate"] == "block_full_medium_vol"
     assert config["nq_asia_lsi_lsi_variant"] == "legacy-LSI"
+    assert config["nq_asia_lsi_lsi_confirmation_mode"] == "cisd"
+    assert config["nq_asia_lsi_lsi_stop_mode"] == "atr_pct"
+    assert config["nq_asia_lsi_stop_atr_pct"] == 15.0
+    assert config["nq_asia_lsi_base_bar_minutes"] == 1
+
+
+def test_timeframe_for_minutes_supports_3m_lsi_probe() -> None:
+    assert _timeframe_for_minutes(1) == "1m"
+    assert _timeframe_for_minutes(3) == "3m"
+    assert _timeframe_for_minutes(5) == "5m"
 
 
 def test_run_profile_backtest_wires_daily_history_provider(monkeypatch) -> None:
@@ -127,3 +143,79 @@ def test_run_profile_backtest_wires_daily_history_provider(monkeypatch) -> None:
         (pd.Timestamp("2025-01-03").date(), 100.5, 101.5, 100.0, 101.0),
         (pd.Timestamp("2025-01-06").date(), 101.0, 102.0, 100.5, 101.5),
     ]
+
+
+def test_run_profile_backtest_attaches_shadow_dynamic_sizing_provider(monkeypatch) -> None:
+    class FakeState:
+        value = "flat"
+
+    class FakeLsiEngine:
+        def __init__(self) -> None:
+            self.name = "NQ_NY_LSI_PURE_1M"
+            self.atr_length = 14
+            self.base_bar_minutes = 5
+            self.state = FakeState()
+            self.on_trade_exit = None
+            self.dynamic_sizing_provider = None
+            self.dynamic_sizing_shadow = False
+
+        async def on_bar(self, _bar, _atr) -> None:
+            return None
+
+        async def on_tick(self, _bar, _atr) -> None:
+            return None
+
+    engine = FakeLsiEngine()
+
+    def provider(_context):
+        return DynamicSizingDecision(
+            feature="confirm_last_10s_mid_velocity_ticks_per_second",
+            risk_weight=1.5,
+            tier="high",
+            active=True,
+            reason="test",
+        )
+
+    monkeypatch.setattr(
+        "trader.historical_backtest.load_exec_configs",
+        lambda _config: [ExecutionConfig(name="TEST", lsi_session_overrides={"NQ_NY_LSI_PURE_1M": {}})],
+    )
+    monkeypatch.setattr(
+        "trader.historical_backtest.build_engines",
+        lambda *_args, **_kwargs: ([], {"NQ.FUT": [engine]}, {"NQ.FUT": {14}}),
+    )
+    monkeypatch.setattr(
+        "trader.historical_backtest.build_lsi_engines",
+        lambda *_args, **_kwargs: [engine],
+    )
+    monkeypatch.setattr(
+        "trader.historical_backtest._seed_daily_bars",
+        lambda _symbol, _replay_start: [],
+    )
+    monkeypatch.setattr(
+        "trader.historical_backtest._read_parquet_frame",
+        lambda *_args, **_kwargs: pd.DataFrame(
+            {
+                "open": [101.0],
+                "high": [102.0],
+                "low": [100.5],
+                "close": [101.5],
+                "volume": [1000],
+            },
+            index=pd.DatetimeIndex([pd.Timestamp("2025-01-06 09:30", tz="America/New_York")]),
+        ),
+    )
+
+    result = run_profile_backtest_sync(
+        config={"risk": {}, "sessions": {}},
+        profile_name="TEST",
+        start_date="2025-01-06",
+        end_date="2025-01-06",
+        latest_data_ts=datetime(2025, 1, 6, 9, 35),
+        dynamic_sizing_providers={"NQ_NY_LSI_PURE_1M": provider},
+        dynamic_sizing_shadow=True,
+    )
+
+    assert result["trades"] == []
+    assert engine.dynamic_sizing_provider is provider
+    assert engine.dynamic_sizing_shadow is True

@@ -61,18 +61,18 @@ export function ExecutionApp() {
     return (
         <>
             {/* Execution header */}
-            <header className="sticky top-0 z-10 border-b border-border bg-bg-secondary/80 backdrop-blur-sm">
+            <header className="sticky top-0 z-10 border-b border-border bg-bg-secondary/70 backdrop-blur-sm">
                 {/* Tab nav */}
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 flex items-center justify-between">
-                    <nav className="flex gap-1 -mb-px">
+                <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2 sm:px-6">
+                    <nav className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-bg-primary/70 p-1">
                         {TABS.map(({ key, label }) => (
                             <button
                                 key={key}
                                 onClick={() => setActiveTab(key)}
-                                className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+                                className={`min-h-9 shrink-0 rounded-md px-4 font-mono text-sm font-semibold lowercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40 ${
                                     activeTab === key
-                                        ? 'border-accent text-text-primary'
-                                        : 'border-transparent text-text-muted hover:text-text-secondary hover:border-border'
+                                        ? 'bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]'
+                                        : 'text-text-secondary hover:bg-bg-card-hover hover:text-foreground'
                                 }`}>
                                 {label}
                             </button>

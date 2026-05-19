@@ -738,6 +738,40 @@ LSI_SESSION_CONFIGS = {
         "lsi_n_right": 60,
         "lsi_variant": "legacy-LSI",
     },
+    # --- NQ NY pure 1m CISD-LSI survivor for order-book velocity sizing ---
+    "NQ_NY_LSI_PURE_1M": {
+        "entry_start": "09:35",
+        "entry_end": "12:00",
+        "sweep_start": "09:30",
+        "sweep_end": "15:30",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "rr": 2.0,
+        "tp1_ratio": 0.5,
+        "min_gap_atr_pct": 5.0,
+        "min_stop_points": 0.0,
+        "stop_atr_pct": 15.0,
+        "fvg_window_right": 25,
+        "fvg_window_left": 100,
+        "lsi_entry_mode": "level_limit",
+        "lsi_stop_mode": "atr_pct",
+        "lsi_confirmation_mode": "cisd",
+        "lsi_variant": "legacy-LSI",
+        "instrument": "NQ",
+        "atr_length": 10,
+        "long_only": True,
+        "excluded_dow": None,
+        "qty_multiplier": 1.0,
+        "risk_usd": 250,
+        "max_single_risk_usd": 500,
+        "lsi_n_left": 40,
+        "lsi_n_right": 300,
+        "lsi_reset_swing_window_on_new_day": False,
+        "cisd_min_leg_bars": 2,
+        "cisd_min_leg_atr_pct": 7.5,
+        "cisd_max_leg_bars": 300,
+        "base_bar_minutes": 1,
+    },
     # --- ES NY HTF-LSI hot-regime dry-run candidate ---
     "ES_NY_LSI": {
         "entry_start": "08:30",
@@ -824,6 +858,46 @@ def _env_or_key(cfg: dict, key: str, env_key: str | None = None) -> str:
     if env_from_cfg and env_from_cfg in os.environ:
         return os.environ[env_from_cfg]
     return cfg.get(key, "")
+
+
+def _string_set(value) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        return {value}
+    return {str(item) for item in value if str(item)}
+
+
+def _resolve_orderbook_runtime_config(config: dict) -> dict:
+    """Resolve zero-cost-safe order-book runtime settings."""
+    db_cfg = config.get("databento", {})
+    orderbook_cfg = config.get("orderbook", {})
+    enable_mbp10 = bool(
+        orderbook_cfg.get("enable_mbp10", False)
+        or db_cfg.get("enable_mbp10", False)
+    )
+    mbp10_cost_ack = bool(
+        orderbook_cfg.get("mbp10_cost_ack", False)
+        or db_cfg.get("mbp10_cost_ack", False)
+    )
+    if enable_mbp10 and not mbp10_cost_ack:
+        raise ValueError(
+            "MBP-10 streaming can incur DataBento/exchange fees. "
+            "Set [orderbook].mbp10_cost_ack = true to enable it intentionally."
+        )
+
+    shadow_enabled = bool(orderbook_cfg.get("dynamic_sizing_shadow_enabled", False))
+    apply_enabled = bool(orderbook_cfg.get("dynamic_sizing_enabled", False)) and not shadow_enabled
+    provider_enabled = bool(apply_enabled or shadow_enabled)
+    return {
+        "enable_mbp10": enable_mbp10,
+        "mbp10_cost_ack": mbp10_cost_ack,
+        "dynamic_sizing_enabled": apply_enabled,
+        "dynamic_sizing_shadow_enabled": shadow_enabled,
+        "provider_enabled": provider_enabled,
+        "dynamic_sizing_sessions": _string_set(orderbook_cfg.get("dynamic_sizing_sessions", [])),
+        "retention_seconds": float(orderbook_cfg.get("retention_seconds", 90.0)),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1147,6 +1221,12 @@ def build_engines(
             wide_stop_target_threshold_points=merged.get("wide_stop_target_threshold_points", 0.0),
             wide_stop_target_rr=merged.get("wide_stop_target_rr", 0.0),
             limit_cancel_on_pre_entry_target_touch=merged.get("limit_cancel_on_pre_entry_target_touch", ""),
+            runner_trail_mode=merged.get("runner_trail_mode", ""),
+            runner_trail_trigger_r=merged.get("runner_trail_trigger_r", 0.0),
+            runner_trail_stop_r=merged.get("runner_trail_stop_r", 0.0),
+            runner_trail_step_r=merged.get("runner_trail_step_r", 1.0),
+            runner_trail_gap_r=merged.get("runner_trail_gap_r", 1.0),
+            runner_trail_atr_pct=merged.get("runner_trail_atr_pct", 0.0),
             ath_block_min_pct=merged.get("ath_block_min_pct", 0.0),
             ath_block_max_pct=merged.get("ath_block_max_pct", 0.0),
             excluded_dow=merged.get("excluded_dow"),
@@ -1172,6 +1252,7 @@ def build_engines(
                 engine_type=merged.get("engine_type", "hunter_orb"),
                 body_min_pct=merged.get("body_min_pct", 55.0),
                 rejection_wick_max_pct=merged.get("rejection_wick_max_pct", 20.0),
+                hunter_entry_basis=merged.get("hunter_entry_basis", "signal_close"),
                 sl_buffer_points=merged.get("sl_buffer_points", 1.0),
                 hunter_target_rr=merged.get("hunter_target_rr", 2.0),
                 large_sl_threshold_points=merged.get("large_sl_threshold_points", 50.0),
@@ -1327,12 +1408,14 @@ def build_lsi_engines(
             atr_length=sess_atr_length,
             min_gap_atr_pct=merged.get("min_gap_atr_pct", 5.0),
             min_stop_points=merged.get("min_stop_points", 0.0),
+            stop_atr_pct=merged.get("stop_atr_pct", 0.0),
             fvg_window_left=merged.get("fvg_window_left", 10),
             fvg_window_right=merged.get("fvg_window_right", 5),
             lsi_entry_mode=merged.get("lsi_entry_mode", "close"),
             lsi_close_on_sweep_to_inversion_minutes=merged.get("lsi_close_on_sweep_to_inversion_minutes", 0),
             lsi_stop_mode=merged.get("lsi_stop_mode", "absolute"),
             lsi_target_mode=merged.get("lsi_target_mode", "risk"),
+            lsi_confirmation_mode=merged.get("lsi_confirmation_mode", "inversion"),
             lsi_variant=merged.get("lsi_variant", "legacy-LSI"),
             risk_usd=risk_usd_value,
             point_value=exec_inst["point_value"],
@@ -1340,6 +1423,7 @@ def build_lsi_engines(
             min_qty=merged.get("min_qty", risk.get("min_qty", 1.0)),
             qty_step=risk.get("qty_step", 1.0),
             qty_multiplier=merged.get("qty_multiplier", 1.0),
+            dynamic_sizing_shadow=merged.get("dynamic_sizing_shadow", False),
             min_tick=exec_inst["min_tick"],
             max_single_risk_usd=max_single_risk_usd_value,
             wide_stop_target_threshold_points=merged.get("wide_stop_target_threshold_points", 0.0),
@@ -1360,6 +1444,12 @@ def build_lsi_engines(
             htf_n_left=merged.get("htf_n_left", 5),
             htf_trade_max_per_session=merged.get("htf_trade_max_per_session", 1),
             max_fvg_to_inversion_bars=merged.get("max_fvg_to_inversion_bars", 0),
+            lsi_stale_breach_consumes_pivot=merged.get("lsi_stale_breach_consumes_pivot", True),
+            lsi_reset_swing_window_on_new_day=merged.get("lsi_reset_swing_window_on_new_day", True),
+            cisd_min_leg_bars=merged.get("cisd_min_leg_bars", 2),
+            cisd_min_leg_atr_pct=merged.get("cisd_min_leg_atr_pct", 5.0),
+            cisd_max_leg_bars=merged.get("cisd_max_leg_bars", 60),
+            base_bar_minutes=merged.get("base_bar_minutes", 5),
         )
         engine.position_manager = position_manager
         engine.position_limit_key = f"{config_name or 'DEFAULT'}:{db_symbol}"
@@ -1419,10 +1509,44 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     from .broker import TradersPostClient
     from .feed import ET, DataBentoFeed
     from .gates import set_daily_history_provider
+    from .orderbook_features import OrderbookFeatureCache, OrderbookVelocityTierSizer
     from .position_limits import ContractCapManager
 
     general = config.get("general", {})
     db_cfg = config.get("databento", {})
+    orderbook_runtime = _resolve_orderbook_runtime_config(config)
+    orderbook_mbp10_enabled = orderbook_runtime["enable_mbp10"]
+    orderbook_provider_enabled = orderbook_runtime["provider_enabled"]
+    orderbook_dynamic_enabled = orderbook_runtime["dynamic_sizing_enabled"]
+    orderbook_shadow_enabled = orderbook_runtime["dynamic_sizing_shadow_enabled"]
+    orderbook_dynamic_sessions = orderbook_runtime["dynamic_sizing_sessions"]
+    orderbook_cache: OrderbookFeatureCache | None = None
+    orderbook_provider = None
+    if orderbook_mbp10_enabled or orderbook_provider_enabled:
+        orderbook_cache = OrderbookFeatureCache(
+            retention_seconds=orderbook_runtime["retention_seconds"]
+        )
+        orderbook_sizer = OrderbookVelocityTierSizer()
+
+        def _live_orderbook_dynamic_provider(context):
+            return orderbook_sizer.decision_from_cache(context, orderbook_cache)
+
+        orderbook_provider = _live_orderbook_dynamic_provider
+        if orderbook_provider_enabled and not orderbook_mbp10_enabled:
+            logger.warning(
+                "Orderbook dynamic sizing is enabled but MBP-10 streaming is disabled; "
+                "sizing decisions will fall back to neutral 1.0x."
+            )
+
+    def _orderbook_status_snapshot() -> dict:
+        return {
+            "enable_mbp10": orderbook_mbp10_enabled,
+            "mbp10_cost_ack": orderbook_runtime["mbp10_cost_ack"],
+            "dynamic_sizing_enabled": orderbook_dynamic_enabled,
+            "dynamic_sizing_shadow_enabled": orderbook_shadow_enabled,
+            "dynamic_sizing_sessions": sorted(orderbook_dynamic_sessions),
+            "cache": orderbook_cache.status() if orderbook_cache is not None else None,
+        }
 
     # Load execution configs (FAST, SLOW, etc.)
     exec_configs = load_exec_configs(config)
@@ -1483,6 +1607,18 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             lsi_overrides=ec.lsi_session_overrides,
             position_manager=position_manager,
         )
+        if orderbook_provider_enabled and orderbook_provider is not None:
+            for engine in lsi_engines:
+                if not orderbook_dynamic_sessions or engine.name in orderbook_dynamic_sessions:
+                    engine.dynamic_sizing_provider = orderbook_provider
+                    engine.dynamic_sizing_shadow = orderbook_shadow_enabled
+                    logger.info(
+                        "[%s] Orderbook dynamic sizing provider attached: %s shadow=%s apply=%s",
+                        ec.name,
+                        engine.name,
+                        orderbook_shadow_enabled,
+                        orderbook_dynamic_enabled,
+                    )
 
         orb_by_name = {engine.name: engine for engine in engines}
         lsi_by_name = {engine.name: engine for engine in lsi_engines}
@@ -1542,6 +1678,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         mode=mode,
         exec_configs=exec_configs_meta,
         multi_brokers_by_config=multi_brokers_by_config,
+        orderbook_status=_orderbook_status_snapshot(),
     )
 
     # Checkpoint persistence — debounced to one write per event loop turn
@@ -1622,6 +1759,11 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             except Exception:
                 logger.exception("[%s] on_tick failed — engine isolated", getattr(engine, "name", "?"))
 
+    async def on_orderbook(sample):
+        if orderbook_cache is not None:
+            orderbook_cache.add_sample(sample)
+            dashboard.orderbook_status = _orderbook_status_snapshot()
+
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key")
     feed_symbols = list(global_symbol_map.keys())
@@ -1637,6 +1779,8 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
         dataset=db_cfg.get("dataset", "GLBX.MDP3"),
         on_bar=on_bar,
         on_tick=on_tick,
+        on_orderbook=on_orderbook if orderbook_mbp10_enabled else None,
+        enable_mbp10=orderbook_mbp10_enabled,
         atr_lengths_by_symbol=global_atr_lengths,
     )
     if daily_only_symbols:

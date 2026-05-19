@@ -136,33 +136,33 @@ export function NewsTradeChartModal({
       width: container.clientWidth,
       height: 500,
       layout: {
-        background: { color: "#1c1c21" },
-        textColor: "#a0a0ab",
+        background: { color: "#050909" },
+        textColor: "#a1adab",
         fontFamily: '"JetBrains Mono", monospace',
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "#242429" },
-        horzLines: { color: "#242429" },
+        vertLines: { color: "rgba(29,52,52,0.76)" },
+        horzLines: { color: "rgba(29,52,52,0.72)" },
       },
       crosshair: { mode: CrosshairMode.Normal },
       timeScale: {
         timeVisible: true,
         secondsVisible: true,
-        borderColor: "#2c2c33",
+        borderColor: "rgba(29,52,52,0.95)",
       },
       rightPriceScale: {
-        borderColor: "#2c2c33",
+        borderColor: "rgba(29,52,52,0.95)",
       },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#3dd68c",
-      downColor: "#f0615e",
-      borderUpColor: "#3dd68c",
-      borderDownColor: "#f0615e",
-      wickUpColor: "#3dd68c",
-      wickDownColor: "#f0615e",
+      upColor: "#72f25f",
+      downColor: "#ff554f",
+      borderUpColor: "#72f25f",
+      borderDownColor: "#ff554f",
+      wickUpColor: "#72f25f",
+      wickDownColor: "#ff554f",
     } satisfies Partial<CandlestickSeriesOptions>);
 
     // Convert ISO timestamps to fake-UTC seconds so lightweight-charts
@@ -211,7 +211,7 @@ export function NewsTradeChartModal({
     // Reference price
     series.createPriceLine({
       price: refPrice,
-      color: "#a0a0ab",
+      color: "#a1adab",
       lineWidth: 1,
       lineStyle: LineStyle.Dotted,
       axisLabelVisible: true,
@@ -221,7 +221,7 @@ export function NewsTradeChartModal({
     // Stop-buy level
     series.createPriceLine({
       price: stopBuy,
-      color: "#3dd68c",
+      color: "#72f25f",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -231,7 +231,7 @@ export function NewsTradeChartModal({
     // Stop-sell level
     series.createPriceLine({
       price: stopSell,
-      color: "#f0615e",
+      color: "#ff554f",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -244,7 +244,7 @@ export function NewsTradeChartModal({
 
       series.createPriceLine({
         price: event.fill_price,
-        color: "#22d3ee",
+        color: "#35d6e6",
         lineWidth: 1,
         lineStyle: LineStyle.Solid,
         axisLabelVisible: true,
@@ -257,7 +257,7 @@ export function NewsTradeChartModal({
         : event.fill_price - event.target_points;
       series.createPriceLine({
         price: targetPrice,
-        color: "#F8C159",
+        color: "#f8c159",
         lineWidth: 1,
         lineStyle: LineStyle.Dotted,
         axisLabelVisible: true,
@@ -312,7 +312,7 @@ export function NewsTradeChartModal({
       markers.push({
         time: releaseCandle.time,
         position: "aboveBar",
-        color: "#F8C159",
+        color: "#f8c159",
         shape: "arrowDown",
         text:
           event.event_type === "NY_OPEN"
@@ -335,7 +335,7 @@ export function NewsTradeChartModal({
         markers.push({
           time: fillCandle.time,
           position: isLong ? "belowBar" : "aboveBar",
-          color: "#22d3ee",
+          color: "#35d6e6",
           shape: isLong ? "arrowUp" : "arrowDown",
           text: isLong ? "Buy" : "Sell",
         });
@@ -440,21 +440,21 @@ export function NewsTradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3 border-t border-dotted"
-                  style={{ borderColor: "#a0a0ab" }}
+                  style={{ borderColor: "#a1adab" }}
                 />
                 Ref: {event.reference_price.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </span>
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3 border-t border-dashed"
-                  style={{ borderColor: "#3dd68c" }}
+                  style={{ borderColor: "#72f25f" }}
                 />
                 Stop Buy: {(event.reference_price + event.buffer_points).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </span>
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3 border-t border-dashed"
-                  style={{ borderColor: "#f0615e" }}
+                  style={{ borderColor: "#ff554f" }}
                 />
                 Stop Sell: {(event.reference_price - event.buffer_points).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </span>
@@ -463,14 +463,14 @@ export function NewsTradeChartModal({
                   <span className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-0.5 w-3"
-                      style={{ background: "#22d3ee" }}
+                      style={{ background: "#35d6e6" }}
                     />
                     Fill: {event.fill_price.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span
                       className="inline-block h-0.5 w-3 border-t border-dotted"
-                      style={{ borderColor: "#F8C159" }}
+                      style={{ borderColor: "#f8c159" }}
                     />
                     Target: {(event.direction_filled === "long"
                       ? event.fill_price + event.target_points

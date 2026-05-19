@@ -48,10 +48,14 @@ class SwingTracker:
         n_left: int = 3,
         n_right: int = 3,
         long_only: bool = True,
+        reset_window_on_new_day: bool = True,
+        consume_on_sweep: bool = True,
     ) -> None:
         self.n_left = n_left
         self.n_right = n_right
         self.long_only = long_only
+        self.reset_window_on_new_day = reset_window_on_new_day
+        self.consume_on_sweep = consume_on_sweep
 
         self._window_size = n_left + 1 + n_right
         # Rolling window of (high, low) tuples
@@ -183,10 +187,14 @@ class SwingTracker:
                 bar_index=self._bar_count,
                 pivot_time=self._prev_swing_low_time,
             )
+            if self.consume_on_sweep:
+                self._consume_low_level(self._prev_swing_low)
 
         # High sweep of swing high → bearish setup (direction=-1)
-        if not self.long_only:
-            if not math.isnan(self._prev_swing_high) and bar.high > self._prev_swing_high:
+        if not math.isnan(self._prev_swing_high) and bar.high > self._prev_swing_high:
+            if self.consume_on_sweep:
+                self._consume_high_level(self._prev_swing_high)
+            if not self.long_only:
                 # Low sweep takes priority (same as old tracker preferring kz_low)
                 if sweep is None:
                     sweep = SweepEvent(
@@ -199,6 +207,20 @@ class SwingTracker:
 
         return sweep
 
+    def _consume_low_level(self, level: float) -> None:
+        if math.isclose(self._latest_swing_low, level, rel_tol=0.0, abs_tol=1e-9):
+            self._latest_swing_low = float("nan")
+            self._latest_swing_low_time = ""
+        self._prev_swing_low = float("nan")
+        self._prev_swing_low_time = ""
+
+    def _consume_high_level(self, level: float) -> None:
+        if math.isclose(self._latest_swing_high, level, rel_tol=0.0, abs_tol=1e-9):
+            self._latest_swing_high = float("nan")
+            self._latest_swing_high_time = ""
+        self._prev_swing_high = float("nan")
+        self._prev_swing_high_time = ""
+
     def _on_new_day(self, new_date: str) -> None:
         """Update date tracking for new trading day.
 
@@ -208,9 +230,10 @@ class SwingTracker:
         so pivot detection restarts cleanly.
         """
         self._current_date = new_date
-        self._highs.clear()
-        self._lows.clear()
-        self._timestamps.clear()
+        if self.reset_window_on_new_day:
+            self._highs.clear()
+            self._lows.clear()
+            self._timestamps.clear()
         # NOTE: _latest_swing_high/low and _prev_swing_high/low (and their
         # timestamps) are intentionally preserved across days to match the
         # backtester.
@@ -231,6 +254,8 @@ class SwingTracker:
             "n_left": self.n_left,
             "n_right": self.n_right,
             "long_only": self.long_only,
+            "reset_window_on_new_day": self.reset_window_on_new_day,
+            "consume_on_sweep": self.consume_on_sweep,
             "bar_count": self._bar_count,
             "current_date": self._current_date,
             "highs": list(self._highs),
@@ -250,6 +275,8 @@ class SwingTracker:
         """Restore tracker state from checkpoint data."""
         self._bar_count = data.get("bar_count", 0)
         self._current_date = data.get("current_date", "")
+        self.reset_window_on_new_day = data.get("reset_window_on_new_day", self.reset_window_on_new_day)
+        self.consume_on_sweep = data.get("consume_on_sweep", self.consume_on_sweep)
 
         self._highs.clear()
         for h in data.get("highs", []):

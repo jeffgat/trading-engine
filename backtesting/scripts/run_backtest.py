@@ -34,6 +34,12 @@ def main():
     # Overridable strategy params
     parser.add_argument("--rr", type=float, default=None)
     parser.add_argument("--tp1-ratio", type=float, default=None)
+    parser.add_argument("--runner-trail-mode", default=None, choices=["", "step_r", "risk", "atr"])
+    parser.add_argument("--runner-trail-trigger-r", type=float, default=None)
+    parser.add_argument("--runner-trail-stop-r", type=float, default=None)
+    parser.add_argument("--runner-trail-step-r", type=float, default=None)
+    parser.add_argument("--runner-trail-gap-r", type=float, default=None)
+    parser.add_argument("--runner-trail-atr-pct", type=float, default=None)
     parser.add_argument("--risk-usd", type=float, default=None)
     parser.add_argument("--atr-length", type=int, default=None)
     parser.add_argument("--ny-stop-atr-pct", type=float, default=None)
@@ -94,6 +100,18 @@ def main():
         overrides["rr"] = args.rr
     if args.tp1_ratio is not None:
         overrides["tp1_ratio"] = args.tp1_ratio
+    if args.runner_trail_mode is not None:
+        overrides["runner_trail_mode"] = args.runner_trail_mode
+    if args.runner_trail_trigger_r is not None:
+        overrides["runner_trail_trigger_r"] = args.runner_trail_trigger_r
+    if args.runner_trail_stop_r is not None:
+        overrides["runner_trail_stop_r"] = args.runner_trail_stop_r
+    if args.runner_trail_step_r is not None:
+        overrides["runner_trail_step_r"] = args.runner_trail_step_r
+    if args.runner_trail_gap_r is not None:
+        overrides["runner_trail_gap_r"] = args.runner_trail_gap_r
+    if args.runner_trail_atr_pct is not None:
+        overrides["runner_trail_atr_pct"] = args.runner_trail_atr_pct
     if args.risk_usd is not None:
         overrides["risk_usd"] = args.risk_usd
     if args.atr_length is not None:

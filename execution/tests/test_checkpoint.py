@@ -66,6 +66,7 @@ def _mock_broker():
     b.send_tp1_single = AsyncMock(
         return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True)
     )
+    b.send_runner_stop_update = AsyncMock(return_value=[])
     b.send_flatten = AsyncMock(
         return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True)
     )
@@ -398,6 +399,8 @@ class TestORBEngineCheckpoint:
         # Simulate TP1 hit
         engine._tp1_hit = True
         engine._tp1_bar_count = engine._bar_count
+        engine._runner_stop = engine._levels.entry + 10.0
+        engine._trade_daily_atr = 123.0
 
         data = serialize_orb_engine(engine)
         new_engine = _make_orb_engine(_mock_broker())
@@ -405,6 +408,8 @@ class TestORBEngineCheckpoint:
 
         assert new_engine._tp1_hit is True
         assert new_engine._tp1_bar_count == engine._tp1_bar_count
+        assert new_engine._runner_stop == pytest.approx(engine._runner_stop)
+        assert new_engine._trade_daily_atr == pytest.approx(123.0)
 
     def test_idle_not_restored(self):
         broker = _mock_broker()

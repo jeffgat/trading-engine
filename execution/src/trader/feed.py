@@ -4,6 +4,8 @@ Connects to DataBento's GLBX.MDP3 dataset, subscribes to both 1-minute and
 1-second OHLCV bars on a single connection.  1m bars are aggregated into
 5-minute bars for signal detection (ORB, FVG); 1s bars are forwarded directly
 to the session engines for fill detection and exit management (TP1/SL/BE/TP2).
+An optional MBP-10 subscription can feed top-of-book samples into dynamic
+sizing, but it is disabled by default.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
 from .engine import Bar
+from .orderbook_features import TopOfBookSample
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +339,9 @@ OnSymbolBarCallback = Callable[[str, Bar, ATRValuesByLength], Awaitable[None]]
 OnSymbolTickCallback = Callable[[str, Bar, ATRValuesByLength], Awaitable[None]]
 # Signature: async def on_tick(symbol: str, tick: Bar, daily_atrs: dict[int, float]) -> None
 
+OnSymbolOrderbookCallback = Callable[[TopOfBookSample], Awaitable[None]]
+# Signature: async def on_orderbook(sample: TopOfBookSample) -> None
+
 
 # ---------------------------------------------------------------------------
 # DataBento live feed (multi-symbol)
@@ -368,6 +374,8 @@ class DataBentoFeed:
         dataset: str = "GLBX.MDP3",
         on_bar: OnSymbolBarCallback | None = None,
         on_tick: OnSymbolTickCallback | None = None,
+        on_orderbook: OnSymbolOrderbookCallback | None = None,
+        enable_mbp10: bool = False,
         atr_length: int = 14,
         atr_lengths_by_symbol: dict[str, list[int] | set[int] | tuple[int, ...]] | None = None,
         reconnect_delay: float = 1.0,
@@ -392,6 +400,8 @@ class DataBentoFeed:
         self.dataset = dataset
         self.on_bar = on_bar
         self.on_tick = on_tick
+        self.on_orderbook = on_orderbook
+        self.enable_mbp10 = enable_mbp10
         self.atr_length = atr_length
         self.reconnect_delay = reconnect_delay
         self.max_reconnect_delay = max_reconnect_delay
@@ -795,9 +805,12 @@ class DataBentoFeed:
 
         while self._running:
             try:
+                schemas = "ohlcv-1m+ohlcv-1s"
+                if self.enable_mbp10:
+                    schemas += "+mbp-10"
                 logger.info(
-                    "Connecting to DataBento: dataset=%s symbols=%s schemas=ohlcv-1m+ohlcv-1s",
-                    self.dataset, self.symbols,
+                    "Connecting to DataBento: dataset=%s symbols=%s schemas=%s",
+                    self.dataset, self.symbols, schemas,
                 )
 
                 # Run blocking DataBento connect + subscribe in a thread so
@@ -818,18 +831,25 @@ class DataBentoFeed:
                         stype_in="parent",
                         symbols=self.symbols,
                     )
+                    if self.enable_mbp10:
+                        c.subscribe(
+                            dataset=self.dataset,
+                            schema="mbp-10",
+                            stype_in="parent",
+                            symbols=self.symbols,
+                        )
                     return c
 
                 client = await loop.run_in_executor(None, _connect)
 
-                logger.info("DataBento connected — streaming 1m + 1s bars")
+                logger.info("DataBento connected — streaming %s", schemas)
                 delay = self.reconnect_delay  # reset on successful connect
                 self._id_to_symbol.clear()
                 self._id_to_raw.clear()
                 self._id_volumes.clear()
                 self._front_month.clear()
 
-                from databento_dbn import RType
+                from databento_dbn import MBP10Msg, RType
 
                 async for record in client:
                     if not self._running:
@@ -855,6 +875,8 @@ class DataBentoFeed:
                             await self._handle_ohlcv(record)
                         elif record.rtype == RType.OHLCV_1S:
                             await self._handle_ohlcv_1s(record)
+                    elif self.enable_mbp10 and isinstance(record, MBP10Msg):
+                        await self._handle_mbp10(record)
                     elif isinstance(record, db.ErrorMsg):
                         logger.error("DataBento error: %s", record.err)
 
@@ -967,6 +989,57 @@ class DataBentoFeed:
 
         if self.on_tick is not None:
             await self.on_tick(symbol, tick, self.get_atr_values_for_symbol(symbol))
+
+    @staticmethod
+    def _decode_dbn_price(value) -> float | None:
+        try:
+            price = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(price) or price <= 0.0:
+            return None
+        # DataBento DBN prices are fixed-point 1e-9 ints. Tests may use plain
+        # floats, so only scale values that are clearly in DBN fixed-point form.
+        return price / 1e9 if abs(price) >= 1_000_000.0 else price
+
+    async def _handle_mbp10(self, record) -> None:
+        """Process a single MBP-10 record into a top-of-book sample."""
+        if not self.enable_mbp10 or self.on_orderbook is None:
+            return
+
+        iid = record.instrument_id
+        symbol = self._id_to_symbol.get(iid)
+        if symbol is None:
+            return
+
+        current_front = self._front_month.get(symbol)
+        if current_front is None:
+            self._front_month[symbol] = iid
+            current_front = iid
+            raw = self._id_to_raw.get(iid, "?")
+            logger.info("Front-month orderbook elected for %s: %s (id=%d)", symbol, raw, iid)
+        elif iid != current_front:
+            return
+
+        levels = getattr(record, "levels", None)
+        if not levels:
+            return
+        level0 = levels[0]
+        bid = self._decode_dbn_price(getattr(level0, "bid_px", None))
+        ask = self._decode_dbn_price(getattr(level0, "ask_px", None))
+        if bid is None or ask is None:
+            return
+
+        sample = TopOfBookSample(
+            symbol=symbol,
+            timestamp=datetime.fromtimestamp(record.ts_event / 1e9, tz=ET),
+            bid=bid,
+            ask=ask,
+            instrument_id=iid,
+            raw_symbol=self._id_to_raw.get(iid, ""),
+        )
+        if sample.is_valid:
+            await self.on_orderbook(sample)
 
     def stop(self) -> None:
         """Signal the feed to stop."""

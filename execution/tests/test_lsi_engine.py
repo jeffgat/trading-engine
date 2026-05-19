@@ -18,10 +18,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from trader.broker import TradersPostClient, WebhookResult
+from trader.cisd import InternalCisdTracker
 from trader.engine import Bar
 from trader.gates import build_regime_gate, set_daily_history_provider
 from trader.lsi_engine import GapInfo, LSIEngine, LSIState
-from trader.sizing import TradeLevels
+from trader.orderbook_features import DynamicSizingDecision
+from trader.sizing import TradeLevels, _floor_to_step
 from trader.swing import SweepEvent
 
 ET = ZoneInfo("America/New_York")
@@ -184,6 +186,37 @@ async def _advance_to_managing(eng: LSIEngine) -> tuple[LSIEngine | None, float 
     if eng._state != LSIState.MANAGING:
         return None, None
     return eng, eng._levels.entry
+
+
+# =============================================================================
+# Internal CISD tracker
+# =============================================================================
+
+class TestInternalCisdTracker:
+    def test_bullish_cisd_uses_prior_body_leg_only(self):
+        tracker = InternalCisdTracker(
+            min_leg_bars=2,
+            min_leg_atr_pct=7.5,
+            max_leg_bars=60,
+        )
+
+        bars = [
+            make_bar("2025-01-15 09:30", 19500, 19510, 19490, 19500),
+            make_bar("2025-01-15 09:31", 19490, 19500, 19470, 19480),
+            make_bar("2025-01-15 09:32", 19470, 19480, 19430, 19440),
+            make_bar("2025-01-15 09:33", 19435, 19495, 19420, 19495),
+        ]
+
+        events = []
+        for idx, bar in enumerate(bars, start=1):
+            events.extend(tracker.on_bar(bar, daily_atr=100.0, bar_index=idx))
+
+        assert len(events) == 1
+        assert events[0].direction == 1
+        assert events[0].level == pytest.approx(19490.0)
+        assert events[0].level_bar_index == 2
+        assert events[0].leg_bars == 2
+        assert events[0].leg_move == pytest.approx(50.0)
 
 
 # =============================================================================
@@ -455,6 +488,106 @@ class TestFVGBeforeSweepLookback:
 
 
 # =============================================================================
+# CISD confirmation mode
+# =============================================================================
+
+class TestCisdConfirmationMode:
+    async def test_pre_entry_sweep_can_confirm_after_entry_window_opens(self):
+        eng = make_lsi_engine(
+            entry_start="09:35",
+            entry_end="12:00",
+            sweep_start="09:30",
+            sweep_end="15:30",
+            lsi_confirmation_mode="cisd",
+            lsi_entry_mode="level_limit",
+            lsi_stop_mode="atr_pct",
+            stop_atr_pct=10.0,
+            cisd_min_leg_bars=2,
+            cisd_min_leg_atr_pct=0.0,
+            fvg_window_right=10,
+            lsi_n_left=1,
+            lsi_n_right=1,
+            base_bar_minutes=1,
+        )
+
+        await eng.on_bar(make_bar("2025-01-15 09:25", 120, 122, 115, 121), 100.0)
+        await eng.on_bar(make_bar("2025-01-15 09:26", 115, 116, 100, 112), 100.0)
+        await eng.on_bar(make_bar("2025-01-15 09:27", 118, 119, 110, 117), 100.0)
+        await eng.on_bar(make_bar("2025-01-15 09:30", 116, 118, 112, 117), 100.0)
+
+        sweep_bar = make_bar("2025-01-15 09:34", 110, 111, 99, 105)
+        await eng.on_bar(sweep_bar, 100.0)
+        assert eng._state == LSIState.WAITING_FOR_GAP
+
+        await eng.on_bar(make_bar("2025-01-15 09:35", 105, 106, 95, 100), 100.0)
+        signal_bar = make_bar("2025-01-15 09:36", 100, 119, 98, 118)
+        await eng.on_bar(signal_bar, 100.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng._limit_price == pytest.approx(117.0)
+
+        await eng.on_bar(make_bar("2025-01-15 09:37", 118, 119, 116, 118), 100.0)
+        assert eng._state == LSIState.MANAGING
+        assert eng._levels.entry == pytest.approx(117.0)
+
+    async def test_cisd_level_limit_fills_next_bar_with_signal_bar_sizing(self):
+        contexts = []
+
+        def provider(context):
+            contexts.append(context)
+            return DynamicSizingDecision(
+                feature="confirm_last_10s_mid_velocity_ticks_per_second",
+                feature_value=1.25,
+                tier="mid",
+                risk_weight=1.0,
+                coverage=1.0,
+                sample_count=10,
+                active=True,
+                reason="test",
+            )
+
+        eng = make_lsi_engine(
+            lsi_confirmation_mode="cisd",
+            lsi_entry_mode="level_limit",
+            lsi_stop_mode="atr_pct",
+            stop_atr_pct=15.0,
+            cisd_min_leg_bars=2,
+            cisd_min_leg_atr_pct=7.5,
+            cisd_max_leg_bars=60,
+            fvg_window_right=25,
+            base_bar_minutes=1,
+            dynamic_sizing_provider=provider,
+        )
+        await feed_swing_low_and_sweep(eng, swing_low=19400.0)
+
+        # The sweep bar and two follow-up lower-body bars arm bullish CISD at 19430, then this bar closes
+        # through that prior level. The bar also trades through the limit, but
+        # level-limit entries must not fill on the signal bar.
+        await eng.on_bar(make_bar("2025-01-15 09:40", 19420, 19430, 19395, 19400), 100.0)
+        await eng.on_bar(make_bar("2025-01-15 09:45", 19400, 19410, 19375, 19380), 100.0)
+        signal_bar = make_bar("2025-01-15 09:50", 19390, 19440, 19385, 19435)
+        await eng.on_bar(signal_bar, 100.0)
+
+        assert eng._state == LSIState.ARMED_LIMIT
+        assert eng._limit_price == pytest.approx(19430.0)
+        assert eng._limit_signal_bar == signal_bar
+        eng.broker.send_entry.assert_not_called()
+
+        fill_bar = make_bar("2025-01-15 09:55", 19435, 19440, 19429, 19432)
+        await eng.on_bar(fill_bar, 100.0)
+
+        assert eng._state == LSIState.MANAGING
+        assert eng._levels is not None
+        assert eng._levels.entry == pytest.approx(19430.0)
+        assert eng._levels.stop == pytest.approx(19415.0)
+        assert eng._levels.gap_size == pytest.approx(5.0)
+        assert contexts
+        assert contexts[0].signal_start == signal_bar.timestamp
+        assert contexts[0].signal_end == signal_bar.timestamp + timedelta(minutes=1)
+        eng.broker.send_entry.assert_called_once()
+
+
+# =============================================================================
 # WAITING_FOR_INVERSION → MANAGING (inversion-bar-close entry)
 # =============================================================================
 
@@ -591,6 +724,105 @@ class TestInversionToManaging:
         assert call_kwargs["tp2"] == pytest.approx(eng._levels.tp2)
         assert call_kwargs["stop"] == pytest.approx(eng._levels.stop)
         assert call_kwargs["ticker"] == "MNQ"
+
+    async def test_dynamic_sizing_provider_scales_entry_qty(self):
+        contexts = []
+
+        def provider(context):
+            contexts.append(context)
+            return DynamicSizingDecision(
+                feature="confirm_last_10s_mid_velocity_ticks_per_second",
+                feature_value=1.25,
+                tier="high",
+                risk_weight=1.5,
+                coverage=1.0,
+                sample_count=6,
+                active=True,
+                reason="test",
+            )
+
+        eng = make_lsi_engine(dynamic_sizing_provider=provider)
+        eng, entry = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+
+        base_qty = _floor_to_step(
+            eng.risk_usd / (eng._levels.risk_pts * eng.point_value),
+            eng.qty_step,
+        )
+        assert contexts
+        assert contexts[0].symbol == "NQ.FUT"
+        assert contexts[0].direction == 1
+        assert contexts[0].signal_start == eng._fill_timestamp
+        assert eng._levels.qty == pytest.approx(_floor_to_step(base_qty * 1.5, eng.qty_step))
+        dynamic = eng._entry_context["dynamic_sizing"]
+        assert dynamic["tier"] == "high"
+        assert dynamic["risk_weight"] == pytest.approx(1.5)
+        assert dynamic["actual_qty"] == pytest.approx(eng._levels.qty)
+        eng.broker.send_entry.assert_called_once()
+        assert eng.broker.send_entry.call_args.kwargs["qty"] == pytest.approx(eng._levels.qty)
+
+    async def test_dynamic_sizing_zero_weight_rejects_entry(self):
+        def provider(_context):
+            return DynamicSizingDecision(
+                feature="confirm_last_10s_mid_velocity_ticks_per_second",
+                feature_value=-2.0,
+                tier="skip",
+                risk_weight=0.0,
+                active=True,
+                reason="test_skip",
+            )
+
+        eng = make_lsi_engine(dynamic_sizing_provider=provider)
+        result = await _advance_to_inversion(eng)
+        if result is None:
+            pytest.skip("Could not reach WAITING_FOR_INVERSION")
+        gap = eng._active_gap
+        inversion_bar = make_bar("2025-01-15 09:55", 19440, gap.top + 10, gap.top - 5, gap.top + 5)
+
+        await eng.on_bar(inversion_bar, 300.0)
+
+        assert eng._state == LSIState.SCANNING
+        assert eng._levels is None
+        eng.broker.send_entry.assert_not_called()
+        dynamic = eng.status_dict()["dynamic_sizing"]
+        assert dynamic["tier"] == "skip"
+        assert dynamic["risk_weight"] == pytest.approx(0.0)
+
+    async def test_dynamic_sizing_shadow_records_decision_without_scaling_qty(self):
+        def provider(_context):
+            return DynamicSizingDecision(
+                feature="confirm_last_10s_mid_velocity_ticks_per_second",
+                feature_value=1.25,
+                tier="high",
+                risk_weight=1.5,
+                coverage=1.0,
+                sample_count=6,
+                active=True,
+                reason="test_shadow",
+            )
+
+        eng = make_lsi_engine(
+            dynamic_sizing_provider=provider,
+            dynamic_sizing_shadow=True,
+        )
+        eng, _entry = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+
+        base_qty = _floor_to_step(
+            eng.risk_usd / (eng._levels.risk_pts * eng.point_value),
+            eng.qty_step,
+        )
+        dynamic = eng.status_dict()["dynamic_sizing"]
+
+        assert eng._levels.qty == pytest.approx(base_qty)
+        assert dynamic["shadow"] is True
+        assert dynamic["applied"] is False
+        assert dynamic["risk_weight"] == pytest.approx(1.5)
+        assert dynamic["would_effective_qty_multiplier"] == pytest.approx(1.5)
+        assert dynamic["effective_qty_multiplier"] == pytest.approx(1.0)
+        assert dynamic["actual_qty_multiplier"] == pytest.approx(1.0)
 
 
 # =============================================================================
@@ -1282,6 +1514,61 @@ class TestHtfLsiVariant:
 
         await eng.on_bar(make_bar("2025-01-15 08:30", 105.0, 106.0, 99.0, 104.0), 300.0)
 
+        assert eng._state == LSIState.SCANNING
+        assert eng._active_sweep is None
+        assert eng._htf_low_state["consumed"] is True
+
+    async def test_htf_breach_before_sweep_window_invalidates_without_arming(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="09:00",
+            sweep_end="15:00",
+            entry_start="09:00",
+            entry_end="15:00",
+            htf_level_tf_minutes=60,
+            htf_n_left=1,
+            min_gap_atr_pct=0.0,
+        )
+
+        for hour in ("06", "07"):
+            for minute in range(0, 60, 5):
+                low = 100.0 if (hour == "06" and minute == 25) else 102.0
+                await eng.on_bar(
+                    make_bar(f"2025-01-15 {hour}:{minute:02d}", 105.0, 106.0, low, 105.0),
+                    300.0,
+                )
+
+        await eng.on_bar(make_bar("2025-01-15 08:00", 105.0, 106.0, 99.0, 104.0), 300.0)
+
+        assert eng._active_sweep is None
+        assert eng._htf_low_state["consumed"] is True
+
+        await eng.on_bar(make_bar("2025-01-15 09:00", 105.0, 106.0, 98.0, 104.0), 300.0)
+
+        assert eng._state == LSIState.SCANNING
+        assert eng._active_sweep is None
+
+    async def test_htf_recovery_replays_stale_breach_consumption(self):
+        eng = make_lsi_engine(
+            lsi_variant="htf-LSI",
+            sweep_start="09:00",
+            sweep_end="15:00",
+            entry_start="09:00",
+            entry_end="15:00",
+            htf_level_tf_minutes=60,
+            htf_n_left=1,
+            min_gap_atr_pct=0.0,
+        )
+        bars: list[Bar] = []
+        for hour in ("06", "07"):
+            for minute in range(0, 60, 5):
+                low = 100.0 if (hour == "06" and minute == 25) else 102.0
+                bars.append(make_bar(f"2025-01-15 {hour}:{minute:02d}", 105.0, 106.0, low, 105.0))
+        bars.append(make_bar("2025-01-15 08:00", 105.0, 106.0, 99.0, 104.0))
+
+        recovered = eng.recover_session_state(bars, make_bar("2025-01-15 09:00", 0, 0, 0, 0).timestamp)
+
+        assert recovered is True
         assert eng._state == LSIState.SCANNING
         assert eng._active_sweep is None
         assert eng._htf_low_state["consumed"] is True

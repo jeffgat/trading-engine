@@ -1,42 +1,71 @@
-Execution Service — Complete
-Location: execution/
+# Execution Service
 
-Architecture
+Live/dry execution service for ORB/FVG, LSI, and specialist variants.
 
-DataBento (1m bars) → feed.py (aggregate to 5m + ATR) → engine.py (state machine) → broker.py (webhooks) → TradersPost → Broker
-Modules
-Module	Purpose
-feed.py	- DataBento live streaming + 1m→5m aggregation + incremental daily ATR (Wilder's). Also has ReplayFeed for historical CSV replay testing.
-engine.py	- Per-session state machine: IDLE → ORB_BUILDING → SCANNING → ARMED → FILLED → MANAGING → FLAT. Handles FVG detection, fill inference, TP1/TP2/SL/BE/EOD management.
-broker.py	- Async TradersPost webhook client. All 7 JSON payload formats match HEAD_prod_nq_ny_asia.pine exactly. Live/dry-run auto-derived from webhook URL.
-sizing.py	- Position sizing + trade level computation (entry, stop, TP1, TP2, BE, qty). Identical math to Pine Script.
-main.py	- CLI entry point. Self-contained production configs (no backtester import needed). Supports --replay, --config.
-logging_config.py	- Structured logging to console + rotating files. Separate trades.log, webhooks.log for audit trail.
+```
+DataBento 1m/1s -> Feed -> ORBEngine/LSIEngine/specialists -> TradersPost
+                                      -> FastAPI REST/WS -> frontend
+```
 
-Usage
-# Install dependencies
-cd execution && uv sync
+## Quick Start
 
-# Run (configs with webhooks send live; others are dry-run)
-export DATABENTO_API_KEY=db-xxxxx
+```bash
+uv sync
 uv run orb-trader
+uv run orb-trader --config config/live.toml
+uv run orb-trader --replay /path/to/NQ_5m.csv --start 2025-01-01
+```
 
-# Replay historical data for reconciliation
-uv run orb-trader --replay ../python/data/raw/NQ_5m.csv --start 2025-01-01
-DataBento Plan
-Standard Plan ($179/mo) + CME Non-Pro Top-of-Book ($3/mo) = ~$182/mo total. Latency is ~590 microseconds (vs your 5-minute bars = 300,000,000 microseconds). Completely sufficient.
+`--replay` is for narrow single-symbol debugging. Saved profile history uses exact replay below.
 
-Key Design Decisions
-Self-contained for deployment — production configs are embedded in main.py (mirrors config_prod.py), no backtester dependency needed at runtime
-Async throughout — asyncio event loop, aiohttp for webhooks, DataBento iterator runs in the main loop
-Fill inference from price — matches Pine Script behavior (infer fill when price touches limit level)
-One trade per session per day per leg/session engine — same as Pine Script hasTradedToday flag
-Portfolio legs/sessions are independent by design — concurrent positions across different legs are allowed
-ReplayFeed for reconciliation — feed historical CSVs through the same engine to verify signals match backtest output
+## Layout
 
-To check on it anytime
+```
+execution/
+├── src/trader/       # feed, engines, broker, API, sizing, checkpoints, overrides
+├── scripts/          # exact historical replay and ops helpers
+├── config/           # live.toml, exec_configs.json, overrides/checkpoints
+└── deploy/           # droplet setup/deploy scripts
+```
 
-ssh root@143.110.148.234
-journalctl -u orb-trader -f          # live log stream
-journalctl -u orb-trader --since today  # today's logs
-systemctl status orb-trader           # quick health check
+## Exact Historical Backtests
+
+For profiles in `config/exec_configs.json`:
+
+```bash
+PYTHONUNBUFFERED=1 .venv/bin/python scripts/save_exact_exec_backtests.py \
+  --profiles FAST_V1.1 FAST_V2.1 GENERAL_V1 \
+  --years 5
+```
+
+This runs the live engines on local 5m + 1s parquet and saves frontend-compatible results to the shared DB.
+
+## Deployment
+
+Production:
+
+- Host: `143.110.148.234`
+- App dir: `/opt/orb-trader/`
+- Service: `orb-trader.service`
+- API: `http://143.110.148.234:8000/api/status`
+
+Deploy from repo root:
+
+```bash
+bash execution/deploy/deploy.sh
+```
+
+Check status/logs:
+
+```bash
+ssh root@143.110.148.234 "systemctl status orb-trader --no-pager"
+ssh root@143.110.148.234 "journalctl -u orb-trader -n 100 --no-pager"
+ssh root@143.110.148.234 "journalctl -u orb-trader -f"
+```
+
+## Runtime Notes
+
+- All session/config/log times are US Eastern.
+- 5m bars drive signals; 1s bars drive fills/exits where available.
+- Each engine allows one trade per session day; independent profiles/legs may overlap.
+- Webhook presence determines live vs dry-run behavior.

@@ -1,250 +1,84 @@
-# ORB+FVG Python Backtester
+# Backtesting Engine
 
-Custom backtesting engine for the Opening Range Breakout + Fair Value Gap strategy. Uses vectorized signal generation (numpy/pandas) with a Numba-compiled trade simulator for limit orders and partial exits.
+Python research engine for ORB/FVG, LSI, VWAP, gap-fill, news, regime, and portfolio workflows. Signals are generated mostly from 5m futures data; 1m/1s data is used where available for drill-down, charting, and exact fill/exits.
 
 ## Quick Start
 
 ```bash
-cd python
-uv sync
+uv sync --extra data --extra storage --extra api --extra dev
 
-# Single backtest
-uv run python scripts/run_backtest.py --data NQ_5m.csv --instrument NQ --sessions NY
+uv run python scripts/run_backtest.py \
+  --data NQ_5m.csv --instrument NQ --sessions NY \
+  --name "NQ NY Baseline"
 
-# With experiment label
-uv run python scripts/run_backtest.py --data NQ_5m.csv --name "baseline" --notes "default params, NY only"
+uv run python scripts/run_optimize.py \
+  --data NQ_5m.csv --instrument NQ --sessions NY \
+  --sweep ny_stop_atr_pct=5:25:1 \
+  --name "NQ NY stop sweep"
 
-# Parameter sweep
-uv run python scripts/run_optimize.py --data NQ_5m.csv --sweep ny_stop_atr_pct=5:25:1
-
-# Start API + frontend
-uv run python scripts/run_server.py
+uv run python scripts/run_server.py       # http://localhost:8000
 ```
 
-## Development Flow
-
-The Pine Script workflow of creating `v5_atr.pine`, `v5_sweeps.pine`, etc. for each experiment doesn't translate well to Python. Here's how to approach it instead:
-
-### Parameter experiments → use config overrides
-
-Don't copy files. The config system parameterizes everything — session times, ATR percentages, gap filters, R:R. What would be `v5_atr.pine` vs `v5_fixed_gaps.pine` in Pine is just different `--ny-stop-atr-pct` values here.
-
-```bash
-# Testing wider stops
-uv run python scripts/run_backtest.py --data NQ_5m.csv \
-  --ny-stop-atr-pct 20 --name "wider_stops" --notes "testing 20% vs default 15%"
-
-# Testing tighter gaps
-uv run python scripts/run_backtest.py --data NQ_5m.csv \
-  --ny-min-gap-atr-pct 2.5 --name "tight_gaps"
-```
-
-For systematic sweeps:
-
-```bash
-uv run python scripts/run_optimize.py --data NQ_5m.csv \
-  --sweep ny_stop_atr_pct=5:25:1 --sweep rr=1.5,2.0,2.5,3.0
-```
-
-### Structural changes → use git branches
-
-New entry logic, exit types, or simulation mechanics belong in git branches — not duplicated scripts.
+## Layout
 
 ```
-main                      ← production-equivalent config
-feat/reentry-on-sl        ← what would be v6_x_reentry_on_sl.pine
-feat/respected-gaps       ← what would be v6_x_respected_gaps.pine
-```
-
-The code diff is the documentation. When a branch proves out, merge it.
-
-### Tracking results → experiment DB
-
-Every backtest auto-saves to `experiments.db` (SQLite in `data/results/`) with full config, metrics, and trade list. Use `--name` and `--notes` to tag what you were testing:
-
-```bash
-# CLI
-uv run python scripts/run_backtest.py --data NQ_5m.csv \
-  --name "asia_5pct_stops" --notes "confirming Asia session with 5% ATR stops"
-
-# API (POST /api/backtest)
-{"instrument": "NQ", "sessions": ["NY", "Asia"], "name": "multi_session_v1"}
-```
-
-Results are assigned a unique ID (e.g. `bt-nq-ny-rr3-a1b2c3`) and stored in the DB.
-
-The dashboard history panel shows the name label on each run for quick identification.
-
-### Trade concurrency semantics
-
-- `run_backtest()` enforces one-trade-per-session-day within each strategy/session run: if multiple same-day candidates exist, only the first fill is taken.
-- Combined portfolio scripts intentionally merge legs/sessions without cross-leg deconfliction, so overlapping trades at the same time across different legs are expected behavior.
-
-### Comparing runs → use the dashboard or experiment DB
-
-- **Dashboard**: Run backtests and browse history in the sidebar. Named runs show their label.
-- **CLI**: Results print a formatted summary to stdout after each run. Query the DB with `scripts/query_experiments.py`.
-- **API**: `GET /api/experiments` with filters for programmatic comparison.
-
-### Summary
-
-| Pine Script approach | Python equivalent |
-|---|---|
-| New file per variant (`v5_atr.pine`) | Different config params via `--flags` |
-| HEAD files for canonical versions | `main` branch + default config |
-| Visual comparison in TradingView | Dashboard history / experiment DB |
-| New entry model (`v6_x_*.pine`) | Git branch (`feat/...`) |
-| Keeping old versions around | Git history + experiment DB |
-
-## Data Sync (Cloudflare R2)
-
-Market data and results in `data/` are stored in Cloudflare R2 so all collaborators can share them. The `data/` directory is gitignored.
-
-### Setup
-
-1. Copy the env template and fill in your R2 credentials:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY
-   ```
-
-2. Manual sync:
-   ```bash
-   uv run --extra storage python scripts/sync_data.py upload          # push local → R2
-   uv run --extra storage python scripts/sync_data.py download        # pull R2 → local
-   uv run --extra storage python scripts/sync_data.py upload raw      # sync only raw/
-   ```
-
-3. Auto-sync (watches for local changes + polls R2 every 30s):
-   ```bash
-   uv run --extra storage python scripts/sync_data.py watch
-   uv run --extra storage python scripts/sync_data.py watch --poll 60  # custom interval
-   ```
-
-### Auto-Start on Login (macOS Launch Agent)
-
-To run the watcher automatically on login, create a Launch Agent:
-
-```bash
-cat > ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.orb-backtests.r2-sync</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/YOUR_USERNAME/.local/bin/uv</string>
-        <string>run</string>
-        <string>--extra</string>
-        <string>storage</string>
-        <string>python</string>
-        <string>scripts/sync_data.py</string>
-        <string>watch</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>/Users/YOUR_USERNAME/Documents/orb_backtests/python</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/orb-r2-sync.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/orb-r2-sync.log</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>/Users/YOUR_USERNAME/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
-</dict>
-</plist>
-EOF
-```
-
-Replace `YOUR_USERNAME` with your macOS username, then:
-
-```bash
-# Find your uv path: which uv
-# Start the agent
-launchctl load ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist
-
-# Useful commands
-launchctl list | grep orb-backtests          # check status
-tail -f ~/Library/Logs/orb-r2-sync.log       # view logs
-launchctl unload ~/Library/LaunchAgents/com.orb-backtests.r2-sync.plist  # stop
-```
-
-## Project Structure
-
-```
-python/
-├── src/
-│   ├── core/                      # Shared engine (all strategies)
-│   │   ├── config.py              # Frozen dataclass configs
-│   │   ├── data/
-│   │   │   ├── instruments.py     # Instrument specs (NQ, ES, YM, etc.)
-│   │   │   └── loader.py          # CSV → Parquet caching
-│   │   ├── engine/
-│   │   │   └── simulator.py       # Numba-compiled trade simulation
-│   │   ├── signals/
-│   │   │   ├── fvg.py             # FVG detection (vectorized)
-│   │   │   ├── orb.py             # ORB high/low per session
-│   │   │   ├── daily_atr.py       # Daily ATR, SMA, EMA, ROC, ADX, Donchian
-│   │   │   └── session.py         # Session time masking
-│   │   ├── optimize/
-│   │   │   ├── grid.py            # Parameter grid generation
-│   │   │   └── parallel.py        # Multiprocessing sweep runner
-│   │   ├── analysis/
-│   │   │   └── pre_trade_gates.py # Gate simulation functions
-│   │   ├── results/
-│   │   │   ├── export.py          # Result serialization + DB persistence
-│   │   │   └── metrics.py         # Trade metrics (Sharpe, PF, etc.)
-│   │   └── viz/
-│   │       └── equity.py          # Equity curve plotting
-│   ├── orb_continuation/          # Continuation strategy
-│   │   ├── config.py              # Session defaults + production_config()
-│   │   └── api.py                 # FastAPI server for frontend
-│   └── orb_reversal/              # Reversal strategy
-│       └── config.py              # Session defaults (strategy="reversal")
-├── scripts/
-│   ├── run_backtest.py            # Single backtest CLI
-│   ├── run_optimize.py            # Grid sweep CLI
-│   ├── run_server.py              # FastAPI launcher
-│   ├── compare_tv.py              # TradingView report comparison
-│   └── download_data.py           # Databento data fetcher
-├── data/
-│   ├── raw/                       # 5m + 1m OHLCV CSVs ({SYMBOL}_5m.csv, {SYMBOL}_1m.csv)
-│   ├── cache/                     # Parquet caches
-│   └── results/                   # experiments.db (SQLite)
+backtesting/
+├── src/orb_backtest/
+│   ├── config.py          # Instrument, SessionConfig, StrategyConfig
+│   ├── api.py             # FastAPI for frontend
+│   ├── experiments*.py    # local + remote experiment persistence
+│   ├── data/              # loaders, instruments, fees, dates, bar mapping
+│   ├── signals/           # FVG, ORB, swing/sweep, VWAP, IB, HTF/reference levels
+│   ├── engine/            # ORB/FVG, QM, VWAP, gap-fill, news simulators
+│   ├── optimize/          # grid/LHS/Optuna/WFO/stability/prop constraints
+│   ├── analysis/          # gates, regimes, autocorrelation, conditional stats
+│   └── results/           # metrics and serialization
+├── scripts/               # run, sweep, pipeline, data, registry scripts
+├── learnings/             # canonical research memory
+├── data/                  # gitignored raw/cache/results
 └── tests/
 ```
 
-## CLI Reference
+## Data
 
-### run_backtest.py
-
-```
---data            Data file (required)
---instrument      Symbol: NQ, ES, YM, MNQ, etc. (default: NQ)
---sessions        Comma-separated: NY,Asia,LDN (default: NY)
---start/--end     Date range (YYYY-MM-DD)
---name            Experiment label
---notes           Free-text notes
---rr              Risk-reward ratio
---risk-usd        Dollar risk per trade
---ny-stop-atr-pct NY stop as % of ATR
---output          Custom output path
---plot            Show equity curve
---quiet           Minimal output
+```bash
+uv run --extra data python scripts/download_data.py NQ ES CL GC --start 2016-01-01 --save-1m
+uv run python scripts/download_1s_data.py NQ --start 2024-01-01
+uv run --extra storage python scripts/sync_data.py download
+uv run --extra storage python scripts/sync_data.py upload
 ```
 
-### run_optimize.py
+`data/raw` holds market data, `data/cache` holds parquet/hash caches, and `data/results` holds local evidence/results. All are gitignored.
 
+## Conventions
+
+- Always pass a unique descriptive `--name`.
+- All research output should be in R units, not raw USD PnL.
+- Timestamps/session logic are US Eastern unless a script says otherwise.
+- `run_backtest()` enforces one trade per strategy/session day; portfolio scripts may intentionally allow overlaps across independent legs.
+- Hard constraints: `rr >= 1.0`, `tp1_ratio * rr >= 1.0`, final stop distance >= `5%` daily ATR.
+
+## Learnings
+
+Read before testing:
+
+1. `learnings/README.md`
+2. `learnings/briefs/GLOBAL.md`
+3. `learnings/briefs/assets/{ASSET}.md`
+
+After meaningful conclusions, update detailed learnings with metrics and DB experiment names, then regenerate:
+
+```bash
+uv run python backtesting/scripts/build_learnings_registry.py
 ```
---sweep key=start:end:step    Range sweep (e.g. rr=1.5:3.5:0.5)
---sweep key=v1,v2,v3          Discrete values
---workers N                   Parallel processes (default: CPU count)
---heatmap                     2D parameter heatmap
+
+## Execution Profile Exception
+
+Historical runs for `execution/config/exec_configs.json` profiles must use exact execution replay, not a hand-built research config:
+
+```bash
+cd ../execution
+PYTHONUNBUFFERED=1 .venv/bin/python scripts/save_exact_exec_backtests.py \
+  --profiles FAST_V1.1 FAST_V2.1 GENERAL_V1 \
+  --years 5
 ```

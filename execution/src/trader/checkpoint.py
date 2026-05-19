@@ -199,6 +199,8 @@ def serialize_orb_engine(engine: Any) -> dict:
         "levels": _serialize_levels(engine._levels),
         "tp1_hit": engine._tp1_hit,
         "tp1_bar_count": engine._tp1_bar_count,
+        "runner_stop": getattr(engine, "_runner_stop", None),
+        "trade_daily_atr": getattr(engine, "_trade_daily_atr", 0.0),
         "fill_bar_idx": engine._fill_bar_idx,
         "fill_timestamp": engine._fill_timestamp.isoformat() if engine._fill_timestamp else None,
         "fill_via_tick": engine._fill_via_tick,
@@ -303,6 +305,8 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     engine._levels = _deserialize_levels(data.get("levels"))
     engine._tp1_hit = data.get("tp1_hit", False)
     engine._tp1_bar_count = data.get("tp1_bar_count", -1)
+    engine._runner_stop = data.get("runner_stop")
+    engine._trade_daily_atr = data.get("trade_daily_atr", data.get("daily_atr", 0.0))
     engine._fill_bar_idx = data.get("fill_bar_idx", -1)
 
     fill_ts = data.get("fill_timestamp")

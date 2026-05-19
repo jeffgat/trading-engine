@@ -6,11 +6,11 @@ export function ConnectionStatus({ connected }: ConnectionStatusProps) {
   return (
     <div className="flex items-center gap-2 text-sm">
       <div
-        className={`h-2 w-2 rounded-full ${
-          connected ? "bg-profit animate-pulse" : "bg-loss"
+        className={`status-pulse-dot ${
+          connected ? "text-profit" : "text-loss"
         }`}
       />
-      <span className="text-text-muted">
+      <span className="font-mono text-xs font-semibold lowercase text-text-secondary">
         {connected ? "Connected" : "Reconnecting..."}
       </span>
     </div>

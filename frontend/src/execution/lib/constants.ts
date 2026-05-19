@@ -1,16 +1,16 @@
 export const STATE_COLORS: Record<string, string> = {
-  idle: "bg-sky-500/20 text-sky-200",
+  idle: "bg-info/15 text-info",
   orb_building: "bg-info/20 text-info",
-  scanning: "bg-sky-500/20 text-sky-300",
+  scanning: "bg-info/15 text-info",
   waiting_for_gap: "bg-amber-500/20 text-amber-300",
   waiting_for_sweep: "bg-warning/20 text-warning",
-  waiting_for_inversion: "bg-violet-500/20 text-violet-300",
+  waiting_for_inversion: "bg-profit/15 text-profit",
   collecting_gaps: "bg-amber-500/20 text-amber-300",
   armed_limit: "bg-profit/20 text-profit",
   trade_overlap: "bg-loss/20 text-loss",
   filled: "bg-accent/20 text-gold-200",
-  managing: "bg-cyan-500/20 text-cyan-300",
-  flat: "bg-orange-500/20 text-orange-200",
+  managing: "bg-info/20 text-info",
+  flat: "bg-gold-400/15 text-gold-300",
 };
 
 export const STATE_LABELS: Record<string, string> = {
@@ -68,18 +68,21 @@ export const SESSION_COLORS: Record<string, string> = {
 /** Map engine session names to research leg names (strategy/ASSET_SESSION-RR). */
 export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
   ALPHA_V1: {
+    NQ_NY: "ORB/NQ_NY-RR3.5",
     NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
     NQ_Asia: "ORB/NQ_ASIA-RR6",
     ES_Asia: "ORB/ES_ASIA-RR1.5",
     ES_NY: "ORB/ES_NY-RR5",
   },
   "ALPHA_V1-A": {
+    NQ_NY: "ORB/NQ_NY-RR3.5",
     NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
     NQ_Asia: "ORB/NQ_ASIA-RR6",
     ES_Asia: "ORB/ES_ASIA-RR1.5",
     ES_NY: "ORB/ES_NY-RR5",
   },
   "ALPHA_V1-C": {
+    NQ_NY: "ORB/NQ_NY-RR3.5",
     NQ_NY_LSI: "HTF_LSI/NQ_NY-RR3.5",
     NQ_Asia: "ORB/NQ_ASIA-RR6",
     ES_Asia: "ORB/ES_ASIA-RR1.5",
@@ -93,12 +96,12 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
 };
 
 export const CONFIG_COLORS: Record<string, string> = {
-  ALPHA_V1: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-  "ALPHA_V1-A": "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-  "ALPHA_V1-C": "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+  ALPHA_V1: "bg-profit/15 text-profit border-profit/35",
+  "ALPHA_V1-A": "bg-profit/15 text-profit border-profit/35",
+  "ALPHA_V1-C": "bg-info/15 text-info border-info/35",
   TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",
-  FAST: "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
-  "FAST_V1.1": "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
-  FAST_V2: "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
-  "FAST_V2.1": "bg-neutral-600/20 text-neutral-500 border-neutral-600/30",
+  FAST: "bg-bg-tertiary text-text-secondary border-border",
+  "FAST_V1.1": "bg-bg-tertiary text-text-secondary border-border",
+  FAST_V2: "bg-bg-tertiary text-text-secondary border-border",
+  "FAST_V2.1": "bg-bg-tertiary text-text-secondary border-border",
 };

@@ -10,10 +10,10 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 46
+- Strategy sections indexed: 49
 - Related reports indexed: 5
-- Related result directories indexed: 15
-- Status mix: CONDITIONAL: 3, INVALIDATED_OR_CORRUPT: 1, NO-GO: 7, UNSPECIFIED: 35
+- Related result directories indexed: 18
+- Status mix: CONDITIONAL: 3, INVALIDATED_OR_CORRUPT: 1, NO-GO: 7, UNSPECIFIED: 38
 
 ## Strategy Snapshot
 - `London ORB Continuation — Both Directions` -> `CONDITIONAL GO (edge confirmed, DD structural but accepted)`
@@ -27,4 +27,4 @@ This is the short entrypoint for agent and LLM context loading.
 - `Asia LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (definitive — losing strategy, no edge)`
 - `NY LSI v2 (NQ RR2/TP0.5 Anchor) — Both Directions — NO-GO` -> `**NO-GO** (REJECT 2/5 pipeline phases — deep DD, MC ruin, gap fragility)`
 - `NY HTF-LSI Phase One — CONDITIONAL / HOLDOUT WEAK` -> `CONDITIONAL at best; not promoted to phase two`
-- ... plus 35 more entries in the [full ES index](../../indexes/assets/ES.md).
+- ... plus 38 more entries in the [full ES index](../../indexes/assets/ES.md).

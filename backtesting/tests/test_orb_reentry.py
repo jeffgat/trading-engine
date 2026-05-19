@@ -52,9 +52,16 @@ def _run_backtest_with_candidates(
     reentry_policy: str = "any_reentry",
     rr: float = 2.0,
     tp1_ratio: float = 0.5,
+    risk_usd: float = 20.0,
     wide_stop_target_threshold_points: float = 0.0,
     wide_stop_target_rr: float = 0.0,
     wide_stop_full_exit_at_tp1: bool = False,
+    runner_trail_mode: str = "",
+    runner_trail_trigger_r: float = 0.0,
+    runner_trail_stop_r: float = 0.0,
+    runner_trail_step_r: float = 1.0,
+    runner_trail_gap_r: float = 1.0,
+    runner_trail_atr_pct: float = 0.0,
 ) -> list[simulator.TradeResult]:
     monkeypatch.setattr(simulator, "_extract_setup_candidates", lambda *_args, **_kwargs: list(candidates))
     config = StrategyConfig(
@@ -74,7 +81,7 @@ def _run_backtest_with_candidates(
         strategy="continuation",
         direction_filter="long",
         use_bar_magnifier=False,
-        risk_usd=20.0,
+        risk_usd=risk_usd,
         min_qty=1.0,
         qty_step=1.0,
         rr=rr,
@@ -84,6 +91,12 @@ def _run_backtest_with_candidates(
         wide_stop_target_threshold_points=wide_stop_target_threshold_points,
         wide_stop_target_rr=wide_stop_target_rr,
         wide_stop_full_exit_at_tp1=wide_stop_full_exit_at_tp1,
+        runner_trail_mode=runner_trail_mode,
+        runner_trail_trigger_r=runner_trail_trigger_r,
+        runner_trail_stop_r=runner_trail_stop_r,
+        runner_trail_step_r=runner_trail_step_r,
+        runner_trail_gap_r=runner_trail_gap_r,
+        runner_trail_atr_pct=runner_trail_atr_pct,
     )
     return simulator.run_backtest(df, config)
 
@@ -275,9 +288,86 @@ def test_wide_stop_full_exit_at_tp1_uses_normal_tp1_as_full_target(monkeypatch: 
     assert full_at_tp1_fill.r_multiple > normal_fill.r_multiple
 
 
+def test_step_runner_trail_locks_profit_after_tp1(monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _df(
+        [100.0, 100.0, 100.6, 102.2, 100.8, 100.2],
+        [100.0, 100.2, 101.2, 103.2, 101.0, 100.4],
+        [100.0, 99.8, 100.5, 101.0, 100.0, 99.9],
+        [100.0, 100.1, 101.0, 101.2, 100.2, 100.0],
+    )
+    candidates = [_cand(0, 100.0)]
+
+    baseline = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=5.0,
+        tp1_ratio=0.2,
+        risk_usd=40.0,
+    )
+    trailed = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=5.0,
+        tp1_ratio=0.2,
+        risk_usd=40.0,
+        runner_trail_mode="step_r",
+        runner_trail_trigger_r=3.0,
+        runner_trail_stop_r=1.0,
+    )
+
+    baseline_fill = [t for t in baseline if t.exit_type != EXIT_NO_FILL][0]
+    trailed_fill = [t for t in trailed if t.exit_type != EXIT_NO_FILL][0]
+
+    assert baseline_fill.r_multiple == pytest.approx(0.5)
+    assert trailed_fill.r_multiple == pytest.approx(1.0)
+    assert trailed_fill.exit_bar == 3
+
+
+def test_risk_runner_trail_uses_high_water_stop(monkeypatch: pytest.MonkeyPatch) -> None:
+    df = _df(
+        [100.0, 100.0, 100.6, 102.2, 100.8],
+        [100.0, 100.2, 101.2, 103.2, 101.0],
+        [100.0, 99.8, 100.5, 102.0, 100.0],
+        [100.0, 100.1, 101.0, 102.2, 100.2],
+    )
+    candidates = [_cand(0, 100.0)]
+
+    trailed = _run_backtest_with_candidates(
+        monkeypatch,
+        df,
+        candidates,
+        trade_cap=1,
+        rr=5.0,
+        tp1_ratio=0.2,
+        risk_usd=40.0,
+        runner_trail_mode="risk",
+        runner_trail_gap_r=1.0,
+    )
+
+    trailed_fill = [t for t in trailed if t.exit_type != EXIT_NO_FILL][0]
+
+    assert trailed_fill.r_multiple == pytest.approx(1.6)
+    assert trailed_fill.exit_bar == 3
+
+
 def test_invalid_wide_stop_target_reduction_rejected() -> None:
     with pytest.raises(ValueError, match="wide_stop_target_rr must be >= 1.0"):
         StrategyConfig(wide_stop_target_rr=0.5)
 
     with pytest.raises(ValueError, match="wide_stop_target_rr must be <= rr"):
         StrategyConfig(rr=2.0, wide_stop_target_rr=2.5)
+
+
+def test_invalid_runner_trail_config_rejected() -> None:
+    with pytest.raises(ValueError, match="runner_trail_mode must be one of"):
+        StrategyConfig(runner_trail_mode="percent")
+
+    with pytest.raises(ValueError, match="runner_trail_trigger_r must be > runner_trail_stop_r"):
+        StrategyConfig(runner_trail_mode="step_r", runner_trail_trigger_r=1.0, runner_trail_stop_r=1.0)
+
+    with pytest.raises(ValueError, match="runner_trail_atr_pct must be > 0"):
+        StrategyConfig(runner_trail_mode="atr")

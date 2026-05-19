@@ -17,6 +17,15 @@ api_key_env = "DATABENTO_API_KEY"
 dataset = "GLBX.MDP3"
 # Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, GC.FUT)
 
+[orderbook]
+# Dry shadow validation: MBP-10 streams, sizing is logged only, no quantity changes.
+enable_mbp10 = true
+mbp10_cost_ack = true
+dynamic_sizing_enabled = false
+dynamic_sizing_shadow_enabled = true
+dynamic_sizing_sessions = ["NQ_NY_LSI_PURE_1M"]
+retention_seconds = 90.0
+
 [traderspost]
 # Set TRADERSPOST_WEBHOOK_URL in your environment
 webhook_url_env = "TRADERSPOST_WEBHOOK_URL"

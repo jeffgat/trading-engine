@@ -4,6 +4,8 @@ Separate-account portfolio optimized for prop firm payout extraction. Each leg r
 
 2026-05-06 operating update: **NQ NY ORB R11** is added as a fifth live-native ALPHA leg, but only as a risk-split NY ORB sleeve beside a reduced **ES_NY ORB** allocation. Keep both NY ORB legs on their exact-replayed split ladders; solve the ES_NY discomfort with lower risk, not single-target compression.
 
+2026-05-07 fee update: the new MNQ/MES fee accounting materially degrades the phase-one payout read versus the pre-fee R-scaled screen. The live aggressive sprint menu is still fastest, but no current tested menu is genuinely low-breach after exact fee-aware sizing; treat the old `95%+` payout / low-breach rows as superseded.
+
 Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and current HTF-LSI exact replay (updated 2026-04-12).
 
 ---
@@ -24,29 +26,29 @@ Source: LLM Council sessions (2026-04-03), exact replacement sizing packets, and
 
 ### Risk Sizing Per Leg
 
-Risk is differentiated per leg based on actual trade-level prop sims. For the NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep; the 2026-05-06 recent annual payout sim stitched exact cached trade streams for the four active ALPHA legs plus exact NQ R11. This is still not a freshly exported five-leg execution profile, but it is the current operating sizing read.
+Risk is differentiated per leg based on actual trade-level prop sims. For the NQ NY HTF leg, the sizing row below uses the exact replacement risk sweep. The 2026-05-07 fee-aware replay reran the current `ALPHA_V1-A` five-leg profile at each risk menu with MNQ/MES fees applied in the exact engine; this supersedes the older 2026-05-06 stitched pre-fee payout read.
 
 Live execution single-contract cap rule: each leg sets `max_single_risk_usd = 1.5 * risk_usd`. If one micro contract would exceed that cap, the setup is skipped; if it fits, one-contract split trades now exit the full position at TP1 instead of using TP1 only as a breakeven trigger.
 
 | Leg | Sprint Risk | Pay% | PayD | MCBch | EV$/acct | Rationale |
 |-----|------------|------|------|-------|----------|-----------|
-| NQ NY HTF-LSI lag24 | $500 | 87.0%* | 27d* | n/a* | n/a* | Selected aggressive sprint sizing; fastest payout sleeve, accepts higher breach variance |
-| NQ Asia ORB | $400 | 87.0%* | 27d* | n/a* | n/a* | Selected aggressive sprint sizing; primary Asia accelerator |
-| ES Asia Cont | $150 | 95.7%* | 52d* | 2* | +$276* | Trimmed from `$200` in the annual payout sim to reduce breach clustering while preserving speed |
-| NQ NY ORB R11 | $250 | 87.0%* | 27d* | n/a* | n/a* | Added NY ORB companion leg; exact split replay `+148.3R`, `PF 1.51`, `-6.45R` DD |
-| ES NY Cont | $300 | 87.0%* | 27d* | n/a* | n/a* | Higher-risk aggressive sprint satellite; monitor 2026 NY stress closely |
+| NQ NY HTF-LSI lag24 | $500 | 82.6/73.1%* | 41/21d* | 7* | +$202* | Selected aggressive sprint sizing; fastest payout sleeve, accepts higher breach variance |
+| NQ Asia ORB | $400 | 82.6/73.1%* | 41/21d* | 7* | +$202* | Selected aggressive sprint sizing; primary Asia accelerator |
+| ES Asia Cont | $150 | 82.6/73.1%* | 41/21d* | 7* | +$202* | Trimmed from `$200` in the annual payout sim to reduce breach clustering while preserving speed |
+| NQ NY ORB R11 | $250 | 82.6/73.1%* | 41/21d* | 7* | +$202* | Added NY ORB companion leg; exact split replay `+148.3R`, `PF 1.51`, `-6.45R` DD |
+| ES NY Cont | $300 | 82.6/73.1%* | 41/21d* | 7* | +$202* | Higher-risk aggressive sprint satellite; monitor 2026 NY stress closely |
 
-\* Five-leg recent annual sim row for selected aggressive sprint `HTF $500 / NQ Asia $400 / ES Asia $150 / NQ R11 $250 / ES NY $300`: `87.0%` payout / `13.0%` breach / `32.8d` average payout in 2024, `84.6%` payout / `15.4%` breach / `21.2d` average payout in 2025, and partial `2026_YTD` had `3` payouts, `2` breaches, and `1` open account through `2026-03-24`.
+\* Fee-aware exact profile rerun for selected aggressive sprint `HTF $500 / NQ Asia $400 / ES Asia $150 / NQ R11 $250 / ES NY $300`: `82.6%` payout / `17.4%` breach / `41.1d` average payout in 2024, `73.1%` payout / `26.9%` breach / `20.8d` average payout in 2025, and partial `2026_YTD` had `3` payouts, `0` breaches, and `3` open accounts through `2026-03-24`.
 
 ### Risk Combination Suggestions
 
-These are operating risk menus. The 2026-05-06 annual sim uses exact cached ALPHA_V1-A trades plus exact NQ R11 split trades, but not a single exported five-leg execution profile.
+These are operating risk menus. The 2026-05-07 fee-aware annual sim uses current `ALPHA_V1-A` exact profile replays with MNQ/MES fees at `$0.575` per contract per side and per-menu `max_single_risk_usd = 1.5 * risk_usd`.
 
 | Mode | NQ NY HTF-LSI | NQ Asia ORB | ES Asia ORB | NQ NY ORB R11 | ES NY ORB | Read |
 |------|---------------|-------------|-------------|---------------|-----------|------|
-| Fast-safe annual default | $300 | $300 | $150 | $150 | $100 | Best breach-controlled tradeoff: `52d` avg 2024-2025 payout, `95.7%` resolved payout, `4.3%` resolved breach |
-| Balanced NY sleeve challenger | $300 | $300 | $200 | $250 | $200 | Fast but less comfortable: `47d` in 2024 and `28d` in 2025, but partial `2026_YTD` resolved at `2` payouts / `3` breaches / `1` open |
-| Aggressive sprint | $500 | $400 | $150 | $250 | $300 | Selected live sprint menu: very fast (`27d` avg 2024-2025) but breach jumps to `14.2%`; use with the new `1.5x` single-contract cap rule |
+| Fast-safe annual default | $300 | $300 | $150 | $150 | $100 | No longer clean after fees: `59d` avg 2024-2025 payout, `77.5%` resolved payout, `22.5%` breach, `6` max consecutive breaches |
+| Balanced NY sleeve challenger | $300 | $300 | $200 | $250 | $200 | Best clustering tradeoff among tested rows: `46d` avg payout, `76.8%` resolved payout, `23.3%` breach, `4` max consecutive breaches |
+| Aggressive sprint | $500 | $400 | $150 | $250 | $300 | Selected live sprint menu remains fastest: `31d` avg payout, `77.8%` resolved payout, `22.2%` breach, but `7` max consecutive breaches |
 
 **Current combined-account exact packet with HTF swap (legacy `NQ_NY_LSI` replaced by `HTF_LSI_5M_LAG24` at `$300`; other legs unchanged):**
 
@@ -57,7 +59,7 @@ These are operating risk menus. The 2026-05-06 annual sim uses exact cached ALPH
 | 2025 | 84.6% | 96d | 22 | 4 | 0 | Best fully resolved recent year |
 | 2026 YTD | 100.0%* | 42d | 1 | 0 | 5 | Too open-heavy to lean on |
 
-\* Resolved accounts only. This portfolio packet was run on the immediately prior lag24 baseline (`08:30-15:00`, `rr=3.0`, `tp1=0.6`). The live `ALPHA_V1` leg is now the tighter `08:30-13:30`, `rr=3.5`, `tp1=0.4` version, so a fresh full four-leg exact rerun is still pending.
+\* Resolved accounts only. This portfolio packet was run on the immediately prior lag24 baseline (`08:30-15:00`, `rr=3.0`, `tp1=0.6`). The live `ALPHA_V1` leg is now the tighter `08:30-13:30`, `rr=3.5`, `tp1=0.4` version. The HTF-LSI leg itself was rerun on `2026-05-16` after the stale HTF-level invalidation fix; a fresh full four-leg exact portfolio rerun is still pending.
 
 ---
 
@@ -87,26 +89,34 @@ These are operating risk menus. The 2026-05-06 annual sim uses exact cached ALPH
 | regime gate | None |
 | magnifier | 1s |
 
-| Metric | Full History | Holdout (2025-04-01 to 2026-03-24) |
+| Metric | Full History | Holdout (2025-04-01 to 2026-05-01) |
 |--------|-------------|-------------------|
-| Trades | 493 | 38 |
-| Win Rate | 52.1% | 57.9% |
-| PF | 1.43 | 1.96 |
-| Sharpe | 2.428 | 4.414 |
-| Net R | +86.6 | +13.0 |
-| Max DD | -10.0R | -3.0R |
-| Calmar | 8.63 | 4.33 |
+| Trades | 394 | 29 |
+| Win Rate | 53.6% | 62.1% |
+| PF | 1.47 | 2.10 |
+| Sharpe | 2.916 | 5.290 |
+| Net R | +82.3 | +11.7 |
+| Max DD | -8.0R | -3.0R |
+| Calmar | 10.29 | 3.92 |
 | Neg years | 1 | — |
 
-Exact replay on the current live params: only `2016` was a negative full year; `2017-2025` were positive, and `2026 YTD` is still too immature to weigh heavily.
+Corrected exact replay on the current live params, after stale HTF levels are consumed when breached outside the valid sweep/entry window: only `2019` was a negative full year; `2016-2018` and `2020-2026 YTD` were positive. This supersedes the old `493`-trade ALPHA leg summary.
 
-Sizing reference at `$300` risk from the prior exact replacement packet: `10Y` prop payout `90.6%`, `304d` average payout, `9` max consecutive breaches, `+$2,076` EV/start. Recent `2024-2026` packet: `98.0%` payout, `176d` average payout, `+$2,410` EV/start.
+The older `$300` sizing and combined swap-in payout references were generated on the pre-correction stream and should be treated as stale until rerun.
 
-Combined swap-in reference on that same older lag24 baseline, with the other three legs unchanged: `10Y` combined payout `73.6%`, `134d` average payout.
+R by year: 2016:+2.6 | 2017:+6.0 | 2018:+11.6 | 2019:-1.5 | 2020:+13.2 | 2021:+7.9 | 2022:+6.2 | 2023:+10.4 | 2024:+14.8 | 2025:+8.9 | 2026:+2.3
 
-R by year: 2016:-2.3 | 2017:+5.7 | 2018:+9.8 | 2019:+2.7 | 2020:+12.1 | 2021:+7.8 | 2022:+3.5 | 2023:+15.3 | 2024:+18.6 | 2025:+13.6 | 2026:-0.4
+Corrected rolling exact windows:
+
+| Window | Dates | Trades | Win Rate | PF | Net R | Max DD | Calmar |
+|--------|-------|-------:|---------:|---:|------:|-------:|-------:|
+| 10Y | 2016-05-01 to 2026-05-01 | 385 | 53.5% | 1.49 | +83.3 | -8.0R | 10.42 |
+| 2Y | 2024-05-01 to 2026-05-01 | 60 | 58.3% | 1.92 | +21.1 | -3.7R | 5.70 |
+| 1Y | 2025-05-01 to 2026-05-01 | 25 | 68.0% | 2.78 | +13.3 | -2.0R | 6.67 |
 
 Execution: `ALPHA_V1` live `NQ_NY_LSI` override now mirrors this HTF-LSI profile.
+
+Corrected challenger retest: no other NQ NY LSI/HTF-LSI candidate cleanly replaced this slot on all-weather evidence. The only live-native conditional tweak worth portfolio-level exact testing is adding `block_bear_high_vol`: exact holdout improved to `28` trades, PF `2.29`, `+12.7R`, with the same `-3.0R` holdout DD, but full-history R slipped to `+78.7R` and Calmar to `9.84`. Research-only additive EQHL (`15m tol1`) remains interesting but is not execution-supported.
 
 ---
 
@@ -177,6 +187,8 @@ WF: WFE 0.834, stability 0.893. MC: 89.7% survival. 672/900 grid combos have 0 n
 Lifecycle sim: **$598K net**, 321 days avg extraction.
 
 R by year: 2016:+7.5 | 2017:+7.6 | 2018:+1.9 | 2019:+15.3 | 2020:+14.4 | 2021:+9.1 | 2022:+22.1 | 2023:+21.7 | 2024:+18.5 | 2025:+27.4 | 2026:+1.1
+
+Operating rationale after the 2026-05-16 ES Asia-B exact compare: keep active `ORB/ES_ASIA-RR1.5` in `ALPHA_V1` even though ES Asia-B is a good recent-regime challenger. The active ES Asia leg has the stronger full-history exact profile and pairs better with `NQ Asia RR6`: ES Asia's nearer `1.05R` TP1 / `1.5R` TP2 structure balances NQ Asia's farther `1.8R` TP1 / `6R` runner, giving the Asia sleeve more useful payoff variance than replacing ES Asia with another farther-target branch.
 
 DB: `bt-es-asia-cont-long-2016-2026-final-6f79d8`
 
@@ -364,6 +376,28 @@ Full-window exact comparison:
 
 Operating conclusion: do **not** promote ES NY or NQ R11 single-target exits on edge grounds. ES NY and NQ R11 split ladders remain the better exact-engine structures despite the awkward TP1-BE profile. ES Asia single `1.25R` remains a valid challenger if accepting the DD tradeoff. All rows are `deployability=live_native`; split exact replay is complete through `2026-03-24`.
 
+### ALPHA_V1 ES_NY Runner-Trail Sweep (2026-05-11)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_SWEEP_20260511.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_es_ny_runner_trail_sweep_20260511/`
+
+This tested the active **ES_NY ORB** split ladder with post-TP1 runner trailing while holding entries, stops, sessions, DOW filter, `rr=5.0`, `tp1_ratio=0.2`, and the `5m -> 1m -> 1s` magnifier fixed. Three runner-management families were swept: stepped R locks, continuous high-water trailing by initial risk, and continuous high-water trailing by daily ATR percent.
+
+Full-history result: the current no-trail split ladder still wins as the all-weather default (`846` trades, `+126.6R`, `PF 1.39`, `-10.9R` DD, Calmar `11.65`). The best full-history trailing challenger, `atr_gap_5pct`, reduced DD to `-8.9R` but gave up `-27.4R` and PF (`1.30`). The best recent challenger, `risk_gap_0p75r`, confirmed the live discomfort thesis by improving last-2Y from `+21.4R / -9.7R` to `+25.0R / -7.6R` and 2025+ from `+19.5R / -9.6R` to `+25.0R / -7.6R`, but full-history fell to `+104.8R` and PF `1.32`.
+
+Operating conclusion: runner trailing is a valid research branch, not a live replacement yet. If optimizing for recent ES_NY giveback specifically, `risk_gap_0p75r` is the first exact-replay candidate after execution support exists. If optimizing for smoother full-history DD, `atr_gap_5pct` is the only serious branch. Do not replace the current ES_NY split ladder on this sweep alone because the baseline remains better on full-history R/PF/Calmar. All trailing rows are `deployability=research_only`; exact/live execution support plus exact replay are required before any promotion.
+
+Exact follow-up: `backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_EXACT_20260511.md`
+
+The exact/live engine now supports post-TP1 runner trails and broker-side runner-stop replacement. The two best simulator candidates were replayed through the exact ES_NY live engine over `2016-04-17` to `2026-03-24`.
+
+- **Baseline exact remains production incumbent**: `849` trades, `+145.8R`, `PF 1.215`, `-12.0R` DD, Calmar `12.15`; 2025+ `+18.0R / -9.0R`.
+- **`risk_gap_0p75r` exact rejected**: `+83.2R`, `PF 1.057`, `-15.4R` DD, Calmar `5.40`; 2025+ only `+8.1R`. It created `458` positive runner-stop exits but nearly eliminated full TP2s (`2` vs baseline `86`), so it solved giveback by over-cutting winners.
+- **`atr_gap_5pct` exact rejected as replacement**: `+103.1R`, `PF 1.107`, `-12.1R` DD, Calmar `8.51`; 2025+ `+13.3R`. It is less damaging than risk-gap but still gives up too much R/PF without a material DD improvement.
+
+Promotion decision: **do not move either runner-trail candidate into ALPHA_V1-A production**. Keep the current ES_NY split ladder. Trail variants can remain paper/shadow research only if we want to diagnose live psychology/giveback, but exact evidence says the no-trail 5R runner is still the better trading system.
+
 ### NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)
 
 Report: `backtesting/learnings/reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md`
@@ -397,6 +431,56 @@ Key result: payout speed is not the blocker. Even low-risk rows reached first pa
 | `HTF 500 / NQ Asia 400 / ES Asia 150 / R11 250 / ES NY 300` | `87.0%` payout, `13.0%` breach, `32.8d` | `84.6%` payout, `15.4%` breach, `21.2d` | `3` payout / `2` breach / `1` open | Very fast, but breach is no longer minimized |
 
 Operating conclusion: the breach-controlled default remains `HTF $300 / NQ Asia $300 / ES Asia $150 / NQ R11 $150 / ES NY $100`, but the live execution profile is intentionally moving to the aggressive sprint menu `HTF $500 / NQ Asia $400 / ES Asia $150 / NQ R11 $250 / ES NY $300` for faster payout velocity. This accepts the known higher breach rate and should be monitored closely against partial-2026 NY stress.
+
+### ALPHA_V1 Fee-Aware Exact Profile Payout Rerun (2026-05-07)
+
+Artifacts: `backtesting/data/results/alpha_v1_payout_with_fees_20260507/`
+
+This reran the three operating menus through the current live exact engine using the new fee model: MNQ/MES `$0.575` per contract per side, current `ALPHA_V1-A` session definitions, current `NQ_NY` ORB leg, per-menu `risk_usd`, per-menu `max_single_risk_usd = 1.5 * risk_usd`, and the single-contract TP1 full-exit rule. Replay window was `2023-01-01` to `2026-03-24`, with 2023 used as warmup and account starts scored only for `2024`, `2025`, and `2026_YTD`.
+
+| Risk Menu | 2024 | 2025 | 2026_YTD | Read |
+|-----------|------|------|----------|------|
+| `HTF 300 / NQ Asia 300 / ES Asia 150 / R11 150 / ES NY 100` | `79.0%` payout, `21.1%` breach, `77.2d` avg payout | `76.0%` payout, `24.0%` breach, `41.2d`, `6` MCBch | `2` payout / `0` breach / `4` open | Old "fast-safe" row is no longer fast-safe after fees |
+| `HTF 300 / NQ Asia 300 / ES Asia 200 / R11 250 / ES NY 200` | `72.7%` payout, `27.3%` breach, `58.4d` | `80.8%` payout, `19.2%` breach, `32.7d`, `4` MCBch | `2` payout / `0` breach / `4` open | Best tested compromise if breach clustering matters |
+| `HTF 500 / NQ Asia 400 / ES Asia 150 / R11 250 / ES NY 300` | `82.6%` payout, `17.4%` breach, `41.1d` | `73.1%` payout, `26.9%` breach, `20.8d`, `7` MCBch | `3` payout / `0` breach / `3` open | Fastest, highest EV/start, but worst 2025 breach clustering |
+
+Operating conclusion: fee-aware exact sizing changes the read materially. Payout speed is still acceptable, but breach rate is now the primary blocker across all three menus. The aggressive sprint menu can remain a deliberate speed test, but it should not be described as breach-minimized; the balanced challenger is the cleaner compromise among the three tested rows because it avoids the aggressive row's `7` consecutive-breach cluster.
+
+### ALPHA_V1 Next-Step Packet: Asia Geometry, R11 Gate, Hunter Sidecar (2026-05-16)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_NEXT_STEPS_20260516.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_next_steps_20260516/`
+
+This packet ran the three follow-ups from the 2-8 candidate review against cached exact/current fee-aware streams. It did not search new signal parameters.
+
+1. **Asia sleeve payoff geometry**: keep active `ES Asia RR1.5` in the portfolio. The active sleeve `NQ Asia + active ES Asia` produced `+239.2R`, DD `-28.7R`, Sharpe `0.99`, and weighted net `$70.4k` at current aggressive Asia risks (`NQ Asia $400 / ES Asia $150`). Replacing ES with Asia-B original reduced sleeve R to `+207.8R` and raised NQ/ES daily correlation from `0.25` to `0.39`. Asia-B still looks stronger in 2025-only account cohorts, but the full-history and payoff-geometry read supports the existing near-target ES / far-runner NQ pairing.
+2. **NQ R11 15m structure + VWAP gate**: the only gate worth a true replay is `any2of3_vwap_d10`. Using an entry-minus-one-5m proxy, it kept `86.6%` of full-history trades and matched baseline net (`+110.8R` fee-aware net R), while improving 2025+ from `+9.4R` to `+10.7R`, last-1y from `+3.5R` to `+7.9R`, and DD from `-6.1R` to `-5.1R` in recent windows. Strict `HH/HL-2` looked good in last-1y but gutted full-history R. Deployability is `post_filter_only` until rerun inside the engine at the true signal bar.
+3. **Hunter 0.25x sidecar**: this is the strongest next candidate. On the current fee-aware aggressive sprint profile, adding the 10y-safe Hunter branch (`ema14_tol0_distnone__withTue__1055__rej100__stress`) improved 2024 from `82.6%` payout / `17.4%` breach to `88.5%` / `11.5%`, and 2025 from `73.1%` / `26.9%` to `84.6%` / `15.4%`. Max consecutive 2025 breaches improved from `7` to `4`, portfolio net rose by about `$20.7k`, DD stayed similar (`-$4.10k` vs `-$4.04k`), and daily corr to ALPHA was only `0.03`. The shadow profile below supersedes the prior `research_only` status for dry-run purposes.
+
+Operating conclusion: no change to active ES Asia. Prioritize Hunter 0.25x as the next shadow/paper add-on candidate. The R11 structure/VWAP replay below closes candidate #7 as an ALPHA replacement path for now.
+
+### Hunter 0.25x Shadow Profile (2026-05-16)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_HUNTER_025_SHADOW_SPEC_20260516.md`
+
+Execution profile added: `ALPHA_V1-HUNTER-SAFE-025-SHADOW` in `execution/config/exec_configs.json`.
+
+This converts the Hunter 10y-safe `0.25x` sidecar from `research_only` into a practical no-webhook dry-run profile. It uses existing execution-native `hunter_orb` support and the existing `H_ORB_SAFE` branch, with only the profile-level risk scaled down: `risk_usd=$87.50`, `max_single_risk_usd=$87.50`, `max_contracts=5`, `webhooks=[]`. Deployability for dry-run/shadow is now `live_native`; exact replay/log parity is still required before any webhook promotion.
+
+Shadow acceptance checks: startup must show `DRY-RUN (no webhooks)`, engine creation must show `H_ORB_SAFE` with the three stress regime gates, and live logs must confirm `REGIME_GATE_PASSED` / blocking-gate behavior plus Hunter setup, EMA, re-entry, and sizing behavior before considering promotion.
+
+### R11 Structure/VWAP Engine Replay (2026-05-16)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_R11_STRUCTURE_GATE_ENGINE_REPLAY_20260516.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_r11_structure_gate_engine_replay_20260516/`
+
+This reran the R11 structure/VWAP idea as a true research-engine candidate gate at the ORB signal bar, before one-trade-per-day selection. That removed the entry-minus-one-5m proxy caveat from the next-step packet.
+
+Result: candidate #7 is **not ALPHA-grade as a replacement gate**. Baseline research-engine R11 printed `552` trades, `+90.0R` net after MNQ fees, PF `1.33`, and `-8.4R` DD. The proxy lead `any2of3_vwap_d10` kept `497` trades but fell to `+82.1R` (`-7.8R`), PF `1.33`, and `-7.9R` DD. It still improved recent windows (`2025+` `+11.6R` vs `+7.0R`; last-1y `+11.9R` vs `+5.1R`), but the full-history R haircut is not acceptable for a core ALPHA leg. Strict `hh_hl_2_vwap` collapsed to `+21.3R` and `-14.6R` DD.
+
+Deployability: baseline R11 remains `live_native`; structure-gated variants are `post_filter_only` because production execution does not yet compute this 15m structure/VWAP context before arming. Do not promote the gate. Keep it only as a discretionary/recent-regime context note unless a separate low-risk specialist sleeve is intentionally designed.
 
 ---
 
@@ -706,6 +790,30 @@ The alternatives each have a flaw. `0.25-0.75%` is best for payout safety (`70.0
 Implementation update: the live startup path now refreshes a futures ATH seed from DataBento daily OHLCV, applies it only to engines with an enabled ATH gate, and re-applies after checkpoint restore without lowering a higher live/checkpoint ATH. Added execution profile `ALPHA_V1-ES-NY-ATH-SHADOW`: enabled, ES_NY only, no webhooks, `ath_block_min_pct=0.5`, `ath_block_max_pct=0.75`. This makes the candidate mechanically `deployability=live_native`; `live_support_notes=causal pre-arm ATH gate plus DataBento daily seed source are supported, but profile is dry-run/shadow because it has no webhooks`; `exact_replay_required=completed_through_2026-03-24_and_repeat_before_live_promotion_if_data_extends_materially`.
 
 Operating status: forward shadow only. Do not merge this into the live webhook profile until shadow logs show the seeded ATH, intraday ATH updates, and skipped-arm counts match expectations in real time. Shadow diagnostics are exposed through the engine `ath` status payload: `high`, `last_update`, `last_close`, `current_gap_pct`, `check_count`, `block_count`, `pass_count`, `last_check`, and `last_block`. The execution frontend renders this as a separate ATH Gate panel, and TESTING now includes `ES_NY_ATH_GATE` so skipped and non-skipped ATH gate decisions can be verified side by side before promotion.
+
+---
+
+## Priorities 1-5 Follow-Up Packet (2026-05-16)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_PRIORITIES_1_5_20260516.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_priorities_1_5_20260516/`
+
+Ran the requested priorities in order: Hunter live-engine parity, Hunter sidecar sizing around `0.25x`, Hunter + ES_NY ATH interaction, updated post-`2026-03-24` exact replay, and Asia sleeve risk balance.
+
+**Main decision update:** Hunter remains interesting as a small additive idea, but the old research-selected Hunter CSV is **not live-engine parity confirmed**. The no-webhook `ALPHA_V1-HUNTER-SAFE-025-SHADOW` exact replay through NQ local data `2026-05-01` produced `1660` trades, `+$4.7k`, PF `1.06`, and about `+73.7` net R at the actual shadow profile. On the overlap with the original selected research stream (`2016-04-25` to `2026-04-24`), fuzzy same-setup matching found only `593 / 1650` research trades (`35.9%`), with `1058` exact-only and `1057` research-only setups. Treat prior Hunter downstream reads as suggestive only until the signal-stream mismatch is explained.
+
+**Sizing update:** current Hunter engine sizing is not a clean proportional `0.25x` risk model because `_hunter_qty_for_risk` floors to at least `1` MNQ and ignores the `max_single_risk_usd` cap used by the standard ORB sizing path. At intended `$87.50` risk, `18.2%` of Hunter trades exceed intended risk; at `$43.75`, `49.2%` exceed intended risk. The apparent `0.125x`/`0.25x`/`0.375x` sidecar rows are therefore contract-floor variants, not pure scalar variants.
+
+**Portfolio interaction update:** on the cached fee-aware ALPHA packet through `2026-03-24`, actual-engine Hunter `0.25x` added about `+$6.0k` and improved 2025 account outcomes (`73.1%` payout / `26.9%` breach -> `84.6%` / `15.4%`) but worsened 2024 slightly (`82.6%` / `17.4%` -> `80.0%` / `20.0%`). ES_NY ATH `0.50-0.75%` revalued to current `$300` ES_NY risk improved the ES_NY leg net (`$5.7k` -> `$11.5k`) but worsened combined DD and 2024 account outcomes when used alone. The combined ATH replacement + Hunter row looked strongest in 2024-2025 (`96.0%` / `4.0%` in 2024, `84.6%` / `15.4%` in 2025), but it mixes two not-yet-promoted overlays and should remain shadow/research until Hunter parity is resolved.
+
+**Hunter cap-fix follow-up (2026-05-17):** patched `HunterORBEngine._hunter_qty_for_risk()` to honor the standard single-contract cap instead of forcing `1` MNQ when the setup risk exceeds `max_single_risk_usd`. Cap-fixed exact replay removed the hidden over-risking (`303` over-cap trades -> `0`) and reduced standalone Hunter from old floor-based `1660` trades / `+$4.7k` / `+73.7R` to `1384` trades / `+$3.0k` / `+51.0R`. The sidecar account read got cleaner anyway: baseline ALPHA `2024` moved from `82.6%` payout / `17.4%` breach to `87.5%` / `12.5%`, and `2025` moved from `73.1%` / `26.9%` to `84.6%` / `15.4%`. Actionable status: cap-fixed Hunter is the cleaner no-webhook shadow candidate, but still no webhook promotion because research/live parity remains poor (`529 / 1650` matched research trades, `32.1%`). Report: `backtesting/learnings/reports/ALPHA_V1_HUNTER_CAP_FIX_20260517.md`.
+
+**Hunter parity debug follow-up (2026-05-17):** root cause was entry-price convention, not Tuesday handling or broad reentry logic. The research stream uses next 5m bar open; the live Hunter translation used signal-bar close. Adding `hunter_entry_basis=next_open` moved high-cap signal-only parity to `1650 / 1650` matched research trades including entry/stop/target. Deployable cap-fixed next-open matched `1349 / 1650` (`81.8%`), with the remaining gap mostly intentional `$87.50` single-contract cap rejection (`320` qty-rejected candidates). Tuesday stays enabled; no-Tuesday matched only `1294 / 1650`. Reentry variants preserved research coverage but added exact-only flow and did not improve quality. Sidecar remains additive: next-open cap-fixed Hunter adds about `+$5.1k`, improves `2024` from `82.6% / 17.4%` payout/breach to `87.5% / 12.5%`, and improves `2025` from `73.1% / 26.9%` to `80.8% / 19.2%`. `ALPHA_V1-HUNTER-SAFE-025-SHADOW` now sets `hunter_entry_basis=next_open`; keep it no-webhook shadow only until live logs confirm next-open arming/fill behavior. Report: `backtesting/learnings/reports/ALPHA_V1_HUNTER_PARITY_DEBUG_20260517.md`.
+
+**Updated exact replay:** `latest_common_end(["NQ", "ES"])` is still `2026-03-24` because ES local data stops there, while NQ extends to `2026-05-01`. The combined ALPHA exact replay cannot genuinely test post-`2026-03-24` yet. The current exact `ALPHA_V1-A` replay over `2023-01-01` to `2026-03-24` printed `928` trades, `$44.4k`, PF `1.41`, `+149.3` net R, and `-$4.7k` DD, below the older cached fee-aware packet (`946` trades, `$53.8k`, PF `1.48`, `+171.2` net R). Use the updated exact packet as the current code/config reference until ES data is extended.
+
+**Asia risk balance:** with updated exact ALPHA streams and no parameter changes, the top 2024-2025 risk-balance rows were clustered around the existing Asia sleeve. `NQ Asia $450 / ES Asia $150` ranked first on the packet score (`78.9%` average 2024-2025 payout, max breach `23.1%`, `30.3d` average payout), but the current `NQ Asia $400 / ES Asia $150` was effectively tied (`78.5%`, max breach `23.1%`, `30.4d`) with lower gross exposure. Keep the current Asia risk balance as the default unless deliberately pushing for slightly more NQ Asia exposure.
 
 ---
 

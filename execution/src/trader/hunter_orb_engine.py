@@ -28,6 +28,27 @@ class _HunterOutcome:
     exit_type: str
 
 
+@dataclass(frozen=True)
+class _HunterSignal:
+    timestamp: datetime
+    direction: int
+    signal_open: float
+    signal_high: float
+    signal_low: float
+    signal_close: float
+    stop: float
+    body_pct: float
+    rejection_pct: float
+    extension_pct: float
+    ema15_distance: float | None
+
+
+@dataclass(frozen=True)
+class _PendingHunterEntry:
+    signal: _HunterSignal
+    fill_timestamp: datetime
+
+
 @dataclass
 class HunterORBEngine(ORBEngine):
     """Classic/Hunter ORB breakout engine.
@@ -45,6 +66,7 @@ class HunterORBEngine(ORBEngine):
     rejection_wick_max_pct: float = 20.0
 
     # Hunter stop/target model.
+    hunter_entry_basis: str = "signal_close"
     sl_buffer_points: float = 1.0
     hunter_target_rr: float = 2.0
     large_sl_threshold_points: float = 50.0
@@ -71,12 +93,23 @@ class HunterORBEngine(ORBEngine):
 
     _hunter_outcomes: list[_HunterOutcome] = field(default_factory=list, init=False)
     _hunter_max_hold_at: datetime | None = field(default=None, init=False)
+    _pending_hunter_entry: _PendingHunterEntry | None = field(default=None, init=False)
+    _hunter_active_context: dict[str, object] = field(default_factory=dict, init=False)
+    _hunter_debug_events: list[dict[str, object]] = field(default_factory=list, init=False)
     _ema15_bucket_start: datetime | None = field(default=None, init=False)
     _ema15_open: float = field(default=0.0, init=False)
     _ema15_high: float = field(default=float("-inf"), init=False)
     _ema15_low: float = field(default=float("inf"), init=False)
     _ema15_close: float = field(default=0.0, init=False)
     _ema15_last_completed: float | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.hunter_entry_basis not in {"signal_close", "next_open"}:
+            raise ValueError(
+                "hunter_entry_basis must be one of 'signal_close' or 'next_open' "
+                f"(got {self.hunter_entry_basis!r})"
+            )
 
     async def on_bar(self, bar: Bar, daily_atr: float) -> None:
         """Update the continuous 15m EMA, then run the Hunter state machine."""
@@ -86,6 +119,12 @@ class HunterORBEngine(ORBEngine):
     async def on_tick(self, tick: Bar, daily_atr: float) -> None:
         """Use 1s bars for bracket exit and max-hold detection."""
         self._daily_atr = daily_atr
+        if self._pending_hunter_entry is not None and tick.timestamp >= self._pending_hunter_entry.fill_timestamp:
+            await self._activate_pending_hunter_entry(
+                entry_price=float(tick.open),
+                fill_timestamp=self._pending_hunter_entry.fill_timestamp,
+                fill_via_tick=True,
+            )
         if self._state in (State.FILLED, State.MANAGING):
             await self._handle_hunter_exit(tick, resolution="1s")
 
@@ -101,6 +140,8 @@ class HunterORBEngine(ORBEngine):
         super()._reset_day(date_str, notify=notify)
         self._hunter_outcomes.clear()
         self._hunter_max_hold_at = None
+        self._pending_hunter_entry = None
+        self._hunter_active_context = {}
 
     async def _handle_scanning(self, bar: Bar, bar_time: time) -> None:
         """Scan confirmed 5m bars for Hunter breakout entries."""
@@ -122,67 +163,66 @@ class HunterORBEngine(ORBEngine):
             sides.append(-1)
 
         for direction in sides:
-            candidate = self._build_hunter_levels(bar, direction)
-            if candidate is None:
+            signal = self._build_hunter_signal(bar, direction)
+            if signal is None:
                 continue
-            levels, body_pct, rejection_pct, extension_pct, ema15_distance = candidate
-            if not self._can_take_hunter_candidate(bar, extension_pct, ema15_distance):
+            if not self._can_take_hunter_candidate(bar, signal.extension_pct, signal.ema15_distance):
+                self._record_hunter_debug_event(signal, "reentry_blocked")
                 self._log_trade(
                     "HUNTER_REENTRY_BLOCKED",
                     "dir=%s extension=%.2f ema15_dist=%s"
                     % (
                         "long" if direction == 1 else "short",
-                        extension_pct,
-                        "%.2f" % ema15_distance if ema15_distance is not None else "na",
+                        signal.extension_pct,
+                        "%.2f" % signal.ema15_distance if signal.ema15_distance is not None else "na",
                     ),
                 )
                 continue
 
-            capped_levels = self._apply_position_cap(levels)
-            if capped_levels is None:
+            fill_timestamp = bar.timestamp + timedelta(minutes=5)
+            if self.hunter_entry_basis == "next_open":
+                self._pending_hunter_entry = _PendingHunterEntry(
+                    signal=signal,
+                    fill_timestamp=fill_timestamp,
+                )
+                self._fill_timestamp = fill_timestamp
+                self._fill_bar_idx = self._bar_count
+                self._fill_via_tick = True
+                self._state = State.MANAGING
+                self._record_hunter_debug_event(signal, "pending_next_open")
+                self._request_checkpoint()
+                self._log_trade(
+                    "HUNTER_PENDING_NEXT_OPEN",
+                    "dir=%s signal=%s fill=%s signal_close=%.2f stop=%.2f"
+                    % (
+                        "long" if direction == 1 else "short",
+                        bar.timestamp.isoformat(),
+                        fill_timestamp.isoformat(),
+                        signal.signal_close,
+                        signal.stop,
+                    ),
+                )
+                self._notify_state_change()
                 return
 
-            self._levels = capped_levels
-            self._tp1_hit = False
-            self._fill_bar_idx = self._bar_count
-            self._fill_timestamp = bar.timestamp + timedelta(minutes=5)
-            self._fill_via_tick = True
-            self._hunter_max_hold_at = self._fill_timestamp + timedelta(minutes=self.max_hold_minutes)
-            self._state = State.MANAGING
-            self._request_checkpoint()
-            self._log_trade(
-                "HUNTER_SETUP",
-                (
-                    "dir=%s entry=%.2f stop=%.2f target=%.2f rr=%.2f "
-                    "qty=%.1f body=%.2f rejection=%.2f extension=%.2f ema15_dist=%s"
-                )
-                % (
-                    "long" if direction == 1 else "short",
-                    capped_levels.entry,
-                    capped_levels.stop,
-                    capped_levels.tp2,
-                    self._hunter_rr_for_risk(capped_levels.risk_pts),
-                    capped_levels.qty,
-                    body_pct,
-                    rejection_pct,
-                    extension_pct,
-                    "%.2f" % ema15_distance if ema15_distance is not None else "na",
-                ),
-            )
-            self._notify_state_change()
-            if self._should_send:
-                await self.broker.send_entry(
-                    action="buy" if direction == 1 else "sell",
-                    qty=capped_levels.qty,
-                    price=capped_levels.entry,
-                    tp2=capped_levels.tp2,
-                    stop=capped_levels.stop,
-                    ticker=self.exec_ticker,
-                )
-            return
+            if await self._activate_hunter_signal(
+                signal,
+                entry_price=signal.signal_close,
+                fill_timestamp=fill_timestamp,
+                fill_via_tick=True,
+            ):
+                return
 
     async def _handle_managing(self, bar: Bar, bar_time: time) -> None:
         """5m fallback exit handling if 1s bars are unavailable."""
+        if self._pending_hunter_entry is not None and bar.timestamp >= self._pending_hunter_entry.fill_timestamp:
+            await self._activate_pending_hunter_entry(
+                entry_price=float(bar.open),
+                fill_timestamp=self._pending_hunter_entry.fill_timestamp,
+                fill_via_tick=False,
+            )
+            if self._levels is None:
+                return
         if self._in_flat(bar):
             await self._flatten_position(bar, resolution="5m", reason="bar_time")
             return
@@ -196,11 +236,11 @@ class HunterORBEngine(ORBEngine):
         await super()._flatten_position(bar, resolution=resolution, reason=reason)
         self._remember_hunter_outcome(exit_timestamp, self._price_to_r(exit_price), "eod")
 
-    def _build_hunter_levels(
+    def _build_hunter_signal(
         self,
         bar: Bar,
         direction: int,
-    ) -> tuple[TradeLevels, float, float, float, float | None] | None:
+    ) -> _HunterSignal | None:
         body_pct, rejection_pct = self._body_rejection_pct(bar, direction)
         if body_pct < self.body_min_pct:
             self._log_trade("HUNTER_FILTER_BODY", "body=%.2f min=%.2f" % (body_pct, self.body_min_pct))
@@ -230,28 +270,46 @@ class HunterORBEngine(ORBEngine):
                 )
                 return None
 
-        entry = float(bar.close)
         stop = float(bar.low) - self.sl_buffer_points if direction == 1 else float(bar.high) + self.sl_buffer_points
-        risk_pts = (entry - stop) if direction == 1 else (stop - entry)
-        if risk_pts <= 0:
-            self._log_trade("HUNTER_FILTER_RISK", "risk_pts=%.2f" % risk_pts)
-            return None
-
-        rr = self._hunter_rr_for_risk(risk_pts)
-        target = entry + direction * risk_pts * rr
-        qty = self._hunter_qty_for_risk(risk_pts)
-        if qty <= 0:
-            self._log_trade("HUNTER_FILTER_QTY", "risk_pts=%.2f" % risk_pts)
-            return None
-
         extension_pct = (
             (float(bar.close) - self._orb_high) / self._orb_range * 100.0
             if direction == 1
             else (self._orb_low - float(bar.close)) / self._orb_range * 100.0
         )
-        levels = TradeLevels(
-            entry=entry,
+        signal = _HunterSignal(
+            timestamp=bar.timestamp,
+            direction=direction,
+            signal_open=float(bar.open),
+            signal_high=float(bar.high),
+            signal_low=float(bar.low),
+            signal_close=float(bar.close),
             stop=stop,
+            body_pct=body_pct,
+            rejection_pct=rejection_pct,
+            extension_pct=extension_pct,
+            ema15_distance=ema15_distance,
+        )
+        self._record_hunter_debug_event(signal, "signal_passed")
+        return signal
+
+    def _levels_from_hunter_signal(self, signal: _HunterSignal, entry: float) -> TradeLevels | None:
+        risk_pts = (entry - signal.stop) if signal.direction == 1 else (signal.stop - entry)
+        if risk_pts <= 0:
+            self._log_trade("HUNTER_FILTER_RISK", "risk_pts=%.2f" % risk_pts)
+            self._record_hunter_debug_event(signal, "risk_rejected", entry_price=entry, risk_points=risk_pts)
+            return None
+
+        rr = self._hunter_rr_for_risk(risk_pts)
+        target = entry + signal.direction * risk_pts * rr
+        qty = self._hunter_qty_for_risk(risk_pts)
+        if qty <= 0:
+            self._log_trade("HUNTER_FILTER_QTY", "risk_pts=%.2f" % risk_pts)
+            self._record_hunter_debug_event(signal, "qty_rejected", entry_price=entry, risk_points=risk_pts)
+            return None
+
+        return TradeLevels(
+            entry=entry,
+            stop=signal.stop,
             tp1=target,
             tp2=target,
             be=entry,
@@ -259,10 +317,107 @@ class HunterORBEngine(ORBEngine):
             half_qty=qty,
             is_single_contract=True,
             risk_pts=risk_pts,
-            direction=direction,
-            gap_size=extension_pct,
+            direction=signal.direction,
+            gap_size=signal.extension_pct,
         )
-        return levels, body_pct, rejection_pct, extension_pct, ema15_distance
+
+    async def _activate_pending_hunter_entry(
+        self,
+        *,
+        entry_price: float,
+        fill_timestamp: datetime,
+        fill_via_tick: bool,
+    ) -> bool:
+        pending = self._pending_hunter_entry
+        if pending is None:
+            return False
+        self._pending_hunter_entry = None
+        return await self._activate_hunter_signal(
+            pending.signal,
+            entry_price=entry_price,
+            fill_timestamp=fill_timestamp,
+            fill_via_tick=fill_via_tick,
+        )
+
+    async def _activate_hunter_signal(
+        self,
+        signal: _HunterSignal,
+        *,
+        entry_price: float,
+        fill_timestamp: datetime,
+        fill_via_tick: bool,
+    ) -> bool:
+        levels = self._levels_from_hunter_signal(signal, entry_price)
+        if levels is None:
+            self._levels = None
+            self._state = State.WAITING_FOR_GAP if self._in_entry(fill_timestamp.time()) else State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return False
+
+        capped_levels = self._apply_position_cap(levels)
+        if capped_levels is None:
+            self._levels = None
+            self._state = State.WAITING_FOR_GAP if self._in_entry(fill_timestamp.time()) else State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return False
+
+        self._levels = capped_levels
+        self._tp1_hit = False
+        self._fill_bar_idx = self._bar_count
+        self._fill_timestamp = fill_timestamp
+        self._fill_via_tick = fill_via_tick
+        self._hunter_max_hold_at = self._fill_timestamp + timedelta(minutes=self.max_hold_minutes)
+        self._hunter_active_context = self._hunter_context(
+            signal,
+            entry_price=capped_levels.entry,
+            target_price=capped_levels.tp2,
+            risk_points=capped_levels.risk_pts,
+            qty=capped_levels.qty,
+            fill_timestamp=fill_timestamp,
+        )
+        self._state = State.MANAGING
+        self._record_hunter_debug_event(
+            signal,
+            "setup_activated",
+            entry_price=capped_levels.entry,
+            target_price=capped_levels.tp2,
+            risk_points=capped_levels.risk_pts,
+            qty=capped_levels.qty,
+        )
+        self._request_checkpoint()
+        self._log_trade(
+            "HUNTER_SETUP",
+            (
+                "dir=%s entry=%.2f stop=%.2f target=%.2f rr=%.2f "
+                "qty=%.1f body=%.2f rejection=%.2f extension=%.2f ema15_dist=%s entry_basis=%s"
+            )
+            % (
+                "long" if signal.direction == 1 else "short",
+                capped_levels.entry,
+                capped_levels.stop,
+                capped_levels.tp2,
+                self._hunter_rr_for_risk(capped_levels.risk_pts),
+                capped_levels.qty,
+                signal.body_pct,
+                signal.rejection_pct,
+                signal.extension_pct,
+                "%.2f" % signal.ema15_distance if signal.ema15_distance is not None else "na",
+                self.hunter_entry_basis,
+            ),
+        )
+        self._notify_state_change()
+        if self._should_send:
+            await self.broker.send_entry(
+                action="buy" if signal.direction == 1 else "sell",
+                qty=capped_levels.qty,
+                price=capped_levels.entry,
+                tp2=capped_levels.tp2,
+                stop=capped_levels.stop,
+                ticker=self.exec_ticker,
+            )
+        return True
 
     async def _handle_hunter_exit(self, bar: Bar, *, resolution: str) -> None:
         levels = self._levels
@@ -344,6 +499,7 @@ class HunterORBEngine(ORBEngine):
             )
         )
         self._hunter_max_hold_at = None
+        self._hunter_active_context = {}
 
     def _should_continue_scanning(self, exit_timestamp: datetime) -> bool:
         return self._in_entry(exit_timestamp.time())
@@ -395,14 +551,87 @@ class HunterORBEngine(ORBEngine):
     def _hunter_qty_for_risk(self, risk_pts: float) -> float:
         if risk_pts <= 0:
             return 0.0
-        raw_qty = math.floor(self.risk_usd / (risk_pts * self.point_value))
-        qty = max(self.min_qty, float(raw_qty))
+        risk_per_contract = risk_pts * self.point_value
+        raw_qty = math.floor(self.risk_usd / risk_per_contract)
+        qty = float(raw_qty)
+        if qty < self.min_qty:
+            single_risk = risk_per_contract * self.min_qty
+            if single_risk <= self.max_single_risk_usd:
+                qty = self.min_qty
+            else:
+                return 0.0
         if self.qty_step > 0:
             qty = math.floor(qty / self.qty_step) * self.qty_step
         return min(self.max_contracts, qty)
 
     def _hunter_rr_for_risk(self, risk_pts: float) -> float:
         return self.reduced_target_rr if risk_pts >= self.large_sl_threshold_points else self.hunter_target_rr
+
+    def _hunter_context(
+        self,
+        signal: _HunterSignal,
+        *,
+        entry_price: float,
+        target_price: float,
+        risk_points: float,
+        qty: float,
+        fill_timestamp: datetime,
+    ) -> dict[str, object]:
+        return {
+            "hunter_entry_basis": self.hunter_entry_basis,
+            "signal_time": signal.timestamp.isoformat(),
+            "fill_time": fill_timestamp.isoformat(),
+            "signal_open": signal.signal_open,
+            "signal_high": signal.signal_high,
+            "signal_low": signal.signal_low,
+            "signal_close": signal.signal_close,
+            "entry_price": entry_price,
+            "stop_price": signal.stop,
+            "target_price": target_price,
+            "risk_points": risk_points,
+            "qty": qty,
+            "body_pct": signal.body_pct,
+            "rejection_pct": signal.rejection_pct,
+            "extension_pct": signal.extension_pct,
+            "ema15_distance": signal.ema15_distance,
+        }
+
+    def _trade_entry_context(self) -> dict[str, object]:
+        return dict(self._hunter_active_context)
+
+    def _record_hunter_debug_event(
+        self,
+        signal: _HunterSignal,
+        reason: str,
+        *,
+        entry_price: float | None = None,
+        target_price: float | None = None,
+        risk_points: float | None = None,
+        qty: float | None = None,
+    ) -> None:
+        self._hunter_debug_events.append(
+            {
+                "session": self.name,
+                "date": signal.timestamp.strftime("%Y-%m-%d"),
+                "signal_time": signal.timestamp.isoformat(),
+                "direction": "long" if signal.direction == 1 else "short",
+                "reason": reason,
+                "hunter_entry_basis": self.hunter_entry_basis,
+                "signal_open": signal.signal_open,
+                "signal_high": signal.signal_high,
+                "signal_low": signal.signal_low,
+                "signal_close": signal.signal_close,
+                "entry_price": entry_price,
+                "stop_price": signal.stop,
+                "target_price": target_price,
+                "risk_points": risk_points,
+                "qty": qty,
+                "body_pct": signal.body_pct,
+                "rejection_pct": signal.rejection_pct,
+                "extension_pct": signal.extension_pct,
+                "ema15_distance": signal.ema15_distance,
+            }
+        )
 
     @staticmethod
     def _body_rejection_pct(bar: Bar, direction: int) -> tuple[float, float]:

@@ -56,8 +56,8 @@ export function TradeEventRow({ entry, strategyType, onClick, clickable }: Trade
         <span
           className={`text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap ${
             isLsi
-              ? "text-violet-400 bg-violet-400/10"
-              : "text-emerald-400 bg-emerald-400/10"
+              ? "text-info bg-info/10"
+              : "text-profit bg-profit/10"
           }`}
         >
           {isLsi ? "LSI" : "ORB"}
