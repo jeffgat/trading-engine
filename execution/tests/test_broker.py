@@ -218,6 +218,45 @@ class TestSendTp1Single:
 
 
 # =============================================================================
+# send_runner_stop_update
+# =============================================================================
+
+class TestSendRunnerStopUpdate:
+    async def test_long_replaces_stop_and_preserves_tp2(self, client_and_captured):
+        client, captured = client_and_captured
+        results = await client.send_runner_stop_update("long", 1.0, 19525.0, 19700.0)
+
+        assert len(results) == 2
+        assert captured[0] == {
+            "ticker": "MNQ",
+            "action": "sell",
+            "orderType": "stop",
+            "stopPrice": 19525.0,
+            "quantity": 1.0,
+            "sentiment": "flat",
+            "delay": 3,
+        }
+        assert captured[1] == {
+            "ticker": "MNQ",
+            "action": "sell",
+            "orderType": "limit",
+            "limitPrice": 19700.0,
+            "quantity": 1.0,
+            "sentiment": "flat",
+            "cancel": False,
+            "delay": 5,
+        }
+
+    async def test_short_close_action_is_buy(self, client_and_captured):
+        client, captured = client_and_captured
+        await client.send_runner_stop_update("short", 1.0, 19475.0, 19300.0)
+
+        assert captured[0]["action"] == "buy"
+        assert captured[1]["action"] == "buy"
+        assert captured[1]["cancel"] is False
+
+
+# =============================================================================
 # send_flatten and send_cancel
 # =============================================================================
 
@@ -343,6 +382,7 @@ class TestMultiBroker:
         ])
         b.send_tp1_multi = AsyncMock(return_value=[])
         b.send_tp1_single = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
+        b.send_runner_stop_update = AsyncMock(return_value=[])
         b.send_flatten = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
         b.send_cancel = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
         return b
@@ -381,6 +421,14 @@ class TestMultiBroker:
         called_exit = call_kwargs.args[2] if call_kwargs.args else call_kwargs.kwargs.get("exit_qty")
         assert called_total == 6
         assert called_exit == 2
+
+    async def test_runner_stop_multiplier_scales_qty(self):
+        b1 = self._make_mock_client(multiplier=2.0)
+        multi = MultiBroker([b1])
+        await multi.send_runner_stop_update("long", 3.0, 19525.0, 19700.0)
+        call_kwargs = b1.send_runner_stop_update.call_args
+        called_qty = call_kwargs.args[1] if call_kwargs.args else call_kwargs.kwargs.get("qty")
+        assert called_qty == 6
 
     async def test_all_paused_returns_empty(self):
         b1 = self._make_mock_client(paused=True)

@@ -110,7 +110,7 @@ function formatExcludedDow(dow: number | number[] | null): string | null {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
     return (
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-200">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-primary">
             {children}
         </span>
     );
@@ -641,14 +641,14 @@ function SessionConfigCard({
                 <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
+                            <CardTitle className="text-sm font-semibold text-white">
                                 {shortName}
                             </CardTitle>
                             <span
                                 className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                                     isLsi
-                                        ? 'text-violet-400 bg-violet-400/10'
-                                        : 'text-emerald-400 bg-emerald-400/10'
+                                        ? 'text-info bg-info/10'
+                                        : 'text-profit bg-profit/10'
                                 }`}>
                                 {isLsi ? 'LSI' : 'ORB'}
                             </span>
@@ -985,14 +985,14 @@ function SessionConfigCard({
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <CardTitle className="text-sm font-semibold bg-primary/20 px-2 py-1 w-fit rounded-md">
+                        <CardTitle className="text-sm font-semibold text-white">
                             {shortName}
                         </CardTitle>
                         <span
                             className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                                 isLsi
-                                    ? 'text-violet-400 bg-violet-400/10'
-                                    : 'text-emerald-400 bg-emerald-400/10'
+                                    ? 'text-info bg-info/10'
+                                    : 'text-profit bg-profit/10'
                             }`}>
                             {isLsi ? 'LSI' : 'ORB'}
                         </span>
@@ -1635,8 +1635,8 @@ export function ConfigView({
                                                                                             <span
                                                                                                 className={`text-[9px] font-medium px-1 py-0.5 rounded ${
                                                                                                     isLsi
-                                                                                                        ? 'text-violet-400 bg-violet-400/10'
-                                                                                                        : 'text-emerald-400 bg-emerald-400/10'
+                                                                                                        ? 'text-info bg-info/10'
+                                                                                                        : 'text-profit bg-profit/10'
                                                                                                 }`}>
                                                                                                 {isLsi
                                                                                                     ? 'LSI'

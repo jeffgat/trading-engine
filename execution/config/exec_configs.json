@@ -1,6 +1,6 @@
 {
   "ALPHA_V1-A": {
-    "enabled": true,
+    "enabled": false,
     "max_open_contracts": 20,
     "webhooks": [
       {
@@ -26,7 +26,9 @@
         "risk_usd": 250,
         "max_single_risk_usd": 375,
         "long_only": true,
-        "excluded_dow": [4],
+        "excluded_dow": [
+          4
+        ],
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0
       },
@@ -47,8 +49,16 @@
         "risk_usd": 400,
         "max_single_risk_usd": 600,
         "long_only": true,
-        "excluded_dow": [1],
-        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"]
+        "excluded_dow": [
+          1
+        ],
+        "half_days": [
+          "20250703",
+          "20251128",
+          "20251224",
+          "20250109",
+          "20260119"
+        ]
       },
       "ES_Asia": {
         "orb_start": "20:00",
@@ -86,7 +96,9 @@
         "risk_usd": 300,
         "max_single_risk_usd": 450,
         "long_only": true,
-        "excluded_dow": [3],
+        "excluded_dow": [
+          3
+        ],
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0
       }
@@ -121,7 +133,7 @@
     }
   },
   "ALPHA_V1-ES-NY-ATH-SHADOW": {
-    "enabled": true,
+    "enabled": false,
     "max_open_contracts": 20,
     "webhooks": [],
     "sessions": {
@@ -142,11 +154,27 @@
         "risk_usd": 400,
         "max_single_risk_usd": 400,
         "long_only": true,
-        "excluded_dow": [3],
+        "excluded_dow": [
+          3
+        ],
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
         "ath_block_min_pct": 0.5,
         "ath_block_max_pct": 0.75
+      }
+    },
+    "lsi_sessions": {}
+  },
+  "ALPHA_V1-HUNTER-SAFE-025-SHADOW": {
+    "enabled": false,
+    "max_open_contracts": 5,
+    "webhooks": [],
+    "sessions": {
+      "H_ORB_SAFE": {
+        "risk_usd": 87.5,
+        "max_single_risk_usd": 87.5,
+        "max_contracts": 5,
+        "hunter_entry_basis": "next_open"
       }
     },
     "lsi_sessions": {}
@@ -173,7 +201,9 @@
         "risk_usd": 150,
         "max_single_risk_usd": 225,
         "long_only": true,
-        "excluded_dow": [4],
+        "excluded_dow": [
+          4
+        ],
         "min_stop_pts": 0.0,
         "min_tp1_pts": 0.0
       },
@@ -194,8 +224,16 @@
         "risk_usd": 150,
         "max_single_risk_usd": 225,
         "long_only": true,
-        "excluded_dow": [1],
-        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"]
+        "excluded_dow": [
+          1
+        ],
+        "half_days": [
+          "20250703",
+          "20251128",
+          "20251224",
+          "20250109",
+          "20260119"
+        ]
       },
       "ES_Asia": {
         "orb_start": "20:00",
@@ -233,7 +271,9 @@
         "risk_usd": 200,
         "max_single_risk_usd": 300,
         "long_only": true,
-        "excluded_dow": [3],
+        "excluded_dow": [
+          3
+        ],
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0
       }
@@ -268,7 +308,7 @@
     }
   },
   "HOT_REGIME_V1": {
-    "enabled": true,
+    "enabled": false,
     "max_open_contracts": 20,
     "webhooks": [],
     "sessions": {
@@ -289,7 +329,9 @@
         "risk_usd": 400,
         "max_single_risk_usd": 500,
         "long_only": true,
-        "excluded_dow": [4],
+        "excluded_dow": [
+          4
+        ],
         "icf_enabled": true,
         "orb_trade_max_per_session": 2,
         "orb_reentry_policy": "any_reentry",
@@ -312,10 +354,15 @@
         "risk_usd": 200,
         "max_single_risk_usd": 500,
         "long_only": true,
-        "excluded_dow": [4],
+        "excluded_dow": [
+          4
+        ],
         "orb_trade_max_per_session": 2,
         "orb_reentry_policy": "any_reentry",
-        "regime_gates": ["block_bear_medium_vol", "block_bear_high_vol"]
+        "regime_gates": [
+          "block_bear_medium_vol",
+          "block_bear_high_vol"
+        ]
       },
       "ES_NY": {
         "orb_start": "09:30",
@@ -344,7 +391,9 @@
         "limit_cancel_on_pre_entry_target_touch": "tp1",
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
-        "regime_gates": ["block_full_medium_vol"]
+        "regime_gates": [
+          "block_full_medium_vol"
+        ]
       },
       "ES_Asia": {
         "orb_start": "20:00",
@@ -364,14 +413,18 @@
         "max_single_risk_usd": 500,
         "long_only": false,
         "short_only": false,
-        "excluded_dow": [0],
+        "excluded_dow": [
+          0
+        ],
         "orb_trade_max_per_session": 2,
         "orb_reentry_policy": "after_nonpositive_first",
         "wide_stop_target_threshold_points": 12.5,
         "wide_stop_target_rr": 1.5,
         "min_stop_pts": 3.0,
         "min_tp1_pts": 3.0,
-        "regime_gates": ["block_sideways_high_vol"]
+        "regime_gates": [
+          "block_sideways_high_vol"
+        ]
       }
     },
     "lsi_sessions": {
@@ -426,27 +479,37 @@
         "max_fvg_to_inversion_bars": 16,
         "lsi_stop_mode": "struct_75pct",
         "long_only": false,
-        "excluded_dow": [2],
-        "regime_gates": ["block_full_high_vol"]
+        "excluded_dow": [
+          2
+        ],
+        "regime_gates": [
+          "block_full_high_vol"
+        ]
       }
     }
   },
   "TESTING": {
-    "enabled": true,
+    "enabled": false,
     "webhooks": [],
     "sessions": {
       "GC_Asia": {
-        "regime_gates": ["block_bull_medium_vol"],
+        "regime_gates": [
+          "block_bull_medium_vol"
+        ],
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
       "NQ_NY_Short": {
-        "regime_gates": ["block_bull_low_vol"],
+        "regime_gates": [
+          "block_bull_low_vol"
+        ],
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
       "SI_Asia": {
-        "regime_gates": ["block_bull_medium_vol"],
+        "regime_gates": [
+          "block_bull_medium_vol"
+        ],
         "risk_usd": 400,
         "max_single_risk_usd": 500
       },
@@ -471,7 +534,9 @@
         "max_single_risk_usd": 350,
         "max_contracts": 20,
         "entry_end": "13:05",
-        "excluded_dow": [1],
+        "excluded_dow": [
+          1
+        ],
         "body_min_pct": 0.0,
         "rejection_wick_max_pct": 20.0,
         "ema15_enabled": false,
@@ -536,13 +601,17 @@
         "lsi_variant": "legacy-LSI",
         "lsi_n_left": 8,
         "lsi_n_right": 60,
-        "excluded_dow": [3],
-        "regime_gates": ["block_full_medium_vol"]
+        "excluded_dow": [
+          3
+        ],
+        "regime_gates": [
+          "block_full_medium_vol"
+        ]
       }
     }
   },
   "FAST": {
-    "enabled": true,
+    "enabled": false,
     "webhooks": [],
     "sessions": {
       "NQ_NY": {
@@ -586,7 +655,7 @@
     }
   },
   "FAST_V2": {
-    "enabled": true,
+    "enabled": false,
     "max_open_contracts": 20,
     "webhooks": [],
     "sessions": {
@@ -607,8 +676,12 @@
         "risk_usd": 400,
         "max_single_risk_usd": 500,
         "long_only": false,
-        "excluded_dates": ["20241218"],
-        "excluded_dow": [4]
+        "excluded_dates": [
+          "20241218"
+        ],
+        "excluded_dow": [
+          4
+        ]
       },
       "NQ_Asia": {
         "orb_start": "20:00",
@@ -628,9 +701,19 @@
         "tp1_ratio": 0.25,
         "risk_usd": 400,
         "max_single_risk_usd": 500,
-        "excluded_dates": ["20241218"],
-        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"],
-        "excluded_dow": [1]
+        "excluded_dates": [
+          "20241218"
+        ],
+        "half_days": [
+          "20250703",
+          "20251128",
+          "20251224",
+          "20250109",
+          "20260119"
+        ],
+        "excluded_dow": [
+          1
+        ]
       },
       "ES_Asia": {
         "orb_start": "20:00",
@@ -649,7 +732,9 @@
         "risk_usd": 400,
         "max_single_risk_usd": 500,
         "long_only": false,
-        "excluded_dates": ["20241218"]
+        "excluded_dates": [
+          "20241218"
+        ]
       }
     },
     "lsi_sessions": {
@@ -691,12 +776,15 @@
         "lsi_variant": "legacy-LSI",
         "lsi_n_left": 5,
         "lsi_n_right": 60,
-        "excluded_dow": [2, 3]
+        "excluded_dow": [
+          2,
+          3
+        ]
       }
     }
   },
   "FAST_V1.1": {
-    "enabled": true,
+    "enabled": false,
     "webhooks": [],
     "sessions": {
       "NQ_Asia": {
@@ -728,7 +816,7 @@
     }
   },
   "FAST_V2.1": {
-    "enabled": true,
+    "enabled": false,
     "webhooks": [],
     "sessions": {
       "NQ_Asia": {
@@ -749,9 +837,19 @@
         "tp1_ratio": 0.25,
         "risk_usd": 400,
         "max_single_risk_usd": 500,
-        "excluded_dates": ["20241218"],
-        "half_days": ["20250703", "20251128", "20251224", "20250109", "20260119"],
-        "excluded_dow": [1]
+        "excluded_dates": [
+          "20241218"
+        ],
+        "half_days": [
+          "20250703",
+          "20251128",
+          "20251224",
+          "20250109",
+          "20260119"
+        ],
+        "excluded_dow": [
+          1
+        ]
       }
     },
     "lsi_sessions": {
@@ -793,7 +891,10 @@
         "lsi_variant": "legacy-LSI",
         "lsi_n_left": 5,
         "lsi_n_right": 60,
-        "excluded_dow": [2, 3]
+        "excluded_dow": [
+          2,
+          3
+        ]
       }
     }
   },
@@ -828,6 +929,20 @@
         "max_fvg_to_inversion_bars": 24,
         "long_only": true,
         "excluded_dow": null
+      }
+    }
+  },
+  "NQ_LSI_PURE_1M_OBV_SHADOW": {
+    "enabled": true,
+    "max_open_contracts": 20,
+    "webhooks": [],
+    "sessions": {},
+    "lsi_sessions": {
+      "NQ_NY_LSI_PURE_1M": {
+        "risk_usd": 250,
+        "max_single_risk_usd": 500,
+        "qty_multiplier": 1.0,
+        "dynamic_sizing_shadow": true
       }
     }
   }

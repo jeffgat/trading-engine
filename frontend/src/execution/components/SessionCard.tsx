@@ -99,13 +99,44 @@ interface SessionCardProps {
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
 
-function formatResult(value: number, riskUsd?: number) {
-  const rLabel = `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
-  if (riskUsd == null) return rLabel;
-  return `${rLabel} (${USD_FORMATTER.format(value * riskUsd)})`;
+function getGrossRiskUsd(engine: SessionStatus, sessionConfig?: SessionConfig, fallbackRiskUsd?: number) {
+  const levels = engine.levels;
+  const pointValue = engine.point_value ?? sessionConfig?.point_value;
+  if (levels && pointValue != null) {
+    const riskPoints = Math.abs(levels.entry - levels.stop);
+    const grossRiskUsd = riskPoints * levels.qty * pointValue;
+    if (Number.isFinite(grossRiskUsd) && grossRiskUsd > 0) {
+      return grossRiskUsd;
+    }
+  }
+  return fallbackRiskUsd;
 }
 
-function getTp1HitResult(sessionConfig?: SessionConfig) {
+function getRoundTripCommissionUsd(engine: SessionStatus) {
+  const qty = engine.levels?.qty;
+  const commissionPerContract = engine.commission_per_contract;
+  if (qty == null || commissionPerContract == null) return 0;
+  const commission = 2 * qty * commissionPerContract;
+  return Number.isFinite(commission) ? commission : 0;
+}
+
+function formatResult(value: number, engine: SessionStatus, sessionConfig?: SessionConfig) {
+  const rLabel = `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
+  const riskUsd = getGrossRiskUsd(engine, sessionConfig, sessionConfig?.risk_usd ?? engine.risk_usd);
+  if (riskUsd == null) return rLabel;
+  const netUsd = value * riskUsd - getRoundTripCommissionUsd(engine);
+  return `${rLabel} (${USD_FORMATTER.format(netUsd)})`;
+}
+
+function getTp1HitResult(engine: SessionStatus, sessionConfig?: SessionConfig) {
+  const levels = engine.levels;
+  if (levels) {
+    const riskPoints = Math.abs(levels.entry - levels.stop);
+    if (riskPoints > 0) {
+      const tp1R = Math.abs(levels.tp1 - levels.entry) / riskPoints;
+      return levels.qty <= 1 ? tp1R : 0.5 * tp1R;
+    }
+  }
   if (!sessionConfig?.rr || sessionConfig.tp1_ratio == null) return null;
   return 0.5 * sessionConfig.rr * sessionConfig.tp1_ratio;
 }
@@ -172,7 +203,7 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
     : athLastCheck.available === false
     ? "No Check"
     : "Passed";
-  const tp1HitResult = getTp1HitResult(sessionConfig);
+  const tp1HitResult = getTp1HitResult(engine, sessionConfig);
   const stateColor = regimeBlocked && engine.state === "flat"
     ? "bg-amber-500/20 text-amber-300"
     : skippedToday && engine.state === "idle"
@@ -210,12 +241,12 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
               const body = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
               return (
                 <>
-                  <CardTitle className="text-base font-semibold">{body}</CardTitle>
+                  <CardTitle className="text-base font-semibold text-white">{body}</CardTitle>
                   {prefix && (
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                       isLsiTag(prefix)
-                        ? "text-violet-400 bg-violet-400/10"
-                        : "text-emerald-400 bg-emerald-400/10"
+                        ? "text-info bg-info/10"
+                        : "text-profit bg-profit/10"
                     }`}>
                       {prefix}
                     </span>
@@ -225,12 +256,12 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
             }
             return (
               <>
-                <CardTitle className="text-base font-semibold">{engine.session}</CardTitle>
+                <CardTitle className="text-base font-semibold text-white">{engine.session}</CardTitle>
                 {strategyType && (
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                     isLsi
-                      ? "text-violet-400 bg-violet-400/10"
-                      : "text-emerald-400 bg-emerald-400/10"
+                      ? "text-info bg-info/10"
+                      : "text-profit bg-profit/10"
                   }`}>
                     {isLsi ? "LSI" : "ORB"}
                   </span>
@@ -273,8 +304,7 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
               : "—"}
           </span>
           <span className="text-text-muted">
-            ATR
-            {engine.atr_length ? ` (${engine.atr_length}) ` : " "}
+            ATR{" "}
             <span className="font-mono text-text-secondary">
               {engine.daily_atr > 0 ? engine.daily_atr.toFixed(2) : "—"}
             </span>
@@ -473,8 +503,11 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
                   <span className="text-xs text-profit">TP1 Hit</span>
                 </div>
                 {tp1HitResult != null && (
-                  <span className="font-mono text-xs font-medium text-profit">
-                    {formatResult(tp1HitResult, sessionConfig?.risk_usd ?? engine.risk_usd)}
+                  <span
+                    className="font-mono text-xs font-medium text-profit"
+                    title="Estimated net after round-turn fees"
+                  >
+                    {formatResult(tp1HitResult, engine, sessionConfig)}
                   </span>
                 )}
               </div>
@@ -489,8 +522,11 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
                   </span>
                 </div>
                 {engine.r_result != null && (
-                  <span className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}>
-                    {formatResult(engine.r_result, sessionConfig?.risk_usd ?? engine.risk_usd)}
+                  <span
+                    className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}
+                    title="Estimated net after round-turn fees"
+                  >
+                    {formatResult(engine.r_result, engine, sessionConfig)}
                   </span>
                 )}
               </div>

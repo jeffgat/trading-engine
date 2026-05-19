@@ -38,6 +38,8 @@
 - `ES_NY ORB Wide-Stop Target Sweep (2026-05-05)` -> `UNSPECIFIED`
 - `NQ/ES NY ORB Pair Phase-One Risk Sizing (2026-05-05)` -> `UNSPECIFIED`
 - `ES_NY ORB Exit Deep-Dive (2026-05-05)` -> `UNSPECIFIED`
+- `ES_NY ORB Runner-Trail Sweep (2026-05-11)` -> `UNSPECIFIED`
+- `ES_NY ORB Runner-Trail Exact Replay (2026-05-11)` -> `UNSPECIFIED`
 - `NY LSI (Liquidity Sweep Inversion) — Long Only` -> `**NO-GO** (thin edge, parameter instability, structural negative year)`
 - `London LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (2/5 pipeline phases — PF ceiling, no WF transferability)`
 - `Asia LSI (Liquidity Sweep Inversion) — Both Directions` -> `**NO-GO** (definitive — losing strategy, no edge)`
@@ -51,6 +53,7 @@
 - `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
 - `ES NY ATH Exact Replay (2026-05-05)` -> `UNSPECIFIED`
 - `ES NY ATH Band Sensitivity (2026-05-05)` -> `UNSPECIFIED`
+- `ES NY ATH + Hunter Portfolio Interaction (2026-05-16)` -> `UNSPECIFIED`
 
 ## Reports (5)
 - [ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md](../../reports/ES_NQ_NY_ORB_EXIT_DEEPDIVE_20260505.md) -> [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505)
@@ -59,9 +62,12 @@
 - [ES_NY_HTF_LSI_PHASE_ONE.md](../../reports/ES_NY_HTF_LSI_PHASE_ONE.md) -> [es_ny_htf_lsi_phase_one](../../../data/results/es_ny_htf_lsi_phase_one)
 - [ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [es_ny_htf_lsi_stitched_followup](../../../data/results/es_ny_htf_lsi_stitched_followup)
 
-## Result Directories (15)
+## Result Directories (18)
+- [alpha_v1_es_asia_b_direct_compare_20260516](../../../data/results/alpha_v1_es_asia_b_direct_compare_20260516) (5 files; primary: summary.json, exact_trades.csv, portfolio_account_outcomes.csv, portfolio_summary.csv, window_metrics.csv)
 - [alpha_v1_es_ny_ath_band_sensitivity_20260505](../../../data/results/alpha_v1_es_ny_ath_band_sensitivity_20260505) (18 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_trades.csv, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_trades.csv)
 - [alpha_v1_es_ny_ath_exact_replay_20260505](../../../data/results/alpha_v1_es_ny_ath_exact_replay_20260505) (9 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P5_1_EXACT_raw_result.json, ALPHA_V1_ES_NY_BASELINE_EXACT_raw_result.json, added_gated_trades.csv, baseline_trades.csv)
+- [alpha_v1_es_ny_runner_trail_exact_20260511](../../../data/results/alpha_v1_es_ny_runner_trail_exact_20260511) (5 files; primary: summary.json, exact_atr_gap_5pct.json, exact_baseline.json, exact_risk_gap_0p75r.json, summary.csv)
+- [alpha_v1_es_ny_runner_trail_sweep_20260511](../../../data/results/alpha_v1_es_ny_runner_trail_sweep_20260511) (2 files; primary: summary.json, summary.csv)
 - [es_asia_b_phase_one](../../../data/results/es_asia_b_phase_one) (1 files; primary: phase_one_results.json)
 - [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [es_ny_htf_lsi_anchor_explore](../../../data/results/es_ny_htf_lsi_anchor_explore) (1 files; primary: summary.json)

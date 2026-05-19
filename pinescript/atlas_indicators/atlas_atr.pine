@@ -2,7 +2,7 @@
 // © Atlas
 
 //@version=6
-indicator("Atlas ATR", overlay=true)
+indicator("ATR [atlasliquidity]", overlay=true)
 
 // ————— Inputs —————
 atrLength    = input.int(14, "ATR Length", minval=1, group="ATR")

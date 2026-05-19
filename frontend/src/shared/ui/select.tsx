@@ -16,8 +16,8 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       className={cn(
-        "flex items-center justify-between gap-1.5 rounded-md border border-border bg-bg-secondary px-2.5 py-1 text-xs text-text-primary outline-none transition-colors",
-        "hover:bg-bg-card-hover focus:border-accent",
+        "soft-control flex items-center justify-between gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs outline-none transition-colors",
+        "focus:border-profit focus:ring-[3px] focus:ring-profit/20",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "[&>span]:line-clamp-1",
         className,
@@ -51,7 +51,7 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "z-50 min-w-[8rem] overflow-hidden rounded-md border border-border bg-bg-card shadow-lg",
+          "z-50 min-w-[8rem] overflow-hidden rounded-lg border border-border bg-popover shadow-xl shadow-black/40",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -87,9 +87,9 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-6 pr-2 text-xs text-text-secondary outline-none transition-colors",
-        "hover:bg-bg-card-hover hover:text-text-primary",
-        "focus:bg-bg-card-hover focus:text-text-primary",
+        "relative flex w-full cursor-pointer select-none items-center rounded-md py-1.5 pl-6 pr-2 font-mono text-xs text-text-secondary outline-none transition-colors",
+        "hover:bg-profit/10 hover:text-foreground",
+        "focus:bg-profit/10 focus:text-foreground",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
@@ -97,7 +97,7 @@ function SelectItem({
     >
       <span className="absolute left-1.5 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <svg className="h-3 w-3 text-accent" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="h-3 w-3 text-profit" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 8l3.5 3.5L13 5" />
           </svg>
         </SelectPrimitive.ItemIndicator>

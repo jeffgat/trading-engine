@@ -13,6 +13,16 @@ ENTRY_CONTEXT_TOKENS = frozenset(
     }
 )
 
+STRUCTURE_VWAP_GATES = frozenset(
+    {
+        "any2of3_vwap_d10",
+        "hh_or_hl_vwap_d10",
+        "score_gte2_vwap_d10",
+        "hh_hl_2_vwap",
+        "any2of3_vwap",
+    }
+)
+
 REF_LSI_LEVELS = (
     "previous_day_high",
     "previous_day_low",
@@ -46,6 +56,12 @@ ALLOWED_LSI_CONFIRMATION_MODES = (
 ALLOWED_EXIT_MODES = (
     "split",
     "single_target",
+)
+ALLOWED_RUNNER_TRAIL_MODES = (
+    "",
+    "step_r",
+    "risk",
+    "atr",
 )
 
 
@@ -145,6 +161,10 @@ class StrategyConfig:
     entry_context_gate: str = ""
     entry_context_min_atr: float = 0.0
     entry_context_max_atr: float = 0.0
+    # Research-only pre-selection 15m structure + VWAP gate for continuation/
+    # reversal candidates. Applied at the signal bar before the one-trade-per-day
+    # ORB candidate is selected, unlike post-trade CSV filters.
+    structure_vwap_gate: str = ""
 
     # Session configs
     sessions: tuple[SessionConfig, ...] = field(default_factory=tuple)
@@ -205,6 +225,19 @@ class StrategyConfig:
     # distance is >= wide_stop_target_threshold_points, TP2 is set equal to the
     # normal TP1 level so the trade exits the full position at TP1.
     wide_stop_full_exit_at_tp1: bool = False
+
+    # Optional post-TP1 runner trailing. Disabled by default. Modes:
+    #   ""       -> current behavior: TP1 moves the runner stop to breakeven only
+    #   "step_r" -> when MFE reaches runner_trail_trigger_r, lock runner_trail_stop_r;
+    #               then ratchet by runner_trail_step_r for each additional step
+    #   "risk"   -> continuous high/low-water trail by runner_trail_gap_r * initial risk
+    #   "atr"    -> continuous high/low-water trail by runner_trail_atr_pct of daily ATR
+    runner_trail_mode: str = ""
+    runner_trail_trigger_r: float = 0.0
+    runner_trail_stop_r: float = 0.0
+    runner_trail_step_r: float = 1.0
+    runner_trail_gap_r: float = 1.0
+    runner_trail_atr_pct: float = 0.0
 
     # Bar magnifier: use 1m sub-bars for fill/exit simulation
     use_bar_magnifier: bool = True
@@ -394,6 +427,46 @@ class StrategyConfig:
                     "wide_stop_target_rr must be <= rr because it is a target-reduction rule "
                     f"(got wide_stop_target_rr={self.wide_stop_target_rr!r}, rr={self.rr!r})"
                 )
+        if self.runner_trail_mode not in ALLOWED_RUNNER_TRAIL_MODES:
+            raise ValueError(
+                "runner_trail_mode must be one of "
+                f"{list(ALLOWED_RUNNER_TRAIL_MODES)} (got {self.runner_trail_mode!r})"
+            )
+        if self.runner_trail_trigger_r < 0:
+            raise ValueError(
+                "runner_trail_trigger_r must be >= 0 "
+                f"(got {self.runner_trail_trigger_r!r})"
+            )
+        if self.runner_trail_stop_r < 0:
+            raise ValueError(
+                "runner_trail_stop_r must be >= 0 "
+                f"(got {self.runner_trail_stop_r!r})"
+            )
+        if self.runner_trail_step_r <= 0:
+            raise ValueError(
+                "runner_trail_step_r must be > 0 "
+                f"(got {self.runner_trail_step_r!r})"
+            )
+        if self.runner_trail_gap_r <= 0:
+            raise ValueError(
+                "runner_trail_gap_r must be > 0 "
+                f"(got {self.runner_trail_gap_r!r})"
+            )
+        if self.runner_trail_atr_pct < 0:
+            raise ValueError(
+                "runner_trail_atr_pct must be >= 0 "
+                f"(got {self.runner_trail_atr_pct!r})"
+            )
+        if self.runner_trail_mode == "step_r":
+            if self.runner_trail_trigger_r <= 0:
+                raise ValueError("runner_trail_trigger_r must be > 0 when runner_trail_mode='step_r'")
+            if self.runner_trail_trigger_r <= self.runner_trail_stop_r:
+                raise ValueError(
+                    "runner_trail_trigger_r must be > runner_trail_stop_r when "
+                    "runner_trail_mode='step_r'"
+                )
+        if self.runner_trail_mode == "atr" and self.runner_trail_atr_pct <= 0:
+            raise ValueError("runner_trail_atr_pct must be > 0 when runner_trail_mode='atr'")
         invalid_ref_levels = sorted(set(self.ref_lsi_reference_levels) - set(ALLOWED_REF_LSI_LEVELS))
         if invalid_ref_levels:
             raise ValueError(
@@ -631,6 +704,11 @@ class StrategyConfig:
                     "entry_context_max_atr must be > entry_context_min_atr when "
                     "entry_context_gate is enabled."
                 )
+        if self.structure_vwap_gate and self.structure_vwap_gate not in STRUCTURE_VWAP_GATES:
+            raise ValueError(
+                f"structure_vwap_gate must be one of {sorted(STRUCTURE_VWAP_GATES)} "
+                f"when enabled (got {self.structure_vwap_gate!r})"
+            )
 
     @property
     def point_value(self) -> float:

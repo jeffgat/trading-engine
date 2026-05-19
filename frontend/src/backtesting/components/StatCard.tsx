@@ -13,12 +13,12 @@ export function StatCard({ label, value, subValue, tooltip, color }: StatCardPro
 
   return (
     <div
-      className="relative rounded-lg border border-border bg-bg-card px-4 py-3 transition-colors hover:bg-bg-card-hover"
+      className="dashboard-card metric-card relative rounded-lg border border-border px-4 py-3 transition-colors hover:bg-bg-card-hover"
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
       <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium text-text-secondary">{label}</span>
+        <span className="font-mono text-xs font-medium text-text-secondary">{label}</span>
         {tooltip && (
           <svg
             className="h-3 w-3 text-text-muted"
@@ -37,7 +37,7 @@ export function StatCard({ label, value, subValue, tooltip, color }: StatCardPro
       )}
 
       {tooltip && showTooltip && (
-        <div className="absolute left-1/2 bottom-full z-10 mb-2 -translate-x-1/2 rounded-md bg-bg-secondary px-3 py-2 text-xs text-text-secondary shadow-lg border border-border whitespace-nowrap">
+        <div className="absolute left-1/2 bottom-full z-10 mb-2 -translate-x-1/2 rounded-md border border-border bg-bg-secondary px-3 py-2 font-mono text-xs text-text-secondary shadow-xl shadow-black/40 whitespace-nowrap">
           {tooltip}
           <div className="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-bg-secondary" />
         </div>

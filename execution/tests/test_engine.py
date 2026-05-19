@@ -44,6 +44,7 @@ def broker():
     ])
     b.send_tp1_multi = AsyncMock(return_value=[])
     b.send_tp1_single = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
+    b.send_runner_stop_update = AsyncMock(return_value=[])
     b.send_flatten = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
     b.send_cancel = AsyncMock(return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True))
     b.paused = False
@@ -600,6 +601,58 @@ class TestManagingExits5m:
         bar = make_bar("2025-01-15 10:10", be + 5, be + 10, be - 5, be + 8)
         await eng.on_bar(bar, 300.0)
         assert records[0].exit_type == "tp1_be"
+
+    async def test_tick_risk_runner_trail_records_positive_runner_exit(self, broker):
+        records = []
+        eng = _make_orb_engine(
+            broker,
+            risk_usd=2000,
+            stop_atr_pct=5.0,
+            rr=5.0,
+            tp1_ratio=0.2,
+            runner_trail_mode="risk",
+            runner_trail_gap_r=0.75,
+        )
+        eng.on_trade_exit = records.append
+        eng, entry_price = await advance_to_managing(eng, atr=100.0, orb_high=19530.0)
+        if eng._levels.is_single_contract:
+            pytest.skip("Couldn't get multi-contract with these params")
+
+        risk_pts = abs(eng._levels.entry - eng._levels.stop)
+        first_tick = Bar(
+            timestamp=datetime(2025, 1, 15, 10, 5, 1, tzinfo=ET),
+            open=entry_price + 2.7 * risk_pts,
+            high=entry_price + 3.0 * risk_pts,
+            low=entry_price + 2.6 * risk_pts,
+            close=entry_price + 2.8 * risk_pts,
+            volume=10,
+        )
+        await eng.on_tick(first_tick, 100.0)
+
+        expected_runner_stop = entry_price + 2.25 * risk_pts
+        assert eng._tp1_hit is True
+        assert eng._runner_stop == pytest.approx(expected_runner_stop)
+        broker.send_runner_stop_update.assert_called_once()
+
+        stop_tick = Bar(
+            timestamp=datetime(2025, 1, 15, 10, 5, 2, tzinfo=ET),
+            open=entry_price + 2.4 * risk_pts,
+            high=entry_price + 2.8 * risk_pts,
+            low=expected_runner_stop - 0.25,
+            close=expected_runner_stop,
+            volume=10,
+        )
+        await eng.on_tick(stop_tick, 100.0)
+
+        assert records[0].exit_type == "tp1_be"
+        assert records[0].tp1_hit is True
+        assert records[0].r_result == pytest.approx((1.0 + 2.25) / 2.0)
+
+    def test_invalid_runner_trail_config_rejected(self, broker):
+        with pytest.raises(ValueError, match="runner_trail_mode"):
+            _make_orb_engine(broker, runner_trail_mode="unknown")
+        with pytest.raises(ValueError, match="runner_trail_atr_pct"):
+            _make_orb_engine(broker, runner_trail_mode="atr", runner_trail_atr_pct=0.0)
 
     async def test_eod_flat_no_tp1_exits(self, engine, broker):
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)

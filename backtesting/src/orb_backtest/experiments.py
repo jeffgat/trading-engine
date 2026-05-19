@@ -59,6 +59,12 @@ PARAM_COLUMNS: dict[str, str] = {
     "rr": "REAL",
     "tp1_ratio": "REAL",
     "exit_mode": "TEXT",
+    "runner_trail_mode": "TEXT",
+    "runner_trail_trigger_r": "REAL",
+    "runner_trail_stop_r": "REAL",
+    "runner_trail_step_r": "REAL",
+    "runner_trail_gap_r": "REAL",
+    "runner_trail_atr_pct": "REAL",
     "risk_usd": "REAL",
     "atr_length": "INTEGER",
 
@@ -142,7 +148,11 @@ PARAM_COLUMNS: dict[str, str] = {
 }
 
 # Params that are always present (non-nullable) vs per-session (nullable)
-_GLOBAL_PARAMS = {"rr", "tp1_ratio", "exit_mode", "risk_usd", "atr_length",
+_GLOBAL_PARAMS = {"rr", "tp1_ratio", "exit_mode",
+                  "runner_trail_mode", "runner_trail_trigger_r",
+                  "runner_trail_stop_r", "runner_trail_step_r",
+                  "runner_trail_gap_r", "runner_trail_atr_pct",
+                  "risk_usd", "atr_length",
                   "min_qty", "qty_step", "point_value",
                   "htf_level_tf_minutes", "htf_n_left",
                   "htf_trade_max_per_session", "htf_lsi_inversion_ordinal",
@@ -499,6 +509,12 @@ _DEFAULT_PARAMS: dict[str, object] = {
     "rr": 2.5,
     "tp1_ratio": 0.5,
     "exit_mode": "split",
+    "runner_trail_mode": "",
+    "runner_trail_trigger_r": 0.0,
+    "runner_trail_stop_r": 0.0,
+    "runner_trail_step_r": 1.0,
+    "runner_trail_gap_r": 1.0,
+    "runner_trail_atr_pct": 0.0,
 
     "atr_length": 14,
 }

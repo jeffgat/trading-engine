@@ -1,16 +1,45 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { BacktestMapping } from "@/execution/lib/types";
-import type { EquityCurvePoint } from "@/backtesting/lib/types";
+import type { EquityCurvePoint, Trade } from "@/backtesting/lib/types";
 
 const STORAGE_KEY = "exec_backtest_mappings";
 
 const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {
+  FAST: { backtestId: "bt-exec-exact-fast-last-5y-2021-03-25-to-2026-03-24-6d76c8", deployDate: "2026-03-09" },
   FAST_V2: { backtestId: "bt-exec-fast-v2-2024-2026-live-comparison-918820", deployDate: "2026-03-09" },
 };
 
 interface BacktestCurveData {
   curve: { date: string; r: number }[];
   riskUsd: number;
+}
+
+type BacktestTradeWithNetR = Trade & {
+  net_r_multiple?: number | null;
+  net_pnl_usd?: number | null;
+};
+
+function buildBacktestRCurve(
+  trades: BacktestTradeWithNetR[],
+  equityCurve: EquityCurvePoint[],
+  riskUsd: number,
+): { date: string; r: number }[] {
+  if (trades.length > 0) {
+    let cumulativeR = 0;
+    return trades.map((trade) => {
+      const r = trade.r_multiple ?? trade.net_r_multiple;
+      if (r != null) cumulativeR += r;
+      return {
+        date: trade.exit_time?.slice(0, 10) || trade.date,
+        r: cumulativeR,
+      };
+    });
+  }
+
+  return equityCurve.map((p) => ({
+    date: p.date,
+    r: p.pnl_cumulative / riskUsd,
+  }));
 }
 
 interface UseBacktestComparisonReturn {
@@ -72,10 +101,8 @@ export function useBacktestComparison(): UseBacktestComparisonReturn {
           const data = json.result ?? json;
           const riskUsd: number = data.config?.risk_usd ?? 1;
           const equityCurve: EquityCurvePoint[] = data.equity_curve ?? [];
-          const curve = equityCurve.map((p) => ({
-            date: p.date,
-            r: p.pnl_cumulative / riskUsd,
-          }));
+          const trades: BacktestTradeWithNetR[] = data.trades ?? [];
+          const curve = buildBacktestRCurve(trades, equityCurve, riskUsd);
           setBacktestCurves((prev) => ({ ...prev, [configName]: { curve, riskUsd } }));
           setErrors((prev) => ({ ...prev, [configName]: null }));
         })

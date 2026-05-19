@@ -114,14 +114,14 @@ export function EquityChart({ data, riskUsd, trades = [] }: EquityChartProps) {
       : rData;
 
   return (
-    <div className="rounded-lg border border-border bg-bg-card p-4">
+    <div className="chart-panel rounded-lg border border-border p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-medium text-text-secondary">Equity Curve (R)</h2>
+        <h2 className="font-mono text-sm font-semibold text-profit">Equity Curve (R)</h2>
         <span
           className="rounded-md px-2.5 py-1 font-mono text-sm font-semibold"
           style={{
             color: isPositive ? "var(--color-profit)" : "var(--color-loss)",
-            background: isPositive ? "rgba(61, 214, 140, 0.12)" : "rgba(240, 97, 94, 0.12)",
+            background: isPositive ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
           }}
         >
           {formatR(finalR)}

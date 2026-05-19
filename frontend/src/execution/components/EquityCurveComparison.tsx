@@ -22,12 +22,12 @@ interface EquityCurveComparisonProps {
 }
 
 const CONFIG_LINE_COLORS: Record<string, string> = {
-  FAST: "#3b82f6",    // blue-500
-  "FAST_V1.1": "#60a5fa", // blue-400
-  FAST_V2: "#d946ef", // fuchsia-500
-  "FAST_V2.1": "#e879f9", // fuchsia-400
-  GENERAL_V1: "#f97316", // orange-500
-  SLOW: "#10b981",    // emerald-500
+  FAST: "#35d6e6",
+  "FAST_V1.1": "#72f25f",
+  FAST_V2: "#f8c159",
+  "FAST_V2.1": "#ff554f",
+  GENERAL_V1: "#f59e0b",
+  SLOW: "#2f9f54",
 };
 
 function formatR(v: number): string {
@@ -46,7 +46,7 @@ function CustomTooltip({ active, payload, label }: any) {
     <div className="rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-xl">
       <p className="text-xs text-text-muted">{label}</p>
       {backtest?.value != null && (
-        <p className="font-mono text-sm" style={{ color: "#9ca3af" }}>
+        <p className="font-mono text-sm" style={{ color: "#a1adab" }}>
           Backtest: {formatR(backtest.value)}
         </p>
       )}
@@ -97,14 +97,14 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
   }
 
   return (
-    <div className="rounded-lg border border-border bg-bg-card p-4">
+    <div className="chart-panel rounded-lg border border-border p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-medium text-text-secondary">
           Backtest vs Live ({configName})
         </h2>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
-            <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#9ca3af", opacity: 0.7 }} />
+            <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#a1adab", opacity: 0.7 }} />
             Backtest
           </div>
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -116,7 +116,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
                 color: backtestRProp >= 0 ? "var(--color-profit)" : "var(--color-loss)",
-                background: backtestRProp >= 0 ? "rgba(61, 214, 140, 0.12)" : "rgba(240, 97, 94, 0.12)",
+                background: backtestRProp >= 0 ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
               }}
             >
               BT: {formatR(backtestRProp)}
@@ -127,7 +127,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
                 color: finalLiveR >= 0 ? "var(--color-profit)" : "var(--color-loss)",
-                background: finalLiveR >= 0 ? "rgba(61, 214, 140, 0.12)" : "rgba(240, 97, 94, 0.12)",
+                background: finalLiveR >= 0 ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
               }}
             >
               Live: {formatR(finalLiveR)}
@@ -217,7 +217,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             yAxisId="equity"
             type="monotone"
             dataKey="backtest_r"
-            stroke="#9ca3af"
+            stroke="#a1adab"
             strokeWidth={1.5}
             strokeDasharray="6 3"
             strokeOpacity={0.7}

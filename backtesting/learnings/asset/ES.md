@@ -464,6 +464,26 @@ R by year: 2016:+18  2017:+25  2018:+4  2019:+11  2020:+16  2021:+20  2022:+15  
 - **Best research policies**: true full-position TP1 at `1R` improved to `+222.5R`, `PF 1.72`, `-8.0R` DD; delayed BE after `1.5R` improved to `+213.5R`, `PF 1.68`, `-9.3R` DD.
 - **Operating read**: ES_NY's problem is not simply that TP2 is too far; the current partial-and-immediate-BE runner management is the uncomfortable part. `exit_mode=single_target` now makes the true full-position TP1 branch `deployability=live_native`, pending exact replay before deployment. Delayed-BE remains `research_only`. Pre-trade bucket gating is secondary because the weak buckets were positive, not toxic.
 
+### ES_NY ORB Runner-Trail Sweep (2026-05-11)
+
+- **Report**: `backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_SWEEP_20260511.md`
+- **Artifacts**: `backtesting/data/results/alpha_v1_es_ny_runner_trail_sweep_20260511/`
+- **Scope**: Held the active ALPHA_V1 ES_NY ORB structure fixed (`09:30-09:45` ORB, entry to `13:00`, flat `15:50`, long-only, excl-Thu, ATR 7, stop ATR `5%`, gap ATR `0.25%`, `rr=5.0`, `tp1_ratio=0.2`, `min_stop_points=3`, `min_tp1_points=3`) and swept post-TP1 runner trailing with `5m -> 1m -> 1s` magnifier.
+- **Baseline**: no-trail split ladder stayed best full-history with `846` fills, `+126.6R`, `PF 1.39`, `-10.9R` DD, Calmar `11.65`, last-2Y `+21.4R`, and 2025+ `+19.5R`.
+- **Best recent challenger**: `risk_gap_0p75r` trailed the runner by `0.75R` from the high-water mark after TP1. It improved last-2Y to `+25.0R / -7.6R` DD and 2025+ to `+25.0R / -7.6R` DD, confirming that recent giveback is real. The cost is full-history degradation to `+104.8R`, `PF 1.32`, and Calmar `10.18`.
+- **Best DD smoother**: `atr_gap_5pct` cut full-history DD to `-8.9R` and kept 2025+ roughly flat-to-better (`+19.6R / -7.9R`), but gave up too much full-history R (`+99.2R`) and PF (`1.30`) to replace baseline.
+- **Operating read**: Runner trailing is promising for a recent-flow ES_NY challenger, but it is not yet a production replacement. The baseline remains the all-weather choice. If this branch continues, exact/live execution support for runner trails must come before promotion; first replay candidates are `risk_gap_0p75r` for recent giveback and `atr_gap_5pct` for DD smoothing. `deployability=research_only`; `exact_replay_required=yes_before_live_promotion`.
+
+### ES_NY ORB Runner-Trail Exact Replay (2026-05-11)
+
+- **Report**: `backtesting/learnings/reports/ALPHA_V1_ES_NY_RUNNER_TRAIL_EXACT_20260511.md`
+- **Artifacts**: `backtesting/data/results/alpha_v1_es_ny_runner_trail_exact_20260511/`
+- **Scope**: Replayed the two best runner-trail simulator candidates through the exact/live execution engine after adding runner-trail support to the live ORB engine and broker payload layer.
+- **Exact baseline**: no-trail split ladder, `849` trades, `+145.8R`, `PF 1.215`, `-12.0R` DD, Calmar `12.15`, 2025+ `+18.0R / -9.0R`.
+- **Exact `risk_gap_0p75r`**: `+83.2R`, `PF 1.057`, `-15.4R` DD, Calmar `5.40`, 2025+ `+8.1R`. It generated `458` positive runner-stop exits but cut full target exits from `86` to `2`; too aggressive.
+- **Exact `atr_gap_5pct`**: `+103.1R`, `PF 1.107`, `-12.1R` DD, Calmar `8.51`, 2025+ `+13.3R`. Cleaner than risk-gap, but still inferior to baseline on R/PF/Calmar and not meaningfully smoother.
+- **Decision**: Do **not** promote runner trailing into live ES_NY. Keep the current no-trail split ladder as the production incumbent. Runner trails can remain paper-only diagnostics, not ALPHA_V1-A config changes.
+
 ---
 
 ### NY LSI (Liquidity Sweep Inversion) — Long Only
@@ -949,6 +969,21 @@ Shared cross-asset transfer run reconfirmed that **ES Asia-B should stay ungated
 - **Verdict**: `rejects_gate`
 - **Interpretation**: the medium-vol gate trims too many profitable Asia-B trades. It slightly improves drawdown and Sharpe, but the drop in net R and Calmar is too large.
 - **Action**: keep **Asia-B ungated** as the ES production baseline and do **not** promote ES into the second-round gate shortlist.
+- **ALPHA_V1 ES Asia-B direct exact compare** (2026-05-16): `backtesting/scripts/run_alpha_v1_es_asia_b_direct_compare_20260516.py`, `backtesting/learnings/reports/ALPHA_V1_ES_ASIA_B_DIRECT_COMPARE_20260516.md`, and `backtesting/data/results/alpha_v1_es_asia_b_direct_compare_20260516/`
+  - Exact live-engine replay through temporary in-memory `ES_Asia` profiles; no execution config files were edited. This is the clean ALPHA-context comparison that the older ES Asia-B phase-one note was missing.
+  - Full-window verdict: active ALPHA ES Asia remains the stronger all-weather leg. Active exact ES Asia printed `1426` trades, `+179.2R`, PF `1.15`, DD `-12.5R`; ES Asia-B original printed `911` trades, `+113.7R`, PF `1.15`, DD `-11.6R`; ES Asia-B constrained `rr=2/tp1=0.75` printed `+113.5R`, PF `1.15`, DD `-12.0R`.
+  - Recent-window verdict: Asia-B is the stronger 2025+/last-1y branch. Original Asia-B exact 2025+ was `+37.4R`, PF `1.72`, DD `-4.7R` versus active ES Asia `+30.7R`, PF `1.32`, DD `-5.8R`; last-1y was `+29.2R`, PF `1.69`, DD `-4.5R` versus active `+21.7R`, PF `1.28`, DD `-5.8R`.
+  - Five-leg replacement read: in 2025, replacing active ES Asia with original Asia-B improved the balanced NY sleeve from `84.6%` resolved payout / `15.4%` breach / `4` max consecutive breaches to `96.2%` payout / `3.9%` breach / `1` max consecutive breach. Fast-safe was already `100%`/`0%` either way; aggressive sprint did not improve. 2024 was not uniformly better and 2026 YTD is too open-heavy to use as a decision.
+  - Operating decision: keep active ALPHA ES Asia as the default. Both variants are good, but active ES Asia pairs better with ALPHA `NQ Asia RR6` because ES Asia uses the nearer `1.05R` TP1 / `1.5R` TP2 payoff while NQ Asia carries the farther `1.8R` TP1 / `6R` runner. That mixed target geometry gives the Asia sleeve better variance than swapping ES into another farther-target profile.
+  - Deployability: `live_native` because Asia-B uses standard ORB continuation fields and exact replay is complete through `2026-03-24`. Operating status is **recent-regime challenger / possible shadow replacement for the ES Asia sleeve**, not a full-history replacement for active ALPHA ES Asia.
+- **ALPHA_V1 Asia sleeve geometry follow-up** (2026-05-16): `backtesting/learnings/reports/ALPHA_V1_NEXT_STEPS_20260516.md` and `backtesting/data/results/alpha_v1_next_steps_20260516/`
+  - Directly paired fee-aware `NQ Asia RR6` with active ES Asia versus ES Asia-B. The active sleeve printed `+239.2R`, DD `-28.7R`, Sharpe `0.99`, and weighted net `$70.4k` at current aggressive Asia risks (`NQ Asia $400 / ES Asia $150`). `NQ Asia + ES Asia-B original` printed `+207.8R`, DD `-28.6R`, Sharpe `0.85`, and weighted net `$65.6k`.
+  - Sleeve interaction favored active ES Asia for the stated payoff-geometry thesis: active ES correlation to NQ Asia was `0.25`, while Asia-B original rose to `0.39`. Active ES also supplies the high full-target/nearer-payoff role (`34.8%` full-target, `7.6%` EOD), while Asia-B original behaves more like another far-runner / EOD-heavy branch (`7.0%` full-target, `44.6%` EOD).
+  - Asia-B still wins parts of the 2025-only phase-one proxy (`92.0%` payout / `8.0%` breach vs active `80.0%` / `20.0%`), so it remains a valid recent-regime shadow challenger. It does not replace active ES Asia as the all-weather ALPHA default.
+- **ALPHA_V1 Asia risk-balance follow-up** (2026-05-16): `backtesting/learnings/reports/ALPHA_V1_PRIORITIES_1_5_20260516.md` and `backtesting/data/results/alpha_v1_priorities_1_5_20260516/`
+  - Swept only `NQ Asia` and active `ES Asia` risk on the updated exact ALPHA stream; no ES Asia parameters or Asia-B variants were searched.
+  - The risk frontier stayed clustered around the current sleeve. `NQ Asia $450 / ES Asia $150` ranked first by the packet score (`78.9%` average 2024-2025 payout, max breach `23.1%`, `30.3d` average payout), but current `NQ Asia $400 / ES Asia $150` was effectively tied (`78.5%`, max breach `23.1%`, `30.4d`) with less gross exposure and lower NQ concentration.
+  - Lowering ES Asia to `$100` reduced drawdown but did not clearly improve payout quality; raising ES Asia to `$200+` tended to add gross net at the cost of worse DD/breach behavior. Keep active `ES Asia $150` as the default risk unless deliberately leaning harder into NQ Asia.
 - **ALPHA_V1 hot-regime ablation pass** (2026-05-03): `backtesting/learnings/reports/ALPHA_V1_HOT_REGIME_ABLATION_20260503.md`
   - Scope included ES Asia ORB and ES NY ORB from the active ALPHA_V1 sleeve. This is TESTING-only, overfit-aware research inspired by `H_ORB_ABLATED`, not a robust promotion packet.
   - Best ES Asia ORB hot-score branch: `combo__entry_0600__dow_baseline__rr4p0_tp0p25__stop_orb_pct_125p0__min_gap_atr_pct_0p25__cap2_any__fvg_first__wide_none` -> full `203.35R / -17.05R DD`, last 2y `44.8R`, last 1y `38.33R`; warning: warning layer acceptable for TESTING.
@@ -1012,3 +1047,16 @@ Exact sensitivity around the ES NY ATH dead zone tested `0.25-0.75%`, `0.50-0.75
 Alternatives: `0.25-0.75%` has the best payout safety (`70.0%` full payout, zero `2025+` breaches) but rolling stability is poor (`4/10` positive, `-1.86R` median). `0.75-1.00%` is steadier but too weak in `2025+` (`+1.5R`). Reject `0.50-1.25%`; it removes too much trade flow and hurts full-history account behavior.
 
 Implementation update: production startup can now refresh the ES futures ATH seed from DataBento daily OHLCV, seed only ATH-gated engines, and preserve a higher checkpoint/live ATH if one exists. Added `ALPHA_V1-ES-NY-ATH-SHADOW` as an enabled ES_NY-only no-webhook dry-run profile with `ath_block_min_pct=0.5` and `ath_block_max_pct=0.75`. Status is now `deployability=live_native`; `live_support_notes=exact/live engine gate plus startup ATH seed source are implemented, profile is shadow-only/no-webhook pending forward observation`; `exact_replay_required=completed_through_2026-03-24_and_repeat_before_live_promotion_if_data_extends_materially`. Shadow diagnostics are available in the engine `ath` status payload: `current_gap_pct`, `check_count`, `block_count`, `pass_count`, `last_check`, and `last_block`. TESTING now includes `ES_NY_ATH_GATE`, and the execution frontend shows a dedicated ATH Gate panel so blocked and passed setup decisions can be confirmed during forward testing.
+
+### ES NY ATH + Hunter Portfolio Interaction (2026-05-16)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_PRIORITIES_1_5_20260516.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_priorities_1_5_20260516/`
+
+Revalued the `ES_NY ATH 0.50-0.75%` exact file to the current ALPHA ES_NY risk (`$300`) with current MES fees before replacing the cached fee-aware ALPHA ES_NY leg. This avoids reading the older `$400` ATH sensitivity file as if it were current production sizing.
+
+- Current cached ES_NY through `2026-03-24`: `173` trades, `$5.7k`, PF `1.25`, `+20.2` net R, `-10.2R` DD.
+- Revalued ATH replacement: `276` trades, `$11.5k`, PF `1.29`, `+39.8` net R, `-13.0R` DD.
+- Portfolio-only read: ATH replacement adds about `$5.8k` net but worsens combined DD (`-$4.0k` to `-$4.6k`) and 2024 account outcomes (`82.6% / 17.4%` payout/breach to `76.0% / 24.0%`). It improves 2025 (`73.1% / 26.9%` to `80.8% / 19.2%`).
+- ATH replacement + actual-engine Hunter `0.25x` looks strongest in the 2024-2025 scorecard (`96.0% / 4.0%` in 2024, `84.6% / 15.4%` in 2025), but this combines two overlays whose production promotion is not yet clean: ES_NY ATH still needs forward shadow evidence, and Hunter failed live-engine parity versus its research CSV. Treat the combined row as a watchlist scenario, not a live ALPHA change.

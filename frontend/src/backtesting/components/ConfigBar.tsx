@@ -101,7 +101,7 @@ export function ConfigBar({ config }: ConfigBarProps) {
     `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
   return (
-    <div className="flex flex-wrap items-start gap-x-6 gap-y-2 rounded-lg border border-border bg-bg-card px-4 py-3">
+    <div className="dashboard-card flex flex-wrap items-start gap-x-6 gap-y-2 rounded-lg border border-border px-4 py-3">
       {isLsi ? (
         <>
           <SimpleParam label="Swing L/R" value={`${config.lsi_n_left ?? "—"}/${config.lsi_n_right ?? "—"}`} />

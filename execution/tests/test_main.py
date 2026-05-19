@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from trader.api import DashboardState, _build_exec_config_meta, _session_info
 from trader.engine import State
@@ -32,6 +33,7 @@ from trader.main import (
     build_lsi_engines,
     load_exec_configs,
     required_ath_seed_symbols,
+    _resolve_orderbook_runtime_config,
 )
 
 
@@ -186,6 +188,48 @@ def test_build_lsi_engines_applies_exit_mode_override():
     assert engine.tp1_ratio == 1.0
 
 
+def test_orderbook_runtime_config_defaults_to_zero_cost():
+    resolved = _resolve_orderbook_runtime_config({})
+
+    assert resolved["enable_mbp10"] is False
+    assert resolved["mbp10_cost_ack"] is False
+    assert resolved["dynamic_sizing_enabled"] is False
+    assert resolved["dynamic_sizing_shadow_enabled"] is False
+    assert resolved["provider_enabled"] is False
+
+
+def test_orderbook_runtime_config_requires_cost_ack_for_mbp10():
+    with pytest.raises(ValueError, match="mbp10_cost_ack"):
+        _resolve_orderbook_runtime_config({"orderbook": {"enable_mbp10": True}})
+
+
+def test_orderbook_runtime_config_allows_acknowledged_shadow_mode():
+    resolved = _resolve_orderbook_runtime_config({
+        "orderbook": {
+            "enable_mbp10": True,
+            "mbp10_cost_ack": True,
+            "dynamic_sizing_shadow_enabled": True,
+            "dynamic_sizing_enabled": True,
+            "dynamic_sizing_sessions": "NQ_NY_LSI",
+        }
+    })
+
+    assert resolved["enable_mbp10"] is True
+    assert resolved["mbp10_cost_ack"] is True
+    assert resolved["dynamic_sizing_shadow_enabled"] is True
+    assert resolved["dynamic_sizing_enabled"] is False
+    assert resolved["provider_enabled"] is True
+    assert resolved["dynamic_sizing_sessions"] == {"NQ_NY_LSI"}
+
+
+def test_dashboard_status_includes_orderbook_status():
+    state = DashboardState(orderbook_status={"enable_mbp10": False, "cache": None})
+
+    status = state._build_status()
+
+    assert status["orderbook"] == {"enable_mbp10": False, "cache": None}
+
+
 def test_build_lsi_engines_applies_legacy_lsi_variant_override():
     broker = MagicMock()
     config = {
@@ -245,6 +289,7 @@ def test_build_lsi_engines_applies_htf_lsi_overrides():
                 "htf_n_left": 3,
                 "htf_trade_max_per_session": 2,
                 "max_fvg_to_inversion_bars": 24,
+                "lsi_stale_breach_consumes_pivot": False,
             }
         },
     )
@@ -257,6 +302,43 @@ def test_build_lsi_engines_applies_htf_lsi_overrides():
     assert engine.htf_n_left == 3
     assert engine.htf_trade_max_per_session == 2
     assert engine.max_fvg_to_inversion_bars == 24
+    assert engine.lsi_stale_breach_consumes_pivot is False
+
+
+def test_build_lsi_engines_supports_pure_1m_cisd_survivor():
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0},
+        "dates": {"half_days": [], "excluded": []},
+    }
+    symbol_map: dict[str, list] = {}
+    atr_lengths: dict[str, set[int]] = {}
+
+    engines = build_lsi_engines(
+        config,
+        broker,
+        symbol_map,
+        atr_lengths,
+        config_name="PURE_TEST",
+        lsi_list=["NQ_NY_LSI_PURE_1M"],
+    )
+
+    assert len(engines) == 1
+    engine = engines[0]
+    assert engine.name == "NQ_NY_LSI_PURE_1M"
+    assert engine.entry_end == "12:00"
+    assert engine.sweep_start == "09:30"
+    assert engine.sweep_end == "15:30"
+    assert engine.lsi_confirmation_mode == "cisd"
+    assert engine.lsi_entry_mode == "level_limit"
+    assert engine.lsi_stop_mode == "atr_pct"
+    assert engine.stop_atr_pct == pytest.approx(15.0)
+    assert engine.base_bar_minutes == 1
+    assert engine.lsi_reset_swing_window_on_new_day is False
+    assert engine.cisd_min_leg_bars == 2
+    assert engine.cisd_min_leg_atr_pct == pytest.approx(7.5)
+    assert engine.cisd_max_leg_bars == 300
+    assert atr_lengths["NQ.FUT"] == {10}
 
 
 def test_build_exec_config_meta_reads_disk_configs(monkeypatch):

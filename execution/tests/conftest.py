@@ -32,6 +32,7 @@ def mock_broker():
     broker.send_tp1_single = AsyncMock(
         return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True)
     )
+    broker.send_runner_stop_update = AsyncMock(return_value=[])
     broker.send_flatten = AsyncMock(
         return_value=WebhookResult(payload={}, status=None, latency_ms=0, dry_run=True)
     )

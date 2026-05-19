@@ -15,10 +15,10 @@ import time as time_mod
 import urllib.error
 import urllib.request
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,9 @@ from .position_limits import ContractCapManager
 
 ROOT = Path(__file__).resolve().parents[3]
 RAW_DATA_DIR = ROOT / "backtesting" / "data" / "raw"
+CACHE_DATA_DIRS = (
+    ROOT / "backtesting" / "data" / "cache" / "nq_ny_lsi_cisd_sequence",
+)
 BACKTEST_REPORTING_RISK_USD = 5000.0
 
 _INDEX_COL_CACHE: dict[Path, str] = {}
@@ -58,6 +61,18 @@ def _parquet_index_column(path: Path) -> str:
     return index_col
 
 
+def _resolve_parquet_path(symbol: str, timeframe: str) -> Path:
+    filename = f"{symbol}_{timeframe}.parquet"
+    raw_path = RAW_DATA_DIR / filename
+    if raw_path.exists():
+        return raw_path
+    for cache_dir in CACHE_DATA_DIRS:
+        cache_path = cache_dir / filename
+        if cache_path.exists():
+            return cache_path
+    return raw_path
+
+
 def _read_parquet_frame(
     symbol: str,
     timeframe: str,
@@ -65,7 +80,7 @@ def _read_parquet_frame(
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> pd.DataFrame:
-    path = RAW_DATA_DIR / f"{symbol}_{timeframe}.parquet"
+    path = _resolve_parquet_path(symbol, timeframe)
     index_col = _parquet_index_column(path)
     filters: list[tuple[str, str, datetime]] = []
     if start is not None:
@@ -86,9 +101,9 @@ def _read_parquet_frame(
     return df.sort_index()
 
 
-def _build_5m_events(symbol: str, df_5m: pd.DataFrame) -> list[tuple[datetime, str, Bar]]:
-    events: list[tuple[datetime, str, Bar]] = []
-    for ts, row in df_5m.iterrows():
+def _build_bar_events(symbol: str, frame: pd.DataFrame, *, bar_minutes: int) -> list[tuple[datetime, str, int, Bar]]:
+    events: list[tuple[datetime, str, int, Bar]] = []
+    for ts, row in frame.iterrows():
         bar = Bar(
             timestamp=ts.to_pydatetime(),
             open=float(row["open"]),
@@ -97,9 +112,23 @@ def _build_5m_events(symbol: str, df_5m: pd.DataFrame) -> list[tuple[datetime, s
             close=float(row["close"]),
             volume=int(row["volume"] or 0),
         )
-        close_time = ts.to_pydatetime() + timedelta(minutes=5)
-        events.append((close_time, symbol, bar))
+        close_time = ts.to_pydatetime() + timedelta(minutes=bar_minutes)
+        events.append((close_time, symbol, bar_minutes, bar))
     return events
+
+
+def _engine_bar_minutes(engine: Any) -> int:
+    return int(getattr(engine, "base_bar_minutes", 5) or 5)
+
+
+def _timeframe_for_minutes(bar_minutes: int) -> str:
+    if bar_minutes == 1:
+        return "1m"
+    if bar_minutes == 3:
+        return "3m"
+    if bar_minutes == 5:
+        return "5m"
+    raise ValueError(f"Unsupported exact replay bar interval: {bar_minutes}m")
 
 
 def _seed_daily_bars(symbol: str, replay_start: datetime, lookback_days: int = 90) -> list[tuple[date, float, float, float, float]]:
@@ -181,6 +210,13 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "min_gap_orb_pct",
             "ath_block_min_pct",
             "ath_block_max_pct",
+            "runner_trail_mode",
+            "runner_trail_trigger_r",
+            "runner_trail_stop_r",
+            "runner_trail_step_r",
+            "runner_trail_gap_r",
+            "runner_trail_atr_pct",
+            "hunter_entry_basis",
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
@@ -213,11 +249,22 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "exit_mode",
             "min_gap_atr_pct",
             "min_stop_points",
+            "stop_atr_pct",
             "qty_multiplier",
             "lsi_entry_mode",
+            "lsi_stop_mode",
+            "lsi_target_mode",
+            "lsi_confirmation_mode",
             "lsi_variant",
             "lsi_n_left",
             "lsi_n_right",
+            "lsi_reset_swing_window_on_new_day",
+            "fvg_window_left",
+            "fvg_window_right",
+            "cisd_min_leg_bars",
+            "cisd_min_leg_atr_pct",
+            "cisd_max_leg_bars",
+            "base_bar_minutes",
             "htf_level_tf_minutes",
             "htf_n_left",
             "htf_trade_max_per_session",
@@ -535,6 +582,7 @@ class ReplayRecorder:
                 "sweep_to_inversion_bars": getattr(engine, "_sweep_to_inversion_bars", None),
                 "lsi_fvg_time": None,
                 "lsi_sweep_time": None,
+                "entry_context": getattr(record, "entry_context", {}) or {},
             }
             self.trades.append(trade)
 
@@ -613,7 +661,7 @@ def _wire_nq_ny_overlap(orb_engines: list[Any], lsi_engines: list[Any]) -> None:
 
 
 def _latest_timestamp(symbol: str, timeframe: str) -> datetime:
-    path = RAW_DATA_DIR / f"{symbol}_{timeframe}.parquet"
+    path = _resolve_parquet_path(symbol, timeframe)
     index_col = _parquet_index_column(path)
     pf = pq.ParquetFile(path)
     table = pf.read_row_group(pf.num_row_groups - 1, columns=[index_col])
@@ -630,7 +678,7 @@ def latest_common_end(symbols: list[str]) -> datetime:
     latest = [
         _latest_timestamp(symbol, timeframe)
         for symbol in symbols
-        for timeframe in ("5m", "1s")
+        for timeframe in ("1m", "5m", "1s")
     ]
     return min(latest)
 
@@ -656,9 +704,22 @@ async def run_profile_backtest(
     end_date: str,
     latest_data_ts: datetime | None = None,
     label: str | None = None,
+    dynamic_sizing_providers: dict[str, Callable[[Any], Any]] | None = None,
+    dynamic_sizing_shadow: bool = True,
+    profile_session_overrides: dict[str, dict[str, Any]] | None = None,
 ) -> dict:
     exec_configs = {cfg.name: cfg for cfg in load_exec_configs(config)}
     exec_config = exec_configs[profile_name]
+    if profile_session_overrides:
+        session_overrides = {
+            name: dict(overrides)
+            for name, overrides in exec_config.session_overrides.items()
+        }
+        for session_name, overrides in profile_session_overrides.items():
+            merged = dict(session_overrides.get(session_name, {}))
+            merged.update(overrides)
+            session_overrides[session_name] = merged
+        exec_config = replace(exec_config, session_overrides=session_overrides)
 
     brokers = [TradersPostClient(webhook_url="", config_name=profile_name)]
     broker = MultiBroker(brokers)
@@ -682,6 +743,14 @@ async def run_profile_backtest(
         lsi_overrides=exec_config.lsi_session_overrides,
         position_manager=position_manager,
     )
+    if dynamic_sizing_providers:
+        for engine in lsi_engines:
+            provider = dynamic_sizing_providers.get(engine.name) or dynamic_sizing_providers.get("*")
+            if provider is None:
+                continue
+            engine.dynamic_sizing_provider = provider
+            engine.dynamic_sizing_shadow = dynamic_sizing_shadow
+
     _wire_nq_ny_overlap(orb_engines, lsi_engines)
 
     recorder = ReplayRecorder(profile_name)
@@ -711,7 +780,8 @@ async def run_profile_backtest(
 
     atr_by_symbol: dict[str, dict[int, ATRCalculator]] = {}
     daily_history_by_symbol: dict[str, DailyHistoryTracker] = {}
-    events: list[tuple[datetime, str, Bar]] = []
+    events: list[tuple[datetime, str, int, Bar]] = []
+    atr_update_minutes: dict[str, int] = {}
     for symbol, lengths in atr_lengths.items():
         atr_by_symbol[symbol] = {length: ATRCalculator(length=length) for length in lengths}
         seed_daily = _seed_daily_bars(symbol.split(".")[0], replay_start)
@@ -728,10 +798,17 @@ async def run_profile_backtest(
                     engine.seed_ath_high(ath_seed)
 
         frame_end = datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=ET)
-        bars_5m = _read_parquet_frame(symbol.split(".")[0], "5m", start=replay_start, end=frame_end)
-        events.extend(_build_5m_events(symbol, bars_5m))
+        required_minutes = {
+            _engine_bar_minutes(engine)
+            for engine in symbol_map.get(symbol, [])
+        } or {5}
+        atr_update_minutes[symbol] = min(required_minutes)
+        for bar_minutes in sorted(required_minutes):
+            timeframe = _timeframe_for_minutes(bar_minutes)
+            bars = _read_parquet_frame(symbol.split(".")[0], timeframe, start=replay_start, end=frame_end)
+            events.extend(_build_bar_events(symbol, bars, bar_minutes=bar_minutes))
 
-    events.sort(key=lambda item: (item[0], item[1]))
+    events.sort(key=lambda item: (item[0], item[1], item[2]))
     tick_cache = TickCache()
     current_time = replay_start
     final_tick_time = latest_data_ts or datetime.combine(replay_end_date + timedelta(days=1), time.min, tzinfo=ET)
@@ -767,15 +844,17 @@ async def run_profile_backtest(
                         await engine.on_tick(tick, daily_atrs.get(getattr(engine, "atr_length", 14), 0.0))
 
             while idx < len(events) and events[idx][0] == event_time:
-                _close_time, symbol, bar = events[idx]
-                daily_history_by_symbol[symbol].on_5m_bar(bar)
-                for calc in atr_by_symbol[symbol].values():
-                    calc.on_5m_bar(bar)
+                _close_time, symbol, bar_minutes, bar = events[idx]
+                if bar_minutes == atr_update_minutes.get(symbol, 5):
+                    daily_history_by_symbol[symbol].on_5m_bar(bar)
+                    for calc in atr_by_symbol[symbol].values():
+                        calc.on_5m_bar(bar)
                 daily_atrs = {
                     length: calc.value for length, calc in atr_by_symbol[symbol].items()
                 }
                 for engine in symbol_map[symbol]:
-                    await engine.on_bar(bar, daily_atrs.get(getattr(engine, "atr_length", 14), 0.0))
+                    if _engine_bar_minutes(engine) == bar_minutes:
+                        await engine.on_bar(bar, daily_atrs.get(getattr(engine, "atr_length", 14), 0.0))
                 idx += 1
 
             current_time = event_time
@@ -822,6 +901,13 @@ async def run_profile_backtest(
     )
     summary = _compute_summary(trades)
     equity_curve = _build_equity_curve(trades, end_date)
+    debug_events: list[dict[str, object]] = []
+    for engine in all_engines:
+        for event in getattr(engine, "_hunter_debug_events", []) or []:
+            row = dict(event)
+            row.setdefault("profile", profile_name)
+            row.setdefault("session", getattr(engine, "name", ""))
+            debug_events.append(row)
 
     return {
         "name": label or f"EXEC EXACT {profile_name} {start_date} to {end_date}",
@@ -829,6 +915,7 @@ async def run_profile_backtest(
         "config": _build_config_dict(profile_name, exec_config),
         "summary": summary,
         "trades": trades,
+        "debug_events": debug_events,
         "equity_curve": equity_curve,
     }
 

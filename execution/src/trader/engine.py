@@ -69,6 +69,7 @@ class TradeRecord:
     ticker: str = ""      # signal ticker displayed in dashboard (e.g. "NQ")
     exec_ticker: str = "" # execution contract routed to broker (e.g. "MNQ")
     leg: str = ""         # display leg/session name (e.g. "H_ORB_SAFE")
+    entry_context: dict[str, object] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +227,14 @@ class ORBEngine:
     wide_stop_target_rr: float = 0.0
     limit_cancel_on_pre_entry_target_touch: str = ""
 
+    # Optional post-TP1 runner trailing. Disabled by default.
+    runner_trail_mode: str = ""
+    runner_trail_trigger_r: float = 0.0
+    runner_trail_stop_r: float = 0.0
+    runner_trail_step_r: float = 1.0
+    runner_trail_gap_r: float = 1.0
+    runner_trail_atr_pct: float = 0.0
+
     # Optional all-time-high distance block, checked on the closed signal bar
     # before an order is armed. Disabled unless max > min.
     ath_block_min_pct: float = 0.0
@@ -281,6 +290,8 @@ class ORBEngine:
     _levels: TradeLevels | None = field(default=None, init=False)
     _tp1_hit: bool = field(default=False, init=False)
     _tp1_bar_count: int = field(default=-1, init=False)  # _bar_count when TP1 hit (1s)
+    _runner_stop: float | None = field(default=None, init=False)
+    _trade_daily_atr: float = field(default=0.0, init=False)
     _fill_bar_idx: int = field(default=-1, init=False)
     _fill_timestamp: datetime | None = field(default=None, init=False)
     _fill_via_tick: bool = field(default=False, init=False)
@@ -395,6 +406,30 @@ class ORBEngine:
                     "wide_stop_target_rr must be <= rr "
                     f"(got wide_stop_target_rr={self.wide_stop_target_rr!r}, rr={self.rr!r})"
                 )
+        if self.runner_trail_mode not in {"", "step_r", "risk", "atr"}:
+            raise ValueError(
+                "runner_trail_mode must be one of '', 'step_r', 'risk', or 'atr' "
+                f"(got {self.runner_trail_mode!r})"
+            )
+        if self.runner_trail_trigger_r < 0.0:
+            raise ValueError("runner_trail_trigger_r must be >= 0")
+        if self.runner_trail_stop_r < 0.0:
+            raise ValueError("runner_trail_stop_r must be >= 0")
+        if self.runner_trail_step_r <= 0.0:
+            raise ValueError("runner_trail_step_r must be > 0")
+        if self.runner_trail_gap_r <= 0.0:
+            raise ValueError("runner_trail_gap_r must be > 0")
+        if self.runner_trail_atr_pct < 0.0:
+            raise ValueError("runner_trail_atr_pct must be >= 0")
+        if self.runner_trail_mode == "step_r":
+            if self.runner_trail_trigger_r <= 0.0:
+                raise ValueError("runner_trail_trigger_r must be > 0 when runner_trail_mode='step_r'")
+            if self.runner_trail_trigger_r <= self.runner_trail_stop_r:
+                raise ValueError(
+                    "runner_trail_trigger_r must be > runner_trail_stop_r when runner_trail_mode='step_r'"
+                )
+        if self.runner_trail_mode == "atr" and self.runner_trail_atr_pct <= 0.0:
+            raise ValueError("runner_trail_atr_pct must be > 0 when runner_trail_mode='atr'")
         if self.limit_cancel_on_pre_entry_target_touch not in {"", "tp1", "tp2"}:
             raise ValueError(
                 "limit_cancel_on_pre_entry_target_touch must be one of '', 'tp1', or 'tp2' "
@@ -765,8 +800,13 @@ class ORBEngine:
             ticker=self._asset_tag.upper(),
             exec_ticker=self.exec_ticker,
             leg=self.name,
+            entry_context=self._trade_entry_context(),
         )
         self.on_trade_exit(record)
+
+    def _trade_entry_context(self) -> dict[str, object]:
+        """Return strategy-specific entry diagnostics for completed trades."""
+        return {}
 
     async def _exit_single_contract_at_tp1(
         self,
@@ -810,6 +850,120 @@ class ORBEngine:
         pnl_pts = exit_price - levels.entry if levels.direction == 1 else levels.entry - exit_price
         return pnl_pts / risk_pts
 
+    def _runner_stop_price(self) -> float:
+        """Current active runner stop after TP1."""
+        levels = self._levels
+        if levels is None:
+            return 0.0
+        return self._runner_stop if self._runner_stop is not None else levels.be
+
+    @property
+    def _runner_trail_enabled(self) -> bool:
+        return self.runner_trail_mode in {"step_r", "risk", "atr"}
+
+    def _runner_trail_candidate_stop(self, high_price: float, low_price: float) -> float | None:
+        levels = self._levels
+        if levels is None or not self._runner_trail_enabled:
+            return None
+        risk_pts = abs(levels.entry - levels.stop)
+        if risk_pts <= 0.0:
+            return None
+
+        if self.runner_trail_mode == "step_r":
+            if self.runner_trail_trigger_r <= 0.0 or self.runner_trail_step_r <= 0.0:
+                return None
+            if levels.direction == 1:
+                mfe_r = (high_price - levels.entry) / risk_pts
+            else:
+                mfe_r = (levels.entry - low_price) / risk_pts
+            if mfe_r < self.runner_trail_trigger_r:
+                return None
+            steps = math.floor((mfe_r - self.runner_trail_trigger_r) / self.runner_trail_step_r + 1e-9)
+            lock_r = max(0.0, self.runner_trail_stop_r + steps * self.runner_trail_step_r)
+            return levels.entry + lock_r * risk_pts * levels.direction
+
+        if self.runner_trail_mode == "risk":
+            if self.runner_trail_gap_r <= 0.0:
+                return None
+            if levels.direction == 1:
+                return high_price - self.runner_trail_gap_r * risk_pts
+            return low_price + self.runner_trail_gap_r * risk_pts
+
+        if self.runner_trail_mode == "atr":
+            trade_atr = self._trade_daily_atr if self._trade_daily_atr > 0.0 else self._daily_atr
+            atr_points = (self.runner_trail_atr_pct / 100.0) * trade_atr
+            if atr_points <= 0.0:
+                return None
+            if levels.direction == 1:
+                return high_price - atr_points
+            return low_price + atr_points
+
+        return None
+
+    async def _update_runner_trail_stop(
+        self,
+        *,
+        high_price: float,
+        low_price: float,
+        timestamp: datetime,
+        resolution: str,
+    ) -> None:
+        levels = self._levels
+        if levels is None or not self._tp1_hit:
+            return
+        if self._runner_stop is None:
+            self._runner_stop = levels.be
+        candidate = self._runner_trail_candidate_stop(high_price, low_price)
+        if candidate is None:
+            return
+
+        if levels.direction == 1:
+            improved = candidate > self._runner_stop + 1e-9
+        else:
+            improved = candidate < self._runner_stop - 1e-9
+        if not improved:
+            return
+
+        self._runner_stop = candidate
+        direction_str = "long" if levels.direction == 1 else "short"
+        self._log_trade(
+            "RUNNER_TRAIL_STOP",
+            "dir=%s stop=%.2f mode=%s time=%s resolution=%s"
+            % (direction_str, self._runner_stop, self.runner_trail_mode, timestamp, resolution),
+        )
+        if self._should_send:
+            await self.broker.send_runner_stop_update(
+                direction=direction_str,
+                qty=self._remaining_position_qty(),
+                stop_price=self._runner_stop,
+                tp2=levels.tp2,
+                ticker=self.exec_ticker,
+            )
+        self._request_checkpoint()
+        self._notify_state_change()
+
+    def _runner_stop_hit(self, high_price: float, low_price: float) -> tuple[bool, float]:
+        """Return whether the active post-TP1 runner stop was touched."""
+        levels = self._levels
+        if levels is None:
+            return False, 0.0
+        stop_price = self._runner_stop_price()
+        if levels.direction == 1:
+            return low_price <= stop_price, stop_price
+        return high_price >= stop_price, stop_price
+
+    def _runner_stop_event_name(self, stop_price: float) -> str:
+        """Distinguish true trailed runner stops from the original BE stop."""
+        levels = self._levels
+        if (
+            levels is not None
+            and self._runner_trail_enabled
+            and self._runner_stop is not None
+            and not math.isclose(stop_price, levels.be, rel_tol=0.0, abs_tol=1e-9)
+        ):
+            return "RUNNER_STOP_HIT"
+        return "BE_HIT"
+
     def _compute_r_result(self, exit_type: str, exit_price: float | None = None) -> float:
         """Compute realized R-multiple for a trade exit."""
         levels = self._levels
@@ -827,6 +981,9 @@ class ORBEngine:
         elif exit_type == "tp1_single":
             return tp1_r
         elif exit_type == "tp1_be":
+            if exit_price is not None:
+                exit_r = self._price_to_r(exit_price)
+                return exit_r if is_single else (tp1_r + exit_r) / 2.0
             return be_r if is_single else (tp1_r + be_r) / 2.0
         elif exit_type == "tp1_tp2":
             return tp2_r if is_single else (tp1_r + tp2_r) / 2.0
@@ -895,6 +1052,8 @@ class ORBEngine:
             self._fill_timestamp = None
             self._fill_via_tick = False
             self._armed_at = None
+            self._runner_stop = None
+            self._trade_daily_atr = 0.0
             self._long_fvg_found = False
             self._short_fvg_found = False
             self._state = State.WAITING_FOR_GAP
@@ -960,6 +1119,8 @@ class ORBEngine:
             return False
 
         self._levels = capped
+        self._runner_stop = None
+        self._trade_daily_atr = self._daily_atr
         self._armed_at = bar.timestamp + timedelta(minutes=5)
         self._request_checkpoint()
         self._log_trade(
@@ -1101,6 +1262,8 @@ class ORBEngine:
         self._fill_timestamp = None
         self._fill_via_tick = False
         self._armed_at = None
+        self._runner_stop = None
+        self._trade_daily_atr = 0.0
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
@@ -1578,6 +1741,8 @@ class ORBEngine:
                         levels = self._apply_position_cap(levels)
                     if levels is not None:
                         self._levels = levels
+                        self._runner_stop = None
+                        self._trade_daily_atr = self._daily_atr
                         self._arm_order(bar)
                         self._log_trade(
                             "LONG_SETUP",
@@ -1658,6 +1823,8 @@ class ORBEngine:
                     levels = self._apply_position_cap(levels)
                 if levels is not None:
                     self._levels = levels
+                    self._runner_stop = None
+                    self._trade_daily_atr = self._daily_atr
                     # Re-use ARMED_LIMIT state for armed short in non-long-only mode
                     # (short not used in 5-leg portfolio but kept for backward compat)
                     self._arm_order(bar)
@@ -1719,6 +1886,7 @@ class ORBEngine:
             self._fill_timestamp = bar.timestamp
             self._fill_via_tick = False
             self._armed_at = None
+            self._runner_stop = None
             self._session_filled_trades += 1
             self._log_trade(
                 "FILLED",
@@ -1841,6 +2009,7 @@ class ORBEngine:
                 return
 
             self._tp1_hit = True
+            self._runner_stop = levels.be
             self._request_checkpoint()
             self._tp1_bar_count = self._bar_count
             self._sync_position_cap()
@@ -1867,25 +2036,58 @@ class ORBEngine:
                     ticker=self.exec_ticker,
                 )
 
+            if self._runner_trail_enabled:
+                await self._update_runner_trail_stop(
+                    high_price=bar.high,
+                    low_price=bar.low,
+                    timestamp=bar.timestamp,
+                    resolution="5m",
+                )
+                runner_stop_hit, runner_stop = self._runner_stop_hit(bar.high, bar.low)
+                if runner_stop_hit:
+                    event_name = self._runner_stop_event_name(runner_stop)
+                    self._log_trade(
+                        event_name,
+                        "dir=%s stop=%.2f bar_time=%s resolution=5m"
+                        % (direction_str, runner_stop, bar.timestamp),
+                    )
+                    self._schedule_post_exit_cleanup(reason="runner_stop_same_bar_5m")
+                    self._emit_trade_record(
+                        "tp1_be",
+                        exit_price=runner_stop,
+                        exit_timestamp=bar.timestamp,
+                    )
+                    self._set_post_exit_state(bar.timestamp.time(), "tp1_be")
+                    self._request_checkpoint()
+                    self._notify_state_change()
+                    return
+
             self._notify_state_change()
             return
 
         # After TP1, check BE stop and TP2
         if self._tp1_hit:
-            be_hit = False
-            if is_long and bar.low <= levels.be:
-                be_hit = True
-            elif not is_long and bar.high >= levels.be:
-                be_hit = True
+            await self._update_runner_trail_stop(
+                high_price=bar.high,
+                low_price=bar.low,
+                timestamp=bar.timestamp,
+                resolution="5m",
+            )
+            be_hit, runner_stop = self._runner_stop_hit(bar.high, bar.low)
 
             if be_hit:
+                event_name = self._runner_stop_event_name(runner_stop)
                 self._log_trade(
-                    "BE_HIT",
-                    "dir=%s be=%.2f bar_time=%s resolution=5m"
-                    % (direction_str, levels.be, bar.timestamp),
+                    event_name,
+                    "dir=%s stop=%.2f bar_time=%s resolution=5m"
+                    % (direction_str, runner_stop, bar.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_5m")
-                self._emit_trade_record("tp1_be", exit_timestamp=bar.timestamp)
+                self._emit_trade_record(
+                    "tp1_be",
+                    exit_price=runner_stop,
+                    exit_timestamp=bar.timestamp,
+                )
                 self._set_post_exit_state(bar.timestamp.time(), "tp1_be")
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1983,6 +2185,7 @@ class ORBEngine:
             self._fill_bar_idx = self._bar_count
             self._fill_via_tick = True
             self._armed_at = None
+            self._runner_stop = None
             self._session_filled_trades += 1
             self._state = State.MANAGING
             self._request_checkpoint()
@@ -2103,6 +2306,7 @@ class ORBEngine:
                     return
 
                 self._tp1_hit = True
+                self._runner_stop = levels.be
                 self._request_checkpoint()
                 self._tp1_bar_count = self._bar_count
                 self._sync_position_cap()
@@ -2127,6 +2331,31 @@ class ORBEngine:
                         tp2=levels.tp2,
                         ticker=self.exec_ticker,
                     )
+                if self._runner_trail_enabled:
+                    await self._update_runner_trail_stop(
+                        high_price=tick.high,
+                        low_price=tick.low,
+                        timestamp=tick.timestamp,
+                        resolution="1s",
+                    )
+                    runner_stop_hit, runner_stop = self._runner_stop_hit(tick.high, tick.low)
+                    if runner_stop_hit:
+                        event_name = self._runner_stop_event_name(runner_stop)
+                        self._log_trade(
+                            event_name,
+                            "dir=%s stop=%.2f tick_time=%s resolution=1s"
+                            % (direction_str, runner_stop, tick.timestamp),
+                        )
+                        self._schedule_post_exit_cleanup(reason="runner_stop_same_tick_1s")
+                        self._emit_trade_record(
+                            "tp1_be",
+                            exit_price=runner_stop,
+                            exit_timestamp=tick.timestamp,
+                        )
+                        self._set_post_exit_state(tick.timestamp.time(), "tp1_be")
+                        self._request_checkpoint()
+                        self._notify_state_change()
+                        return
                 self._notify_state_change()
                 return
 
@@ -2151,19 +2380,29 @@ class ORBEngine:
 
         # --- Post-TP1 phase: check BE and TP2 ---
         else:
-            be_hit = (is_long and tick.low <= levels.be) or \
-                     (not is_long and tick.high >= levels.be)
+            await self._update_runner_trail_stop(
+                high_price=tick.high,
+                low_price=tick.low,
+                timestamp=tick.timestamp,
+                resolution="1s",
+            )
+            be_hit, runner_stop = self._runner_stop_hit(tick.high, tick.low)
             tp2_hit = (is_long and tick.high >= levels.tp2) or \
                       (not is_long and tick.low <= levels.tp2)
 
             if be_hit:
+                event_name = self._runner_stop_event_name(runner_stop)
                 self._log_trade(
-                    "BE_HIT",
-                    "dir=%s be=%.2f tick_time=%s resolution=1s"
-                    % (direction_str, levels.be, tick.timestamp),
+                    event_name,
+                    "dir=%s stop=%.2f tick_time=%s resolution=1s"
+                    % (direction_str, runner_stop, tick.timestamp),
                 )
                 self._schedule_post_exit_cleanup(reason="be_hit_1s")
-                self._emit_trade_record("tp1_be", exit_timestamp=tick.timestamp)
+                self._emit_trade_record(
+                    "tp1_be",
+                    exit_price=runner_stop,
+                    exit_timestamp=tick.timestamp,
+                )
                 self._set_post_exit_state(tick.timestamp.time(), "tp1_be")
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -2214,6 +2453,7 @@ class ORBEngine:
                 "stop": self._levels.stop,
                 "tp1": self._levels.tp1,
                 "tp2": self._levels.tp2,
+                "runner_stop": self._runner_stop_price() if self._tp1_hit else None,
                 "qty": self._levels.qty,
                 "direction": self._levels.direction,
             } if self._levels else None,
@@ -2221,8 +2461,19 @@ class ORBEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "point_value": self.point_value,
             "commission_per_contract": self.commission_per_contract,
             "exit_mode": self.exit_mode,
+            "runner_trail": {
+                "mode": self.runner_trail_mode,
+                "trigger_r": self.runner_trail_trigger_r,
+                "stop_r": self.runner_trail_stop_r,
+                "step_r": self.runner_trail_step_r,
+                "gap_r": self.runner_trail_gap_r,
+                "atr_pct": self.runner_trail_atr_pct,
+                "runner_stop": self._runner_stop,
+                "trade_daily_atr": self._trade_daily_atr,
+            },
             "fill_timestamp": str(self._fill_timestamp) if self._fill_timestamp else None,
             "stop_basis": self.stop_basis,
             "long_only": self.long_only,

@@ -670,21 +670,21 @@ export function NewsDashboard() {
               </h3>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={mfeHistogram}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2c2c33" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1d3434" />
                   <XAxis
                     dataKey="range"
-                    tick={{ fill: "#a0a0ab", fontSize: 11 }}
+                    tick={{ fill: "#a1adab", fontSize: 11 }}
                   />
-                  <YAxis tick={{ fill: "#a0a0ab", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#a1adab", fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1c1c21",
-                      border: "1px solid #2c2c33",
+                      backgroundColor: "#050909",
+                      border: "1px solid #1d3434",
                       borderRadius: 6,
                       fontSize: 12,
                     }}
                   />
-                  <Bar dataKey="count" fill="#F8C159" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="count" fill="#f8c159" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -696,47 +696,47 @@ export function NewsDashboard() {
               </h3>
               <ResponsiveContainer width="100%" height={240}>
                 <ScatterChart>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2c2c33" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1d3434" />
                   <XAxis
                     dataKey="mae"
                     name="MAE"
-                    tick={{ fill: "#a0a0ab", fontSize: 11 }}
+                    tick={{ fill: "#a1adab", fontSize: 11 }}
                     label={{
                       value: "MAE (pts)",
                       position: "insideBottom",
                       offset: -5,
-                      fill: "#62626b",
+                      fill: "#647371",
                       fontSize: 11,
                     }}
                   />
                   <YAxis
                     dataKey="mfe"
                     name="MFE"
-                    tick={{ fill: "#a0a0ab", fontSize: 11 }}
+                    tick={{ fill: "#a1adab", fontSize: 11 }}
                     label={{
                       value: "MFE (pts)",
                       angle: -90,
                       position: "insideLeft",
-                      fill: "#62626b",
+                      fill: "#647371",
                       fontSize: 11,
                     }}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1c1c21",
-                      border: "1px solid #2c2c33",
+                      backgroundColor: "#050909",
+                      border: "1px solid #1d3434",
                       borderRadius: 6,
                       fontSize: 12,
-                      color: "#e0e0e6",
+                      color: "#eef7f0",
                     }}
-                    labelStyle={{ color: "#a0a0ab" }}
+                    labelStyle={{ color: "#a1adab" }}
                     formatter={(value) => formatNumber(Number(value ?? 0))}
                   />
                   <Scatter data={scatterData}>
                     {scatterData.map((entry, i) => (
                       <Cell
                         key={i}
-                        fill={entry.targetHit ? "#3dd68c" : "#f0615e"}
+                        fill={entry.targetHit ? "#72f25f" : "#ff554f"}
                         opacity={0.7}
                       />
                     ))}
@@ -747,14 +747,14 @@ export function NewsDashboard() {
                 <span className="flex items-center gap-1">
                   <span
                     className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: "#3dd68c" }}
+                    style={{ backgroundColor: "#72f25f" }}
                   />
                   Target hit
                 </span>
                 <span className="flex items-center gap-1">
                   <span
                     className="inline-block h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: "#f0615e" }}
+                    style={{ backgroundColor: "#ff554f" }}
                   />
                   Target missed
                 </span>
@@ -770,30 +770,30 @@ export function NewsDashboard() {
               </h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={timeseriesData} barCategoryGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2c2c33" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1d3434" vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: "#a0a0ab", fontSize: 10 }}
+                    tick={{ fill: "#a1adab", fontSize: 10 }}
                     interval="preserveStartEnd"
                     tickFormatter={(d: string) => d.slice(5)}
                   />
-                  <YAxis tick={{ fill: "#a0a0ab", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "#a1adab", fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1c1c21",
-                      border: "1px solid #2c2c33",
+                      backgroundColor: "#050909",
+                      border: "1px solid #1d3434",
                       borderRadius: 6,
                       fontSize: 12,
                     }}
                     formatter={(value) => [`${formatNumber(Number(value ?? 0))} pts`, "Final"]}
                     labelFormatter={(label) => String(label ?? "")}
                   />
-                  <ReferenceLine y={0} stroke="#62626b" />
+                  <ReferenceLine y={0} stroke="#647371" />
                   <Bar dataKey="points" radius={[2, 2, 0, 0]}>
                     {timeseriesData.map((entry, i) => (
                       <Cell
                         key={i}
-                        fill={entry.points >= 0 ? "#3dd68c" : "#f0615e"}
+                        fill={entry.points >= 0 ? "#72f25f" : "#ff554f"}
                       />
                     ))}
                   </Bar>
@@ -1289,7 +1289,7 @@ function SweepHeatmap({
   const isInverse = metric === "whipsaw_rate"; // lower is better
 
   const getCellColor = (value: number | undefined) => {
-    if (value == null || !isFinite(value)) return "#1c1c21";
+    if (value == null || !isFinite(value)) return "#050909";
     const range = max - min || 1;
     let t = (value - min) / range;
     if (isInverse) t = 1 - t;
@@ -1346,7 +1346,7 @@ function SweepHeatmap({
                     className="px-2 py-1 text-center font-mono font-semibold"
                     style={{
                       backgroundColor: getCellColor(val),
-                      color: "#111113",
+                      color: "#050909",
                       minWidth: 52,
                     }}
                   >

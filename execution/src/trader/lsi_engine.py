@@ -25,12 +25,14 @@ import enum
 import logging
 import math
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Callable
 
 from .broker import TradersPostClient
+from .cisd import CisdEvent, InternalCisdTracker
 from .engine import Bar, TradeRecord
 from .htf_levels import HtfLevelTracker
+from .orderbook_features import DynamicSizingContext, DynamicSizingDecision
 from .position_limits import ContractCapManager, resize_trade_levels
 from .sizing import TradeLevels, compute_trade_levels
 from .swing import SweepEvent, SwingTracker
@@ -44,6 +46,7 @@ HTF_LSI_VARIANT = "htf-LSI"
 VALID_LSI_VARIANTS = frozenset({STANDARD_LSI_VARIANT, LEGACY_LSI_VARIANT, HTF_LSI_VARIANT})
 VALID_LSI_STOP_MODES = frozenset({
     "absolute",
+    "atr_pct",
     "fvg",
     "gap_1x",
     "gap_2x",
@@ -53,6 +56,7 @@ VALID_LSI_STOP_MODES = frozenset({
     "struct_75pct",
 })
 VALID_LSI_TARGET_MODES = frozenset({"risk", "structural"})
+VALID_LSI_CONFIRMATION_MODES = frozenset({"inversion", "cisd", "inversion_or_cisd"})
 _LSI_GAP_STOP_MULTIPLIERS = {
     "gap_1x": 1.0,
     "gap_2x": 2.0,
@@ -90,6 +94,7 @@ class GapInfo:
     impulse_high: float  # high of impulse candle (bar[1])
     impulse_low: float  # low of impulse candle (bar[1])
     bar_index: int  # bar count when gap was detected
+    gap_size_override: float | None = None
 
 
 class LSIEngine:
@@ -114,12 +119,14 @@ class LSIEngine:
         atr_length: int = 14,
         min_gap_atr_pct: float = 5.0,
         min_stop_points: float = 0.0,
+        stop_atr_pct: float = 0.0,
         fvg_window_left: int = 10,
         fvg_window_right: int = 5,
         lsi_entry_mode: str = "close",  # "close" or "fvg_limit"
         lsi_close_on_sweep_to_inversion_minutes: int = 0,
         lsi_stop_mode: str = "absolute",
         lsi_target_mode: str = "risk",
+        lsi_confirmation_mode: str = "inversion",
         lsi_variant: str = LEGACY_LSI_VARIANT,
         # Risk params
         risk_usd: float = 250.0,
@@ -128,6 +135,8 @@ class LSIEngine:
         min_qty: float = 1.0,
         qty_step: float = 1.0,
         qty_multiplier: float = 1.0,
+        dynamic_sizing_provider: Callable[[DynamicSizingContext], DynamicSizingDecision] | None = None,
+        dynamic_sizing_shadow: bool = False,
         min_tick: float = 0.25,
         max_single_risk_usd: float = 500.0,
         wide_stop_target_threshold_points: float = 0.0,
@@ -151,6 +160,11 @@ class LSIEngine:
         htf_n_left: int = 5,
         htf_trade_max_per_session: int = 1,
         max_fvg_to_inversion_bars: int = 0,
+        lsi_stale_breach_consumes_pivot: bool = True,
+        lsi_reset_swing_window_on_new_day: bool = True,
+        cisd_min_leg_bars: int = 2,
+        cisd_min_leg_atr_pct: float = 5.0,
+        cisd_max_leg_bars: int = 60,
         base_bar_minutes: int = 5,
         # Execution config name
         config_name: str = "",
@@ -187,12 +201,14 @@ class LSIEngine:
         self.atr_length = atr_length
         self.min_gap_atr_pct = min_gap_atr_pct
         self.min_stop_points = min_stop_points
+        self.stop_atr_pct = stop_atr_pct
         self.fvg_window_left = fvg_window_left
         self.fvg_window_right = fvg_window_right
         self.lsi_entry_mode = lsi_entry_mode
         self.lsi_close_on_sweep_to_inversion_minutes = lsi_close_on_sweep_to_inversion_minutes
         self.lsi_stop_mode = lsi_stop_mode
         self.lsi_target_mode = lsi_target_mode
+        self.lsi_confirmation_mode = lsi_confirmation_mode
         if lsi_entry_mode not in {"close", "fvg_limit", "level_limit", "timed_hybrid"}:
             raise ValueError(
                 "lsi_entry_mode must be one of close, fvg_limit, level_limit, or timed_hybrid "
@@ -213,6 +229,13 @@ class LSIEngine:
                 f"lsi_target_mode must be one of {sorted(VALID_LSI_TARGET_MODES)} "
                 f"(got {lsi_target_mode!r})"
             )
+        if lsi_confirmation_mode not in VALID_LSI_CONFIRMATION_MODES:
+            raise ValueError(
+                "lsi_confirmation_mode must be one of "
+                f"{sorted(VALID_LSI_CONFIRMATION_MODES)} (got {lsi_confirmation_mode!r})"
+            )
+        if stop_atr_pct < 0.0:
+            raise ValueError("stop_atr_pct must be >= 0")
         if exit_mode not in {"split", "single_target"}:
             raise ValueError(
                 "exit_mode must be one of 'split' or 'single_target' "
@@ -238,6 +261,11 @@ class LSIEngine:
         self.htf_n_left = htf_n_left
         self.htf_trade_max_per_session = htf_trade_max_per_session
         self.max_fvg_to_inversion_bars = max_fvg_to_inversion_bars
+        self.lsi_stale_breach_consumes_pivot = lsi_stale_breach_consumes_pivot
+        self.lsi_reset_swing_window_on_new_day = lsi_reset_swing_window_on_new_day
+        self.cisd_min_leg_bars = cisd_min_leg_bars
+        self.cisd_min_leg_atr_pct = cisd_min_leg_atr_pct
+        self.cisd_max_leg_bars = cisd_max_leg_bars
         self.base_bar_minutes = base_bar_minutes
 
         # Risk
@@ -247,6 +275,8 @@ class LSIEngine:
         self.min_qty = min_qty
         self.qty_step = qty_step
         self.qty_multiplier = qty_multiplier
+        self.dynamic_sizing_provider = dynamic_sizing_provider
+        self.dynamic_sizing_shadow = dynamic_sizing_shadow
         self.min_tick = min_tick
         self.max_single_risk_usd = max_single_risk_usd
         self.wide_stop_target_threshold_points = wide_stop_target_threshold_points
@@ -282,7 +312,17 @@ class LSIEngine:
         self._half_day_flat_end_t = _parse_time(half_day_flat_end)
 
         # Swing pivot tracker (replaces KZ/PDH/PDL liquidity tracking)
-        self._swings = SwingTracker(n_left=lsi_n_left, n_right=lsi_n_right, long_only=long_only)
+        self._swings = SwingTracker(
+            n_left=lsi_n_left,
+            n_right=lsi_n_right,
+            long_only=long_only,
+            reset_window_on_new_day=lsi_reset_swing_window_on_new_day,
+        )
+        self._cisd = InternalCisdTracker(
+            min_leg_bars=cisd_min_leg_bars,
+            min_leg_atr_pct=cisd_min_leg_atr_pct,
+            max_leg_bars=cisd_max_leg_bars,
+        )
         self._htf_levels = HtfLevelTracker(
             tf_minutes=htf_level_tf_minutes,
             n_left=htf_n_left,
@@ -305,7 +345,11 @@ class LSIEngine:
         # Bar history — keep enough for absolute stop computation
         # (FVG bar through inversion bar can span ~30 bars)
         self._bars: list[Bar] = []
-        self._MAX_BAR_HISTORY = 50
+        self._MAX_BAR_HISTORY = max(
+            50,
+            lsi_n_right + fvg_window_left + fvg_window_right + 10,
+            cisd_max_leg_bars + fvg_window_right + 10,
+        )
 
         # Sweep + gap state
         self._active_sweep: SweepEvent | None = None
@@ -319,11 +363,13 @@ class LSIEngine:
         self._recent_fvgs: list[tuple[int, GapInfo]] = []
         self._fvg_to_inversion_bars: int | None = None
         self._sweep_to_inversion_bars: int | None = None
+        self._seen_cisd_dates: set[str] = set()
 
         # Entry state
         self._entry_price: float = 0.0
         self._entry_direction: int = 0
         self._entry_stop: float = 0.0
+        self._entry_context: dict[str, object] = {}
 
         # ARMED_LIMIT state (fvg_limit mode only)
         self._limit_price: float = 0.0
@@ -331,6 +377,9 @@ class LSIEngine:
         self._limit_gap: GapInfo | None = None
         self._limit_daily_atr: float = 0.0
         self._limit_resolved_entry_mode: str = "fvg_limit"
+        self._limit_absolute_stop: float | None = None
+        self._limit_precomputed_stop: float | None = None
+        self._limit_signal_bar: Bar | None = None
 
         # LSI overlay (swept level + FVG zone, persists until next session reset)
         self._swept_level: float | None = None
@@ -367,6 +416,12 @@ class LSIEngine:
     def _is_htf_variant(self) -> bool:
         return self.lsi_variant == HTF_LSI_VARIANT
 
+    def _use_inversion_confirmation(self) -> bool:
+        return self.lsi_confirmation_mode in {"inversion", "inversion_or_cisd"}
+
+    def _use_cisd_confirmation(self) -> bool:
+        return self.lsi_confirmation_mode in {"cisd", "inversion_or_cisd"}
+
     def _clear_dashboard_overlay(self) -> None:
         """Clear the current LSI setup overlay shown on the dashboard."""
         self._swept_level = None
@@ -383,7 +438,66 @@ class LSIEngine:
         self._active_sweep_instance_id = -1
         self._active_htf_level_side = ""
         self._pending_gaps.clear()
+        self._limit_absolute_stop = None
+        self._limit_precomputed_stop = None
+        self._limit_signal_bar = None
         self._clear_dashboard_overlay()
+
+    def _dynamic_sizing_decision(
+        self,
+        *,
+        bar: Bar,
+        direction: int,
+        entry: float,
+    ) -> DynamicSizingDecision | None:
+        provider = self.dynamic_sizing_provider
+        if provider is None:
+            self._entry_context = {}
+            return None
+
+        signal_start = bar.timestamp
+        signal_end = signal_start + timedelta(minutes=max(self.base_bar_minutes, 1))
+        context = DynamicSizingContext(
+            symbol=f"{self._asset_tag.upper()}.FUT",
+            direction=direction,
+            signal_start=signal_start,
+            signal_end=signal_end,
+            config_name=self.config_name,
+            session=self.name,
+            entry_price=entry,
+        )
+        try:
+            decision = provider(context)
+        except Exception as exc:
+            logger.warning("dynamic sizing provider failed for %s: %s", self.name, exc)
+            decision = DynamicSizingDecision(
+                feature="unknown",
+                risk_weight=1.0,
+                tier="fallback",
+                active=False,
+                reason=f"provider_error:{type(exc).__name__}",
+            )
+
+        metadata = decision.as_metadata()
+        metadata.update({
+            "signal_start": signal_start.isoformat(),
+            "signal_end": signal_end.isoformat(),
+        })
+        self._entry_context = {"dynamic_sizing": metadata}
+        return decision
+
+    def _dynamic_sizing_log_suffix(self) -> str:
+        metadata = self._entry_context.get("dynamic_sizing")
+        if not isinstance(metadata, dict):
+            return ""
+        tier = metadata.get("tier")
+        weight = metadata.get("risk_weight")
+        if tier is None or weight is None:
+            return ""
+        suffix = " dyn=%s/%.2fx" % (tier, float(weight))
+        if metadata.get("shadow"):
+            suffix += "/shadow"
+        return suffix
 
     def _set_post_exit_state(self, exit_time: time) -> None:
         """Mirror the research/live HTF behavior after a trade finishes."""
@@ -522,7 +636,13 @@ class LSIEngine:
             self._htf_low_state["instance_id"] = low_id
             self._htf_low_state["consumed"] = False
 
-    def _check_htf_sweep(self, bar: Bar, *, allow_arm: bool) -> SweepEvent | None:
+    def _check_htf_sweep(
+        self,
+        bar: Bar,
+        *,
+        allow_arm: bool,
+        allow_consume: bool = False,
+    ) -> SweepEvent | None:
         tracker = self._htf_levels
         if tracker is None:
             return None
@@ -531,6 +651,8 @@ class LSIEngine:
         sweep: SweepEvent | None = None
         current_bar_ts = bar.timestamp
 
+        consume_stale = self.lsi_stale_breach_consumes_pivot or allow_consume or allow_arm
+
         latest_low = tracker.latest_low
         if (
             latest_low is not None
@@ -538,7 +660,8 @@ class LSIEngine:
             and datetime.fromisoformat(latest_low.publish_time) <= current_bar_ts
             and bar.low < latest_low.price
         ):
-            self._htf_low_state["consumed"] = True
+            if consume_stale:
+                self._htf_low_state["consumed"] = True
             if allow_arm:
                 sweep = SweepEvent(
                     source="htf_low",
@@ -550,11 +673,12 @@ class LSIEngine:
                 self._active_sweep_instance_id = latest_low.instance_id
                 self._active_htf_level_side = "low"
             else:
-                self._log_trade(
-                    "HTF_LEVEL_INVALIDATED",
-                    "side=low level=%.2f level_time=%s bar_time=%s"
-                    % (latest_low.price, latest_low.level_time, bar.timestamp),
-                )
+                if consume_stale:
+                    self._log_trade(
+                        "HTF_LEVEL_INVALIDATED",
+                        "side=low level=%.2f level_time=%s bar_time=%s"
+                        % (latest_low.price, latest_low.level_time, bar.timestamp),
+                    )
 
         latest_high = tracker.latest_high
         if (
@@ -565,7 +689,8 @@ class LSIEngine:
             and bar.high > latest_high.price
             and sweep is None
         ):
-            self._htf_high_state["consumed"] = True
+            if consume_stale:
+                self._htf_high_state["consumed"] = True
             if allow_arm:
                 sweep = SweepEvent(
                     source="htf_high",
@@ -577,11 +702,12 @@ class LSIEngine:
                 self._active_sweep_instance_id = latest_high.instance_id
                 self._active_htf_level_side = "high"
             else:
-                self._log_trade(
-                    "HTF_LEVEL_INVALIDATED",
-                    "side=high level=%.2f level_time=%s bar_time=%s"
-                    % (latest_high.price, latest_high.level_time, bar.timestamp),
-                )
+                if consume_stale:
+                    self._log_trade(
+                        "HTF_LEVEL_INVALIDATED",
+                        "side=high level=%.2f level_time=%s bar_time=%s"
+                        % (latest_high.price, latest_high.level_time, bar.timestamp),
+                    )
 
         return sweep
 
@@ -758,6 +884,12 @@ class LSIEngine:
             return s <= bar_time < e
         return bar_time >= s or bar_time < e
 
+    def _entry_window_closed(self, bar_time: time) -> bool:
+        s, e = self._entry_start_t, self._entry_end_t
+        if s <= e:
+            return bar_time >= e
+        return e <= bar_time < s
+
     def _in_sweep(self, bar_time: time) -> bool:
         s, e = self._sweep_start_t, self._sweep_end_t
         if s <= e:
@@ -900,10 +1032,17 @@ class LSIEngine:
         else:
             session_bars = [b for b in bars if b.timestamp <= now and b.timestamp.strftime("%Y%m%d") == date_str]
 
-        for b in session_bars:
+        for idx, b in enumerate(session_bars, start=1):
+            if self._use_cisd_confirmation():
+                self._cisd.on_bar(b, daily_atr=0.0, bar_index=idx)
             if self._is_htf_variant():
                 self._htf_levels.on_bar(b)
                 self._sync_htf_level_state()
+                self._check_htf_sweep(
+                    b,
+                    allow_arm=False,
+                    allow_consume=self._in_sweep(b.timestamp.time()),
+                )
             else:
                 self._swings.on_bar(b)
         self._bar_count = len(session_bars)
@@ -1028,6 +1167,7 @@ class LSIEngine:
             ticker=self._asset_tag.upper(),
             exec_ticker=self.exec_ticker,
             leg=self.name,
+            entry_context=dict(self._entry_context),
         )
         self.on_trade_exit(record)
 
@@ -1142,6 +1282,120 @@ class LSIEngine:
 
         return False, False, None
 
+    def _bars_from_index_range(self, start_bar_index: int, end_bar_index: int) -> list[Bar]:
+        if start_bar_index <= 0 or end_bar_index < start_bar_index:
+            return []
+        end_offset = self._bar_count - end_bar_index
+        start_offset = self._bar_count - start_bar_index
+        end_idx = len(self._bars) - end_offset
+        start_idx = len(self._bars) - 1 - start_offset
+        start_idx = max(0, start_idx)
+        end_idx = min(len(self._bars), end_idx)
+        if start_idx >= end_idx:
+            return []
+        return self._bars[start_idx:end_idx]
+
+    def _absolute_stop_from_setup_range(
+        self,
+        *,
+        direction: int,
+        start_bar_index: int,
+        end_bar_index: int,
+        fallback_entry: float,
+    ) -> float:
+        range_bars = self._bars_from_index_range(start_bar_index, end_bar_index)
+        if direction == 1:
+            return min(b.low for b in range_bars) if range_bars else fallback_entry - 1.0
+        return max(b.high for b in range_bars) if range_bars else fallback_entry + 1.0
+
+    async def _try_cisd_confirmation(
+        self,
+        bar: Bar,
+        events: list[CisdEvent],
+        daily_atr: float,
+    ) -> bool:
+        """Confirm the active sweep via CISD, matching the research path."""
+        if not self._use_cisd_confirmation() or not events:
+            return False
+        if self._active_sweep is None:
+            return False
+        if not self._in_entry(bar.timestamp.time()):
+            return False
+
+        bar_date = bar.timestamp.strftime("%Y%m%d")
+        if bar_date in self._seen_cisd_dates:
+            return False
+
+        for event in events:
+            direction = event.direction
+            if direction != self._active_sweep.direction:
+                continue
+            if self.long_only and direction != 1:
+                continue
+            if self._block_for_overlap(direction):
+                return True
+
+            self._seen_cisd_dates.add(bar_date)
+            self._sweep_to_inversion_bars = self._bar_count - self._sweep_bar_index
+            self._fvg_to_inversion_bars = self._bar_count - event.level_bar_index
+            entry = event.level if self._is_lsi_limit_entry_mode(self._resolve_lsi_entry_mode()) else bar.close
+            absolute_stop = self._absolute_stop_from_setup_range(
+                direction=direction,
+                start_bar_index=self._sweep_bar_index,
+                end_bar_index=self._bar_count,
+                fallback_entry=entry,
+            )
+            gap = GapInfo(
+                top=event.level,
+                bottom=event.level,
+                is_bullish=(direction == -1),
+                impulse_high=bar.high,
+                impulse_low=bar.low,
+                bar_index=event.level_bar_index,
+                gap_size_override=abs(float(bar.close) - float(event.level)),
+            )
+            self._active_gap = gap
+            self._set_gap_overlay(gap)
+            resolved_entry_mode = self._resolve_lsi_entry_mode()
+            actual_stop = self._resolve_lsi_stop(
+                entry=entry,
+                absolute_stop=absolute_stop,
+                gap=gap,
+                direction=direction,
+                daily_atr=daily_atr,
+            )
+            self._log_trade(
+                "CISD_CONFIRMED",
+                "dir=%s level=%.2f level_bar=%d sweep_bar=%d"
+                % ("long" if direction == 1 else "short", event.level, event.level_bar_index, self._sweep_bar_index),
+            )
+            if self._is_lsi_limit_entry_mode(resolved_entry_mode):
+                await self._arm_limit(
+                    bar,
+                    gap,
+                    direction=direction,
+                    daily_atr=daily_atr,
+                    resolved_entry_mode=resolved_entry_mode,
+                    absolute_stop=absolute_stop,
+                    precomputed_stop=actual_stop,
+                    signal_bar=bar,
+                )
+                return True
+            await self._build_and_enter(
+                bar,
+                gap,
+                entry,
+                actual_stop,
+                direction,
+                daily_atr,
+                absolute_stop=absolute_stop,
+                resolved_entry_mode=resolved_entry_mode,
+                signal_bar=bar,
+            )
+            return True
+
+        return False
+
     # ------------------------------------------------------------------
     # 5m bar handler (signals: sweep/gap/inversion detection)
     # ------------------------------------------------------------------
@@ -1210,6 +1464,9 @@ class LSIEngine:
                 self._limit_gap = None
                 self._limit_daily_atr = 0.0
                 self._limit_resolved_entry_mode = "fvg_limit"
+                self._limit_absolute_stop = None
+                self._limit_precomputed_stop = None
+                self._limit_signal_bar = None
                 self._levels = None
                 self._set_trade_overlap(False, notify=False)
                 self._tp1_hit = False
@@ -1221,13 +1478,21 @@ class LSIEngine:
                 self._clear_dashboard_overlay()
                 self._request_checkpoint()
 
+        cisd_events = (
+            self._cisd.on_bar(bar, daily_atr=daily_atr, bar_index=self._bar_count)
+            if self._use_cisd_confirmation()
+            else []
+        )
+
         if self._is_htf_variant():
             self._htf_levels.on_bar(bar)
             self._sync_htf_level_state()
-            if self._in_sweep(bar_time):
-                sweep = self._check_htf_sweep(bar, allow_arm=self._in_entry(bar_time))
-            else:
-                sweep = None
+            in_sweep_window = self._in_sweep(bar_time)
+            sweep = self._check_htf_sweep(
+                bar,
+                allow_arm=in_sweep_window and self._in_entry(bar_time),
+                allow_consume=in_sweep_window,
+            )
         else:
             sweep = self._swings.on_bar(bar)
 
@@ -1257,7 +1522,7 @@ class LSIEngine:
 
             # Register any new FVG into the recent buffer (for lookback pairing)
             current_bar_gap: GapInfo | None = None
-            if self._in_entry(bar_time):
+            if self._use_inversion_confirmation() and self._in_entry(bar_time):
                 found, is_bullish, gap = self._check_fvg(daily_atr)
                 if found and gap is not None:
                     self._recent_fvgs.append((self._bar_count, gap))
@@ -1275,8 +1540,15 @@ class LSIEngine:
                         % (sweep.source, sweep.level, "long" if sweep.direction == 1 else "short", self._bar_count),
                     )
 
+                    if await self._try_cisd_confirmation(bar, cisd_events, daily_atr):
+                        return
+
                     # Check if any recent FVGs (within fvg_window_left) already qualify
-                    promoted_gaps = self._promote_recent_fvgs(sweep)
+                    promoted_gaps = (
+                        self._promote_recent_fvgs(sweep)
+                        if self._use_inversion_confirmation()
+                        else []
+                    )
                     if (
                         current_bar_gap is not None
                         and self._gap_matches_sweep(current_bar_gap, sweep)
@@ -1311,7 +1583,7 @@ class LSIEngine:
             ]
 
         if self._state == LSIState.WAITING_FOR_GAP:
-            if not self._in_entry(bar_time):
+            if self._entry_window_closed(bar_time):
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -1330,6 +1602,15 @@ class LSIEngine:
                 self._clear_dashboard_overlay()
                 self._request_checkpoint()
                 self._notify_state_change()
+                return
+
+            if not self._in_entry(bar_time):
+                return
+
+            if await self._try_cisd_confirmation(bar, cisd_events, daily_atr):
+                return
+
+            if not self._use_inversion_confirmation():
                 return
 
             # Look for opposite-direction FVG
@@ -1352,8 +1633,20 @@ class LSIEngine:
                     self._notify_state_change()
 
         if self._state == LSIState.WAITING_FOR_INVERSION:
-            if not self._in_entry(bar_time):
+            if self._entry_window_closed(bar_time):
                 self._state = LSIState.FLAT
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+
+            if not self._in_entry(bar_time):
+                return
+
+            if await self._try_cisd_confirmation(bar, cisd_events, daily_atr):
+                return
+
+            if not self._use_inversion_confirmation():
+                self._state = LSIState.WAITING_FOR_GAP
                 self._request_checkpoint()
                 self._notify_state_change()
                 return
@@ -1577,7 +1870,15 @@ class LSIEngine:
     def _stop_from_distance(direction: int, entry: float, stop_dist: float) -> float:
         return entry - stop_dist if direction == 1 else entry + stop_dist
 
-    def _resolve_lsi_stop(self, *, entry: float, absolute_stop: float, gap: GapInfo, direction: int) -> float:
+    def _resolve_lsi_stop(
+        self,
+        *,
+        entry: float,
+        absolute_stop: float,
+        gap: GapInfo,
+        direction: int,
+        daily_atr: float = 0.0,
+    ) -> float:
         structural_dist = abs(entry - absolute_stop)
         if structural_dist <= 0.0:
             return absolute_stop
@@ -1585,6 +1886,11 @@ class LSIEngine:
         mode = self.lsi_stop_mode
         if mode == "absolute":
             return absolute_stop
+        if mode == "atr_pct":
+            if self.stop_atr_pct <= 0.0 or not math.isfinite(daily_atr) or daily_atr <= 0.0:
+                return absolute_stop
+            stop_dist = min((self.stop_atr_pct / 100.0) * daily_atr, structural_dist)
+            return self._stop_from_distance(direction, entry, stop_dist)
         if mode == "fvg":
             return gap.bottom if direction == 1 else gap.top
         if mode in _LSI_GAP_STOP_MULTIPLIERS:
@@ -1629,6 +1935,10 @@ class LSIEngine:
         direction: int,
         daily_atr: float,
         resolved_entry_mode: str = "fvg_limit",
+        *,
+        absolute_stop: float | None = None,
+        precomputed_stop: float | None = None,
+        signal_bar: Bar | None = None,
     ) -> None:
         """Arm a limit order at the FVG boundary after inversion is confirmed.
 
@@ -1646,6 +1956,9 @@ class LSIEngine:
         self._limit_gap = gap
         self._limit_daily_atr = daily_atr
         self._limit_resolved_entry_mode = resolved_entry_mode
+        self._limit_absolute_stop = absolute_stop
+        self._limit_precomputed_stop = precomputed_stop
+        self._limit_signal_bar = signal_bar or bar
         self._state = LSIState.ARMED_LIMIT
         self._request_checkpoint()
 
@@ -1669,24 +1982,29 @@ class LSIEngine:
         is_long = direction == 1
         dir_str = "long" if is_long else "short"
 
-        # Compute absolute-range stop from FVG bar through fill bar
-        fvg_bar_offset = self._bar_count - gap.bar_index
-        if fvg_bar_offset >= len(self._bars):
-            fvg_bar_offset = len(self._bars) - 1
-        start_idx = max(0, len(self._bars) - 1 - fvg_bar_offset)
-        range_bars = self._bars[start_idx:]
-
-        if is_long:
-            absolute_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
+        if self._limit_absolute_stop is not None and self._limit_precomputed_stop is not None:
+            absolute_stop = self._limit_absolute_stop
+            actual_stop = self._limit_precomputed_stop
         else:
-            absolute_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
+            # Compute absolute-range stop from FVG bar through fill bar
+            fvg_bar_offset = self._bar_count - gap.bar_index
+            if fvg_bar_offset >= len(self._bars):
+                fvg_bar_offset = len(self._bars) - 1
+            start_idx = max(0, len(self._bars) - 1 - fvg_bar_offset)
+            range_bars = self._bars[start_idx:]
 
-        actual_stop = self._resolve_lsi_stop(
-            entry=entry,
-            absolute_stop=absolute_stop,
-            gap=gap,
-            direction=direction,
-        )
+            if is_long:
+                absolute_stop = min(b.low for b in range_bars) if range_bars else entry - 1.0
+            else:
+                absolute_stop = max(b.high for b in range_bars) if range_bars else entry + 1.0
+
+            actual_stop = self._resolve_lsi_stop(
+                entry=entry,
+                absolute_stop=absolute_stop,
+                gap=gap,
+                direction=direction,
+                daily_atr=daily_atr,
+            )
 
         await self._build_and_enter(
             bar,
@@ -1697,6 +2015,7 @@ class LSIEngine:
             daily_atr,
             absolute_stop=absolute_stop,
             resolved_entry_mode=self._limit_resolved_entry_mode,
+            signal_bar=self._limit_signal_bar,
         )
 
     # ------------------------------------------------------------------
@@ -1737,6 +2056,7 @@ class LSIEngine:
             absolute_stop=absolute_stop,
             gap=gap,
             direction=direction,
+            daily_atr=daily_atr,
         )
 
         await self._build_and_enter(
@@ -1748,17 +2068,19 @@ class LSIEngine:
             daily_atr,
             absolute_stop=absolute_stop,
             resolved_entry_mode=resolved_entry_mode,
+            signal_bar=bar,
         )
 
     async def _build_and_enter(
         self, bar: Bar, gap: GapInfo, entry: float, raw_stop: float,
         direction: int, daily_atr: float, *, absolute_stop: float | None = None,
         resolved_entry_mode: str = "",
+        signal_bar: Bar | None = None,
     ) -> None:
         """Shared sizing + state transition for both entry modes."""
         is_long = direction == 1
         dir_str = "long" if is_long else "short"
-        gap_size = gap.top - gap.bottom
+        gap_size = gap.gap_size_override if gap.gap_size_override is not None else gap.top - gap.bottom
 
         risk_pts = abs(entry - raw_stop)
         if self.min_stop_points > 0 and risk_pts < self.min_stop_points:
@@ -1790,9 +2112,50 @@ class LSIEngine:
                 self._notify_state_change()
                 return
 
-        if self.qty_multiplier != 1.0:
-            qty = _floor_to_step(qty * self.qty_multiplier, self.qty_step)
+        base_qty = qty
+        dynamic_decision = self._dynamic_sizing_decision(
+            bar=signal_bar or bar,
+            direction=direction,
+            entry=entry,
+        )
+        dynamic_weight = dynamic_decision.risk_weight if dynamic_decision is not None else 1.0
+        would_effective_qty_multiplier = self.qty_multiplier * dynamic_weight
+        dynamic_shadow = bool(dynamic_decision is not None and self.dynamic_sizing_shadow)
+        effective_qty_multiplier = self.qty_multiplier if dynamic_shadow else would_effective_qty_multiplier
+        if effective_qty_multiplier <= 0.0:
+            decision_meta = dynamic_decision.as_metadata() if dynamic_decision is not None else {}
+            if self._entry_context.get("dynamic_sizing"):
+                dynamic_meta = dict(self._entry_context["dynamic_sizing"])  # type: ignore[arg-type]
+                dynamic_meta.update({
+                    "shadow": dynamic_shadow,
+                    "applied": False,
+                    "base_qty": base_qty,
+                    "qty_multiplier": self.qty_multiplier,
+                    "would_effective_qty_multiplier": would_effective_qty_multiplier,
+                    "effective_qty_multiplier": effective_qty_multiplier,
+                    "would_reject": True,
+                })
+                self._entry_context = {"dynamic_sizing": dynamic_meta}
+            self._log_trade(
+                "ENTRY_REJECTED_DYNAMIC_SIZING",
+                "dir=%s weight=%.3f tier=%s reason=%s"
+                % (
+                    dir_str,
+                    effective_qty_multiplier,
+                    decision_meta.get("tier", ""),
+                    decision_meta.get("reason", ""),
+                ),
+            )
+            self._state = LSIState.SCANNING
+            self._reset_active_setup()
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        if effective_qty_multiplier != 1.0:
+            qty = _floor_to_step(qty * effective_qty_multiplier, self.qty_step)
             qty = max(qty, self.min_qty)
+        requested_qty = qty
 
         is_single = qty <= self.min_qty
         if is_single:
@@ -1827,6 +2190,21 @@ class LSIEngine:
             self._request_checkpoint()
             self._notify_state_change()
             return
+        if self._entry_context.get("dynamic_sizing"):
+            dynamic_meta = dict(self._entry_context["dynamic_sizing"])  # type: ignore[arg-type]
+            dynamic_meta.update({
+                "shadow": dynamic_shadow,
+                "applied": bool(dynamic_decision is not None and not dynamic_shadow),
+                "base_qty": base_qty,
+                "qty_multiplier": self.qty_multiplier,
+                "would_effective_qty_multiplier": would_effective_qty_multiplier,
+                "effective_qty_multiplier": effective_qty_multiplier,
+                "requested_qty": requested_qty,
+                "actual_qty": self._levels.qty,
+                "actual_qty_multiplier": self._levels.qty / base_qty if base_qty else 0.0,
+                "would_reject": would_effective_qty_multiplier <= 0.0,
+            })
+            self._entry_context = {"dynamic_sizing": dynamic_meta}
 
         # Persist LSI overlay for dashboard display
         self._set_gap_overlay(gap)
@@ -1843,9 +2221,10 @@ class LSIEngine:
         mode_str = resolved_entry_mode or self.lsi_entry_mode
         self._log_trade(
             "FILLED",
-            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f (%s stop_mode=%s)"
+            "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f%s (%s stop_mode=%s)"
             % (dir_str, entry, raw_stop,
-               self._levels.tp1, self._levels.tp2, self._levels.qty, mode_str, self.lsi_stop_mode),
+               self._levels.tp1, self._levels.tp2, self._levels.qty,
+               self._dynamic_sizing_log_suffix(), mode_str, self.lsi_stop_mode),
         )
 
         if self._should_send:
@@ -2225,6 +2604,7 @@ class LSIEngine:
             "exit_type": self._exit_type,
             "r_result": round(self._r_result, 2) if self._r_result is not None else None,
             "risk_usd": self.risk_usd,
+            "point_value": self.point_value,
             "commission_per_contract": self.commission_per_contract,
             "exit_mode": self.exit_mode,
             "paused": self.paused,
@@ -2233,14 +2613,22 @@ class LSIEngine:
             "blocking_gate": self._blocking_gate,
             "regime_gate_status": self._regime_gate_status,
             "entry_mode": self.lsi_entry_mode,
+            "stop_mode": self.lsi_stop_mode,
+            "stop_atr_pct": self.stop_atr_pct,
+            "confirmation_mode": self.lsi_confirmation_mode,
             "lsi_variant": self.lsi_variant,
+            "lsi_reset_swing_window_on_new_day": self.lsi_reset_swing_window_on_new_day,
             "base_bar_minutes": self.base_bar_minutes,
+            "cisd_min_leg_bars": self.cisd_min_leg_bars if self._use_cisd_confirmation() else None,
+            "cisd_min_leg_atr_pct": self.cisd_min_leg_atr_pct if self._use_cisd_confirmation() else None,
+            "cisd_max_leg_bars": self.cisd_max_leg_bars if self._use_cisd_confirmation() else None,
             "htf_level_tf_minutes": self.htf_level_tf_minutes if self._is_htf_variant() else None,
             "htf_n_left": self.htf_n_left if self._is_htf_variant() else None,
             "htf_trade_max_per_session": self.htf_trade_max_per_session if self._is_htf_variant() else None,
             "max_fvg_to_inversion_bars": self.max_fvg_to_inversion_bars if self._is_htf_variant() else None,
             "session_filled_trades": self._session_filled_trades,
             "trade_overlap": overlap_active,
+            "dynamic_sizing": self._entry_context.get("dynamic_sizing") if self._entry_context else None,
             # LSI overlay — swept level + FVG zone (persists into FLAT)
             "swept_level": round(self._swept_level, 2) if self._swept_level is not None else None,
             "swept_level_time": self._swept_level_time,

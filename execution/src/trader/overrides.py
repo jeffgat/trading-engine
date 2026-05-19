@@ -31,8 +31,10 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
 # LSI-specific editable fields (for NQ_NY_LSI and future LSI sessions)
 LSI_EDITABLE_FIELDS: frozenset[str] = frozenset({
     "entry_start", "entry_end", "sweep_start", "sweep_end", "flat_start", "flat_end", "excluded_dow",
-    "rr", "tp1_ratio", "exit_mode", "min_gap_atr_pct", "min_stop_points",
-    "fvg_window_right", "fvg_window_left", "lsi_entry_mode", "lsi_variant",
+    "rr", "tp1_ratio", "exit_mode", "min_gap_atr_pct", "min_stop_points", "stop_atr_pct",
+    "fvg_window_right", "fvg_window_left", "lsi_entry_mode", "lsi_stop_mode", "lsi_target_mode",
+    "lsi_confirmation_mode", "lsi_variant", "base_bar_minutes",
+    "lsi_reset_swing_window_on_new_day", "cisd_min_leg_bars", "cisd_min_leg_atr_pct", "cisd_max_leg_bars",
     "htf_level_tf_minutes", "htf_n_left", "htf_trade_max_per_session", "max_fvg_to_inversion_bars",
     "risk_usd", "min_qty", "max_single_risk_usd",
     "qty_multiplier", "long_only",

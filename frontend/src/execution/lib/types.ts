@@ -63,6 +63,8 @@ export interface SessionStatus {
   exit_type: string | null;
   r_result: number | null;
   risk_usd?: number;
+  point_value?: number;
+  commission_per_contract?: number;
   config_name?: string;
   signal_ticker?: string;
   exec_ticker?: string;

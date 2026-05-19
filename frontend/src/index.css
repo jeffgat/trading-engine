@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Kode+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -6,16 +7,17 @@
 
 @theme {
   /* ── Shared base colors ── */
-  --color-bg-primary: #111113;
-  --color-bg-secondary: #19191d;
-  --color-bg-card: #1c1c21;
-  --color-bg-card-hover: #242429;
-  --color-border: #2c2c33;
+  --color-bg-primary: #050909;
+  --color-bg-secondary: #071111;
+  --color-bg-card: #0a1415;
+  --color-bg-card-hover: #0f1d1e;
+  --color-bg-tertiary: #102021;
+  --color-border: #1d3434;
 
   /* ── Text hierarchy ── */
-  --color-text-primary: #ececef;
-  --color-text-secondary: #a0a0ab;
-  --color-text-muted: #62626b;
+  --color-text-primary: #eef7f0;
+  --color-text-secondary: #a1adab;
+  --color-text-muted: #647371;
 
   /* ── Gold palette ── */
   --color-gold-0: #D7D2C6;
@@ -31,16 +33,17 @@
   --color-gold-1000: #433D30;
 
   /* ── Semantic ── */
-  --color-profit: #3dd68c;
-  --color-profit-dim: #2a9962;
-  --color-loss: #f0615e;
-  --color-loss-dim: #b3403e;
+  --color-profit: #72f25f;
+  --color-profit-dim: #2f9f54;
+  --color-loss: #ff554f;
+  --color-loss-dim: #9a3431;
   --color-accent: #F8C159;
   --color-warning: #f59e0b;
-  --color-info: #3b82f6;
+  --color-info: #35d6e6;
 
   /* ── Type ── */
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-brand: "Kode Mono", ui-monospace, monospace;
   --font-display: "Sora", system-ui, sans-serif;
 }
 
@@ -83,47 +86,52 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --font-sans: var(--font-display);
+  --font-heading: var(--font-display);
 }
 
 /* Dark-only theme — shadcn vars mapped to our color scheme */
 :root {
   --radius: 0.5rem;
-  --background: #111113;
-  --foreground: #ececef;
-  --card: #1c1c21;
-  --card-foreground: #ececef;
-  --popover: #19191d;
-  --popover-foreground: #ececef;
+  --background: #050909;
+  --foreground: #eef7f0;
+  --card: #0a1415;
+  --card-foreground: #eef7f0;
+  --popover: #071111;
+  --popover-foreground: #eef7f0;
   --primary: #F8C159;
-  --primary-foreground: #111113;
-  --secondary: #242429;
-  --secondary-foreground: #ececef;
-  --muted: #19191d;
-  --muted-foreground: #62626b;
+  --primary-foreground: #050909;
+  --secondary: #102021;
+  --secondary-foreground: #eef7f0;
+  --muted: #0d1819;
+  --muted-foreground: #647371;
   --accent: #F8C159;
-  --accent-foreground: #111113;
-  --destructive: #f0615e;
-  --border: #2c2c33;
-  --input: #2c2c33;
-  --ring: #F8C159;
-  --chart-1: #3dd68c;
-  --chart-2: #3b82f6;
+  --accent-foreground: #050909;
+  --destructive: #ff554f;
+  --border: #1d3434;
+  --input: #244041;
+  --ring: #72f25f;
+  --chart-1: #72f25f;
+  --chart-2: #35d6e6;
   --chart-3: #f59e0b;
   --chart-4: #F8C159;
-  --chart-5: #f0615e;
-  --sidebar: #19191d;
-  --sidebar-foreground: #ececef;
+  --chart-5: #ff554f;
+  --sidebar: #071111;
+  --sidebar-foreground: #eef7f0;
   --sidebar-primary: #F8C159;
-  --sidebar-primary-foreground: #111113;
-  --sidebar-accent: #242429;
-  --sidebar-accent-foreground: #ececef;
-  --sidebar-border: #2c2c33;
-  --sidebar-ring: #F8C159;
+  --sidebar-primary-foreground: #050909;
+  --sidebar-accent: #102021;
+  --sidebar-accent-foreground: #eef7f0;
+  --sidebar-border: #1d3434;
+  --sidebar-ring: #72f25f;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
   }
   body {
     @apply bg-background text-foreground;
@@ -131,6 +139,92 @@
     font-family: var(--font-display);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  .app-shell {
+    background-color: var(--color-bg-primary);
+    background-image:
+      linear-gradient(135deg, rgba(6, 20, 20, 0.92) 0%, rgba(5, 9, 9, 0.98) 44%, rgba(3, 5, 5, 1) 100%),
+      linear-gradient(90deg, rgba(114, 242, 95, 0.04) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(114, 242, 95, 0.035) 1px, transparent 1px),
+      radial-gradient(circle at 78% 0%, rgba(53, 214, 230, 0.08), transparent 32%);
+    background-attachment: fixed;
+    background-size: auto, 48px 48px, 48px 48px, auto;
+  }
+
+  .dashboard-card {
+    @apply border-border bg-card/82 text-card-foreground shadow-none backdrop-blur-sm;
+    box-shadow: inset 0 1px 0 rgba(238, 247, 240, 0.04);
+  }
+
+  .soft-control {
+    @apply border-input bg-bg-secondary/90 text-foreground shadow-none transition-colors placeholder:text-text-muted hover:bg-bg-card-hover focus-visible:border-profit focus-visible:ring-profit/20;
+  }
+
+  .console-frame {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(10, 20, 21, 0.92), rgba(5, 9, 9, 0.95)),
+      linear-gradient(90deg, rgba(114, 242, 95, 0.03) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(114, 242, 95, 0.025) 1px, transparent 1px);
+    background-size: auto, 40px 40px, 40px 40px;
+    box-shadow:
+      0 24px 80px rgba(0, 0, 0, 0.46),
+      inset 0 1px 0 rgba(114, 242, 95, 0.67),
+      inset 0 2px 0 rgba(238, 247, 240, 0.05);
+  }
+
+  .metric-card {
+    background:
+      linear-gradient(180deg, rgba(12, 23, 24, 0.96), rgba(7, 17, 17, 0.96)),
+      linear-gradient(90deg, rgba(114, 242, 95, 0.04), transparent 48%);
+  }
+
+  .chart-panel {
+    background:
+      radial-gradient(circle at 20% 10%, rgba(53, 214, 230, 0.06), transparent 30%),
+      linear-gradient(180deg, rgba(5, 10, 10, 0.9), rgba(6, 12, 12, 0.98));
+  }
+
+  .status-pulse-dot {
+    position: relative;
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: none;
+    border-radius: 9999px;
+    background: currentColor;
+    box-shadow: 0 0 10px color-mix(in srgb, currentColor 46%, transparent);
+  }
+
+  .status-pulse-dot::after {
+    content: "";
+    position: absolute;
+    inset: -0.25rem;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0.38;
+    animation: status-dot-pulse 1.45s ease-out infinite;
+  }
+}
+
+@keyframes status-dot-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.42;
+  }
+  70% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
   }
 }
 
@@ -148,9 +242,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2c2c33;
+  background: #244041;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #62626b;
+  background: #647371;
 }

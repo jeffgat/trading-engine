@@ -27,16 +27,16 @@ export function BacktestApp() {
   return (
     <>
       {/* Tab bar */}
-      <div className="border-b border-border bg-bg-secondary">
-        <div className="mx-auto flex max-w-7xl gap-1 px-4 sm:px-6 lg:px-8">
+      <div className="border-b border-border bg-bg-secondary/60 px-4 py-2 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto rounded-lg border border-border bg-bg-primary/70 p-1">
           {(["backtests", "saved", "configs", "optimizations", "coverage", "risk-engine", "regime", "news"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              className={`min-h-9 shrink-0 rounded-md px-4 font-mono text-sm font-semibold lowercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40 ${
                 activeTab === tab
-                  ? "border-accent text-text-primary"
-                  : "border-transparent text-text-muted hover:text-text-secondary hover:border-border"
+                  ? "bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]"
+                  : "text-text-secondary hover:bg-bg-card-hover hover:text-foreground"
               }`}
             >
               {TAB_LABELS[tab]}

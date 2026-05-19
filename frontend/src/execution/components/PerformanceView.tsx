@@ -386,12 +386,12 @@ function Pill({
     short: "bg-loss/20 text-loss border-loss/30",
     rpos: "bg-profit/15 text-profit border-profit/30",
     rneg: "bg-loss/15 text-loss border-loss/30",
-    "session-ny": "bg-[#3b82f6]/20 text-[#60a5fa] border-[#3b82f6]/30",
-    "session-ldn": "bg-[#a855f7]/20 text-[#c084fc] border-[#a855f7]/30",
-    "session-asia": "bg-[#f97316]/20 text-[#fb923c] border-[#f97316]/30",
-    "strat-orb": "bg-emerald-400/10 text-emerald-400 border-emerald-400/30",
-    "strat-lsi": "bg-violet-400/10 text-violet-400 border-violet-400/30",
-    neutral: "bg-[#26262d] text-text-secondary border-border",
+    "session-ny": "bg-info/15 text-info border-info/35",
+    "session-ldn": "bg-profit/10 text-profit border-profit/30",
+    "session-asia": "bg-gold-400/15 text-gold-300 border-gold-400/30",
+    "strat-orb": "bg-profit/10 text-profit border-profit/30",
+    "strat-lsi": "bg-info/10 text-info border-info/30",
+    neutral: "bg-bg-tertiary text-text-secondary border-border",
   };
   const toneClass = toneClasses[tone] ?? toneClasses.neutral;
 
@@ -472,7 +472,9 @@ function mergeEquityCurves(
     map.set(p.date, { date: p.date, backtest_r: p.r });
   }
 
-  // Add live points (offset so live starts at the given liveOffset)
+  // Add live points as a continuation from the historical replay. Backtest R
+  // and live R are both per-trade/per-leg R multiples, so this preserves the
+  // same normalization while keeping the badge/card as raw realized live R.
   for (const p of liveCurve) {
     const existing = map.get(p.date) ?? { date: p.date };
     existing.live_r = liveOffset + p.r_cumulative;
@@ -598,8 +600,13 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         (p) => p.date >= effectiveBtStart && p.date <= effectiveBtEnd,
       );
 
-      // Re-baseline: subtract the R at the window start so the curve starts at 0
-      const baseR = windowedCurve.length > 0 ? windowedCurve[0].r : 0;
+      // Re-baseline from the cumulative R immediately before the window.
+      // Using the first in-window trade would accidentally drop that trade.
+      let baseR = 0;
+      for (const p of fullCurve) {
+        if (p.date < effectiveBtStart) baseR = p.r;
+        else break;
+      }
       const rebasedCurve = windowedCurve.map((p) => ({ date: p.date, r: p.r - baseR }));
 
       // Backtest total R for the visible window
@@ -616,7 +623,9 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         rawLiveR[cfg] = liveCurve[liveCurve.length - 1].r_cumulative;
       }
 
-      // Find rebased backtest R at deploy date so live visually connects
+      // Continue live from the last available rebased backtest value on or
+      // before deploy. Exact replays often end before the selected deploy date
+      // because local historical data stops at the latest common market date.
       let rebasedRAtDeploy = 0;
       for (const p of rebasedCurve) {
         if (p.date <= mapping.deployDate) rebasedRAtDeploy = p.r;
@@ -731,7 +740,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
 
       <div className="overflow-x-auto overflow-y-auto max-h-[800px] rounded-md border border-border bg-bg-card">
         <table className="min-w-[1380px] w-full border-collapse text-sm">
-          <thead className="bg-[#24242b] text-text-primary sticky top-0 z-10">
+          <thead className="bg-bg-tertiary text-text-primary sticky top-0 z-10">
             <tr className="text-left">
               <th className="px-3 py-2 border-r border-border/80">Entry Date</th>
               <th className="px-3 py-2 border-r border-border/80">Entry Time</th>

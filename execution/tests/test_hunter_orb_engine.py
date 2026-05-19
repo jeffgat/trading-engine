@@ -76,6 +76,24 @@ async def _seed_ema_and_orb(engine: HunterORBEngine) -> None:
 
 
 class TestHunterORBEngine:
+    def test_hunter_qty_allows_one_contract_inside_single_risk_cap(self, broker):
+        engine = _make_hunter_engine(
+            broker,
+            risk_usd=50.0,
+            max_single_risk_usd=90.0,
+        )
+
+        assert engine._hunter_qty_for_risk(40.0) == pytest.approx(1.0)
+
+    def test_hunter_qty_rejects_one_contract_above_single_risk_cap(self, broker):
+        engine = _make_hunter_engine(
+            broker,
+            risk_usd=50.0,
+            max_single_risk_usd=70.0,
+        )
+
+        assert engine._hunter_qty_for_risk(40.0) == pytest.approx(0.0)
+
     async def test_breakout_body_and_ema_filters_trigger_market_style_bracket(self, broker):
         engine = _make_hunter_engine(broker)
         await _seed_ema_and_orb(engine)
@@ -91,6 +109,27 @@ class TestHunterORBEngine:
         broker.send_entry.assert_called_once()
         assert broker.send_entry.call_args.kwargs["action"] == "buy"
         assert broker.send_entry.call_args.kwargs["ticker"] == "MNQ"
+
+    async def test_next_open_entry_basis_uses_first_fill_tick_open(self, broker):
+        engine = _make_hunter_engine(broker, hunter_entry_basis="next_open")
+        await _seed_ema_and_orb(engine)
+
+        await engine.on_bar(make_bar("2025-01-15 09:45", 100, 116, 99, 115), 300.0)
+
+        assert engine._state == State.MANAGING
+        assert engine._levels is None
+        broker.send_entry.assert_not_called()
+
+        await engine.on_tick(make_bar("2025-01-15 09:50", 116, 116, 116, 116), 300.0)
+
+        assert engine._levels is not None
+        assert engine._levels.entry == pytest.approx(116.0)
+        assert engine._levels.stop == pytest.approx(98.0)
+        assert engine._levels.tp2 == pytest.approx(152.0)
+        assert engine._levels.qty == pytest.approx(9.0)
+        assert engine._levels.gap_size == pytest.approx(108.333333)
+        broker.send_entry.assert_called_once()
+        assert broker.send_entry.call_args.kwargs["price"] == pytest.approx(116.0)
 
     async def test_weak_body_breakout_is_rejected(self, broker):
         engine = _make_hunter_engine(broker)

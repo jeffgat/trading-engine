@@ -32,6 +32,12 @@ from ..experiments import (
 _PARAM_ABBREV: dict[str, str] = {
     "rr": "rr",
     "tp1_ratio": "tp1",
+    "runner_trail_mode": "trail",
+    "runner_trail_trigger_r": "trig",
+    "runner_trail_stop_r": "lock",
+    "runner_trail_step_r": "step",
+    "runner_trail_gap_r": "gapr",
+    "runner_trail_atr_pct": "atrtrail",
 
     "atr_length": "atr",
     "risk_usd": "risk",
@@ -186,6 +192,12 @@ def results_to_dict(
         "rr": config.rr,
         "tp1_ratio": config.tp1_ratio,
         "exit_mode": config.exit_mode,
+        "runner_trail_mode": config.runner_trail_mode,
+        "runner_trail_trigger_r": config.runner_trail_trigger_r,
+        "runner_trail_stop_r": config.runner_trail_stop_r,
+        "runner_trail_step_r": config.runner_trail_step_r,
+        "runner_trail_gap_r": config.runner_trail_gap_r,
+        "runner_trail_atr_pct": config.runner_trail_atr_pct,
         "risk_usd": config.risk_usd,
         "atr_length": config.atr_length,
 
