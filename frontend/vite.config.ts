@@ -3,6 +3,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
+const EXECUTION_API_TARGET = "http://143.110.148.234:8000";
+const EXECUTION_WS_TARGET = "ws://143.110.148.234:8000";
+const BACKTESTING_API_TARGET = "http://143.110.148.234:8200";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -14,19 +18,17 @@ export default defineConfig({
     proxy: {
       // Execution API — WebSocket must come before HTTP catch-all
       "/exec-api/ws": {
-        target: "ws://143.110.148.234:8000",
+        target: EXECUTION_WS_TARGET,
         ws: true,
         rewrite: (path) => path.replace(/^\/exec-api/, "/api"),
       },
       "/exec-api": {
-        target: "http://143.110.148.234:8000",
+        target: EXECUTION_API_TARGET,
         rewrite: (path) => path.replace(/^\/exec-api/, "/api"),
       },
-      // Backtesting API — serve through the local FastAPI app.
-      // The app persists/query state through the remote main DB by default,
-      // while compute endpoints like backtest/optimize can still use local data.
+      // Backtesting API — local dev matches production and uses the remote main DB.
       "/bt-api": {
-        target: "http://localhost:8000",
+        target: BACKTESTING_API_TARGET,
         rewrite: (path) => path.replace(/^\/bt-api/, "/api"),
       },
     },

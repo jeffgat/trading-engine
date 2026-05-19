@@ -450,7 +450,7 @@ class DashboardState:
     async def broadcast(self, message: dict) -> None:
         """Send a JSON message to all connected WebSocket clients."""
         dead: list[WebSocket] = []
-        for ws in self._ws_clients:
+        for ws in tuple(self._ws_clients):
             try:
                 await ws.send_json(message)
             except Exception:

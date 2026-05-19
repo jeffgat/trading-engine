@@ -17,7 +17,7 @@ Keep backtesting and execution types separate in their local `lib/types.ts`. Sha
 
 Use frontend API prefixes and let Vite rewrite them:
 
-- `/bt-api/*` -> local backtesting API
+- `/bt-api/*` -> remote backtesting API backed by the remote main DB
 - `/exec-api/*` and `/exec-api/ws` -> execution API/WebSocket
 
-Routes: `/` is research/backtesting; `/execution` is live execution. Before relying on compute-heavy research endpoints, run the backtesting API from `../backtesting`.
+Routes: `/` is research/backtesting; `/execution` is live execution. Local dev should use the same remote APIs as production unless a task explicitly asks for an isolated local backend.

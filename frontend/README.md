@@ -18,16 +18,14 @@ npm run lint
 
 ## Proxies
 
-- `/bt-api/*` -> local backtesting API at `http://localhost:8000/api/*`
+- `/bt-api/*` -> remote backtesting API at `http://143.110.148.234:8200/api/*`
 - `/exec-api/*` -> execution API at `http://143.110.148.234:8000/api/*`
 - `/exec-api/ws` -> execution WebSocket
 
-Start the local backtesting API before using compute-heavy research views:
+Local dev intentionally uses the same remote APIs as production so dashboard state comes from the remote main DB.
 
-```bash
-cd ../backtesting
-uv run python scripts/run_server.py
-```
+For deployed HTTPS frontends, set `VITE_EXEC_WS_URL` to a real `wss://` backend URL such as `wss://api.example.com/api/ws`.
+Vercel rewrites work for REST, but the live dashboard WebSocket needs an HTTPS/WSS reverse proxy in front of the droplet.
 
 ## Layout
 

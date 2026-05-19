@@ -3,6 +3,14 @@ import type { WsMessage } from "@/execution/lib/types";
 
 type MessageHandler = (data: unknown) => void;
 
+function resolveWebSocketUrl() {
+  const configuredUrl = import.meta.env.VITE_EXEC_WS_URL?.trim();
+  if (configuredUrl) return configuredUrl;
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/exec-api/ws`;
+}
+
 export function useWebSocket() {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -16,8 +24,7 @@ export function useWebSocket() {
     function connect() {
       if (disposed) return;
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/exec-api/ws`);
+      const ws = new WebSocket(resolveWebSocketUrl());
       wsRef.current = ws;
 
       ws.onopen = () => {

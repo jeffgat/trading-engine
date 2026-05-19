@@ -18,11 +18,11 @@ dataset = "GLBX.MDP3"
 # Feed symbols are auto-detected from session instruments (NQ.FUT, ES.FUT, GC.FUT)
 
 [orderbook]
-# Dry shadow validation: MBP-10 streams, sizing is logged only, no quantity changes.
-enable_mbp10 = true
-mbp10_cost_ack = true
+# Keep MBP-10 disabled unless the account is entitled for order-book data.
+enable_mbp10 = false
+mbp10_cost_ack = false
 dynamic_sizing_enabled = false
-dynamic_sizing_shadow_enabled = true
+dynamic_sizing_shadow_enabled = false
 dynamic_sizing_sessions = ["NQ_NY_LSI_PURE_1M"]
 retention_seconds = 90.0
 
