@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRegimeReports } from "@/backtesting/hooks/useRegimeReports";
 import type {
   RegimeReportHistoryItem,
@@ -7,6 +7,7 @@ import type {
   RegimeStat,
 } from "@/backtesting/lib/types";
 import { formatPct, formatNumber } from "@/backtesting/lib/utils";
+import { MetricGridSkeleton, Skeleton, SkeletonText } from "@/shared/ui/skeleton";
 
 type Method = "hmm" | "lstm";
 
@@ -321,14 +322,19 @@ export function RegimeDashboard() {
   const { history, loading, loadReport, deleteReport } = useRegimeReports();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [report, setReport] = useState<RegimeReportResult | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
-  useEffect(() => {
-    if (!selectedId) {
-      setReport(null);
-      return;
+  const handleSelectReport = async (resultId: string) => {
+    setSelectedId(resultId);
+    setReport(null);
+    setReportLoading(true);
+    try {
+      const nextReport = await loadReport(resultId);
+      setReport(nextReport);
+    } finally {
+      setReportLoading(false);
     }
-    loadReport(selectedId).then(setReport);
-  }, [selectedId, loadReport]);
+  };
 
   const selectedItem = useMemo(
     () => history.find((h) => h.result_id === selectedId) || null,
@@ -357,21 +363,28 @@ export function RegimeDashboard() {
               History
             </div>
             <div className="text-[11px] text-text-muted">
-              {loading ? "loading..." : `${history.length} reports`}
+              {loading ? <Skeleton className="h-3 w-16 rounded" muted /> : `${history.length} reports`}
             </div>
           </div>
           <div className="space-y-2">
-            {history.length === 0 && (
+            {loading && (
+              <>
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Skeleton key={index} className="h-20 rounded-md" muted />
+                ))}
+              </>
+            )}
+            {!loading && history.length === 0 && (
               <div className="rounded-md border border-border bg-bg-secondary px-3 py-3 text-xs text-text-muted">
                 no regime reports yet
               </div>
             )}
-            {history.map((item) => (
+            {!loading && history.map((item) => (
               <HistoryRow
                 key={item.result_id}
                 item={item}
                 selected={item.result_id === selectedId}
-                onClick={() => setSelectedId(item.result_id)}
+                onClick={() => handleSelectReport(item.result_id)}
               />
             ))}
           </div>
@@ -379,13 +392,15 @@ export function RegimeDashboard() {
 
         {/* Detail panel */}
         <div className="rounded-lg border border-border bg-bg-card p-4">
-          {!report && (
+          {reportLoading && <RegimeDetailSkeleton />}
+
+          {!reportLoading && !report && (
             <div className="flex h-[360px] items-center justify-center text-sm text-text-muted">
               select a regime report to view details
             </div>
           )}
 
-          {report && (
+          {!reportLoading && report && (
             <div className="space-y-6">
               {/* Report header */}
               <div className="flex items-start justify-between gap-4">
@@ -472,6 +487,22 @@ export function RegimeDashboard() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RegimeDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="w-full max-w-xl">
+          <Skeleton className="h-4 w-64 rounded" />
+          <SkeletonText lines={2} className="mt-3" />
+        </div>
+        <Skeleton className="h-3 w-32 rounded" muted />
+      </div>
+      <MetricGridSkeleton count={3} className="sm:grid-cols-3 lg:grid-cols-3" />
+      <Skeleton className="h-72 rounded-lg" />
     </div>
   );
 }

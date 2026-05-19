@@ -1,18 +1,30 @@
-import { ConfigView } from '@/execution/components/ConfigView';
-import { ConnectionStatus } from '@/execution/components/ConnectionStatus';
-import { LogViewer } from '@/execution/components/LogViewer';
-import { PerformanceView } from '@/execution/components/PerformanceView';
-import { StatusPanel } from '@/execution/components/StatusPanel';
-import { TradeFeed } from '@/execution/components/TradeFeed';
+import { ConnectionStatus, type ConnectionState } from '@/execution/components/ConnectionStatus';
 import { useConfig } from '@/execution/hooks/useConfig';
+import { useLiveTrades } from '@/execution/hooks/useLiveTrades';
 import { useMainLogs } from '@/execution/hooks/useMainLogs';
 import { useStatus } from '@/execution/hooks/useStatus';
 import { useTradeLogs } from '@/execution/hooks/useTradeLogs';
-import { useLiveTrades } from '@/execution/hooks/useLiveTrades';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
-import { useMemo, useState } from 'react';
+import { ExecutionTabSkeleton } from '@/shared/ui/page-skeletons';
+import { lazy, Suspense, useMemo, useState } from 'react';
 
 export type ExecutionTab = 'status' | 'trades' | 'performance' | 'logs' | 'config';
+
+const ConfigView = lazy(() =>
+    import('@/execution/components/ConfigView').then((module) => ({ default: module.ConfigView })),
+);
+const LogViewer = lazy(() =>
+    import('@/execution/components/LogViewer').then((module) => ({ default: module.LogViewer })),
+);
+const PerformanceView = lazy(() =>
+    import('@/execution/components/PerformanceView').then((module) => ({ default: module.PerformanceView })),
+);
+const StatusPanel = lazy(() =>
+    import('@/execution/components/StatusPanel').then((module) => ({ default: module.StatusPanel })),
+);
+const TradeFeed = lazy(() =>
+    import('@/execution/components/TradeFeed').then((module) => ({ default: module.TradeFeed })),
+);
 
 const TABS: { key: ExecutionTab; label: string }[] = [
     { key: 'status', label: 'Status' },
@@ -32,13 +44,14 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     const [localActiveTab, setLocalActiveTab] = useState<ExecutionTab>('status');
     const activeTab = forcedTab ?? localActiveTab;
     const [activeConfig, setActiveConfig] = useState<string>('');
-    const { connected, subscribe } = useWebSocket();
+    const { connected, status: socketStatus, subscribe } = useWebSocket();
     const {
         uptime,
         loading: statusLoading,
+        pollingHealthy,
         configEngines,
         engines,
-    } = useStatus(subscribe);
+    } = useStatus(subscribe, connected);
     const {
         config,
         loading: configLoading,
@@ -61,6 +74,11 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     const configNames = useMemo(() => {
         return Object.keys(configEngines).sort();
     }, [configEngines]);
+    const connectionState: ConnectionState = connected
+        ? 'connected'
+        : pollingHealthy
+            ? 'connected'
+            : socketStatus;
 
     return (
         <>
@@ -84,65 +102,67 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             ))}
                         </nav>
                     )}
-                    <ConnectionStatus connected={connected} />
+                    <ConnectionStatus state={connectionState} />
                 </div>
 
             </header>
 
             {/* Content */}
             <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-                {activeTab === 'status' && (
-                    <StatusPanel
-                        configEngines={configEngines}
-                        engines={engines}
-                        uptime={uptime}
-                        loading={statusLoading}
-                        activeConfig={activeConfig}
-                        setActiveConfig={setActiveConfig}
-                        config={config}
-                        onPause={readOnly ? undefined : pauseEngine}
-                        onResume={readOnly ? undefined : resumeEngine}
-                    />
-                )}
-                {activeTab === 'trades' && (
-                    <TradeFeedTab
-                        subscribe={subscribe}
-                        activeConfig={activeConfig}
-                        config={config}
-                    />
-                )}
-                {activeTab === 'logs' && (
-                    <LogViewerTab
-                        subscribe={subscribe}
-                        activeConfig={activeConfig}
-                    />
-                )}
-                {activeTab === 'performance' && (
-                    <PerformanceTab
-                        subscribe={subscribe}
-                        config={config}
-                        activeConfig={activeConfig}
-                        configNames={configNames}
-                        setActiveConfig={setActiveConfig}
-                    />
-                )}
-                {activeTab === 'config' && (
-                    <ConfigView
-                        config={config}
-                        loading={configLoading}
-                        saving={configSaving}
-                        error={configError}
-                        onUpdateSession={updateSession}
-                        onResetSession={resetSession}
-                        onUpdateWebhooks={updateWebhooks}
-                        onToggleEnabled={toggleEnabled}
-                        execConfigs={execConfigs}
-                        onPauseWebhook={pauseWebhook}
-                        onResumeWebhook={resumeWebhook}
-                        onUpdateMultiplier={updateWebhookMultiplier}
-                        onFlattenWebhook={flattenWebhook}
-                    />
-                )}
+                <Suspense fallback={<ExecutionTabSkeleton tab={activeTab} />}>
+                    {activeTab === 'status' && (
+                        <StatusPanel
+                            configEngines={configEngines}
+                            engines={engines}
+                            uptime={uptime}
+                            loading={statusLoading}
+                            activeConfig={activeConfig}
+                            setActiveConfig={setActiveConfig}
+                            config={config}
+                            onPause={readOnly ? undefined : pauseEngine}
+                            onResume={readOnly ? undefined : resumeEngine}
+                        />
+                    )}
+                    {activeTab === 'trades' && (
+                        <TradeFeedTab
+                            subscribe={subscribe}
+                            activeConfig={activeConfig}
+                            config={config}
+                        />
+                    )}
+                    {activeTab === 'logs' && (
+                        <LogViewerTab
+                            subscribe={subscribe}
+                            activeConfig={activeConfig}
+                        />
+                    )}
+                    {activeTab === 'performance' && (
+                        <PerformanceTab
+                            subscribe={subscribe}
+                            config={config}
+                            activeConfig={activeConfig}
+                            configNames={configNames}
+                            setActiveConfig={setActiveConfig}
+                        />
+                    )}
+                    {activeTab === 'config' && (
+                        <ConfigView
+                            config={config}
+                            loading={configLoading}
+                            saving={configSaving}
+                            error={configError}
+                            onUpdateSession={updateSession}
+                            onResetSession={resetSession}
+                            onUpdateWebhooks={updateWebhooks}
+                            onToggleEnabled={toggleEnabled}
+                            execConfigs={execConfigs}
+                            onPauseWebhook={pauseWebhook}
+                            onResumeWebhook={resumeWebhook}
+                            onUpdateMultiplier={updateWebhookMultiplier}
+                            onFlattenWebhook={flattenWebhook}
+                        />
+                    )}
+                </Suspense>
             </main>
         </>
     );

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
+import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
 import { LOG_LEVEL_COLORS, CONFIG_COLORS } from "@/execution/lib/constants";
 import type { MainLogEntry, TradeLogEntry } from "@/execution/lib/types";
 
@@ -96,6 +97,10 @@ export function LogViewer({
   const isMain = tab === "main";
   const loading = isMain ? mainLoading : tradeLoading;
 
+  if (loading) {
+    return <ExecutionTabSkeleton tab="logs" />;
+  }
+
   return (
     <div className="space-y-3">
       {/* Controls */}
@@ -169,12 +174,7 @@ export function LogViewer({
       </div>
 
       {/* Log content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-text-muted">
-          Loading logs...
-        </div>
-      ) : (
-        <ScrollArea className="h-[calc(100vh-240px)] rounded-md border border-border bg-bg-card">
+      <ScrollArea className="h-[calc(100vh-240px)] rounded-md border border-border bg-bg-card">
           <div className="font-mono text-xs leading-relaxed">
             {isMain ? (
               <>
@@ -251,8 +251,7 @@ export function LogViewer({
               </>
             )}
           </div>
-        </ScrollArea>
-      )}
+      </ScrollArea>
     </div>
   );
 }

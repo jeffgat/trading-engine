@@ -37,7 +37,7 @@ function detectSessionsFromConfig(config: BacktestConfig): string[] {
 }
 
 export function BacktestDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
+    const { history, loading: historyLoading, activeId, refreshHistory, loadBacktest, deleteBacktest, starBacktest, hideBacktest, renameBacktest, bulkStarBacktests, bulkHideBacktests } =
         useBacktestHistory();
     const { createReport } = useRegimeReports();
     const [data, setData] = useState<BacktestResult | null>(null);
@@ -309,6 +309,7 @@ export function BacktestDashboard() {
             {/* History table — full width */}
             <BacktestHistoryPanel
                 history={history}
+                loading={historyLoading}
                 activeId={activeId}
                 onLoad={handleLoad}
                 onDelete={deleteBacktest}
@@ -326,6 +327,7 @@ export function BacktestDashboard() {
                 <DialogContent className="max-w-7xl p-0">
                     <BacktestHistoryPanel
                         history={history}
+                        loading={historyLoading}
                         activeId={activeId}
                         onLoad={(id) => { handleLoad(id); setHistoryModalOpen(false); }}
                         onDelete={deleteBacktest}

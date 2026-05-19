@@ -9,6 +9,7 @@ import type {
   NewsStraddleSweepRow,
 } from "@/backtesting/lib/types";
 import { formatNumber, formatPct, pnlColor } from "@/backtesting/lib/utils";
+import { MetricGridSkeleton, Skeleton, TableSkeleton } from "@/shared/ui/skeleton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -67,6 +68,7 @@ export function NewsDashboard() {
     useNewsStraddle();
   const {
     history,
+    loading: historyLoading,
     refresh: refreshHistory,
     loadRun,
     deleteRun,
@@ -75,6 +77,7 @@ export function NewsDashboard() {
 
   const [mode, setMode] = useState<Mode>("single");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [resultLoading, setResultLoading] = useState(false);
 
   // Refresh history when a new single run completes
   const wasLoading = useRef(false);
@@ -249,33 +252,39 @@ export function NewsDashboard() {
       {/* History panel */}
       <NewsStraddleHistoryPanel
         history={history}
+        loading={historyLoading}
         selectedRunId={selectedRunId}
         onSelect={async (item) => {
           setSelectedRunId(item.result_id);
           setMode("single");
-          const full = await loadRun(item.result_id);
-          if (full) {
-            setSingleData(full);
-            // Sync config inputs
-            setBufferPoints(String(item.buffer_points));
-            setTargetPoints(String(item.target_points));
-            setObsWindow(String(item.observation_window_seconds));
-            const types: string[] = JSON.parse(item.event_types);
-            setNfpChecked(types.includes("NFP"));
-            setCpiChecked(types.includes("CPI"));
-            setPpiChecked(types.includes("PPI"));
-            setFomcChecked(types.includes("FOMC"));
-            setNyOpenChecked(types.includes("NY_OPEN"));
-            setStopLossPoints(item.stop_loss_points != null ? String(item.stop_loss_points) : "");
-            if (item.date_start) setStart(item.date_start);
-            if (item.date_end) setEnd(item.date_end);
-            // Restore regime filters from loaded config
-            const cfg = full.config;
-            setMaxAtrPct(cfg.max_atr_pct != null ? String(cfg.max_atr_pct) : "");
-            setMinVolumeRatio(cfg.min_volume_ratio != null ? String(cfg.min_volume_ratio) : "");
-            setMaxVolumeRatio(cfg.max_volume_ratio != null ? String(cfg.max_volume_ratio) : "");
-            setDirectionFilter(cfg.direction_filter ?? "");
-            setSkipDays(new Set(cfg.skip_days ?? []));
+          setResultLoading(true);
+          try {
+            const full = await loadRun(item.result_id);
+            if (full) {
+              setSingleData(full);
+              // Sync config inputs
+              setBufferPoints(String(item.buffer_points));
+              setTargetPoints(String(item.target_points));
+              setObsWindow(String(item.observation_window_seconds));
+              const types: string[] = JSON.parse(item.event_types);
+              setNfpChecked(types.includes("NFP"));
+              setCpiChecked(types.includes("CPI"));
+              setPpiChecked(types.includes("PPI"));
+              setFomcChecked(types.includes("FOMC"));
+              setNyOpenChecked(types.includes("NY_OPEN"));
+              setStopLossPoints(item.stop_loss_points != null ? String(item.stop_loss_points) : "");
+              if (item.date_start) setStart(item.date_start);
+              if (item.date_end) setEnd(item.date_end);
+              // Restore regime filters from loaded config
+              const cfg = full.config;
+              setMaxAtrPct(cfg.max_atr_pct != null ? String(cfg.max_atr_pct) : "");
+              setMinVolumeRatio(cfg.min_volume_ratio != null ? String(cfg.min_volume_ratio) : "");
+              setMaxVolumeRatio(cfg.max_volume_ratio != null ? String(cfg.max_volume_ratio) : "");
+              setDirectionFilter(cfg.direction_filter ?? "");
+              setSkipDays(new Set(cfg.skip_days ?? []));
+            }
+          } finally {
+            setResultLoading(false);
           }
         }}
         onDelete={async (item) => {
@@ -543,8 +552,10 @@ export function NewsDashboard() {
         )}
       </div>
 
+      {(loading || resultLoading) && <NewsResultsSkeleton mode={mode} />}
+
       {/* ═══ SINGLE RUN RESULTS ═══ */}
-      {mode === "single" && singleData && (
+      {!loading && !resultLoading && mode === "single" && singleData && (
         <>
           {/* Stat cards */}
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
@@ -947,7 +958,7 @@ export function NewsDashboard() {
       )}
 
       {/* ═══ SWEEP RESULTS ═══ */}
-      {mode === "sweep" && sweepData && (
+      {!loading && !resultLoading && mode === "sweep" && sweepData && (
         <>
           {/* Metric selector */}
           <div className="mb-4 flex items-center gap-3">
@@ -1062,6 +1073,39 @@ export function NewsDashboard() {
   );
 }
 
+function NewsResultsSkeleton({ mode }: { mode: Mode }) {
+  return (
+    <div className="mb-6 space-y-6">
+      {mode === "single" ? (
+        <>
+          <MetricGridSkeleton count={5} />
+          <div className="rounded-lg border border-border bg-bg-card p-4">
+            <Skeleton className="mb-4 h-4 w-36 rounded" />
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-28 rounded" />
+              <Skeleton className="h-28 rounded" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Skeleton className="h-72 rounded-lg" />
+            <Skeleton className="h-72 rounded-lg" />
+          </div>
+          <TableSkeleton rows={7} columns={8} />
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-4 w-28 rounded" muted />
+            <Skeleton className="h-8 w-96 max-w-full rounded-lg" />
+          </div>
+          <Skeleton className="h-[320px] rounded-lg" />
+          <TableSkeleton rows={7} columns={7} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Filter Badges (compact display of active regime filters) ──
 
 const DOW_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -1097,12 +1141,14 @@ function FilterBadges({ item }: { item: NewsStraddleHistoryItem }) {
 
 function NewsStraddleHistoryPanel({
   history,
+  loading,
   selectedRunId,
   onSelect,
   onDelete,
   onStar,
 }: {
   history: NewsStraddleHistoryItem[];
+  loading: boolean;
   selectedRunId: string | null;
   onSelect: (item: NewsStraddleHistoryItem) => void;
   onDelete: (item: NewsStraddleHistoryItem) => void;
@@ -1132,11 +1178,23 @@ function NewsStraddleHistoryPanel({
     <div className="mb-6 rounded-lg border border-border bg-bg-card">
       <div className="border-b border-border px-4 py-2.5">
         <h3 className="text-sm font-medium text-text-secondary">
-          Run History ({history.length})
+          Run History {loading ? "" : `(${history.length})`}
         </h3>
       </div>
       <div className="max-h-[220px] overflow-auto">
-        {history.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2 px-4 py-3">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="grid grid-cols-[2rem_1fr_4rem_4rem_5rem] gap-3">
+                <Skeleton className="h-4 rounded" muted />
+                <Skeleton className="h-4 rounded" />
+                <Skeleton className="h-4 rounded" muted />
+                <Skeleton className="h-4 rounded" muted />
+                <Skeleton className="h-4 rounded" muted />
+              </div>
+            ))}
+          </div>
+        ) : history.length === 0 ? (
           <div className="px-4 py-4 text-xs text-text-muted">
             No runs saved yet. Run a backtest to see it here.
           </div>

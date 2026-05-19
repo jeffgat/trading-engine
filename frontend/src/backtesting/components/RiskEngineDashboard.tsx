@@ -4,6 +4,7 @@ import { formatR, pnlColor } from "@/backtesting/lib/utils";
 import { SessionTag } from "./SessionTag";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ChevronDown, Trash2, Save, Plus, Check } from "lucide-react";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -424,9 +425,9 @@ function StrategyCard({
 
       {/* Loading state */}
       {loading && (
-        <div className="mt-3 animate-pulse space-y-3">
-          <div className="h-4 w-48 rounded bg-bg-secondary" />
-          <div className="h-20 rounded bg-bg-secondary" />
+        <div className="mt-3 space-y-3">
+          <Skeleton className="h-4 w-48 rounded" muted />
+          <Skeleton className="h-20 rounded" />
         </div>
       )}
 
@@ -717,7 +718,7 @@ function CombinedCard({
                 </svg>
               </button>
               {s.loading && (
-                <span className="text-[10px] text-text-muted shrink-0">Loading...</span>
+                <Skeleton className="h-3 w-14 shrink-0 rounded" muted />
               )}
               {!s.loading && s.error && !s.data && (
                 <span className="text-[10px] shrink-0" style={{ color: "var(--color-loss)" }}>Error</span>
@@ -1364,8 +1365,15 @@ export function RiskEngineDashboard() {
             {/* Strategy list */}
             <div className="max-h-72 overflow-y-auto">
               {listLoading && (
-                <div className="px-3 py-4 text-center text-xs text-text-muted">
-                  Loading strategies…
+                <div className="space-y-2 px-3 py-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Skeleton className="h-3 w-4 rounded" muted />
+                      <Skeleton className="h-4 flex-1 rounded" />
+                      <Skeleton className="h-5 w-10 rounded" muted />
+                      <Skeleton className="h-5 w-12 rounded" muted />
+                    </div>
+                  ))}
                 </div>
               )}
               {!listLoading && filteredList.length === 0 && (

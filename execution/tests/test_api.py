@@ -1,5 +1,28 @@
-from trader.api import DashboardState, parse_trade_log_line
+from types import SimpleNamespace
+
+from trader.api import DashboardState, _runtime_mode_from_brokers, parse_trade_log_line
 from trader.engine import TradeRecord
+
+
+def test_runtime_mode_from_brokers_live_when_any_broker_has_webhook():
+    state = DashboardState(
+        multi_brokers_by_config={
+            "DRY": SimpleNamespace(_brokers=[SimpleNamespace(dry_run=True)]),
+            "LIVE": SimpleNamespace(_brokers=[SimpleNamespace(dry_run=False)]),
+        }
+    )
+
+    assert _runtime_mode_from_brokers(state) == "LIVE"
+
+
+def test_runtime_mode_from_brokers_dry_run_without_live_brokers():
+    state = DashboardState(
+        multi_brokers_by_config={
+            "DRY": SimpleNamespace(_brokers=[SimpleNamespace(dry_run=True)]),
+        }
+    )
+
+    assert _runtime_mode_from_brokers(state) == "DRY-RUN"
 
 
 def test_parse_trade_log_line_keeps_full_tick_time_and_resolution():

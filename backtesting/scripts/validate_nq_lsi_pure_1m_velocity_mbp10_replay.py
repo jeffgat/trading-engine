@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Replay fetched MBP-10 DBN files through the live pure 1m velocity sizer.
+"""Replay fetched DBN order-book files through the live pure 1m velocity sizer.
 
 This validates the implementation path that live trading will use:
 
-1. raw DataBento MBP-10 records
+1. raw DataBento MBP-1/MBP-10 records
 2. top-of-book samples
 3. OrderbookFeatureCache
 4. frozen OrderbookVelocityTierSizer
 
-The default mode checks one holdout trade from each frozen tier so the test is
-fast while still covering low/mid/high behavior. Use ``--sample-mode all`` for a
-full holdout replay.
+The pure 1m velocity survivor only needs best bid/ask, so MBP-1 should be able
+to reproduce the same feature path as MBP-10. The default mode checks one
+holdout trade from each frozen tier so the test is fast while still covering
+low/mid/high behavior. Use ``--sample-mode all`` for a full holdout replay.
 """
 
 from __future__ import annotations
@@ -42,8 +43,8 @@ from trader.orderbook_features import (  # noqa: E402
 import download_orderbook_data as dl  # noqa: E402
 
 
-RUN_SLUG = "nq_ny_lsi_pure_1m_velocity_mbp10_replay_validation_20260516"
-DEFAULT_OUTPUT_DIR = ROOT / "data" / "results" / RUN_SLUG
+DEFAULT_SCHEMA = "mbp-10"
+RUN_SLUG_TEMPLATE = "nq_ny_lsi_pure_1m_velocity_{safe_schema}_replay_validation_20260516"
 DEFAULT_REPLAY_CSV = (
     ROOT
     / "data"
@@ -63,6 +64,7 @@ FEATURE = "confirm_last_10s_mid_velocity_ticks_per_second"
 OVERLAY = "pure_1m_long_confirm_last_velocity"
 CANDIDATE = "pure_1m_classic_atr15_b2_a7p5__long__allDOW__cut1200"
 WEIGHT_PROFILE = "tier_0p5_1_1p5"
+SUPPORTED_SCHEMAS = ("mbp-1", "mbp-10")
 
 
 @dataclass(frozen=True)
@@ -131,11 +133,23 @@ def load_trades(path: Path, *, sample_mode: str) -> list[ReplayTrade]:
     return trades
 
 
-def chunk_by_date(windows_csv: Path) -> dict[str, dl.DownloadChunk]:
+def safe_schema_name(schema: str) -> str:
+    return schema.replace("-", "")
+
+
+def default_run_slug(schema: str) -> str:
+    return RUN_SLUG_TEMPLATE.format(safe_schema=safe_schema_name(schema))
+
+
+def default_output_dir(schema: str) -> Path:
+    return ROOT / "data" / "results" / default_run_slug(schema)
+
+
+def chunk_by_date(windows_csv: Path, *, schema: str) -> dict[str, dl.DownloadChunk]:
     chunks = dl.build_window_csv_chunks(
         windows_csv=windows_csv,
         requested_symbols=[],
-        schema="mbp-10",
+        schema=schema,
         stype_in="continuous",
         output_root=dl.OUTPUT_ROOT,
         limit=None,
@@ -149,6 +163,23 @@ def chunk_by_date(windows_csv: Path) -> dict[str, dl.DownloadChunk]:
 
 def ns_to_datetime(value: int) -> datetime:
     return datetime.fromtimestamp(value / 1_000_000_000, tz=UTC)
+
+
+def decode_dbn_price(value: Any) -> float | None:
+    try:
+        price = float(value)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0.0:
+        return None
+    return price / 1_000_000_000 if abs(price) >= 1_000_000.0 else price
+
+
+def level_price(level: Any, *, pretty_attr: str, raw_attr: str) -> float | None:
+    pretty = getattr(level, pretty_attr, None)
+    if pretty is not None:
+        return decode_dbn_price(pretty)
+    return decode_dbn_price(getattr(level, raw_attr, None))
 
 
 def replay_trade(trade: ReplayTrade, chunk: dl.DownloadChunk) -> dict[str, Any]:
@@ -172,9 +203,9 @@ def replay_trade(trade: ReplayTrade, chunk: dl.DownloadChunk) -> dict[str, Any]:
         if not levels:
             return
         top = levels[0]
-        bid = float(top.pretty_bid_px)
-        ask = float(top.pretty_ask_px)
-        if bid <= 0.0 or ask <= 0.0:
+        bid = level_price(top, pretty_attr="pretty_bid_px", raw_attr="bid_px")
+        ask = level_price(top, pretty_attr="pretty_ask_px", raw_attr="ask_px")
+        if bid is None or ask is None:
             return
         cache.add_top_of_book(
             symbol="NQ",
@@ -234,12 +265,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--replay-csv", type=Path, default=DEFAULT_REPLAY_CSV)
     parser.add_argument("--windows-csv", type=Path, default=DEFAULT_WINDOWS_CSV)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--schema", choices=SUPPORTED_SCHEMAS, default=DEFAULT_SCHEMA)
+    parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--sample-mode", choices=["representative", "all"], default="representative")
     args = parser.parse_args()
 
     trades = load_trades(args.replay_csv, sample_mode=args.sample_mode)
-    chunks = chunk_by_date(args.windows_csv)
+    chunks = chunk_by_date(args.windows_csv, schema=args.schema)
     rows = []
     for trade in trades:
         chunk = chunks.get(trade.date)
@@ -248,14 +280,15 @@ def main() -> int:
         print(f"Replaying {trade.date} {trade.expected_tier} {trade.signal_start.isoformat()}", flush=True)
         rows.append(replay_trade(trade, chunk))
 
-    output_dir = args.output_dir
+    output_dir = args.output_dir or default_output_dir(args.schema)
     output_dir.mkdir(parents=True, exist_ok=True)
     result = pd.DataFrame(rows)
     result_path = output_dir / "replay_validation.csv"
     result.to_csv(result_path, index=False)
 
     summary = {
-        "run_slug": RUN_SLUG,
+        "run_slug": output_dir.name,
+        "schema": args.schema,
         "sample_mode": args.sample_mode,
         "trades_checked": int(len(result)),
         "feature_matches": int(result["feature_match"].sum()),

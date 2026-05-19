@@ -1,12 +1,5 @@
-import { useState } from "react";
-import { BacktestDashboard } from "@/backtesting/components/BacktestDashboard";
-import { CoverageDashboard } from "@/backtesting/components/CoverageDashboard";
-import { ConfigsDashboard } from "@/backtesting/components/ConfigsDashboard";
-import { OptimizeDashboard } from "@/backtesting/components/OptimizeDashboard";
-import { RiskEngineDashboard } from "@/backtesting/components/RiskEngineDashboard";
-import { SavedStrategiesDashboard } from "@/backtesting/components/SavedStrategiesDashboard";
-import { NewsDashboard } from "@/backtesting/components/NewsDashboard";
-import { RegimeDashboard } from "@/backtesting/components/RegimeDashboard";
+import { lazy, Suspense, useState } from "react";
+import { BacktestingTabSkeleton } from "@/shared/ui/page-skeletons";
 
 type Tab = "backtests" | "saved" | "configs" | "optimizations" | "coverage" | "risk-engine" | "regime" | "news";
 
@@ -20,6 +13,31 @@ const TAB_LABELS: Record<Tab, string> = {
   regime: "Regime",
   news: "News",
 };
+
+const BacktestDashboard = lazy(() =>
+  import("@/backtesting/components/BacktestDashboard").then((module) => ({ default: module.BacktestDashboard })),
+);
+const SavedStrategiesDashboard = lazy(() =>
+  import("@/backtesting/components/SavedStrategiesDashboard").then((module) => ({ default: module.SavedStrategiesDashboard })),
+);
+const ConfigsDashboard = lazy(() =>
+  import("@/backtesting/components/ConfigsDashboard").then((module) => ({ default: module.ConfigsDashboard })),
+);
+const OptimizeDashboard = lazy(() =>
+  import("@/backtesting/components/OptimizeDashboard").then((module) => ({ default: module.OptimizeDashboard })),
+);
+const CoverageDashboard = lazy(() =>
+  import("@/backtesting/components/CoverageDashboard").then((module) => ({ default: module.CoverageDashboard })),
+);
+const RiskEngineDashboard = lazy(() =>
+  import("@/backtesting/components/RiskEngineDashboard").then((module) => ({ default: module.RiskEngineDashboard })),
+);
+const RegimeDashboard = lazy(() =>
+  import("@/backtesting/components/RegimeDashboard").then((module) => ({ default: module.RegimeDashboard })),
+);
+const NewsDashboard = lazy(() =>
+  import("@/backtesting/components/NewsDashboard").then((module) => ({ default: module.NewsDashboard })),
+);
 
 export function BacktestApp() {
   const [activeTab, setActiveTab] = useState<Tab>("backtests");
@@ -45,14 +63,16 @@ export function BacktestApp() {
         </div>
       </div>
 
-      {activeTab === "backtests" && <BacktestDashboard />}
-      {activeTab === "saved" && <SavedStrategiesDashboard />}
-      {activeTab === "configs" && <ConfigsDashboard />}
-      {activeTab === "optimizations" && <OptimizeDashboard />}
-      {activeTab === "coverage" && <CoverageDashboard />}
-      {activeTab === "risk-engine" && <RiskEngineDashboard />}
-      {activeTab === "regime" && <RegimeDashboard />}
-      {activeTab === "news" && <NewsDashboard />}
+      <Suspense fallback={<BacktestingTabSkeleton tab={activeTab} />}>
+        {activeTab === "backtests" && <BacktestDashboard />}
+        {activeTab === "saved" && <SavedStrategiesDashboard />}
+        {activeTab === "configs" && <ConfigsDashboard />}
+        {activeTab === "optimizations" && <OptimizeDashboard />}
+        {activeTab === "coverage" && <CoverageDashboard />}
+        {activeTab === "risk-engine" && <RiskEngineDashboard />}
+        {activeTab === "regime" && <RegimeDashboard />}
+        {activeTab === "news" && <NewsDashboard />}
+      </Suspense>
     </>
   );
 }

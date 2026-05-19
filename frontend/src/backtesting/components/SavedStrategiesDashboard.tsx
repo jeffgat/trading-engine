@@ -37,7 +37,7 @@ function detectSessionsFromConfig(config: BacktestConfig): string[] {
 }
 
 export function SavedStrategiesDashboard() {
-    const { history, activeId, refreshHistory, loadBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests } =
+    const { history, loading: historyLoading, activeId, refreshHistory, loadBacktest, unstarBacktest, hideBacktest, renameBacktest, bulkUnstarBacktests, bulkHideBacktests } =
         useStarredHistory();
     const { createReport } = useRegimeReports();
     const [data, setData] = useState<BacktestResult | null>(null);
@@ -290,7 +290,7 @@ export function SavedStrategiesDashboard() {
                 )}
             </div>
 
-            {history.length === 0 && !loading ? (
+            {history.length === 0 && !historyLoading && !loading ? (
                 <div className="rounded-lg border border-border bg-bg-card p-8">
                     <p className="text-center text-sm text-text-muted">
                         No saved strategies yet. Star a backtest to save it here.
@@ -300,6 +300,7 @@ export function SavedStrategiesDashboard() {
                 <>
                     <BacktestHistoryPanel
                         history={history}
+                        loading={historyLoading}
                         activeId={activeId}
                         onLoad={handleLoad}
                         onDelete={handleUnstar}
@@ -316,6 +317,7 @@ export function SavedStrategiesDashboard() {
                         <DialogContent className="max-w-7xl p-0">
                             <BacktestHistoryPanel
                                 history={history}
+                                loading={historyLoading}
                                 activeId={activeId}
                                 onLoad={(id) => { handleLoad(id); setHistoryModalOpen(false); }}
                                 onDelete={handleUnstar}

@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select';
+import { ExecutionTabSkeleton } from '@/shared/ui/page-skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCallback, useState } from 'react';
 
@@ -1438,11 +1439,7 @@ export function ConfigView({
     onFlattenWebhook,
 }: ConfigViewProps) {
     if (loading) {
-        return (
-            <div className="flex items-center justify-center py-20 text-text-muted">
-                Loading configuration...
-            </div>
-        );
+        return <ExecutionTabSkeleton tab="config" />;
     }
 
     if (!config) {

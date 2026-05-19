@@ -7,6 +7,7 @@ import { SessionTag } from './SessionTag';
 import { StrategyTag } from './StrategyTag';
 import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { Skeleton, TableSkeleton } from "@/shared/ui/skeleton";
 
 type SortKey =
     | 'instrument'
@@ -96,6 +97,7 @@ interface HistoryPanelProps {
     onBulkUnstar?: (ids: string[]) => Promise<void>;
     onExpand?: () => void;
     isModal?: boolean;
+    loading?: boolean;
 }
 
 export function BacktestHistoryPanel({
@@ -104,7 +106,6 @@ export function BacktestHistoryPanel({
     onLoad,
     onDelete,
     onRefresh,
-    onStar: _onStar,
     onHide,
     onRename,
     onBulkStar,
@@ -112,6 +113,7 @@ export function BacktestHistoryPanel({
     onBulkUnstar,
     onExpand,
     isModal = false,
+    loading = false,
 }: HistoryPanelProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('timestamp');
@@ -256,6 +258,25 @@ export function BacktestHistoryPanel({
             </th>
         );
     };
+
+    if (loading) {
+        return (
+            <div className="rounded-lg border border-border bg-bg-card">
+                <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-sm font-medium text-text-secondary">History</h2>
+                        <Skeleton className="h-6 w-28 rounded" muted />
+                        <Skeleton className="h-6 w-24 rounded" muted />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-4 w-16 rounded" muted />
+                        <RefreshButton onClick={onRefresh} />
+                    </div>
+                </div>
+                <TableSkeleton rows={6} columns={10} className="rounded-none border-x-0 border-b-0" />
+            </div>
+        );
+    }
 
     if (history.length === 0) {
         return (

@@ -1,10 +1,16 @@
 import { AuthControls } from '@/auth/AuthControls';
 import { CLERK_ENABLED, PUBLIC_AUTH_STATE, type OwnerAuthState } from '@/auth/clerkConfig';
 import { useOwnerAuthState } from '@/auth/useOwnerAuthState';
-import { BacktestApp } from '@/backtesting/BacktestApp';
-import { ExecutionApp } from '@/execution/ExecutionApp';
-import type { ReactNode } from 'react';
+import { RoutePageSkeleton } from '@/shared/ui/page-skeletons';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+
+const BacktestApp = lazy(() =>
+    import('@/backtesting/BacktestApp').then((module) => ({ default: module.BacktestApp })),
+);
+const ExecutionApp = lazy(() =>
+    import('@/execution/ExecutionApp').then((module) => ({ default: module.ExecutionApp })),
+);
 
 function App() {
     if (CLERK_ENABLED) {
@@ -86,8 +92,22 @@ function TopNavLink({ to, active, children }: { to: string; active: boolean; chi
 function FullAppRoutes() {
     return (
         <Routes>
-            <Route path="/" element={<BacktestApp />} />
-            <Route path="/execution/*" element={<ExecutionApp />} />
+            <Route
+                path="/"
+                element={
+                    <Suspense fallback={<RoutePageSkeleton section="backtesting" />}>
+                        <BacktestApp />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/execution/*"
+                element={
+                    <Suspense fallback={<RoutePageSkeleton section="execution" />}>
+                        <ExecutionApp />
+                    </Suspense>
+                }
+            />
             <Route path="/performance" element={<Navigate to="/execution" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -97,8 +117,22 @@ function FullAppRoutes() {
 function PublicDeployRoutes() {
     return (
         <Routes>
-            <Route path="/" element={<ExecutionApp forcedTab="status" hideTabNav readOnly />} />
-            <Route path="/performance" element={<ExecutionApp forcedTab="performance" hideTabNav readOnly />} />
+            <Route
+                path="/"
+                element={
+                    <Suspense fallback={<RoutePageSkeleton section="execution" />}>
+                        <ExecutionApp forcedTab="status" hideTabNav readOnly />
+                    </Suspense>
+                }
+            />
+            <Route
+                path="/performance"
+                element={
+                    <Suspense fallback={<RoutePageSkeleton section="execution" />}>
+                        <ExecutionApp forcedTab="performance" hideTabNav readOnly />
+                    </Suspense>
+                }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
 import { TradeEventRow } from "./TradeEventRow";
 import { ExecTradeChartModal } from "./ExecTradeChartModal";
 import type { ConfigResponse, TradeLogEntry, ExecTradeContext } from "@/execution/lib/types";
@@ -30,7 +31,6 @@ export function TradeFeed({
   total,
   loading,
   loadMore,
-  activeConfig: _activeConfig,
   config,
 }: TradeFeedProps) {
   const stratLookup = buildStrategyLookup(config);
@@ -62,11 +62,7 @@ export function TradeFeed({
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-text-muted">
-        Loading trade events...
-      </div>
-    );
+    return <ExecutionTabSkeleton tab="trades" />;
   }
 
   if (filtered.length === 0) {

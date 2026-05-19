@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { SessionCard } from "./SessionCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
 import type { ConfigResponse, SessionConfig, SessionStatus } from "@/execution/lib/types";
 
 interface StatusPanelProps {
@@ -69,11 +70,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
   }, [validConfig, activeConfig, setActiveConfig, configEngines]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-text-muted">
-        Loading...
-      </div>
-    );
+    return <ExecutionTabSkeleton tab="status" />;
   }
 
   if (engines.length === 0) {

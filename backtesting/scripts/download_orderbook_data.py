@@ -4,13 +4,13 @@
 Defaults are tuned for the LSI impulse project:
 
 - dataset: GLBX.MDP3
-- schema: mbp-10 (top 10 levels, depth updates + trades)
+- schema: mbp-10 by default; mbp-1 is supported for top-of-book velocity tests
 - symbology: continuous contracts (for example NQ.c.0)
 - storage: compressed DBN under data/raw/orderbook/
 
-MBP-10 is the first practical order-book dataset for the discretionary
-"momentum from a level" idea because it carries top-10 depth updates and trade
-events with aggressor side, while staying much smaller than full MBO.
+MBP-1 is sufficient for best-bid/ask midpoint velocity. MBP-10 remains useful
+for deeper depth/absorption variants because it carries top-10 levels while
+staying much smaller than full MBO.
 """
 
 from __future__ import annotations
@@ -72,7 +72,7 @@ def get_api_key() -> str:
         try:
             from dotenv import load_dotenv
 
-            load_dotenv(env_path)
+            load_dotenv(env_path, override=True)
         except ImportError:
             with env_path.open() as fh:
                 for raw_line in fh:
@@ -80,7 +80,7 @@ def get_api_key() -> str:
                     if not line or line.startswith("#") or "=" not in line:
                         continue
                     key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+                    os.environ[key.strip()] = value.strip().strip("\"'")
 
     key = os.environ.get("DATABENTO_API_KEY")
     if not key:

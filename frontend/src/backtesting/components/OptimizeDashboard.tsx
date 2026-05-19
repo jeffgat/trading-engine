@@ -10,7 +10,7 @@ import { OptimizationTable } from './OptimizationTable';
 import { Skeleton } from './Skeleton';
 
 export function OptimizeDashboard() {
-    const { history, activeId, refreshHistory, loadOptimization, refilterOptimization, deleteOptimization } =
+    const { history, loading: historyLoading, activeId, refreshHistory, loadOptimization, refilterOptimization, deleteOptimization } =
         useOptimizationHistory();
 
     const [data, setData] = useState<OptimizationResult | null>(null);
@@ -80,6 +80,7 @@ export function OptimizeDashboard() {
             {/* History table — full width */}
             <OptimizationHistoryPanel
                 history={history}
+                loading={historyLoading}
                 activeId={activeId}
                 onLoad={handleLoad}
                 onDelete={deleteOptimization}

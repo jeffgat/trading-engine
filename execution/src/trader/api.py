@@ -539,6 +539,15 @@ def _build_exec_config_meta(state: DashboardState) -> dict[str, dict]:
     return meta
 
 
+def _runtime_mode_from_brokers(state: DashboardState) -> str:
+    """Return LIVE when any current runtime broker has a real webhook URL."""
+    for multi_broker in state.multi_brokers_by_config.values():
+        for broker in getattr(multi_broker, "_brokers", []):
+            if not getattr(broker, "dry_run", True):
+                return "LIVE"
+    return "DRY-RUN"
+
+
 # ---------------------------------------------------------------------------
 # Log parsing
 # ---------------------------------------------------------------------------
@@ -1170,6 +1179,7 @@ def create_app(state: DashboardState) -> FastAPI:
             ]
         new_multi = MultiBroker(new_brokers)
         state.multi_brokers_by_config[config_name] = new_multi
+        state.mode = _runtime_mode_from_brokers(state)
 
         # Point all engines for this config to the new broker
         for eng in state.engines_by_config.get(config_name, []):

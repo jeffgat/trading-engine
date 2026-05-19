@@ -343,7 +343,11 @@ function InstrumentCard({
                     </span>
                   )
                 ) : (
-                  <span className="text-text-muted">Loading...</span>
+                  <div className="space-y-1">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <Skeleton key={index} className="h-3 rounded" muted />
+                    ))}
+                  </div>
                 )}
               </div>
             )}

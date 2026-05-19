@@ -7,6 +7,7 @@ import { EquityCurveComparison } from "@/execution/components/EquityCurveCompari
 import { BacktestWindowSlider } from "@/execution/components/BacktestWindowSlider";
 import { DatePicker } from "@/shared/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
 
 interface PerformanceViewProps {
   entries: TradeLogEntry[];
@@ -644,11 +645,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   }, [visibleConfigs, mappings, backtestCurves, allRows, effectiveBtStart, effectiveBtEnd]);
 
   if (loading && dbLoading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-text-muted">
-        Loading performance...
-      </div>
-    );
+    return <ExecutionTabSkeleton tab="performance" />;
   }
 
   const hasActiveFilters =

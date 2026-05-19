@@ -8,6 +8,7 @@ import { SessionTag } from "./SessionTag";
 import { StrategyTag } from "./StrategyTag";
 import { VariablesTested } from "./VariablesTested";
 import { DateRangePicker } from "./DateRangePicker";
+import { Skeleton, SkeletonText } from "@/shared/ui/skeleton";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent";
@@ -200,7 +201,21 @@ export function ConfigsDashboard() {
             <span className="text-xs text-text-muted">{configs.length} total</span>
           </div>
           {loading && (
-            <div className="px-4 py-4 text-xs text-text-muted">Loading...</div>
+            <div className="divide-y divide-border/60">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <Skeleton className="h-4 w-36 rounded" />
+                    <Skeleton className="h-3 w-16 rounded" muted />
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <Skeleton className="h-5 w-10 rounded" muted />
+                    <Skeleton className="h-5 w-20 rounded" muted />
+                    <Skeleton className="h-5 w-12 rounded" muted />
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
           {!loading && configs.length === 0 && (
             <div className="px-4 py-4 text-xs text-text-muted">
@@ -208,7 +223,7 @@ export function ConfigsDashboard() {
             </div>
           )}
           <div className="divide-y divide-border/60 max-h-[calc(100vh-240px)] overflow-y-auto">
-            {configs.map((item) => (
+            {!loading && configs.map((item) => (
               <button
                 key={item.id}
                 onClick={() => handleSelect(item)}
@@ -235,9 +250,15 @@ export function ConfigsDashboard() {
         {/* Config detail */}
         <div className="space-y-4">
           {!active && (
-            <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-bg-card text-sm text-text-muted">
-              Select a config to view details
-            </div>
+            loading ? (
+              <div className="rounded-lg border border-border bg-bg-card p-4">
+                <SkeletonText lines={6} />
+              </div>
+            ) : (
+              <div className="flex h-64 items-center justify-center rounded-lg border border-border bg-bg-card text-sm text-text-muted">
+                Select a config to view details
+              </div>
+            )
           )}
 
           {active && (

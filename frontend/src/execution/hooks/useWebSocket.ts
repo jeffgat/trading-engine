@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WsMessage } from "@/execution/lib/types";
 
 type MessageHandler = (data: unknown) => void;
+export type WebSocketStatus = "connecting" | "connected" | "reconnecting";
 
 function resolveWebSocketUrl() {
   const configuredUrl = import.meta.env.VITE_EXEC_WS_URL?.trim();
@@ -12,7 +13,7 @@ function resolveWebSocketUrl() {
 }
 
 export function useWebSocket() {
-  const [connected, setConnected] = useState(false);
+  const [status, setStatus] = useState<WebSocketStatus>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef(new Map<string, Set<MessageHandler>>());
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -28,13 +29,13 @@ export function useWebSocket() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setConnected(true);
+        setStatus("connected");
         delay = 1000;
       };
 
       ws.onclose = () => {
-        setConnected(false);
         if (!disposed) {
+          setStatus("reconnecting");
           reconnectRef.current = setTimeout(connect, delay);
           delay = Math.min(delay * 2, 10000);
         }
@@ -80,5 +81,5 @@ export function useWebSocket() {
     [],
   );
 
-  return { connected, subscribe };
+  return { connected: status === "connected", status, subscribe };
 }
