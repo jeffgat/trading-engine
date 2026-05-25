@@ -3,3 +3,8 @@
 
 # Local assistant settings can include command-specific environment values.
 .claude/settings.local.json
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+tmp/
