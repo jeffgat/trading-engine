@@ -3,9 +3,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-const EXECUTION_API_TARGET = "http://143.110.148.234:8000";
-const EXECUTION_WS_TARGET = "ws://143.110.148.234:8000";
-const BACKTESTING_API_TARGET = "http://143.110.148.234:8200";
+const EXECUTION_API_TARGET = process.env.EXECUTION_API_TARGET ?? "http://143.110.148.234:8000";
+const EXECUTION_WS_TARGET = process.env.EXECUTION_WS_TARGET ?? "ws://143.110.148.234:8000";
+const BACKTESTING_API_TARGET = process.env.BACKTESTING_API_TARGET ?? "http://143.110.148.234:8200";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

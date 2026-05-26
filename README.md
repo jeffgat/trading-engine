@@ -14,6 +14,13 @@ Workspace for futures strategy research, live execution, dashboards, and Trading
 ## Quick Start
 
 ```bash
+# Frontend + local backtesting API
+./start-dev.sh
+```
+
+Or run each service manually:
+
+```bash
 # Backtesting API
 cd backtesting
 uv sync --extra data --extra storage --extra api --extra dev
@@ -35,7 +42,7 @@ Frontend routes:
 - `/` — backtesting/research
 - `/execution` — live execution
 
-Vite proxies `/bt-api/*` to local `localhost:8000` and `/exec-api/*` to the deployed execution API.
+Vite proxies `/bt-api/*` to `BACKTESTING_API_TARGET`; `./start-dev.sh` sets that to local `localhost:8000`, while a standalone frontend run falls back to the remote backtesting API. `/exec-api/*` uses the deployed execution API unless `EXECUTION_API_TARGET` is overridden.
 
 ## Common Tasks
 

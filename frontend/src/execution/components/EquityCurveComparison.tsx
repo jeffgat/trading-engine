@@ -11,6 +11,7 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from "recharts";
+import type { LabelProps } from "recharts";
 import type { ComparisonCurvePoint } from "@/execution/lib/types";
 
 interface EquityCurveComparisonProps {
@@ -59,15 +60,70 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+function hasDeployLabelViewBox(
+  viewBox: LabelProps["viewBox"],
+): viewBox is { x: number; y: number; width: number; height: number } {
+  return (
+    viewBox != null &&
+    "x" in viewBox &&
+    "y" in viewBox &&
+    "height" in viewBox &&
+    typeof viewBox.x === "number" &&
+    typeof viewBox.y === "number" &&
+    typeof viewBox.height === "number"
+  );
+}
+
+function DeployLabel({ viewBox }: LabelProps) {
+  if (!hasDeployLabelViewBox(viewBox)) {
+    return <g />;
+  }
+
+  return (
+    <text
+      x={viewBox.x - 8}
+      y={viewBox.y + viewBox.height / 2}
+      fill="var(--color-accent)"
+      fontSize={11}
+      fontWeight={600}
+      textAnchor="end"
+      dominantBaseline="middle"
+      pointerEvents="none"
+    >
+      Deploy
+    </text>
+  );
+}
+
+function addDeployDateAnchor(
+  points: ComparisonCurvePoint[],
+  deployDate: string,
+): ComparisonCurvePoint[] {
+  if (!deployDate || points.length === 0) return points;
+  if (points.some((point) => point.date === deployDate)) return points;
+
+  const firstDate = points[0].date;
+  const lastDate = points[points.length - 1].date;
+  if (deployDate < firstDate || deployDate > lastDate) return points;
+
+  const insertAt = points.findIndex((point) => point.date > deployDate);
+  const next = [...points];
+  next.splice(insertAt === -1 ? next.length : insertAt, 0, { date: deployDate });
+  return next;
+}
+
 export function EquityCurveComparison({ data, deployDate, configName, liveR: liveRProp, backtestR: backtestRProp }: EquityCurveComparisonProps) {
   const liveColor = CONFIG_LINE_COLORS[configName] ?? "var(--color-profit)";
 
   // Thin data for rendering if > 300 points
   const displayData = useMemo(() => {
-    if (data.length <= 300) return data;
+    if (data.length <= 300) return addDeployDateAnchor(data, deployDate);
     const step = Math.ceil(data.length / 300);
-    return data.filter((_, i) => i % step === 0 || i === data.length - 1);
-  }, [data]);
+    return addDeployDateAnchor(
+      data.filter((_, i) => i % step === 0 || i === data.length - 1),
+      deployDate,
+    );
+  }, [data, deployDate]);
 
   // Scale trade bars to ~10% of chart height
   const tradeDomain = useMemo(() => {
@@ -183,10 +239,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
               strokeDasharray="4 4"
               strokeWidth={1.5}
               label={{
-                value: "Deploy",
-                position: "insideTopRight",
-                fill: "var(--color-accent)",
-                fontSize: 11,
+                content: DeployLabel,
               }}
             />
           )}

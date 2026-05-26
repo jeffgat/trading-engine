@@ -5,6 +5,7 @@ import type { EquityCurvePoint, Trade } from "@/backtesting/lib/types";
 const STORAGE_KEY = "exec_backtest_mappings";
 
 const DEFAULT_MAPPINGS: Record<string, BacktestMapping> = {
+  "ALPHA_V1-A": { backtestId: "bt-exec-exact-alpha-v1-a-last-5y-2021-03-25-to-2026-b56228", deployDate: "2026-04-05" },
   FAST: { backtestId: "bt-exec-exact-fast-last-5y-2021-03-25-to-2026-03-24-6d76c8", deployDate: "2026-03-09" },
   FAST_V2: { backtestId: "bt-exec-fast-v2-2024-2026-live-comparison-918820", deployDate: "2026-03-09" },
 };
