@@ -5,9 +5,21 @@ import type { WsMessage } from "@/execution/lib/types";
 type MessageHandler = (data: unknown) => void;
 export type WebSocketStatus = "connecting" | "connected" | "reconnecting";
 
+const DEFAULT_PROD_WS_URL = "wss://143.110.148.234.nip.io/exec-api/ws";
+
 async function resolveWebSocketUrl() {
   const configuredUrl = import.meta.env.VITE_EXEC_WS_URL?.trim();
   const token = await getApiAuthToken();
+
+  if (import.meta.env.PROD) {
+    const target = configuredUrl?.includes("exec-api.gat.capital")
+      ? DEFAULT_PROD_WS_URL
+      : configuredUrl || DEFAULT_PROD_WS_URL;
+    const url = new URL(target);
+    if (token) url.searchParams.set("token", token);
+    return url.toString();
+  }
+
   if (configuredUrl) {
     const url = new URL(configuredUrl);
     if (token) url.searchParams.set("token", token);
@@ -20,13 +32,15 @@ async function resolveWebSocketUrl() {
   return url.toString();
 }
 
-export function useWebSocket() {
+export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
   const [status, setStatus] = useState<WebSocketStatus>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
   const listenersRef = useRef(new Map<string, Set<MessageHandler>>());
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
+    if (!enabled) return;
+
     let delay = 1000;
     let disposed = false;
 
@@ -77,7 +91,7 @@ export function useWebSocket() {
       clearTimeout(reconnectRef.current);
       wsRef.current?.close();
     };
-  }, []);
+  }, [enabled]);
 
   const subscribe = useCallback(
     (type: string, callback: MessageHandler) => {

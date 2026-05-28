@@ -43,8 +43,8 @@ interface ExecutionAppProps {
 export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }: ExecutionAppProps) {
     const [localActiveTab, setLocalActiveTab] = useState<ExecutionTab>('status');
     const activeTab = forcedTab ?? localActiveTab;
-    const [activeConfig, setActiveConfig] = useState<string>('');
-    const { connected, status: socketStatus, subscribe } = useWebSocket();
+    const [activeConfig, setActiveConfig] = useState<string>('ALL');
+    const { connected, status: socketStatus, subscribe } = useWebSocket({ enabled: !readOnly });
     const {
         uptime,
         loading: statusLoading,
@@ -68,7 +68,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
         pauseEngine,
         resumeEngine,
         toggleEnabled,
-    } = useConfig(subscribe);
+    } = useConfig(subscribe, { enabled: !readOnly });
 
     // Derive config names from the status response
     const configNames = useMemo(() => {
@@ -143,6 +143,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             activeConfig={activeConfig}
                             configNames={configNames}
                             setActiveConfig={setActiveConfig}
+                            readOnly={readOnly}
                         />
                     )}
                     {activeTab === 'config' && (
@@ -222,14 +223,16 @@ function PerformanceTab({
     activeConfig,
     configNames,
     setActiveConfig,
+    readOnly,
 }: {
     subscribe: (type: string, cb: (data: unknown) => void) => () => void;
     config: ReturnType<typeof useConfig>['config'];
     activeConfig: string;
     configNames: string[];
     setActiveConfig: (config: string) => void;
+    readOnly: boolean;
 }) {
-    const tradeLogs = useTradeLogs(subscribe);
+    const tradeLogs = useTradeLogs(subscribe, { enabled: !readOnly });
     const liveTrades = useLiveTrades();
 
     return (

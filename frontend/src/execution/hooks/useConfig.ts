@@ -1,29 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountsUpdatePayload, ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 
-export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void) => () => void) {
+export function useConfig(
+  subscribe?: (type: string, cb: (data: unknown) => void) => () => void,
+  { enabled = true }: { enabled?: boolean } = {},
+) {
   const [config, setConfig] = useState<ConfigResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchConfig = useCallback(async () => {
+    if (!enabled) return;
     try {
       const r = await fetch("/exec-api/config");
+      if (!r.ok) return;
       const data: ConfigResponse = await r.json();
       setConfig(data);
     } catch {
       // ignore fetch errors
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     fetchConfig().finally(() => setLoading(false));
-  }, [fetchConfig]);
+  }, [enabled, fetchConfig]);
 
   // React to accounts_update WebSocket messages to keep execConfigs in sync
   useEffect(() => {
-    if (!subscribe) return;
+    if (!enabled || !subscribe) return;
     return subscribe("accounts_update", (data) => {
       const payload = data as AccountsUpdatePayload;
       setConfig((prev) => {
@@ -39,7 +48,7 @@ export function useConfig(subscribe?: (type: string, cb: (data: unknown) => void
         };
       });
     });
-  }, [subscribe]);
+  }, [enabled, subscribe]);
 
   const updateSession = useCallback(
     async (sessionName: string, overrides: Partial<SessionConfig>) => {

@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 _DISABLED_VALUES = {"", "0", "false", "no", "off"}
 _PUBLIC_PATHS = {"/health", "/api/health"}
+_PUBLIC_GET_PREFIXES = ("/api/backtests/",)
 _EMAIL_CACHE_TTL_SECONDS = 300
 _email_cache: dict[str, tuple[float, set[str]]] = {}
 _jwks_clients: dict[str, Any] = {}
@@ -143,7 +144,15 @@ def _verify_token(token: str) -> tuple[bool, str]:
 
 
 async def authenticate_http_request(request: Request) -> JSONResponse | None:
-    if not auth_enabled() or request.method == "OPTIONS" or request.url.path in _PUBLIC_PATHS:
+    is_public_get = request.method == "GET" and any(
+        request.url.path.startswith(prefix) for prefix in _PUBLIC_GET_PREFIXES
+    )
+    if (
+        not auth_enabled()
+        or request.method == "OPTIONS"
+        or request.url.path in _PUBLIC_PATHS
+        or is_public_get
+    ):
         return None
 
     ok, message = _verify_token(_extract_bearer(request.headers.get("Authorization")))

@@ -235,7 +235,8 @@ function buildRows(entries: TradeLogEntry[], config: ConfigResponse | null): Per
 
 /** Map DB exit_type to the R-value logic used by the log-based approach. */
 function getDbRValue(trade: LiveTrade, config: ConfigResponse | null): number | null {
-  // If the DB has a pre-computed r_result, use it
+  // If the DB has pre-computed realized R values, use them before inferring.
+  if (trade.net_r_result != null) return trade.net_r_result;
   if (trade.r_result != null) return trade.r_result;
 
   // Otherwise compute from exit_type + config rr/tp1_ratio
@@ -340,6 +341,7 @@ function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null, ent
     const compoundKey = `${t.config_name}:${leg}`;
     const sessionCfg = (config?.sessions?.[compoundKey] ?? config?.sessions?.[leg] ?? config?.sessions?.[t.session]) as SessionCfg | undefined;
     const rValue = getDbRValue(t, config);
+    const usdValue = t.net_pnl_usd ?? t.gross_pnl_usd ?? getUsdValue(rValue, sessionCfg);
     const ticker = normalizeTicker(
       t.ticker
         || entryLog?.asset
@@ -359,7 +361,7 @@ function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null, ent
       config: t.config_name,
       direction: tradeDirectionLabel(t.direction),
       rValue,
-      usdValue: getUsdValue(rValue, sessionCfg),
+      usdValue,
       strategy: stratType,
       notes: t.notes ?? "",
       sortTs: t.exit_timestamp,

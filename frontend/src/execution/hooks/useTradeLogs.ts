@@ -5,6 +5,7 @@ const MAX_ENTRIES = 500;
 
 export function useTradeLogs(
   subscribe: (type: string, cb: (data: unknown) => void) => () => void,
+  { enabled = true }: { enabled?: boolean } = {},
 ) {
   const [entries, setEntries] = useState<TradeLogEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -13,6 +14,11 @@ export function useTradeLogs(
 
   // Initial fetch (newest first)
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+
     fetch("/exec-api/logs/trades?limit=500&offset=0")
       .then((r) => r.json())
       .then((data: LogResponse<TradeLogEntry>) => {
@@ -22,7 +28,7 @@ export function useTradeLogs(
         initialFetchDone.current = true;
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [enabled]);
 
   // WebSocket — prepend new entries
   const handleNew = useCallback((data: unknown) => {
@@ -33,18 +39,20 @@ export function useTradeLogs(
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     return subscribe("trade_log", handleNew);
-  }, [subscribe, handleNew]);
+  }, [enabled, subscribe, handleNew]);
 
   // Load older entries
   const loadMore = useCallback(() => {
+    if (!enabled) return;
     const offset = entries.length;
     fetch(`/exec-api/logs/trades?limit=100&offset=${offset}`)
       .then((r) => r.json())
       .then((data: LogResponse<TradeLogEntry>) => {
         setEntries((prev) => [...prev, ...data.entries]);
       });
-  }, [entries.length]);
+  }, [enabled, entries.length]);
 
   return { entries, total, loading, loadMore };
 }
