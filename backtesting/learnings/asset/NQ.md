@@ -8,6 +8,7 @@
 - **Liquidity**: Both NY and Asia sessions are viable. Asia session runs 20:00-07:00 ET (cross-midnight).
 - **1s data note**: NQ_1s.parquet uses `.v.0` (volume roll) instead of `.c.0` (calendar roll). Mismatches only affect ~20 days in 2016 around quarterly rolls. From 2017 onward, all prices match 1m/5m perfectly. Impact on backtests is negligible — the 1s magnifier only resolves ambiguous bars within the same candle.
 - **Order-book data note (2026-05-19)**: The pure 1m LSI midpoint-velocity survivor can use DataBento `mbp-1` instead of `mbp-10`. MBP-1 replay on the 21 holdout morning-prefix windows matched `21/21` frozen tiers and `21/21` risk weights, with one harmless raw feature drift of `+0.05` ticks/second (`1.80` to `1.85`, still `high`). MBP-1 does not validate deeper-book liquidity-vacuum or absorption variants.
+- **Order-book frequency note (2026-05-27)**: The higher-frequency 1m noThu additive pressure branch was rebuilt with an MBP-1-compatible level-1 pressure score and replayed through the same stress harness. It matched the old noThu pressure tier assignments exactly on the 46-trade holdout (`+15.84R`, `0.344R` avg, PF `1.93`, DD `-4.63R`) and used zero new DataBento fetches. Account stress was mixed: holdout daily-stop/min-days EV improved to `3.80R/account` (`+0.34R`), but post-2023 EV worsened (`-0.66R`) with breach rate `+8.0%`; keep this as a higher-frequency shadow side branch, not a replacement for pure 1m velocity.
 
 ## Strategies Tested
 

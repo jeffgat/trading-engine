@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.11",
     "uvicorn>=0.40.0",
     "fastapi>=0.129.0",
+    "PyJWT[crypto]>=2.10",
     "python-multipart>=0.0.22",
     "hmmlearn>=0.3.3",
     "torch>=2.10.0",

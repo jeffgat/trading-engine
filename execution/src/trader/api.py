@@ -15,11 +15,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .auth import authenticate_http_request, authenticate_websocket
 from .overrides import EDITABLE_FIELDS, load_overrides, save_overrides, validate_fields
 
 if TYPE_CHECKING:
@@ -860,6 +861,13 @@ def create_app(state: DashboardState) -> FastAPI:
     """Create the FastAPI application."""
     app = FastAPI(title="ORB Trader Dashboard", version="0.1.0")
 
+    @app.middleware("http")
+    async def require_dashboard_auth(request: Request, call_next):
+        auth_response = await authenticate_http_request(request)
+        if auth_response is not None:
+            return auth_response
+        return await call_next(request)
+
     # CORS for frontend dev server
     app.add_middleware(
         CORSMiddleware,
@@ -1410,6 +1418,8 @@ def create_app(state: DashboardState) -> FastAPI:
 
     @app.websocket("/api/ws")
     async def websocket_endpoint(ws: WebSocket):
+        if not await authenticate_websocket(ws):
+            return
         await ws.accept()
         state._ws_clients.add(ws)
         logger.info("WebSocket client connected (%d total)", len(state._ws_clients))

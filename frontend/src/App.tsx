@@ -1,4 +1,5 @@
 import { AuthControls } from '@/auth/AuthControls';
+import { AuthenticatedApiBridge } from '@/auth/AuthenticatedApiBridge';
 import { CLERK_ENABLED, PUBLIC_AUTH_STATE, type OwnerAuthState } from '@/auth/clerkConfig';
 import { useOwnerAuthState } from '@/auth/useOwnerAuthState';
 import { RoutePageSkeleton } from '@/shared/ui/page-skeletons';
@@ -22,7 +23,11 @@ function App() {
 
 function ClerkAwareApp() {
     const authState = useOwnerAuthState();
-    return <AppShell authState={authState} />;
+    return (
+        <AuthenticatedApiBridge>
+            <AppShell authState={authState} />
+        </AuthenticatedApiBridge>
+    );
 }
 
 function AppShell({ authState }: { authState: OwnerAuthState }) {

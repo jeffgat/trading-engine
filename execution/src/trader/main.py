@@ -1639,7 +1639,7 @@ def _checkpoint_shutdown_flat(engine) -> None:
 # Main async loop
 # ---------------------------------------------------------------------------
 
-async def run_live(config: dict, api_port: int = 8000) -> None:
+async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 8000) -> None:
     """Run the live execution service."""
     import uvicorn
 
@@ -1874,7 +1874,7 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
     tailer = LogTailer(dashboard)
 
     uvi_config = uvicorn.Config(
-        app, host="0.0.0.0", port=api_port, log_level="warning",
+        app, host=api_host, port=api_port, log_level="warning",
     )
     server = uvicorn.Server(uvi_config)
 
@@ -1976,8 +1976,15 @@ async def run_live(config: dict, api_port: int = 8000) -> None:
             seeded,
         )
 
-    # recover current-day opening ranges / session state from recent intraday history
-    intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
+    # Recover current-day opening ranges / session state from recent intraday history.
+    # Keep this bypassable so a stalled historical preload cannot block the API
+    # during operational restarts.
+    skip_intraday_preload = os.environ.get("EXEC_SKIP_INTRADAY_PRELOAD", "").strip().lower()
+    if skip_intraday_preload in {"1", "true", "yes", "on"}:
+        logger.warning("Skipping intraday preload because EXEC_SKIP_INTRADAY_PRELOAD is enabled")
+        intraday_5m = {}
+    else:
+        intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
     now_et = datetime.now(tz=ET)
     recovered = 0
     for symbol, target_engines in global_symbol_map.items():
@@ -2205,6 +2212,10 @@ Examples:
         help="End date for replay (YYYY-MM-DD)",
     )
     parser.add_argument(
+        "--host", type=str, default=os.environ.get("EXEC_API_HOST", "127.0.0.1"),
+        help="Dashboard API host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port", type=int, default=8000,
         help="Dashboard API port (default: 8000)",
     )
@@ -2229,7 +2240,7 @@ Examples:
     if args.replay:
         asyncio.run(run_replay(config, args.replay, args.start, args.end))
     else:
-        asyncio.run(run_live(config, api_port=args.port))
+        asyncio.run(run_live(config, api_host=args.host, api_port=args.port))
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ if [[ "$SETUP" == "1" ]]; then
 
     echo "--- Creating .env if missing ---"
     ssh "$DROPLET" "if [ ! -f $REMOTE_DIR/.env ]; then cat > $REMOTE_DIR/.env <<'ENV'
-BACKTEST_API_HOST=0.0.0.0
+BACKTEST_API_HOST=127.0.0.1
 BACKTEST_API_PORT=8200
 MAIN_DB_URL=http://127.0.0.1:8100
 EXPERIMENTS_DB_URL=http://127.0.0.1:8100
@@ -57,7 +57,7 @@ fi
 
 echo "--- Ensuring remote .env exists ---"
 ssh "$DROPLET" "mkdir -p $REMOTE_DIR/data/raw $REMOTE_DIR/data/cache $REMOTE_DIR/data/results $REMOTE_DIR/data/optimizations && if [ ! -f $REMOTE_DIR/.env ]; then cat > $REMOTE_DIR/.env <<'ENV'
-BACKTEST_API_HOST=0.0.0.0
+BACKTEST_API_HOST=127.0.0.1
 BACKTEST_API_PORT=8200
 MAIN_DB_URL=http://127.0.0.1:8100
 EXPERIMENTS_DB_URL=http://127.0.0.1:8100
@@ -65,6 +65,7 @@ R2_BUCKET_NAME=orb-backtests-data
 ENV
 fi
 if ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
+ssh "$DROPLET" "if grep -q '^BACKTEST_API_HOST=' $REMOTE_DIR/.env; then sed -i 's/^BACKTEST_API_HOST=.*/BACKTEST_API_HOST=127.0.0.1/' $REMOTE_DIR/.env; else printf '\nBACKTEST_API_HOST=127.0.0.1\n' >> $REMOTE_DIR/.env; fi"
 
 echo "=== Deploying backtester API from $LOCAL_DIR ==="
 

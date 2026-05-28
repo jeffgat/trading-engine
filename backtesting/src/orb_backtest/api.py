@@ -114,8 +114,18 @@ from .experiments import (
     delete_saved_config,
 )
 from .analysis.regime_reports import build_regime_report, RegimeReportConfig
+from .auth import authenticate_http_request
 
 app = FastAPI(title="ORB+FVG Backtester API")
+
+
+@app.middleware("http")
+async def require_dashboard_auth(request: Request, call_next):
+    auth_response = await authenticate_http_request(request)
+    if auth_response is not None:
+        return auth_response
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,

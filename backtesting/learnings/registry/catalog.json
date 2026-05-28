@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-19T22:49:58.917916Z",
+  "generated_at": "2026-05-27T21:41:56.146730Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 235,
-    "result_directories": 377,
+    "report_files": 236,
+    "result_directories": 378,
     "result_loose_files": 45
   },
   "assets": {
@@ -2727,6 +2727,13 @@
           "matched_result_directory": null
         },
         {
+          "name": "NQ_NY_LSI_NOTHU_MBP1_PRESSURE_STRESS_20260527.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LSI_NOTHU_MBP1_PRESSURE_STRESS_20260527.md",
+          "slug": "nq_ny_lsi_nothu_mbp1_pressure_stress_20260527",
+          "mtime_utc": "2026-05-27T21:40:12.010282Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_lsi_nothu_mbp1_pressure_stress_20260527"
+        },
+        {
           "name": "NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md",
           "slug": "nq_ny_lsi_orderbook_feature_lab_20260514",
@@ -4271,6 +4278,22 @@
             "summary.json",
             "account_outcomes.csv",
             "account_summary.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_lsi_nothu_mbp1_pressure_stress_20260527",
+          "path": "backtesting/data/results/nq_ny_lsi_nothu_mbp1_pressure_stress_20260527",
+          "mtime_utc": "2026-05-27T21:39:12.656674Z",
+          "file_count": 12,
+          "primary_files": [
+            "summary.json",
+            "account_outcomes.csv",
+            "account_summary.csv",
+            "bootstrap_summary.csv",
+            "feature_comparison.csv"
           ],
           "assets": [
             "NQ"

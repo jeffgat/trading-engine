@@ -51,7 +51,7 @@
 - `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
 - `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
 
-## Reports (116)
+## Reports (117)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
 - [NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md) -> [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505)
 - [NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md) -> [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505)
@@ -131,6 +131,7 @@
 - [NQ_NY_LSI_DISCRETIONARY_SIGNAL_ROADMAP_20260515.md](../../reports/NQ_NY_LSI_DISCRETIONARY_SIGNAL_ROADMAP_20260515.md)
 - [NQ_NY_LSI_DYNAMIC_SIZING_PHASE_ONE_20260515.md](../../reports/NQ_NY_LSI_DYNAMIC_SIZING_PHASE_ONE_20260515.md) -> [nq_ny_lsi_dynamic_sizing_phase_one_20260515](../../../data/results/nq_ny_lsi_dynamic_sizing_phase_one_20260515)
 - [NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md](../../reports/NQ_NY_LSI_LEGACY_VS_HTF_EXACT_COMPARISON.md)
+- [NQ_NY_LSI_NOTHU_MBP1_PRESSURE_STRESS_20260527.md](../../reports/NQ_NY_LSI_NOTHU_MBP1_PRESSURE_STRESS_20260527.md) -> [nq_ny_lsi_nothu_mbp1_pressure_stress_20260527](../../../data/results/nq_ny_lsi_nothu_mbp1_pressure_stress_20260527)
 - [NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md](../../reports/NQ_NY_LSI_ORDERBOOK_FEATURE_LAB_20260514.md) -> [nq_ny_lsi_orderbook_feature_lab_20260514](../../../data/results/nq_ny_lsi_orderbook_feature_lab_20260514)
 - [NQ_NY_LSI_ORDERBOOK_IMPULSE_20260513.md](../../reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_20260513.md) -> [nq_ny_lsi_orderbook_impulse_20260513](../../../data/results/nq_ny_lsi_orderbook_impulse_20260513)
 - [NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_20260514.md](../../reports/NQ_NY_LSI_ORDERBOOK_IMPULSE_FROZEN_REPLAY_20260514.md) -> [nq_ny_lsi_orderbook_impulse_frozen_replay_20260514](../../../data/results/nq_ny_lsi_orderbook_impulse_frozen_replay_20260514)
@@ -169,7 +170,7 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (139)
+## Result Directories (140)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
@@ -263,6 +264,7 @@
 - [nq_ny_lsi_cisd_target_sweep_20260504](../../../data/results/nq_ny_lsi_cisd_target_sweep_20260504) (6 files; primary: summary.json, baseline_deltas.csv, period_scorecards.csv, phase_one_accounts.csv, ranked_targets.csv)
 - [nq_ny_lsi_corrected_candidate_retest_20260516](../../../data/results/nq_ny_lsi_corrected_candidate_retest_20260516) (2 files; primary: summary.json, exact_live_native_challengers.json)
 - [nq_ny_lsi_dynamic_sizing_phase_one_20260515](../../../data/results/nq_ny_lsi_dynamic_sizing_phase_one_20260515) (3 files; primary: summary.json, account_outcomes.csv, account_summary.csv)
+- [nq_ny_lsi_nothu_mbp1_pressure_stress_20260527](../../../data/results/nq_ny_lsi_nothu_mbp1_pressure_stress_20260527) (12 files; primary: summary.json, account_outcomes.csv, account_summary.csv, bootstrap_summary.csv, feature_comparison.csv)
 - [nq_ny_lsi_orderbook_feature_lab_20260514](../../../data/results/nq_ny_lsi_orderbook_feature_lab_20260514) (6 files; primary: summary.json, baseline_coverage.csv, feature_gate_replay.csv, holdout_feature_lab.csv, selected_entry_safe_replay.csv)
 - [nq_ny_lsi_orderbook_impulse_20260513](../../../data/results/nq_ny_lsi_orderbook_impulse_20260513) (4 files; primary: summary.json, gate_summary.csv, impulse_bucket_summary.csv, trade_orderbook_impulse.csv)
 - [nq_ny_lsi_orderbook_impulse_frozen_replay_20260514](../../../data/results/nq_ny_lsi_orderbook_impulse_frozen_replay_20260514) (4 files; primary: summary.json, baseline_coverage.csv, selected_frozen_replay.csv, validation_gate_candidates.csv)

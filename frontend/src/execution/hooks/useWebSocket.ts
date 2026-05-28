@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getApiAuthToken } from "@/auth/apiAuth";
 import type { WsMessage } from "@/execution/lib/types";
 
 type MessageHandler = (data: unknown) => void;
 export type WebSocketStatus = "connecting" | "connected" | "reconnecting";
 
-function resolveWebSocketUrl() {
+async function resolveWebSocketUrl() {
   const configuredUrl = import.meta.env.VITE_EXEC_WS_URL?.trim();
-  if (configuredUrl) return configuredUrl;
+  const token = await getApiAuthToken();
+  if (configuredUrl) {
+    const url = new URL(configuredUrl);
+    if (token) url.searchParams.set("token", token);
+    return url.toString();
+  }
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/exec-api/ws`;
+  const url = new URL(`${protocol}//${window.location.host}/exec-api/ws`);
+  if (token) url.searchParams.set("token", token);
+  return url.toString();
 }
 
 export function useWebSocket() {
@@ -22,10 +30,14 @@ export function useWebSocket() {
     let delay = 1000;
     let disposed = false;
 
-    function connect() {
+    async function connect() {
       if (disposed) return;
 
-      const ws = new WebSocket(resolveWebSocketUrl());
+      const ws = new WebSocket(await resolveWebSocketUrl());
+      if (disposed) {
+        ws.close();
+        return;
+      }
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -36,7 +48,7 @@ export function useWebSocket() {
       ws.onclose = () => {
         if (!disposed) {
           setStatus("reconnecting");
-          reconnectRef.current = setTimeout(connect, delay);
+          reconnectRef.current = setTimeout(() => void connect(), delay);
           delay = Math.min(delay * 2, 10000);
         }
       };
@@ -58,7 +70,7 @@ export function useWebSocket() {
       };
     }
 
-    connect();
+    void connect();
 
     return () => {
       disposed = true;

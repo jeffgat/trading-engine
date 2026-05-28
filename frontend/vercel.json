@@ -3,11 +3,11 @@
   "rewrites": [
     {
       "source": "/bt-api/:path*",
-      "destination": "http://143.110.148.234:8200/api/:path*"
+      "destination": "https://143.110.148.234.nip.io/bt-api/:path*"
     },
     {
       "source": "/exec-api/:path*",
-      "destination": "http://143.110.148.234:8000/api/:path*"
+      "destination": "https://143.110.148.234.nip.io/exec-api/:path*"
     },
     {
       "source": "/(.*)",

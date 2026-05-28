@@ -726,4 +726,4 @@ def delete_config_ep(config_id: int):
 if __name__ == "__main__":
     import uvicorn
     init_db()
-    uvicorn.run(app, host="0.0.0.0", port=8100)
+    uvicorn.run(app, host=os.environ.get("MAIN_DB_HOST", "127.0.0.1"), port=8100)

@@ -48,7 +48,7 @@ main-db = "experiments_api:app"
 TOML
 
     echo "--- Creating .env ---"
-    ssh "$DROPLET" "printf 'MAIN_DB_PATH=/opt/main-db/main.db\nMAIN_DB_URL=\nEXPERIMENTS_DB_PATH=/opt/main-db/main.db\nEXPERIMENTS_DB_URL=\n' > $REMOTE_DIR/.env"
+    ssh "$DROPLET" "printf 'MAIN_DB_HOST=127.0.0.1\nMAIN_DB_PATH=/opt/main-db/main.db\nMAIN_DB_URL=\nEXPERIMENTS_DB_PATH=/opt/main-db/main.db\nEXPERIMENTS_DB_URL=\n' > $REMOTE_DIR/.env"
 
     echo "--- Installing uv dependencies ---"
     ssh "$DROPLET" "cd $REMOTE_DIR && uv sync"
@@ -88,7 +88,8 @@ TOML
 fi"
 
 echo "--- Ensuring .env exists ---"
-ssh "$DROPLET" "if [ ! -f $REMOTE_DIR/.env ]; then printf 'MAIN_DB_PATH=/opt/main-db/main.db\nMAIN_DB_URL=\nEXPERIMENTS_DB_PATH=/opt/main-db/main.db\nEXPERIMENTS_DB_URL=\n' > $REMOTE_DIR/.env; fi"
+ssh "$DROPLET" "if [ ! -f $REMOTE_DIR/.env ]; then printf 'MAIN_DB_HOST=127.0.0.1\nMAIN_DB_PATH=/opt/main-db/main.db\nMAIN_DB_URL=\nEXPERIMENTS_DB_PATH=/opt/main-db/main.db\nEXPERIMENTS_DB_URL=\n' > $REMOTE_DIR/.env; fi
+if grep -q '^MAIN_DB_HOST=' $REMOTE_DIR/.env; then sed -i 's/^MAIN_DB_HOST=.*/MAIN_DB_HOST=127.0.0.1/' $REMOTE_DIR/.env; else printf '\nMAIN_DB_HOST=127.0.0.1\n' >> $REMOTE_DIR/.env; fi"
 
 echo "--- Syncing backtesting source (for experiments module) ---"
 rsync -avz --delete \
