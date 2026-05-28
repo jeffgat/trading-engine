@@ -41,6 +41,7 @@ jobs:
 
           echo "--- Ensuring MAIN_DB_URL exists in remote .env ---"
           ssh "$DROPLET" "if [ -f $REMOTE_DIR/.env ] && ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
+          ssh "$DROPLET" "if [ -f $REMOTE_DIR/.env ]; then if grep -q '^EXEC_API_HOST=' $REMOTE_DIR/.env; then sed -i 's/^EXEC_API_HOST=.*/EXEC_API_HOST=127.0.0.1/' $REMOTE_DIR/.env; else printf '\nEXEC_API_HOST=127.0.0.1\n' >> $REMOTE_DIR/.env; fi; fi"
 
           echo "--- Restarting service ---"
           ssh "$DROPLET" "systemctl restart orb-trader"

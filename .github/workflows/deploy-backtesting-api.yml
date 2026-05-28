@@ -31,7 +31,7 @@ jobs:
           REMOTE_DIR="/opt/orb-backtester"
 
           echo "--- Preparing remote directories and env ---"
-          ssh "$DROPLET" "mkdir -p $REMOTE_DIR/data/raw $REMOTE_DIR/data/cache $REMOTE_DIR/data/results $REMOTE_DIR/data/optimizations && if [ ! -f $REMOTE_DIR/.env ]; then printf 'BACKTEST_API_HOST=0.0.0.0\nBACKTEST_API_PORT=8200\nMAIN_DB_URL=http://127.0.0.1:8100\nEXPERIMENTS_DB_URL=http://127.0.0.1:8100\nR2_BUCKET_NAME=orb-backtests-data\n' > $REMOTE_DIR/.env; fi && if ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi"
+          ssh "$DROPLET" "mkdir -p $REMOTE_DIR/data/raw $REMOTE_DIR/data/cache $REMOTE_DIR/data/results $REMOTE_DIR/data/optimizations && if [ ! -f $REMOTE_DIR/.env ]; then printf 'BACKTEST_API_HOST=127.0.0.1\nBACKTEST_API_PORT=8200\nMAIN_DB_URL=http://127.0.0.1:8100\nEXPERIMENTS_DB_URL=http://127.0.0.1:8100\nR2_BUCKET_NAME=orb-backtests-data\n' > $REMOTE_DIR/.env; fi && if ! grep -q '^MAIN_DB_URL=' $REMOTE_DIR/.env; then printf '\nMAIN_DB_URL=http://127.0.0.1:8100\n' >> $REMOTE_DIR/.env; fi && if grep -q '^BACKTEST_API_HOST=' $REMOTE_DIR/.env; then sed -i 's/^BACKTEST_API_HOST=.*/BACKTEST_API_HOST=127.0.0.1/' $REMOTE_DIR/.env; else printf '\nBACKTEST_API_HOST=127.0.0.1\n' >> $REMOTE_DIR/.env; fi"
 
           echo "--- Syncing source files ---"
           rsync -avz --delete \

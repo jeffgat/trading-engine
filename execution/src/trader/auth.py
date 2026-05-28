@@ -136,11 +136,11 @@ def _verify_token(token: str) -> tuple[bool, str]:
     allowed_emails = _split_env("BACKEND_AUTH_ALLOWED_EMAILS") or _split_env("VITE_ALLOWED_AUTH_EMAIL")
     if allowed_emails:
         emails = _emails_from_claims(claims)
-        if not emails and user_id:
+        if user_id and (not emails or emails.isdisjoint(allowed_emails)):
             try:
-                emails = _fetch_clerk_user_emails(user_id)
+                emails.update(_fetch_clerk_user_emails(user_id))
             except Exception:
-                emails = set()
+                pass
         if emails.isdisjoint(allowed_emails):
             return False, "Email is not allowed"
 
