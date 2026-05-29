@@ -1210,6 +1210,11 @@ class LSIEngine:
             return exit_r if is_single else (tp1_r + exit_r) / 2.0
         elif exit_type == "eod":
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
+        elif exit_type == "manual_flat":
+            if exit_price is None:
+                return 0.0
+            exit_r = self._price_to_r(exit_price)
+            return exit_r if is_single or not self._tp1_hit else (tp1_r + exit_r) / 2.0
         return 0.0
 
     def _trade_accounting_fields(self) -> dict:

@@ -73,6 +73,7 @@ const EXIT_LABELS: Record<string, string> = {
   tp1_eod: "EOD Exit",
   tp2_direct: "TP2 Hit",
   eod: "EOD Exit",
+  manual_flat: "Manual Flat",
 };
 
 const EXIT_COLORS: Record<string, { dot: string; text: string }> = {
@@ -83,6 +84,7 @@ const EXIT_COLORS: Record<string, { dot: string; text: string }> = {
   tp1_eod: { dot: "bg-text-muted", text: "text-text-muted" },
   tp2_direct: { dot: "bg-profit", text: "text-profit" },
   eod: { dot: "bg-text-muted", text: "text-text-muted" },
+  manual_flat: { dot: "bg-amber-300", text: "text-amber-300" },
 };
 
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
@@ -96,6 +98,7 @@ interface SessionCardProps {
   strategyType?: "continuation" | "lsi";
   sessionConfig?: SessionConfig;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
+  onFlatten?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
 
@@ -173,8 +176,8 @@ function GateRow({ label, value, tone }: { label: string; value: string; tone?: 
   );
 }
 
-export function SessionCard({ engine, strategyType, sessionConfig, onPause, onResume }: SessionCardProps) {
-  const [saving, setSaving] = useState(false);
+export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFlatten, onResume }: SessionCardProps) {
+  const [savingAction, setSavingAction] = useState<"pause" | "flatten" | null>(null);
   const isLsi = strategyType === "lsi";
   const isLsiTag = (label: string | null | undefined) => label?.includes("LSI") ?? false;
   const hasLevels = engine.levels != null && engine.levels.entry != null;
@@ -186,6 +189,8 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
         : null
     : null;
   const isPaused = engine.paused ?? false;
+  const rawState = engine.raw_state ?? engine.state;
+  const canFlatten = ["armed_limit", "filled", "managing"].includes(rawState);
   const skippedToday = isSkippedToday(engine);
   const regimeBlocked = engine.skip_reason === "regime_gate" && engine.regime_gate_status?.allowed === false;
   const regimeEval = getPrimaryRegimeEvaluation(engine);
@@ -216,7 +221,7 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
     : (STATE_LABELS[engine.state] ?? engine.state);
 
   const handleToggle = async () => {
-    setSaving(true);
+    setSavingAction("pause");
     try {
       if (isPaused) {
         await onResume?.(engine.session, engine.config_name);
@@ -224,7 +229,16 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
         await onPause?.(engine.session, engine.config_name);
       }
     } finally {
-      setSaving(false);
+      setSavingAction(null);
+    }
+  };
+
+  const handleFlatten = async () => {
+    setSavingAction("flatten");
+    try {
+      await onFlatten?.(engine.session, engine.config_name);
+    } finally {
+      setSavingAction(null);
     }
   };
 
@@ -552,25 +566,53 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onRe
           </div>
         )}
 
-        {/* Pause/Resume button */}
-        {(onPause || onResume) && (
-          <div className="mt-auto flex justify-end">
+        {/* Manual controls */}
+        {(onPause || onResume || onFlatten) && (
+          <div className="mt-auto flex justify-end gap-2">
+            {onFlatten && canFlatten && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    disabled={savingAction != null}
+                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 border-amber-400/30"
+                  >
+                    {savingAction === "flatten" ? "..." : rawState === "armed_limit" ? "Cancel" : "Flatten"}
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {rawState === "armed_limit" ? "Cancel" : "Flatten"} {engine.session}?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will send a {rawState === "armed_limit" ? "cancel" : "flatten"} request and mark this strategy flat. It will not pause the strategy.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleFlatten}>
+                      {rawState === "armed_limit" ? "Cancel Order" : "Flatten Now"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             {isPaused ? (
               <button
                 onClick={handleToggle}
-                disabled={saving}
+                disabled={savingAction != null}
                 className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-profit/20 text-profit hover:bg-profit/30 border-profit/30"
               >
-                {saving ? "..." : "Resume"}
+                {savingAction === "pause" ? "..." : "Resume"}
               </button>
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <button
-                    disabled={saving}
+                    disabled={savingAction != null}
                     className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/10 text-loss hover:bg-loss/20 border-loss/30"
                   >
-                    {saving ? "..." : "Pause"}
+                    {savingAction === "pause" ? "..." : "Pause"}
                   </button>
                 </AlertDialogTrigger>
                 <AlertDialogContent>

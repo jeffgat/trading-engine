@@ -251,6 +251,20 @@ export function useConfig(
     [],
   );
 
+  const flattenEngine = useCallback(
+    async (sessionName: string, configName?: string) => {
+      const params = configName ? `?config=${encodeURIComponent(configName)}` : "";
+      const r = await fetch(`/exec-api/engines/${sessionName}/flatten${params}`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        const err = await r.json();
+        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+      }
+    },
+    [],
+  );
+
   const resumeEngine = useCallback(
     async (sessionName: string, configName?: string) => {
       const params = configName ? `?config=${encodeURIComponent(configName)}` : "";
@@ -299,6 +313,6 @@ export function useConfig(
     config, loading, saving, error,
     updateSession, resetSession, updateWebhooks, execConfigs,
     pauseWebhook, resumeWebhook, updateWebhookMultiplier, flattenWebhook,
-    pauseEngine, resumeEngine, toggleEnabled,
+    pauseEngine, flattenEngine, resumeEngine, toggleEnabled,
   };
 }

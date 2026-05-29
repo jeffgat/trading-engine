@@ -12,6 +12,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -160,6 +161,105 @@ def _live_trade_sort_key(trade: dict) -> tuple:
         str(trade.get("exit_timestamp") or ""),
         int(trade.get("id") or 0),
     )
+
+
+def _engine_state_value(engine: Any) -> str:
+    state = getattr(engine, "_state", None)
+    value = getattr(state, "value", None)
+    return str(value if value is not None else state or "")
+
+
+def _latest_engine_bar(engine: Any) -> Any | None:
+    latest = getattr(engine, "_last_market_bar", None)
+    if latest is not None:
+        return latest
+    for attr in ("_bars", "_session_bars"):
+        bars = getattr(engine, attr, None)
+        if bars:
+            return bars[-1]
+    return None
+
+
+def _mark_engine_flat(engine: Any) -> None:
+    state = getattr(engine, "_state", None)
+    flat_state = getattr(getattr(state, "__class__", None), "FLAT", None)
+    if flat_state is not None:
+        engine._state = flat_state
+
+    cleanup_task = getattr(engine, "_cleanup_task", None)
+    if cleanup_task is not None and not cleanup_task.done():
+        cleanup_task.cancel()
+        engine._cleanup_task = None
+
+    clear_overlap = getattr(engine, "_set_trade_overlap", None)
+    if callable(clear_overlap):
+        clear_overlap(False, notify=False)
+
+    reset_setup = getattr(engine, "_reset_active_setup", None)
+    if callable(reset_setup):
+        reset_setup()
+
+    release_position_cap = getattr(engine, "_release_position_cap", None)
+    if callable(release_position_cap):
+        release_position_cap()
+
+    request_checkpoint = getattr(engine, "_request_checkpoint", None)
+    if callable(request_checkpoint):
+        request_checkpoint()
+
+    notify_state_change = getattr(engine, "_notify_state_change", None)
+    if callable(notify_state_change):
+        notify_state_change()
+
+
+def _record_manual_flatten(engine: Any) -> dict[str, Any]:
+    if getattr(engine, "_levels", None) is None:
+        return {"recorded": False, "exit_price": None, "exit_timestamp": None}
+
+    emit_trade_record = getattr(engine, "_emit_trade_record", None)
+    if not callable(emit_trade_record):
+        return {"recorded": False, "exit_price": None, "exit_timestamp": None}
+
+    latest_bar = _latest_engine_bar(engine)
+    exit_price = getattr(latest_bar, "close", None) if latest_bar is not None else None
+    exit_timestamp = getattr(latest_bar, "timestamp", None) if latest_bar is not None else datetime.now()
+    emit_trade_record("manual_flat", exit_price=exit_price, exit_timestamp=exit_timestamp)
+    return {
+        "recorded": True,
+        "exit_price": exit_price,
+        "exit_timestamp": exit_timestamp.isoformat() if hasattr(exit_timestamp, "isoformat") else str(exit_timestamp),
+    }
+
+
+async def _manual_flatten_engine(engine: Any) -> dict[str, Any]:
+    previous_state = _engine_state_value(engine)
+    action = "already_flat"
+    trade_record: dict[str, Any] = {"recorded": False, "exit_price": None, "exit_timestamp": None}
+
+    log_trade = getattr(engine, "_log_trade", None)
+    if previous_state == "armed_limit":
+        if callable(log_trade):
+            log_trade("MANUAL_CANCEL", f"state={previous_state}")
+        await engine.broker.send_cancel(ticker=engine.exec_ticker)
+        action = "cancelled_pending_order"
+    elif previous_state in {"filled", "managing"}:
+        if callable(log_trade):
+            log_trade("MANUAL_FLAT", f"state={previous_state}")
+        await engine.broker.send_flatten(ticker=engine.exec_ticker)
+        trade_record = _record_manual_flatten(engine)
+        action = "flattened_position"
+    elif previous_state not in {"", "idle", "flat"}:
+        if callable(log_trade):
+            log_trade("MANUAL_FLAT", f"state={previous_state} broker_action=none")
+        action = "marked_flat"
+
+    _mark_engine_flat(engine)
+    return {
+        "action": action,
+        "previous_state": previous_state,
+        "state": _engine_state_value(engine),
+        "trade_record": trade_record,
+    }
 
 
 def _fetch_logs_from_db_raw(
@@ -1416,6 +1516,25 @@ def create_app(state: DashboardState) -> FastAPI:
         state.on_state_change(engine.status_dict())
 
         return {"session": session_name, "paused": True, "action": action_taken}
+
+    @app.post("/api/engines/{session_name}/flatten")
+    async def flatten_engine(session_name: str, config: str | None = None):
+        """Manually flatten/cancel a single engine leg without pausing it."""
+        engine = _find_engine(state, session_name, config)
+        if engine is None:
+            raise HTTPException(404, f"Engine '{session_name}' not found")
+
+        try:
+            result = await _manual_flatten_engine(engine)
+        except Exception as exc:
+            logger.exception("[%s] Manual flatten failed", session_name)
+            raise HTTPException(502, f"Manual flatten failed: {exc}") from exc
+
+        return {
+            "session": session_name,
+            "config": getattr(engine, "config_name", config),
+            **result,
+        }
 
     @app.post("/api/engines/{session_name}/resume")
     async def resume_engine(session_name: str, config: str | None = None):

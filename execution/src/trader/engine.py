@@ -55,7 +55,7 @@ class TradeRecord:
     stop_price: float
     tp1_price: float
     tp2_price: float
-    exit_type: str        # sl, tp1_single, tp1_be, tp1_eod, tp1_tp2, tp2_direct, eod, cancelled
+    exit_type: str        # sl, tp1_single, tp1_be, tp1_eod, tp1_tp2, tp2_direct, eod, manual_flat, cancelled
     tp1_hit: bool         # critical for G5 gate
     timestamp: str        # ISO format exit timestamp
     config_name: str = "" # execution config (e.g. "FAST", "SLOW")
@@ -996,6 +996,11 @@ class ORBEngine:
             return exit_r if is_single else (tp1_r + exit_r) / 2.0
         elif exit_type == "eod":
             return self._price_to_r(exit_price) if exit_price is not None else 0.0
+        elif exit_type == "manual_flat":
+            if exit_price is None:
+                return 0.0
+            exit_r = self._price_to_r(exit_price)
+            return exit_r if is_single or not self._tp1_hit else (tp1_r + exit_r) / 2.0
         return 0.0
 
     def _trade_accounting_fields(self) -> dict:

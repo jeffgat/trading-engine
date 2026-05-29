@@ -13,7 +13,9 @@ interface StatusPanelProps {
   setActiveConfig: (config: string) => void;
   config: ConfigResponse | null;
   statusExecConfigs?: Record<string, ExecConfigMeta>;
+  statusMode?: string;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
+  onFlatten?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
 
@@ -44,20 +46,21 @@ function isLiveConfig(
   configName: string,
   config: ConfigResponse | null,
   statusExecConfigs?: Record<string, ExecConfigMeta>,
+  statusMode?: string,
 ): boolean {
   const meta = config?.exec_configs?.[configName] ?? statusExecConfigs?.[configName];
-  if (!meta) return false;
+  if (!meta) return statusMode?.toUpperCase().startsWith("LIVE") ?? false;
   return meta.webhooks.length > 0;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, onPause, onResume }: StatusPanelProps) {
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, statusMode, onPause, onFlatten, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
   const sessionCfgLookup = buildSessionConfigLookup(config);
 
   // Compute which configs are live vs dry-run
   const configNames = Object.keys(configEngines);
-  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config, statusExecConfigs));
-  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config, statusExecConfigs));
+  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config, statusExecConfigs, statusMode));
+  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config, statusExecConfigs, statusMode));
 
   // Sort: live first (alphabetical), then dry-run (alphabetical)
   const sortedConfigs = [...liveConfigs.sort(), ...dryRunConfigs.sort()];
@@ -90,7 +93,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
 
   const displayEngines = configEngines[validConfig] ?? [];
   const selectedConfigMeta = {
-    isLive: isLiveConfig(validConfig, config, statusExecConfigs),
+    isLive: isLiveConfig(validConfig, config, statusExecConfigs, statusMode),
     count: displayEngines.length,
   };
 
@@ -121,7 +124,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             <SelectContent>
               {sortedConfigs.map((name) => {
                 const count = (configEngines[name] ?? []).length;
-                const live = isLiveConfig(name, config, statusExecConfigs);
+                const live = isLiveConfig(name, config, statusExecConfigs, statusMode);
                 return (
                   <SelectItem key={name} value={name}>
                     <span className="flex items-center gap-2">
@@ -147,6 +150,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             strategyType={stratLookup[engine.session]}
             sessionConfig={sessionCfgLookup[`${engine.config_name}:${engine.session}`] ?? sessionCfgLookup[engine.session]}
             onPause={onPause}
+            onFlatten={onFlatten}
             onResume={onResume}
           />
         ))}

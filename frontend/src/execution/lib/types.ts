@@ -56,6 +56,7 @@ export interface AthGateStatus {
 export interface SessionStatus {
   session: string;
   state: string;
+  raw_state?: string;
   date: string;
   daily_atr: number;
   atr_length?: number;

@@ -67,6 +67,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
         updateWebhookMultiplier,
         flattenWebhook,
         pauseEngine,
+        flattenEngine,
         resumeEngine,
         toggleEnabled,
     } = useConfig(subscribe, { enabled: !readOnly });
@@ -121,7 +122,9 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             setActiveConfig={setActiveConfig}
                             config={config}
                             statusExecConfigs={status?.exec_configs}
+                            statusMode={status?.mode}
                             onPause={readOnly ? undefined : pauseEngine}
+                            onFlatten={readOnly ? undefined : flattenEngine}
                             onResume={readOnly ? undefined : resumeEngine}
                         />
                     )}
