@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from trader.api import DashboardState, _runtime_mode_from_brokers, parse_trade_log_line
+from trader.api import DashboardState, _public_exec_config_meta, _runtime_mode_from_brokers, parse_trade_log_line
 from trader.engine import TradeRecord
 
 
@@ -23,6 +23,41 @@ def test_runtime_mode_from_brokers_dry_run_without_live_brokers():
     )
 
     assert _runtime_mode_from_brokers(state) == "DRY-RUN"
+
+
+def test_public_exec_config_meta_keeps_live_count_without_webhook_urls():
+    state = DashboardState(
+        exec_configs={
+            "ALPHA_V1-A": {
+                "enabled": True,
+                "max_open_contracts": 20,
+                "webhooks": [
+                    {
+                        "url": "https://example.com/secret",
+                        "label": "funded",
+                        "paused": False,
+                        "multiplier": 1.0,
+                    }
+                ],
+                "sessions": ["NQ_NY"],
+                "lsi_sessions": ["NQ_NY_LSI"],
+            },
+            "SHADOW": {
+                "enabled": True,
+                "max_open_contracts": 0,
+                "webhooks": [],
+                "sessions": ["ES_NY"],
+                "lsi_sessions": [],
+            },
+        }
+    )
+
+    public_meta = _public_exec_config_meta(state)
+
+    assert len(public_meta["ALPHA_V1-A"]["webhooks"]) == 1
+    assert public_meta["ALPHA_V1-A"]["webhooks"] == [{}]
+    assert public_meta["ALPHA_V1-A"]["sessions"] == ["NQ_NY"]
+    assert public_meta["SHADOW"]["webhooks"] == []
 
 
 def test_parse_trade_log_line_keeps_full_tick_time_and_resolution():

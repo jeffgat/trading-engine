@@ -112,6 +112,7 @@ export interface StatusResponse {
   configs: Record<string, ConfigGroup>;
   uptime_seconds: number;
   mode: string;
+  exec_configs?: Record<string, ExecConfigMeta>;
 }
 
 export interface TradeLogEntry {

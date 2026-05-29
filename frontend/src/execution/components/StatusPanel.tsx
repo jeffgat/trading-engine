@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { SessionCard } from "./SessionCard";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
-import type { ConfigResponse, SessionConfig, SessionStatus } from "@/execution/lib/types";
+import type { ConfigResponse, ExecConfigMeta, SessionConfig, SessionStatus } from "@/execution/lib/types";
 
 interface StatusPanelProps {
   configEngines: Record<string, SessionStatus[]>;
@@ -12,6 +12,7 @@ interface StatusPanelProps {
   activeConfig: string;
   setActiveConfig: (config: string) => void;
   config: ConfigResponse | null;
+  statusExecConfigs?: Record<string, ExecConfigMeta>;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
 }
@@ -39,20 +40,24 @@ function buildSessionConfigLookup(config: ConfigResponse | null): Record<string,
 }
 
 /** Check if an exec config is live (has webhooks) or dry-run */
-function isLiveConfig(configName: string, config: ConfigResponse | null): boolean {
-  const meta = config?.exec_configs?.[configName];
+function isLiveConfig(
+  configName: string,
+  config: ConfigResponse | null,
+  statusExecConfigs?: Record<string, ExecConfigMeta>,
+): boolean {
+  const meta = config?.exec_configs?.[configName] ?? statusExecConfigs?.[configName];
   if (!meta) return false;
   return meta.webhooks.length > 0;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, onPause, onResume }: StatusPanelProps) {
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, onPause, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
   const sessionCfgLookup = buildSessionConfigLookup(config);
 
   // Compute which configs are live vs dry-run
   const configNames = Object.keys(configEngines);
-  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config));
-  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config));
+  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config, statusExecConfigs));
+  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config, statusExecConfigs));
 
   // Sort: live first (alphabetical), then dry-run (alphabetical)
   const sortedConfigs = [...liveConfigs.sort(), ...dryRunConfigs.sort()];
@@ -85,7 +90,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
 
   const displayEngines = configEngines[validConfig] ?? [];
   const selectedConfigMeta = {
-    isLive: isLiveConfig(validConfig, config),
+    isLive: isLiveConfig(validConfig, config, statusExecConfigs),
     count: displayEngines.length,
   };
 
@@ -116,7 +121,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             <SelectContent>
               {sortedConfigs.map((name) => {
                 const count = (configEngines[name] ?? []).length;
-                const live = isLiveConfig(name, config);
+                const live = isLiveConfig(name, config, statusExecConfigs);
                 return (
                   <SelectItem key={name} value={name}>
                     <span className="flex items-center gap-2">

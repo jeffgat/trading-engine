@@ -46,6 +46,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     const [activeConfig, setActiveConfig] = useState<string>('ALL');
     const { connected, status: socketStatus, subscribe } = useWebSocket({ enabled: !readOnly });
     const {
+        status,
         uptime,
         loading: statusLoading,
         pollingHealthy,
@@ -119,6 +120,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             activeConfig={activeConfig}
                             setActiveConfig={setActiveConfig}
                             config={config}
+                            statusExecConfigs={status?.exec_configs}
                             onPause={readOnly ? undefined : pauseEngine}
                             onResume={readOnly ? undefined : resumeEngine}
                         />

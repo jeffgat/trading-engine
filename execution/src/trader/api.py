@@ -507,6 +507,7 @@ class DashboardState:
             },
             "uptime_seconds": round(time.time() - self.start_time),
             "mode": self.mode,
+            "exec_configs": _public_exec_config_meta(self),
             "orderbook": self.orderbook_status,
         }
 
@@ -547,6 +548,25 @@ def _runtime_mode_from_brokers(state: DashboardState) -> str:
             if not getattr(broker, "dry_run", True):
                 return "LIVE"
     return "DRY-RUN"
+
+
+def _public_exec_config_meta(state: DashboardState) -> dict[str, dict]:
+    """Return public-safe execution config metadata for status displays.
+
+    The authenticated config endpoint can expose webhook URLs. Public status
+    only needs enough shape to decide LIVE vs DRY and show strategy counts.
+    """
+    public_meta: dict[str, dict] = {}
+    for config_name, meta in state.exec_configs.items():
+        webhooks = meta.get("webhooks") or []
+        public_meta[config_name] = {
+            "enabled": bool(meta.get("enabled", True)),
+            "max_open_contracts": meta.get("max_open_contracts", 0.0),
+            "webhooks": [{} for _ in webhooks],
+            "sessions": list(meta.get("sessions") or []),
+            "lsi_sessions": list(meta.get("lsi_sessions") or []),
+        }
+    return public_meta
 
 
 # ---------------------------------------------------------------------------
