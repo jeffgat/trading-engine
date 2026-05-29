@@ -70,7 +70,11 @@ def _fetch_clerk_user_emails(user_id: str) -> set[str]:
 
     request = urllib.request.Request(
         f"https://api.clerk.com/v1/users/{user_id}",
-        headers={"Authorization": f"Bearer {secret_key}", "Accept": "application/json"},
+        headers={
+            "Authorization": f"Bearer {secret_key}",
+            "Accept": "application/json",
+            "User-Agent": "gat-capital-backend/1.0",
+        },
     )
     with urllib.request.urlopen(request, timeout=5) as response:
         data = json.loads(response.read().decode("utf-8"))
@@ -126,7 +130,9 @@ def _verify_token(token: str) -> tuple[bool, str]:
 
     user_id = str(claims.get("sub", ""))
     allowed_user_ids = _split_env("BACKEND_AUTH_ALLOWED_USER_IDS")
-    if allowed_user_ids and user_id.lower() not in allowed_user_ids:
+    if allowed_user_ids:
+        if user_id.lower() in allowed_user_ids:
+            return True, ""
         return False, "User is not allowed"
 
     allowed_emails = _split_env("BACKEND_AUTH_ALLOWED_EMAILS") or _split_env("VITE_ALLOWED_AUTH_EMAIL")
