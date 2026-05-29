@@ -140,6 +140,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                         <PerformanceTab
                             subscribe={subscribe}
                             config={config}
+                            sessionStatuses={engines}
                             activeConfig={activeConfig}
                             configNames={configNames}
                             setActiveConfig={setActiveConfig}
@@ -220,6 +221,7 @@ function LogViewerTab({
 function PerformanceTab({
     subscribe,
     config,
+    sessionStatuses,
     activeConfig,
     configNames,
     setActiveConfig,
@@ -227,6 +229,7 @@ function PerformanceTab({
 }: {
     subscribe: (type: string, cb: (data: unknown) => void) => () => void;
     config: ReturnType<typeof useConfig>['config'];
+    sessionStatuses: ReturnType<typeof useStatus>['engines'];
     activeConfig: string;
     configNames: string[];
     setActiveConfig: (config: string) => void;
@@ -243,6 +246,7 @@ function PerformanceTab({
             activeConfig={activeConfig}
             configNames={configNames}
             setActiveConfig={setActiveConfig}
+            sessionStatuses={sessionStatuses}
             dbTrades={liveTrades.trades}
             dbLoading={liveTrades.loading}
         />

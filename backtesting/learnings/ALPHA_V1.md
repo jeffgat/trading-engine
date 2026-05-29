@@ -482,6 +482,25 @@ Result: candidate #7 is **not ALPHA-grade as a replacement gate**. Baseline rese
 
 Deployability: baseline R11 remains `live_native`; structure-gated variants are `post_filter_only` because production execution does not yet compute this 15m structure/VWAP context before arming. Do not promote the gate. Keep it only as a discretionary/recent-regime context note unless a separate low-risk specialist sleeve is intentionally designed.
 
+### ALPHA_V1 ORB Range Gate Sweep (2026-05-29)
+
+Report: `backtesting/learnings/reports/ALPHA_V1_ORB_RANGE_GATE_SWEEP_20260529.md`
+
+Artifacts: `backtesting/data/results/alpha_v1_orb_range_gate_sweep_20260529/`
+
+Broad post-filter attribution pass over the active ALPHA ORB legs asked whether an `orb_mid` style gate could skip sessions where the opening range is unusually small or unusually large. The sweep annotated `NQ Asia ORB`, `ES Asia ORB`, `ES_NY ORB`, and `NQ NY ORB R11` with a causal 60-session ORB range percentile available after ORB completion, then swept percentile and ORB/ATR bands against the active exact stream, split-exact counterparts, and the fee-aware aggressive sprint stream.
+
+Primary active exact sleeve baseline over `2016-04-17` to `2026-03-24`: `2,816` ORB trades, `+523.5R`, `0.186R/trade`, `PF 1.397`, `-19.87R` DD.
+
+Key read:
+- **There is quality concentration, but not a clean hard skip rule.** Sleeve-wide `40%-67%` ORB percentile kept only `759` trades (`27%`) but improved average trade from `0.186R` to `0.232R`, PF from `1.397` to `1.503`, and DD from `-19.87R` to `-10.78R`. It gave up `-347.2R` of total edge, so it is better framed as a risk throttle or specialist sleeve idea than a full replacement.
+- **Do not blindly skip all large ORBs.** The `80%-100%` sleeve bucket still produced `+149.7R`, `0.232R/trade`, `PF 1.522`; ES_NY, NQ Asia, and NQ R11 each had strong very-large ORB buckets. The weak large-zone pattern is mostly the `67%-80%` bucket, not the entire high tail.
+- **ES Asia is the cleanest candidate for a true gate.** Its `0%-20%` bucket was weak (`+11.9R`, `0.060R/trade`, `PF 1.13`) and `67%-100%` was also below baseline (`0.105R/trade`, `PF 1.24`). The `20%-67%` band kept `528` trades and improved PF/DD (`PF 1.365`, `-7.20R` DD versus baseline `PF 1.281`, `-12.23R`), though it still cut total R materially.
+- **ES_NY is not an `orb_mid` pure play.** `30%-60%` was excellent (`0.269R/trade`, `PF 1.74`), but the `80%-100%` bucket was also excellent (`0.309R/trade`, `PF 1.80`). A simple "not high" filter would remove real winners.
+- **NQ Asia and NQ R11 do not support a small-plus-large skip.** NQ Asia had good `0%-30%`, `40%-67%`, and `80%-100%` bands with a weak `67%-80%` pocket. NQ R11's tiny `0%-30%` zone underperformed, while `50%-67%` and `75%-100%` were both strong.
+
+Operating conclusion: keep this `post_filter_only` / `research_only`. The only follow-up that looks structurally worth a true engine replay is an **ES Asia ORB-size gate** around `20%-67%`, or a portfolio-level **risk throttle** that sizes up the `40%-67%` band instead of deleting everything outside it. Percentile gates should be implemented at the ORB completion/signal bar and then exact-replayed plus rerun through the fee-aware prop model before any ALPHA_V1 promotion.
+
 ---
 
 ## ORB Mechanic Transfer Test — Hunter Wide-Stop + Re-Entry

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-27T21:41:56.146730Z",
+  "generated_at": "2026-05-29T00:34:59.566479Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 236,
-    "result_directories": 378,
+    "report_files": 237,
+    "result_directories": 379,
     "result_loose_files": 45
   },
   "assets": {
@@ -5657,6 +5657,13 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_orb_portfolio_cooldown_compare"
         },
         {
+          "name": "ALPHA_V1_ORB_RANGE_GATE_SWEEP_20260529.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ORB_RANGE_GATE_SWEEP_20260529.md",
+          "slug": "alpha_v1_orb_range_gate_sweep_20260529",
+          "mtime_utc": "2026-05-29T00:34:55.873519Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_orb_range_gate_sweep_20260529"
+        },
+        {
           "name": "ALPHA_V1_ORB_REENTRY_2Y.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ORB_REENTRY_2Y.md",
           "slug": "alpha_v1_orb_reentry_2y",
@@ -6406,6 +6413,20 @@
         "file_count": 1,
         "primary_files": [
           "summary.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_orb_range_gate_sweep_20260529",
+        "path": "backtesting/data/results/alpha_v1_orb_range_gate_sweep_20260529",
+        "mtime_utc": "2026-05-29T00:33:04.829946Z",
+        "file_count": 7,
+        "primary_files": [
+          "summary.json",
+          "annotated_trades.csv",
+          "band_sweep.csv",
+          "baseline_summary.csv",
+          "bucket_summary.csv"
         ],
         "assets": []
       },

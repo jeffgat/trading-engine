@@ -26,7 +26,7 @@ import os
 import signal
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .fees import estimated_commission_per_side
@@ -1976,36 +1976,14 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
             seeded,
         )
 
-    # Recover current-day opening ranges / session state from recent intraday history.
-    # Keep this bypassable so a stalled historical preload cannot block the API
-    # during operational restarts.
-    skip_intraday_preload = os.environ.get("EXEC_SKIP_INTRADAY_PRELOAD", "").strip().lower()
-    if skip_intraday_preload in {"1", "true", "yes", "on"}:
-        logger.warning("Skipping intraday preload because EXEC_SKIP_INTRADAY_PRELOAD is enabled")
-        intraday_5m = {}
-    else:
-        intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
-    now_et = datetime.now(tz=ET)
-    recovered = 0
-    for symbol, target_engines in global_symbol_map.items():
-        bars = intraday_5m.get(symbol, [])
-        for engine in target_engines:
-            if hasattr(engine, "recover_opening_range") and engine.recover_opening_range(bars, now_et):
-                recovered += 1
-            elif hasattr(engine, "recover_session_state") and engine.recover_session_state(bars, now_et):
-                recovered += 1
-    logger.info(
-        "startup recovery complete: recovered=%d total_engines=%d",
-        recovered, len(all_engines),
-    )
-
     # Restore trade history from disk (G5 gate)
     dashboard.trade_history = load_trade_history()
     if dashboard.trade_history:
         logger.info("Restored %d trade(s) from history file", len(dashboard.trade_history))
 
-    # Restore engine state from checkpoint — overwrites time-based recovery
-    # with the actual last-known state (now handles all states, not just ARMED/MANAGING)
+    # Restore checkpoint before time-based recovery.  Intraday recovery below can
+    # repair stale FLAT checkpoints from a prior session, but must not overwrite
+    # live exposure or a completed FLAT state from the current session.
     checkpoint_restored = restore_engines(engines_by_config)
     if checkpoint_restored > 0:
         logger.info(
@@ -2016,6 +1994,73 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
         if ath_highs:
             seeded = apply_ath_highs(global_symbol_map, ath_highs)
             logger.info("ATH seeds re-applied after checkpoint restore: %s", seeded)
+
+    # Recover current-day opening ranges / session state from recent intraday history.
+    # Keep this bypassable so a stalled historical preload cannot block the API
+    # during operational restarts.
+    skip_intraday_preload = os.environ.get("EXEC_SKIP_INTRADAY_PRELOAD", "").strip().lower()
+    intraday_recovery_enabled = True
+    if skip_intraday_preload in {"1", "true", "yes", "on"}:
+        logger.warning("Skipping intraday preload because EXEC_SKIP_INTRADAY_PRELOAD is enabled")
+        intraday_recovery_enabled = False
+        intraday_5m = {}
+    else:
+        intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
+    now_et = datetime.now(tz=ET)
+
+    def _startup_recovery_skip_reason(engine) -> str | None:
+        state = getattr(engine, "_state", None)
+        state_value = getattr(state, "value", state)
+        if state_value in {"armed_limit", "filled", "managing"}:
+            return "checkpoint has financial exposure"
+        if state_value != "flat":
+            return None
+
+        current_date = getattr(engine, "_current_date", "")
+        if not current_date:
+            return None
+
+        if hasattr(engine, "_crosses_midnight") and hasattr(engine, "_orb_start_t"):
+            session_date = (
+                (now_et - timedelta(days=1)).strftime("%Y%m%d")
+                if engine._crosses_midnight and now_et.time() < engine._orb_start_t
+                else now_et.strftime("%Y%m%d")
+            )
+        else:
+            session_date = now_et.strftime("%Y%m%d")
+
+        if current_date == session_date:
+            return "checkpoint is flat for the current session"
+        return None
+
+    recovered = 0
+    skipped_recovery = 0
+    if intraday_recovery_enabled:
+        for symbol, target_engines in global_symbol_map.items():
+            bars = intraday_5m.get(symbol, [])
+            if not bars:
+                logger.info("No intraday preload bars for %s; preserving checkpoint state", symbol)
+                continue
+            for engine in target_engines:
+                skip_reason = _startup_recovery_skip_reason(engine)
+                if skip_reason is not None:
+                    skipped_recovery += 1
+                    logger.info(
+                        "[%s] Skipping startup recovery: %s",
+                        getattr(engine, "name", "engine"),
+                        skip_reason,
+                    )
+                    continue
+                if hasattr(engine, "recover_opening_range") and engine.recover_opening_range(bars, now_et):
+                    recovered += 1
+                elif hasattr(engine, "recover_session_state") and engine.recover_session_state(bars, now_et):
+                    recovered += 1
+    else:
+        logger.info("Startup recovery skipped; preserving checkpoint state")
+    logger.info(
+        "startup recovery complete: recovered=%d skipped=%d total_engines=%d",
+        recovered, skipped_recovery, len(all_engines),
+    )
 
     for cfg_name, cfg_engines in engines_by_config.items():
         if not cfg_engines:

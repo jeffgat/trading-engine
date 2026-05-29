@@ -15,15 +15,15 @@ export function useTradeLogs(
   // Initial fetch (newest first)
   useEffect(() => {
     if (!enabled) {
-      setLoading(false);
       return;
     }
 
     fetch("/exec-api/logs/trades?limit=500&offset=0")
       .then((r) => r.json())
       .then((data: LogResponse<TradeLogEntry>) => {
-        setEntries(data.entries);
-        setTotal(data.total);
+        const nextEntries = Array.isArray(data.entries) ? data.entries : [];
+        setEntries(nextEntries);
+        setTotal(typeof data.total === "number" ? data.total : nextEntries.length);
         setLoading(false);
         initialFetchDone.current = true;
       })
@@ -50,9 +50,10 @@ export function useTradeLogs(
     fetch(`/exec-api/logs/trades?limit=100&offset=${offset}`)
       .then((r) => r.json())
       .then((data: LogResponse<TradeLogEntry>) => {
-        setEntries((prev) => [...prev, ...data.entries]);
+        const nextEntries = Array.isArray(data.entries) ? data.entries : [];
+        setEntries((prev) => [...prev, ...nextEntries]);
       });
   }, [enabled, entries.length]);
 
-  return { entries, total, loading, loadMore };
+  return { entries, total, loading: enabled ? loading : false, loadMore };
 }

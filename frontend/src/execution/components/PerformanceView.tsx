@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import { CONFIG_COLORS } from "@/execution/lib/constants";
-import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint } from "@/execution/lib/types";
+import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint, SessionStatus } from "@/execution/lib/types";
 import type { LiveTrade } from "@/execution/hooks/useLiveTrades";
 import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
 import { EquityCurveComparison } from "@/execution/components/EquityCurveComparison";
@@ -16,6 +16,7 @@ interface PerformanceViewProps {
   activeConfig: string;
   configNames: string[];
   setActiveConfig: (config: string) => void;
+  sessionStatuses?: SessionStatus[];
   dbTrades?: LiveTrade[];
   dbLoading?: boolean;
 }
@@ -122,26 +123,75 @@ function getUsdValue(rValue: number | null, cfg: SessionCfg | undefined): number
  *  Compound key ensures FAST and SLOW configs with the same session resolve
  *  to their own risk_usd. Short key is a fallback (first match wins).
  *  Normalizes "ifvg" → "lsi" for display. */
-function buildSessionLookups(config: ConfigResponse | null) {
+function buildSessionLookups(config: ConfigResponse | null, sessionStatuses: SessionStatus[] = []) {
   const cfgByKey: Record<string, SessionCfg> = {};
   const cfgByShort: Record<string, SessionCfg> = {};
   const typeByShort: Record<string, "continuation" | "lsi"> = {};
   const tickerByKey: Record<string, string> = {};
   const tickerByShort: Record<string, string> = {};
+
+  const rememberSession = (
+    configName: string,
+    short: string,
+    sessionCfg: SessionCfg,
+    type: "continuation" | "lsi",
+    ticker: string,
+  ) => {
+    if (configName) {
+      const key = `${configName}:${short}`;
+      cfgByKey[key] = { ...cfgByKey[key], ...sessionCfg };
+      tickerByKey[`${configName}:${short}`] = ticker;
+    }
+    if (!cfgByShort[short]) {
+      cfgByShort[short] = sessionCfg;
+      typeByShort[short] = type;
+      tickerByShort[short] = ticker;
+    }
+  };
+
   if (config?.sessions) {
     for (const [key, cfg] of Object.entries(config.sessions)) {
       const configName = key.includes(":") ? key.split(":")[0] : "";
       const short = key.includes(":") ? key.split(":")[1] : key;
       const sessionCfg = cfg as SessionCfg & { signal_ticker?: string; exec_ticker?: string };
       const ticker = normalizeTicker(sessionCfg.signal_ticker || sessionCfg.exec_ticker || short.split("_")[0]);
-      if (configName) {
-        cfgByKey[`${configName}:${short}`] = sessionCfg;
-        tickerByKey[`${configName}:${short}`] = ticker;
-      }
-      if (!cfgByShort[short]) {
-        cfgByShort[short] = sessionCfg;
-        typeByShort[short] = cfg.type === "continuation" ? "continuation" : "lsi";
-        tickerByShort[short] = ticker;
+      rememberSession(
+        configName,
+        short,
+        sessionCfg,
+        cfg.type === "continuation" ? "continuation" : "lsi",
+        ticker,
+      );
+    }
+  }
+
+  for (const status of sessionStatuses) {
+    const short = status.session;
+    if (!short) continue;
+    const configName = status.config_name ?? "";
+    const ticker = normalizeTicker(status.signal_ticker || status.exec_ticker || short.split("_")[0]);
+    rememberSession(
+      configName,
+      short,
+      { risk_usd: status.risk_usd },
+      status.type === "lsi" || status.type === "ifvg" ? "lsi" : "continuation",
+      ticker,
+    );
+  }
+
+  if (config?.exec_configs && config?.sessions) {
+    for (const [configName, meta] of Object.entries(config.exec_configs)) {
+      for (const short of [...(meta.sessions ?? []), ...(meta.lsi_sessions ?? [])]) {
+        const source = cfgByKey[`${configName}:${short}`] ?? cfgByShort[short];
+        if (!source || cfgByKey[`${configName}:${short}`]) continue;
+        const ticker = tickerByShort[short] ?? normalizeTicker(short.split("_")[0]);
+        rememberSession(
+          configName,
+          short,
+          source,
+          short.toLowerCase().includes("lsi") ? "lsi" : typeByShort[short] ?? "continuation",
+          ticker,
+        );
       }
     }
   }
@@ -324,7 +374,14 @@ function tickerFromConfig(
   return normalizeTicker(cfg?.signal_ticker || cfg?.exec_ticker || leg.split("_")[0]);
 }
 
-function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null, entries: TradeLogEntry[]): PerfRow[] {
+function buildRowsFromDb(
+  trades: LiveTrade[],
+  config: ConfigResponse | null,
+  entries: TradeLogEntry[],
+  sessionStatuses: SessionStatus[] = [],
+): PerfRow[] {
+  const { cfgByKey, cfgByShort, tickerByKey, tickerByShort } = buildSessionLookups(config, sessionStatuses);
+
   return trades.map((t) => {
     const leg = t.leg || t.session;
     const entryLog = findEntryLogForTrade(t, entries);
@@ -339,12 +396,19 @@ function buildRowsFromDb(trades: LiveTrade[], config: ConfigResponse | null, ent
     const sessionLabel = sessionParts[1] ?? t.session;
     const stratType = leg.toLowerCase().includes("lsi") ? "LSI" : "ORB";
     const compoundKey = `${t.config_name}:${leg}`;
-    const sessionCfg = (config?.sessions?.[compoundKey] ?? config?.sessions?.[leg] ?? config?.sessions?.[t.session]) as SessionCfg | undefined;
+    const sessionCfg =
+      cfgByKey[compoundKey]
+      ?? cfgByShort[leg]
+      ?? cfgByShort[t.session]
+      ?? (t.risk_usd != null ? { risk_usd: t.risk_usd } : undefined);
     const rValue = getDbRValue(t, config);
     const usdValue = t.net_pnl_usd ?? t.gross_pnl_usd ?? getUsdValue(rValue, sessionCfg);
     const ticker = normalizeTicker(
       t.ticker
         || entryLog?.asset
+        || tickerByKey[compoundKey]
+        || tickerByShort[leg]
+        || tickerByShort[t.session]
         || tickerFromConfig(config, t.config_name, leg)
         || tickerFromSession(leg),
     );
@@ -489,13 +553,13 @@ function mergeEquityCurves(
   return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function PerformanceView({ entries, loading, config, activeConfig, configNames, setActiveConfig, dbTrades, dbLoading }: PerformanceViewProps) {
+export function PerformanceView({ entries, loading, config, activeConfig, configNames, setActiveConfig, sessionStatuses = [], dbTrades, dbLoading }: PerformanceViewProps) {
   // Use DB trades when available, fall back to log-based rows
   const useDb = (dbTrades?.length ?? 0) > 0;
   const allRows = useMemo(() => {
-    if (useDb && dbTrades) return buildRowsFromDb(dbTrades, config, entries);
+    if (useDb && dbTrades) return buildRowsFromDb(dbTrades, config, entries, sessionStatuses);
     return buildRows(entries, config);
-  }, [useDb, dbTrades, entries, config]);
+  }, [useDb, dbTrades, entries, config, sessionStatuses]);
 
   // Config-level filter (from the header pills)
   const configRows = useMemo(() => {
