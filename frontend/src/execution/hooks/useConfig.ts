@@ -1,6 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountsUpdatePayload, ConfigResponse, ExecConfigMeta, SessionConfig, WebhookEntry } from "@/execution/lib/types";
 
+async function readErrorMessage(response: Response, fallback: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const err = await response.json();
+      if (typeof err.detail === "string") return err.detail;
+      if (err.detail != null) return JSON.stringify(err.detail);
+      if (typeof err.error?.message === "string") return err.error.message;
+    } catch {
+      // Fall through to text response below.
+    }
+  }
+
+  const text = await response.text().catch(() => "");
+  return text.trim() || fallback;
+}
+
 export function useConfig(
   subscribe?: (type: string, cb: (data: unknown) => void) => () => void,
   { enabled = true }: { enabled?: boolean } = {},
@@ -244,8 +261,7 @@ export function useConfig(
         method: "POST",
       });
       if (!r.ok) {
-        const err = await r.json();
-        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        throw new Error(await readErrorMessage(r, "Failed to pause engine"));
       }
     },
     [],
@@ -258,8 +274,7 @@ export function useConfig(
         method: "POST",
       });
       if (!r.ok) {
-        const err = await r.json();
-        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        throw new Error(await readErrorMessage(r, "Failed to flatten engine"));
       }
     },
     [],
@@ -272,8 +287,7 @@ export function useConfig(
         method: "POST",
       });
       if (!r.ok) {
-        const err = await r.json();
-        throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+        throw new Error(await readErrorMessage(r, "Failed to resume engine"));
       }
     },
     [],

@@ -33,6 +33,12 @@ export function useStatus(
     return (await response.json()) as StatusResponse;
   }, []);
 
+  const refreshStatus = useCallback(async () => {
+    const data = await fetchStatus();
+    applyStatus(data);
+    setPollingHealthy(true);
+  }, [applyStatus, fetchStatus]);
+
   // Initial fetch
   useEffect(() => {
     let cancelled = false;
@@ -113,5 +119,6 @@ export function useStatus(
     pollingHealthy: pollingHealthy && !streamConnected,
     configEngines,
     engines,
+    refreshStatus,
   };
 }

@@ -178,6 +178,7 @@ function GateRow({ label, value, tone }: { label: string; value: string; tone?: 
 
 export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFlatten, onResume }: SessionCardProps) {
   const [savingAction, setSavingAction] = useState<"pause" | "flatten" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const isLsi = strategyType === "lsi";
   const isLsiTag = (label: string | null | undefined) => label?.includes("LSI") ?? false;
   const hasLevels = engine.levels != null && engine.levels.entry != null;
@@ -222,12 +223,15 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
 
   const handleToggle = async () => {
     setSavingAction("pause");
+    setActionError(null);
     try {
       if (isPaused) {
         await onResume?.(engine.session, engine.config_name);
       } else {
         await onPause?.(engine.session, engine.config_name);
       }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Engine control failed");
     } finally {
       setSavingAction(null);
     }
@@ -235,8 +239,11 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
 
   const handleFlatten = async () => {
     setSavingAction("flatten");
+    setActionError(null);
     try {
       await onFlatten?.(engine.session, engine.config_name);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Flatten failed");
     } finally {
       setSavingAction(null);
     }
@@ -568,69 +575,76 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
 
         {/* Manual controls */}
         {(onPause || onResume || onFlatten) && (
-          <div className="mt-auto flex justify-end gap-2">
-            {onFlatten && canFlatten && (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    disabled={savingAction != null}
-                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 border-amber-400/30"
-                  >
-                    {savingAction === "flatten" ? "..." : rawState === "armed_limit" ? "Cancel" : "Flatten"}
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {rawState === "armed_limit" ? "Cancel" : "Flatten"} {engine.session}?
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will send a {rawState === "armed_limit" ? "cancel" : "flatten"} request and mark this strategy flat. It will not pause the strategy.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleFlatten}>
-                      {rawState === "armed_limit" ? "Cancel Order" : "Flatten Now"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+          <div className="mt-auto space-y-2">
+            {actionError && (
+              <div className="break-words text-right text-[10px] leading-snug text-loss">
+                {actionError}
+              </div>
             )}
-            {isPaused ? (
-              <button
-                onClick={handleToggle}
-                disabled={savingAction != null}
-                className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-profit/20 text-profit hover:bg-profit/30 border-profit/30"
-              >
-                {savingAction === "pause" ? "..." : "Resume"}
-              </button>
-            ) : (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <button
-                    disabled={savingAction != null}
-                    className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/10 text-loss hover:bg-loss/20 border-loss/30"
-                  >
-                    {savingAction === "pause" ? "..." : "Pause"}
-                  </button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Pause {engine.session}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This will flatten any open position and pause the strategy from taking new trades.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleToggle}>
-                      Flatten/Pause
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            )}
+            <div className="flex justify-end gap-2">
+              {onFlatten && canFlatten && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      disabled={savingAction != null}
+                      className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-amber-400/10 text-amber-300 hover:bg-amber-400/20 border-amber-400/30"
+                    >
+                      {savingAction === "flatten" ? "..." : rawState === "armed_limit" ? "Cancel" : "Flatten"}
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {rawState === "armed_limit" ? "Cancel" : "Flatten"} {engine.session}?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will send a {rawState === "armed_limit" ? "cancel" : "flatten"} request and mark this strategy flat. It will not pause the strategy.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleFlatten}>
+                        {rawState === "armed_limit" ? "Cancel Order" : "Flatten Now"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+              {isPaused ? (
+                <button
+                  onClick={handleToggle}
+                  disabled={savingAction != null}
+                  className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-profit/20 text-profit hover:bg-profit/30 border-profit/30"
+                >
+                  {savingAction === "pause" ? "..." : "Resume"}
+                </button>
+              ) : (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      disabled={savingAction != null}
+                      className="rounded px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50 bg-loss/10 text-loss hover:bg-loss/20 border-loss/30"
+                    >
+                      {savingAction === "pause" ? "..." : "Pause"}
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Pause {engine.session}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will flatten any open position and pause the strategy from taking new trades.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleToggle}>
+                        Flatten/Pause
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </div>
         )}
       </CardContent>

@@ -10,6 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import uvicorn
 
+# Local dev should serve the local SQLite DB unless a main DB URL is explicitly
+# configured. This must happen before importing orb_backtest.api, because the
+# experiments module selects local vs remote storage at import time.
+if "MAIN_DB_URL" not in os.environ and "EXPERIMENTS_DB_URL" not in os.environ:
+    os.environ["MAIN_DB_URL"] = ""
+    os.environ["EXPERIMENTS_DB_URL"] = ""
+
 from orb_backtest.api import app
 
 if __name__ == "__main__":

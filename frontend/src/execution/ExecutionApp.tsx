@@ -6,7 +6,7 @@ import { useStatus } from '@/execution/hooks/useStatus';
 import { useTradeLogs } from '@/execution/hooks/useTradeLogs';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
 import { ExecutionTabSkeleton } from '@/shared/ui/page-skeletons';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
 export type ExecutionTab = 'status' | 'trades' | 'performance' | 'logs' | 'config';
 
@@ -52,6 +52,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
         pollingHealthy,
         configEngines,
         engines,
+        refreshStatus,
     } = useStatus(subscribe, connected);
     const {
         config,
@@ -81,6 +82,27 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
         : pollingHealthy
             ? 'connected'
             : socketStatus;
+    const pauseEngineAndRefresh = useCallback(
+        async (sessionName: string, configName?: string) => {
+            await pauseEngine(sessionName, configName);
+            await refreshStatus();
+        },
+        [pauseEngine, refreshStatus],
+    );
+    const flattenEngineAndRefresh = useCallback(
+        async (sessionName: string, configName?: string) => {
+            await flattenEngine(sessionName, configName);
+            await refreshStatus();
+        },
+        [flattenEngine, refreshStatus],
+    );
+    const resumeEngineAndRefresh = useCallback(
+        async (sessionName: string, configName?: string) => {
+            await resumeEngine(sessionName, configName);
+            await refreshStatus();
+        },
+        [resumeEngine, refreshStatus],
+    );
 
     return (
         <>
@@ -123,9 +145,9 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             config={config}
                             statusExecConfigs={status?.exec_configs}
                             statusMode={status?.mode}
-                            onPause={readOnly ? undefined : pauseEngine}
-                            onFlatten={readOnly ? undefined : flattenEngine}
-                            onResume={readOnly ? undefined : resumeEngine}
+                            onPause={readOnly ? undefined : pauseEngineAndRefresh}
+                            onFlatten={readOnly ? undefined : flattenEngineAndRefresh}
+                            onResume={readOnly ? undefined : resumeEngineAndRefresh}
                         />
                     )}
                     {activeTab === 'trades' && (
