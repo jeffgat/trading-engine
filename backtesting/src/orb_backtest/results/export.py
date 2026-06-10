@@ -49,14 +49,23 @@ _PARAM_ABBREV: dict[str, str] = {
     "ny_stop_orb_pct": "ny.orbstop",
     "ny_min_gap_atr_pct": "ny.gap",
     "ny_min_gap_orb_pct": "ny.orbgap",
+    "ny_max_prior_atr_pct": "ny.maxatrpct",
+    "ny_max_prior_rolling_atr_pct": "ny.maxrollatrpct",
+    "ny_max_orb_range_pct": "ny.maxorbpct",
     "asia_stop_atr_pct": "asia.stop",
     "asia_stop_orb_pct": "asia.orbstop",
     "asia_min_gap_atr_pct": "asia.gap",
     "asia_min_gap_orb_pct": "asia.orbgap",
+    "asia_max_prior_atr_pct": "asia.maxatrpct",
+    "asia_max_prior_rolling_atr_pct": "asia.maxrollatrpct",
+    "asia_max_orb_range_pct": "asia.maxorbpct",
     "ldn_stop_atr_pct": "ldn.stop",
     "ldn_stop_orb_pct": "ldn.orbstop",
     "ldn_min_gap_atr_pct": "ldn.gap",
     "ldn_min_gap_orb_pct": "ldn.orbgap",
+    "ldn_max_prior_atr_pct": "ldn.maxatrpct",
+    "ldn_max_prior_rolling_atr_pct": "ldn.maxrollatrpct",
+    "ldn_max_orb_range_pct": "ldn.maxorbpct",
 }
 
 
@@ -240,6 +249,12 @@ def results_to_dict(
             config_dict[f"{prefix}_min_gap_atr_pct"] = sess.min_gap_atr_pct
         if sess.qualifying_move_atr_pct > 0:
             config_dict[f"{prefix}_qualifying_move_atr_pct"] = sess.qualifying_move_atr_pct
+        if getattr(sess, "max_prior_atr_pct", 0.0) > 0:
+            config_dict[f"{prefix}_max_prior_atr_pct"] = sess.max_prior_atr_pct
+        if getattr(sess, "max_prior_rolling_atr_pct", 0.0) > 0:
+            config_dict[f"{prefix}_max_prior_rolling_atr_pct"] = sess.max_prior_rolling_atr_pct
+        if getattr(sess, "max_orb_range_pct", 0.0) > 0:
+            config_dict[f"{prefix}_max_orb_range_pct"] = sess.max_orb_range_pct
         if sess.min_stop_points > 0:
             config_dict[f"{prefix}_min_stop_points"] = sess.min_stop_points
         if sess.min_tp1_points > 0:

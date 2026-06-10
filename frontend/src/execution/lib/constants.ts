@@ -88,6 +88,9 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
     ES_Asia: "ORB/ES_ASIA-RR1.5",
     ES_NY: "ORB/ES_NY-RR5",
   },
+  ALPHA_V2: {
+    "NQ_NY-RR2": "ORB/NQ_NY-RR2",
+  },
   TESTING: {
     NQ_NY_LSI: "LSI/NQ_NY-RR2",
     GC_Asia: "ORB/GC_ASIA-RR2.5",
@@ -99,6 +102,7 @@ export const CONFIG_COLORS: Record<string, string> = {
   ALPHA_V1: "bg-profit/15 text-profit border-profit/35",
   "ALPHA_V1-A": "bg-profit/15 text-profit border-profit/35",
   "ALPHA_V1-C": "bg-info/15 text-info border-info/35",
+  ALPHA_V2: "bg-amber-500/20 text-amber-400 border-amber-500/40",
   TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",
   FAST: "bg-bg-tertiary text-text-secondary border-border",
   "FAST_V1.1": "bg-bg-tertiary text-text-secondary border-border",

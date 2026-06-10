@@ -82,6 +82,77 @@ def compute_daily_atr(
     return result
 
 
+def compute_previous_daily_close(df: pd.DataFrame) -> np.ndarray:
+    """Map the previous completed daily close to each intraday bar."""
+    daily_close = df["close"].resample("1D").last().dropna()
+    daily_dates = daily_close.index.normalize()
+    close_vals = daily_close.values.astype(np.float64)
+
+    prev_close = np.roll(close_vals, 1)
+    prev_close[0] = np.nan
+
+    daily_dates_arr = daily_dates.values
+    bar_dates_arr = df.index.normalize().values
+    indices = np.searchsorted(daily_dates_arr, bar_dates_arr, side="right") - 1
+
+    result = np.full(len(df), np.nan, dtype=np.float64)
+    valid = (indices >= 0) & (indices < len(daily_dates_arr))
+    matching = valid & (
+        daily_dates_arr[np.clip(indices, 0, len(daily_dates_arr) - 1)]
+        == bar_dates_arr
+    )
+    result[matching] = prev_close[indices[matching]]
+    return result
+
+
+def compute_previous_daily_rolling_atr_pct(
+    df: pd.DataFrame,
+    length: int = 14,
+) -> np.ndarray:
+    """Map previous completed simple rolling daily true-range ATR% to bars.
+
+    This mirrors the research gate workflow: daily true range is computed from
+    daily OHLC, averaged with a simple rolling mean, converted to percent of
+    that same day's close, then shifted one completed day before intraday use.
+    """
+    length = int(length)
+    daily = (
+        df.resample("1D")
+        .agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+        })
+        .dropna(subset=["open", "high", "low", "close"])
+    )
+    prev_close = daily["close"].shift(1)
+    true_range = pd.concat(
+        [
+            daily["high"] - daily["low"],
+            (daily["high"] - prev_close).abs(),
+            (daily["low"] - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    rolling_atr = true_range.rolling(length, min_periods=length).mean()
+    prior_rolling_atr_pct = (rolling_atr / daily["close"] * 100.0).shift(1)
+
+    daily_dates_arr = daily.index.normalize().values
+    bar_dates_arr = df.index.normalize().values
+    indices = np.searchsorted(daily_dates_arr, bar_dates_arr, side="right") - 1
+
+    result = np.full(len(df), np.nan, dtype=np.float64)
+    valid = (indices >= 0) & (indices < len(daily_dates_arr))
+    matching = valid & (
+        daily_dates_arr[np.clip(indices, 0, len(daily_dates_arr) - 1)]
+        == bar_dates_arr
+    )
+    values = prior_rolling_atr_pct.values.astype(np.float64)
+    result[matching] = values[indices[matching]]
+    return result
+
+
 def compute_daily_sma(
     df: pd.DataFrame,
     length: int = 20,

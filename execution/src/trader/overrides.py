@@ -19,6 +19,7 @@ EDITABLE_FIELDS: frozenset[str] = frozenset({
     # Strategy
     "rr", "tp1_ratio", "exit_mode", "stop_atr_pct", "stop_orb_pct",
     "min_gap_atr_pct", "min_gap_orb_pct", "max_gap_atr_pct",
+    "max_prior_rolling_atr_pct", "max_orb_range_pct",
     # Risk & sizing
     "risk_usd", "min_qty", "max_single_risk_usd", "be_offset_ticks",
     # Toggles

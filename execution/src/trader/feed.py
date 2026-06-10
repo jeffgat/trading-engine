@@ -208,6 +208,52 @@ class ATRCalculator:
         self._prev_close = day.close
 
 
+class RollingATRPctCalculator:
+    """Incremental simple rolling daily true-range ATR% gate value.
+
+    This is intentionally separate from :class:`ATRCalculator`: execution ATR
+    stop/gap sizing uses Wilder smoothing, while this context gate mirrors the
+    research lead's simple rolling daily true-range ATR% shifted one completed
+    day before intraday use.
+    """
+
+    def __init__(self, length: int = 14) -> None:
+        self.length = length
+        self._trs: deque[float] = deque(maxlen=length)
+        self._current_day: DailyBar | None = None
+        self._prev_close: float = float("nan")
+        self._value: float = float("nan")
+
+    @property
+    def value(self) -> float:
+        """Current previous-completed-day rolling ATR% value."""
+        return self._value
+
+    def seed_daily(self, daily_bars: list[tuple[date, float, float, float, float]]) -> None:
+        for d, o, h, l, c in daily_bars:
+            self._close_day(DailyBar(date=d, open=o, high=h, low=l, close=c))
+
+    def on_5m_bar(self, bar: Bar) -> None:
+        bar_date = bar.timestamp.date()
+        if self._current_day is None or bar_date != self._current_day.date:
+            if self._current_day is not None:
+                self._close_day(self._current_day)
+            self._current_day = DailyBar(date=bar_date)
+        self._current_day.update(bar)
+
+    def _close_day(self, day: DailyBar) -> None:
+        if math.isfinite(self._prev_close):
+            tr = max(
+                day.high - day.low,
+                abs(day.high - self._prev_close),
+                abs(day.low - self._prev_close),
+            )
+            self._trs.append(float(tr))
+            if len(self._trs) >= self.length and math.isfinite(day.close) and day.close > 0.0:
+                self._value = sum(self._trs) / self.length / day.close * 100.0
+        self._prev_close = day.close
+
+
 # ---------------------------------------------------------------------------
 # ATR refresh metadata
 # ---------------------------------------------------------------------------
@@ -326,7 +372,17 @@ class BarAggregator:
 # ---------------------------------------------------------------------------
 # Callback type
 # ---------------------------------------------------------------------------
-ATRValuesByLength = dict[int, float]
+class ATRValuesByLength(dict[int, float]):
+    """ATR values plus optional context values keyed by ATR length."""
+
+    def __init__(
+        self,
+        values: dict[int, float] | None = None,
+        *,
+        rolling_atr_pct_by_length: dict[int, float] | None = None,
+    ) -> None:
+        super().__init__(values or {})
+        self.rolling_atr_pct_by_length = dict(rolling_atr_pct_by_length or {})
 
 OnBarCallback = Callable[[Bar, ATRValuesByLength], Awaitable[None]]
 # Signature: async def on_bar(bar: Bar, daily_atrs: dict[int, float]) -> None
@@ -410,6 +466,7 @@ class DataBentoFeed:
         self._aggregators: dict[str, BarAggregator] = {}
         self._atr_lengths_by_symbol: dict[str, list[int]] = {}
         self._atrs: dict[str, dict[int, ATRCalculator]] = {}
+        self._rolling_atr_pcts: dict[str, dict[int, RollingATRPctCalculator]] = {}
         self._daily_history: dict[str, DailyHistoryTracker] = {}
         for sym in self.symbols:
             self._aggregators[sym] = BarAggregator()
@@ -419,6 +476,9 @@ class DataBentoFeed:
             self._atr_lengths_by_symbol[sym] = lengths
             self._atrs[sym] = {
                 length: ATRCalculator(length=length) for length in lengths
+            }
+            self._rolling_atr_pcts[sym] = {
+                length: RollingATRPctCalculator(length=length) for length in lengths
             }
             self._daily_history[sym] = DailyHistoryTracker()
 
@@ -558,14 +618,19 @@ class DataBentoFeed:
                 bars_used=0,
             )
 
-        refreshed_values: ATRValuesByLength = {}
+        refreshed_values: dict[int, float] = {}
         refreshed_calcs: dict[int, ATRCalculator] = {}
+        refreshed_rolling_calcs: dict[int, RollingATRPctCalculator] = {}
         for length in self._atr_lengths_by_symbol[sym]:
             calc = ATRCalculator(length=length)
             calc.seed_daily(bars)
             refreshed_calcs[length] = calc
             refreshed_values[length] = calc.value
+            rolling_calc = RollingATRPctCalculator(length=length)
+            rolling_calc.seed_daily(bars)
+            refreshed_rolling_calcs[length] = rolling_calc
         self._atrs[sym] = refreshed_calcs
+        self._rolling_atr_pcts[sym] = refreshed_rolling_calcs
         self._daily_history[sym].seed_daily(bars)
         last_date = bars[-1][0]
         return ATRRefreshInfo(
@@ -667,9 +732,12 @@ class DataBentoFeed:
         return calc.value if calc is not None else 0.0
 
     def get_atr_values_for_symbol(self, symbol: str) -> ATRValuesByLength:
-        return {
-            length: calc.value for length, calc in self._atrs.get(symbol, {}).items()
-        }
+        return ATRValuesByLength(
+            {length: calc.value for length, calc in self._atrs.get(symbol, {}).items()},
+            rolling_atr_pct_by_length={
+                length: calc.value for length, calc in self._rolling_atr_pcts.get(symbol, {}).items()
+            },
+        )
 
     def get_atr_values(self) -> dict[str, float]:
         """Return the primary ATR value per symbol (backward-compatible)."""
@@ -950,9 +1018,15 @@ class DataBentoFeed:
             # update daily ATR for each configured length on this symbol
             for atr_calc in atr_calcs.values():
                 atr_calc.on_5m_bar(bar_5m)
-            atr_values = {
-                length: calc.value for length, calc in atr_calcs.items()
-            }
+            rolling_calcs = self._rolling_atr_pcts[symbol]
+            for rolling_calc in rolling_calcs.values():
+                rolling_calc.on_5m_bar(bar_5m)
+            atr_values = ATRValuesByLength(
+                {length: calc.value for length, calc in atr_calcs.items()},
+                rolling_atr_pct_by_length={
+                    length: calc.value for length, calc in rolling_calcs.items()
+                },
+            )
 
             logger.debug(
                 "5m bar [%s]: %s O=%.2f H=%.2f L=%.2f C=%.2f V=%d ATRs=%s",
@@ -1081,6 +1155,9 @@ class ReplayFeed:
         self._atrs = {
             length: ATRCalculator(length=length) for length in self.atr_lengths
         }
+        self._rolling_atr_pcts = {
+            length: RollingATRPctCalculator(length=length) for length in self.atr_lengths
+        }
 
     async def run(self) -> None:
         """Replay all bars from the CSV."""
@@ -1110,9 +1187,16 @@ class ReplayFeed:
 
             for atr_calc in self._atrs.values():
                 atr_calc.on_5m_bar(bar)
+            for rolling_calc in self._rolling_atr_pcts.values():
+                rolling_calc.on_5m_bar(bar)
 
             if self.on_bar is not None:
                 await self.on_bar(
                     bar,
-                    {length: calc.value for length, calc in self._atrs.items()},
+                    ATRValuesByLength(
+                        {length: calc.value for length, calc in self._atrs.items()},
+                        rolling_atr_pct_by_length={
+                            length: calc.value for length, calc in self._rolling_atr_pcts.items()
+                        },
+                    ),
                 )

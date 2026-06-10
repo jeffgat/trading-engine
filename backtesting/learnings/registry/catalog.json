@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-29T00:34:59.566479Z",
+  "generated_at": "2026-06-09T22:47:52.623096Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 237,
-    "result_directories": 379,
+    "report_files": 239,
+    "result_directories": 382,
     "result_loose_files": 45
   },
   "assets": {
@@ -5419,6 +5419,20 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_asia_orb_full_tp1_widestop_sweep_20260504"
         },
         {
+          "name": "ALPHA_V1_ATH_FRAGILITY_20260608.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ATH_FRAGILITY_20260608.md",
+          "slug": "alpha_v1_ath_fragility_20260608",
+          "mtime_utc": "2026-06-08T16:32:51.568892Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_ath_fragility_20260608"
+        },
+        {
+          "name": "ALPHA_V1_ATH_REFRESH_20260608.md",
+          "path": "backtesting/learnings/reports/ALPHA_V1_ATH_REFRESH_20260608.md",
+          "slug": "alpha_v1_ath_refresh_20260608",
+          "mtime_utc": "2026-06-08T15:31:36.217893Z",
+          "matched_result_directory": "backtesting/data/results/alpha_v1_ath_refresh_20260608"
+        },
+        {
           "name": "ALPHA_V1_ATH_REGIME_FIRST_PASS_20260505.md",
           "path": "backtesting/learnings/reports/ALPHA_V1_ATH_REGIME_FIRST_PASS_20260505.md",
           "slug": "alpha_v1_ath_regime_first_pass_20260505",
@@ -6089,6 +6103,34 @@
         "assets": []
       },
       {
+        "name": "alpha_v1_ath_fragility_20260608",
+        "path": "backtesting/data/results/alpha_v1_ath_fragility_20260608",
+        "mtime_utc": "2026-06-08T16:32:17.727795Z",
+        "file_count": 25,
+        "primary_files": [
+          "summary.json",
+          "ES_ALL_BLOCK_0P5_1P0_raw_result.json",
+          "ES_ALL_BLOCK_0P5_1P0_trades_ath_annotated.csv",
+          "ES_ALL_BLOCK_5P0_10P0_raw_result.json",
+          "ES_ALL_BLOCK_5P0_10P0_trades_ath_annotated.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "alpha_v1_ath_refresh_20260608",
+        "path": "backtesting/data/results/alpha_v1_ath_refresh_20260608",
+        "mtime_utc": "2026-06-08T15:30:15.560488Z",
+        "file_count": 8,
+        "primary_files": [
+          "summary.json",
+          "ALPHA_V1-A_ES_NY_ATH_0P5_0P75_raw_result.json",
+          "ALPHA_V1-A_ES_NY_ATH_0P5_0P75_trades_ath_annotated.csv",
+          "ALPHA_V1-A_ath_bucket_summary.csv",
+          "ALPHA_V1-A_ath_correlations.csv"
+        ],
+        "assets": []
+      },
+      {
         "name": "alpha_v1_ath_regime_first_pass_20260505",
         "path": "backtesting/data/results/alpha_v1_ath_regime_first_pass_20260505",
         "mtime_utc": "2026-05-05T22:32:19.512816Z",
@@ -6606,6 +6648,20 @@
         "primary_files": [
           "round2_memo.md",
           "round2_results.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "discovery_runs",
+        "path": "backtesting/data/results/discovery_runs",
+        "mtime_utc": "2026-06-09T20:55:09.384932Z",
+        "file_count": 112,
+        "primary_files": [
+          "nq_native_smoke_20260608_agentic/artifacts/deployability_audit.json",
+          "nq_native_smoke_20260608_agentic/artifacts/discovery_search.json",
+          "nq_native_smoke_20260608_agentic/artifacts/discovery_search_details.json",
+          "nq_native_smoke_20260608_agentic/artifacts/holdout_freeze.json",
+          "nq_native_smoke_20260608_agentic/artifacts/learnings_review.json"
         ],
         "assets": []
       },
@@ -7880,7 +7936,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-05-13T03:08:56.155750Z"
+        "mtime_utc": "2026-06-08T18:13:18.826092Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",

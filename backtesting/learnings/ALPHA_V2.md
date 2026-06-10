@@ -1,78 +1,96 @@
 # ALPHA_V2 Portfolio
 
-Working promotion packet for the two live-native Asia ORB stop/target variants
-selected from the constrained stop + TP1/R:R sweep and exact live-engine replay.
+ALPHA_V2 is the challenger portfolio to ALPHA_V1. The design thesis is lower trade frequency, higher selectivity, and cleaner portfolio-level complementarity: each leg should earn its place as a specialist rather than adding another high-count continuation stream.
 
-Status: research packet only. Do not treat this as deployed until
-`execution/config/exec_configs.json` is explicitly updated and a fresh combined
-portfolio exact replay is run.
+Current status: first live-dry candidate added on 2026-06-09. The execution profile is `ALPHA_V2`, enabled with no webhooks, so it can observe and log in dry-run mode without routing orders.
 
-Sources:
-- `backtesting/data/results/alpha_v1_stop_target_live_engine_replay_20260504/`
-- `backtesting/learnings/reports/ALPHA_V1_STOP_TARGET_LIVE_ENGINE_REPLAY_20260504.md`
-- Current matching-leg comparison source:
-  `backtesting/data/results/alpha_v1_live_replay_compare_20260503/comparison_metrics.csv`
+## Portfolio Intent
 
-## Proposed V2 Changes
+| Principle | ALPHA_V2 Target |
+|---|---|
+| Role vs ALPHA_V1 | Challenger portfolio, not a clone |
+| Trade count | Lower frequency by design |
+| Trade quality | Prefer structurally gated, exact-replayed, cost-stressed legs |
+| Leg overlap | Prefer different session logic, filters, payoffs, or market states from ALPHA_V1 |
+| Promotion path | Live-dry monitoring before any webhook or scaled risk |
 
-| Leg | Current ALPHA_V1 Structure | ALPHA_V2 Variant | Deployability | Exact replay |
-| --- | --- | --- | --- | --- |
-| ES Asia ORB | `stop=ORB 125%`, `rr=1.5`, `tp1_ratio=0.70`, `TP1_R=1.05` | `stop=ORB 50%`, `rr=2.0`, `tp1_ratio=0.75`, `TP1_R=1.50` | `live_native` | complete |
-| NQ Asia ORB | `stop=ORB 100%`, `rr=6.0`, `tp1_ratio=0.30`, `TP1_R=1.80` | `stop=ORB 125%`, `rr=2.5`, `tp1_ratio=0.60`, `TP1_R=1.50` | `live_native` | complete |
+## Active Dry-Run Legs
 
-## Exact Replay Metrics
+### Leg 1: ORB/NQ_NY-RR2
 
-Live-engine exact replay over `2016-04-17` to `2026-03-24`, run as
-single-candidate temporary execution profiles. No live config was edited.
+**Live-dry challenger, native rolling ATR/ORB gated NY ORB**
 
-| Leg | Structure | Last 1y Trades | Last 1y R | Last 1y WR | Last 1y PF | Last 1y DD | Full Trades | Full R | Full WR | Full PF | Full DD |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ES Asia ORB | Current ALPHA_V1 | 118 | 16.95 | 55.93% | 1.349 | -5.10 | 1116 | 136.68 | 54.93% | 1.287 | -12.23 |
-| ES Asia ORB | ALPHA_V2 variant | 143 | 37.25 | 49.65% | 1.519 | -7.25 | 1429 | 209.88 | 47.17% | 1.288 | -16.25 |
-| ES Asia ORB | Delta | +25 | +20.30 | -6.28 pts | +0.170 | -2.15 | +313 | +73.20 | -7.76 pts | +0.001 | -4.02 |
-| NQ Asia ORB | Current ALPHA_V1 | 66 | 35.39 | 51.52% | 2.140 | -5.00 | 640 | 167.42 | 44.38% | 1.528 | -8.32 |
-| NQ Asia ORB | ALPHA_V2 variant | 73 | 32.39 | 56.16% | 2.126 | -6.00 | 725 | 166.57 | 49.66% | 1.495 | -13.34 |
-| NQ Asia ORB | Delta | +7 | -3.00 | +4.64 pts | -0.014 | -1.00 | +85 | -0.85 | +5.28 pts | -0.033 | -5.02 |
+| Field | Value |
+|---|---|
+| execution_config | `ALPHA_V2` |
+| execution_session | `NQ_NY-RR2` |
+| base_session | `NQ_NY` |
+| deployability | `live_native` |
+| strategy | ORB continuation with first 5m FVG outside range |
+| session | New York |
+| direction | Long only |
+| ORB window | 09:30-09:45 ET |
+| entry window | 09:45-13:00 ET |
+| flat window | 15:50-16:00 ET |
+| stop | 10.0% ATR14 |
+| gap filter | 2.0% ATR14 |
+| target | 1:2R |
+| exit mode | Single target |
+| DOW exclusion | None |
+| pre-trade ATR gate | prior rolling ATR14% <= `1.6228084238855573` |
+| pre-trade ORB gate | ORB range% <= `0.4657663656763981` |
+| dry-run sizing | `risk_usd=250`, `max_single_risk_usd=375`, no webhooks |
 
-## Read
+### Validation Snapshot
 
-- `ES Asia ORB` is the stronger promotion candidate: substantially better
-  recent and full-history R, but with lower win rate and deeper drawdown.
-- `NQ Asia ORB` is a softer promotion: win rate improves, but recent R and
-  full-history R do not improve, and full-history drawdown worsens.
-- Both variants are `live_native` because the live ORB engine already supports
-  the required stop, R:R, and TP1 fields.
-- Exact replay is complete for each individual leg. A combined ALPHA_V2
-  portfolio replay is still required before treating this as an operating
-  profile because the portfolio-level drawdown and interaction effects have not
-  been rerun.
+| Window | Trades | Gross R | Net R | PF | Max DD | Win Rate | Notes |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 2021-2024 pre-holdout exact | 151 | +31.74 | +27.41 | 1.31 | -10.03R | 41.06% | 2022 had no fills under the gates |
+| 2025 holdout exact | 32 | +10.38 | +9.74 | 1.60 | -3.00R | 50.00% | Holdout opened 2026-06-09 |
+| 2026 YTD exact | 14 | +4.00 | +3.78 | 1.47 | -3.00R | 42.86% | Through latest local data, 2026-06-05 |
 
-## Live Support Notes
+MFE read: pre-holdout median MFE was `1.37R`, 38.41% reached `2R`; 2025 holdout median MFE was `1.34R`, 37.5% reached `2R`. This supports keeping the single `2R` target for dry-run observation instead of immediately changing the exit.
 
-### ES Asia ORB
+### Cost Stress
 
-Execution session key: `ES_Asia`.
+| Stress | Combined 2021-2025 Net R | PF | Max DD | Read |
+|---|---:|---:|---:|---|
+| 0 ticks/side extra | +37.15 | 1.36 | -10.77R | Baseline exact, commission-adjusted |
+| 2 ticks/side extra | +28.50 | 1.26 | -12.11R | Dry-run pass envelope |
+| 4 ticks/side extra | +19.85 | 1.17 | -14.07R | Still positive but thinner |
+| 8 ticks/side extra | +2.54 | 1.02 | -19.78R | Edge boundary |
 
-Required config changes:
-- `stop_basis = "orb"`
-- `stop_orb_pct = 50.0`
-- `stop_atr_pct = 0.0`
-- `rr = 2.0`
-- `tp1_ratio = 0.75`
+Operating rule: dry-run fill monitoring must show observed slippage comfortably inside the 2 ticks/side envelope before any live webhook or risk increase.
 
-Preserve the rest of the current ALPHA_V1 `ES_Asia` execution settings unless
-the combined ALPHA_V2 replay explicitly tests a broader change.
+### Why This Belongs In ALPHA_V2
 
-### NQ Asia ORB
+This leg is intentionally different from the high-frequency ALPHA_V1 stack. It is a selective NY-only ORB sleeve, long-only, single-exit, and gated by native pre-trade volatility/range context. The research search did not freely optimize the whole strategy; it fixed the neutral ORB recipe first, then selected only the causal gating layer and direction using survivability-first criteria.
 
-Execution session key: `NQ_Asia`.
+Selection priorities were:
 
-Required config changes:
-- `stop_basis = "orb"`
-- `stop_orb_pct = 125.0`
-- `stop_atr_pct = 0.0`
-- `rr = 2.5`
-- `tp1_ratio = 0.60`
+1. Survive 2022-2023 first.
+2. Avoid negative years in the 2021-2024 discovery window.
+3. Require enough trades for evidence, but allow low frequency.
+4. Pass PSR/DSR robustness checks.
+5. Use Calmar and total R as tie breakers.
 
-Preserve the rest of the current ALPHA_V1 `NQ_Asia` execution settings unless
-the combined ALPHA_V2 replay explicitly tests a broader change.
+### Required Next Checks
+
+Before promotion beyond dry-run:
+
+| Check | Status |
+|---|---|
+| Exact replay through live execution engine | Done |
+| 2025 holdout opened and accepted | Done |
+| Cost/slippage stress | Done |
+| Dry-run profile with no webhooks | Done |
+| Live-vs-exact slippage logging | Pending |
+| Overlap/correlation vs ALPHA_V1 legs | Pending |
+| Portfolio-level ALPHA_V2 sizing simulation | Pending |
+
+Evidence artifacts:
+
+- `backtesting/data/results/discovery_runs/nq_ny_orb_exec_native_rolling_gate_2021_20260609/artifacts/exact_replay_results.md`
+- `backtesting/data/results/discovery_runs/nq_ny_orb_exec_native_rolling_gate_2025_holdout_20260609/artifacts/holdout_results.md`
+- `backtesting/data/results/discovery_runs/nq_ny_orb_exec_native_rolling_gate_2026_ytd_20260609/artifacts/exact_replay_2026_ytd.json`
+- `backtesting/data/results/discovery_runs/nq_ny_orb_rolling_gate_cost_stress_20260609/artifacts/cost_stress_results.md`

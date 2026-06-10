@@ -1834,4 +1834,6 @@ def _session_info(engine) -> dict:
         "structure_gate": getattr(engine, "structure_gate", None),
         "ath_block_min_pct": getattr(engine, "ath_block_min_pct", 0.0),
         "ath_block_max_pct": getattr(engine, "ath_block_max_pct", 0.0),
+        "max_prior_rolling_atr_pct": getattr(engine, "max_prior_rolling_atr_pct", 0.0),
+        "max_orb_range_pct": getattr(engine, "max_orb_range_pct", 0.0),
     }

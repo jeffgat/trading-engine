@@ -81,3 +81,48 @@ def compute_orb_levels(
     high = df["high"].values.astype(np.float64)
     low = df["low"].values.astype(np.float64)
     return _compute_orb_levels_numba(high, low, in_orb, in_rth, new_day)
+
+
+@nb.njit(cache=True)
+def _compute_orb_open_numba(
+    open_: np.ndarray,
+    in_orb: np.ndarray,
+    in_rth: np.ndarray,
+    new_day: np.ndarray,
+) -> np.ndarray:
+    """Numba-compiled completed ORB open computation."""
+    n = len(open_)
+    orb_open = np.full(n, np.nan)
+
+    current_open = np.nan
+    saw_orb = False
+    ready = False
+
+    for i in range(n):
+        if new_day[i]:
+            current_open = np.nan
+            saw_orb = False
+            ready = False
+
+        if in_orb[i]:
+            if not saw_orb:
+                current_open = open_[i]
+                saw_orb = True
+        elif not ready and saw_orb and in_rth[i]:
+            ready = True
+
+        if ready:
+            orb_open[i] = current_open
+
+    return orb_open
+
+
+def compute_orb_open(
+    df: pd.DataFrame,
+    in_orb: np.ndarray,
+    in_rth: np.ndarray,
+    new_day: np.ndarray,
+) -> np.ndarray:
+    """Compute the first ORB-window open, forward-filled after ORB completion."""
+    open_ = df["open"].values.astype(np.float64)
+    return _compute_orb_open_numba(open_, in_orb, in_rth, new_day)

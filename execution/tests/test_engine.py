@@ -102,6 +102,65 @@ class TestIdleState:
         assert eng._state != State.ORB_BUILDING
 
 
+class TestContextGates:
+    async def test_context_gates_pass_after_orb_completion(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            max_prior_rolling_atr_pct=1.5,
+            max_orb_range_pct=0.5,
+        )
+        eng.set_context_gate_values(prior_rolling_atr_pct=1.0)
+
+        bars = [
+            make_bar("2025-01-15 09:30", 1000.0, 1002.0, 1000.0, 1001.0),
+            make_bar("2025-01-15 09:35", 1001.0, 1003.0, 1001.0, 1002.0),
+            make_bar("2025-01-15 09:40", 1002.0, 1004.0, 1002.0, 1003.0),
+            make_bar("2025-01-15 09:45", 1003.0, 1003.0, 1001.0, 1002.0),
+        ]
+        for bar in bars:
+            await eng.on_bar(bar, 100.0)
+
+        assert eng._state == State.WAITING_FOR_GAP
+
+    async def test_prior_rolling_atr_gate_blocks_after_orb_completion(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            max_prior_rolling_atr_pct=1.5,
+            max_orb_range_pct=0.5,
+        )
+        eng.set_context_gate_values(prior_rolling_atr_pct=1.6)
+
+        bars = [
+            make_bar("2025-01-15 09:30", 1000.0, 1002.0, 1000.0, 1001.0),
+            make_bar("2025-01-15 09:35", 1001.0, 1003.0, 1001.0, 1002.0),
+            make_bar("2025-01-15 09:40", 1002.0, 1004.0, 1002.0, 1003.0),
+            make_bar("2025-01-15 09:45", 1003.0, 1003.0, 1001.0, 1002.0),
+        ]
+        for bar in bars:
+            await eng.on_bar(bar, 100.0)
+
+        assert eng._state == State.FLAT
+
+    async def test_orb_range_pct_gate_blocks_after_orb_completion(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            max_prior_rolling_atr_pct=1.5,
+            max_orb_range_pct=0.5,
+        )
+        eng.set_context_gate_values(prior_rolling_atr_pct=1.0)
+
+        bars = [
+            make_bar("2025-01-15 09:30", 1000.0, 1004.0, 1000.0, 1003.0),
+            make_bar("2025-01-15 09:35", 1003.0, 1006.0, 1002.0, 1005.0),
+            make_bar("2025-01-15 09:40", 1005.0, 1008.0, 1002.0, 1004.0),
+            make_bar("2025-01-15 09:45", 1004.0, 1004.0, 1002.0, 1003.0),
+        ]
+        for bar in bars:
+            await eng.on_bar(bar, 100.0)
+
+        assert eng._state == State.FLAT
+
+
 # =============================================================================
 # ORB_BUILDING state
 # =============================================================================

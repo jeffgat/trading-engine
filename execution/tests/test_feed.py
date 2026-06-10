@@ -14,9 +14,11 @@ import pytest
 
 from trader.feed import (
     ATRCalculator,
+    ATRValuesByLength,
     BarAggregator,
     DailyBar,
     DataBentoFeed,
+    RollingATRPctCalculator,
     _normalize_1m_timestamp,
 )
 from trader.engine import Bar
@@ -480,6 +482,29 @@ class TestATRCalculator:
 
         # ATR should now have changed (new TR from Jan 16 was large: 30 range)
         assert calc.value != pytest.approx(atr_at_start)
+
+
+class TestRollingATRPctCalculator:
+    def test_matches_simple_rolling_true_range_percent(self):
+        calc = RollingATRPctCalculator(length=2)
+        bars = [
+            (date(2025, 1, 1), 100.0, 110.0, 90.0, 100.0),
+            (date(2025, 1, 2), 100.0, 120.0, 100.0, 110.0),
+            (date(2025, 1, 3), 110.0, 140.0, 110.0, 120.0),
+        ]
+
+        calc.seed_daily(bars)
+
+        assert calc.value == pytest.approx(25.0 / 120.0 * 100.0)
+
+    def test_atr_values_mapping_carries_rolling_context(self):
+        values = ATRValuesByLength(
+            {14: 300.0},
+            rolling_atr_pct_by_length={14: 1.62},
+        )
+
+        assert values.get(14) == pytest.approx(300.0)
+        assert values.rolling_atr_pct_by_length[14] == pytest.approx(1.62)
 
 
 class TestATRRefresh:

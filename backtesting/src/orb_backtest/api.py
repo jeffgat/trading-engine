@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
@@ -22,6 +23,8 @@ from .config import (
 from .data.instruments import get_instrument, list_instruments
 from .data.fees import get_fee_schedule
 from .data.loader import load_5m_data, load_1m_for_5m
+from .discovery import DiscoveryWorkflow
+from .discovery.manifest import to_jsonable
 from .engine.simulator import run_backtest, EXIT_NO_FILL
 from .errors import (
     BacktestError,
@@ -197,6 +200,9 @@ class BacktestRequest(BaseModel):
     ny_stop_orb_pct: Optional[float] = None
     ny_min_gap_orb_pct: Optional[float] = None
     ny_qualifying_move_atr_pct: Optional[float] = None
+    ny_max_prior_atr_pct: Optional[float] = None
+    ny_max_prior_rolling_atr_pct: Optional[float] = None
+    ny_max_orb_range_pct: Optional[float] = None
     ny_min_stop_points: Optional[float] = None
     ny_min_tp1_points: Optional[float] = None
     ny_rth_start: Optional[str] = None
@@ -208,6 +214,9 @@ class BacktestRequest(BaseModel):
     asia_stop_orb_pct: Optional[float] = None
     asia_min_gap_orb_pct: Optional[float] = None
     asia_qualifying_move_atr_pct: Optional[float] = None
+    asia_max_prior_atr_pct: Optional[float] = None
+    asia_max_prior_rolling_atr_pct: Optional[float] = None
+    asia_max_orb_range_pct: Optional[float] = None
     asia_min_stop_points: Optional[float] = None
     asia_min_tp1_points: Optional[float] = None
     asia_rth_start: Optional[str] = None
@@ -219,6 +228,9 @@ class BacktestRequest(BaseModel):
     ldn_stop_orb_pct: Optional[float] = None
     ldn_min_gap_orb_pct: Optional[float] = None
     ldn_qualifying_move_atr_pct: Optional[float] = None
+    ldn_max_prior_atr_pct: Optional[float] = None
+    ldn_max_prior_rolling_atr_pct: Optional[float] = None
+    ldn_max_orb_range_pct: Optional[float] = None
     ldn_min_stop_points: Optional[float] = None
     ldn_min_tp1_points: Optional[float] = None
     ldn_rth_start: Optional[str] = None
@@ -257,6 +269,13 @@ class BacktestRequest(BaseModel):
     data_sweep_require_session_extreme: Optional[bool] = None
     data_sweep_event_types: Optional[list[str]] = None
     data_sweep_release_window_minutes: Optional[int] = None
+
+
+class DiscoveryWorkflowRunRequest(BaseModel):
+    manifest_path: str
+    phase: Optional[str] = None
+    run_all: bool = False
+    dry_run: bool = False
 
 
 _DOW_NAME_MAP = {
@@ -340,7 +359,57 @@ def _parse_window_override(
     overrides[f"{session_prefix}_{field_name}_end"] = parts[1]
 
 
-# ── Discovery endpoints ─────────────────────────────────────────────
+# ── Discovery workflow endpoints ────────────────────────────────────
+
+
+_DISCOVERY_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_discovery_workflow(manifest_path: str) -> DiscoveryWorkflow:
+    path = Path(manifest_path)
+    if not path.is_absolute():
+        path = _DISCOVERY_REPO_ROOT / path
+    if not path.exists():
+        raise BacktestError(
+            "DISCOVERY_MANIFEST_NOT_FOUND",
+            f"Discovery manifest '{manifest_path}' was not found.",
+            "Create a manifest with scripts/run_discovery_workflow.py init or pass an existing manifest path.",
+            status_code=404,
+        )
+    return DiscoveryWorkflow(path, repo_root=_DISCOVERY_REPO_ROOT)
+
+
+@app.get("/api/discovery/status")
+def discovery_status(manifest_path: str = Query(...)):
+    workflow = _load_discovery_workflow(manifest_path)
+    return ok(workflow.status())
+
+
+@app.post("/api/discovery/run")
+def discovery_run(req: DiscoveryWorkflowRunRequest):
+    if req.phase and req.run_all:
+        raise BacktestError(
+            "INVALID_DISCOVERY_RUN_REQUEST",
+            "Use either phase or run_all, not both.",
+            "Set phase to run one phase, or set run_all=true to run pending phases.",
+            status_code=400,
+        )
+    if not req.phase and not req.run_all:
+        raise BacktestError(
+            "INVALID_DISCOVERY_RUN_REQUEST",
+            "Discovery run request must include phase or run_all=true.",
+            "Set phase to run one phase, or set run_all=true to run pending phases.",
+            status_code=400,
+        )
+    workflow = _load_discovery_workflow(req.manifest_path)
+    if req.phase:
+        artifact = workflow.run_phase(req.phase, dry_run=req.dry_run)
+        return ok({"artifact": to_jsonable(artifact), "status": workflow.status()})
+    artifacts = workflow.run_all(dry_run=req.dry_run)
+    return ok({"artifacts": [to_jsonable(artifact) for artifact in artifacts], "status": workflow.status()})
+
+
+# ── Reference endpoints ─────────────────────────────────────────────
 
 
 @app.get("/api/instruments")
@@ -556,11 +625,17 @@ def run_backtest_endpoint(req: BacktestRequest):
         "swing_n_bars",
         "name", "notes",
         "ny_stop_atr_pct", "ny_min_gap_atr_pct", "ny_stop_orb_pct", "ny_min_gap_orb_pct",
-        "ny_qualifying_move_atr_pct", "ny_min_stop_points", "ny_min_tp1_points", "ny_rth_start",
+        "ny_qualifying_move_atr_pct", "ny_max_prior_atr_pct", "ny_max_prior_rolling_atr_pct",
+        "ny_max_orb_range_pct",
+        "ny_min_stop_points", "ny_min_tp1_points", "ny_rth_start",
         "asia_stop_atr_pct", "asia_min_gap_atr_pct", "asia_stop_orb_pct", "asia_min_gap_orb_pct",
-        "asia_qualifying_move_atr_pct", "asia_min_stop_points", "asia_min_tp1_points", "asia_rth_start",
+        "asia_qualifying_move_atr_pct", "asia_max_prior_atr_pct", "asia_max_prior_rolling_atr_pct",
+        "asia_max_orb_range_pct",
+        "asia_min_stop_points", "asia_min_tp1_points", "asia_rth_start",
         "ldn_stop_atr_pct", "ldn_min_gap_atr_pct", "ldn_stop_orb_pct", "ldn_min_gap_orb_pct",
-        "ldn_qualifying_move_atr_pct", "ldn_min_stop_points", "ldn_min_tp1_points", "ldn_rth_start",
+        "ldn_qualifying_move_atr_pct", "ldn_max_prior_atr_pct", "ldn_max_prior_rolling_atr_pct",
+        "ldn_max_orb_range_pct",
+        "ldn_min_stop_points", "ldn_min_tp1_points", "ldn_rth_start",
         "lsi_n_left", "lsi_n_right", "lsi_fvg_window_left", "lsi_fvg_window_right",
         "lsi_stop_mode", "lsi_entry_mode", "lsi_close_on_sweep_to_inversion_minutes",
         "lsi_confirmation_mode", "cisd_min_leg_bars", "cisd_min_leg_atr_pct",

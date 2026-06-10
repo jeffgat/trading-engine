@@ -26,13 +26,14 @@ import pyarrow.parquet as pq
 
 from .broker import MultiBroker, TradersPostClient
 from .engine import Bar
-from .feed import ATRCalculator, DailyHistoryTracker, ET
+from .feed import ATRCalculator, DailyHistoryTracker, ET, RollingATRPctCalculator
 from .gates import normalize_regime_gates, set_daily_history_provider
 from .main import (
     SESSION_CONFIGS,
     LSI_SESSION_CONFIGS,
     INSTRUMENTS,
     SIGNAL_TO_EXEC,
+    _base_session_name,
     build_engines,
     build_lsi_engines,
     load_exec_configs,
@@ -192,8 +193,9 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
     }
 
     for session_name, overrides in exec_config.session_overrides.items():
-        merged = {**SESSION_CONFIGS.get(session_name, {}), **overrides}
-        prefix = session_name.lower()
+        base_session = _base_session_name(session_name, overrides)
+        merged = {**SESSION_CONFIGS.get(base_session, {}), **overrides}
+        prefix = session_name.lower().replace("-", "_")
         regime_gates = normalize_regime_gates(
             merged.get("regime_gate"),
             merged.get("regime_gates"),
@@ -214,6 +216,10 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "min_gap_orb_pct",
             "ath_block_min_pct",
             "ath_block_max_pct",
+            "max_prior_rolling_atr_pct",
+            "max_orb_range_pct",
+            "excluded_dow",
+            "base_session",
             "runner_trail_mode",
             "runner_trail_trigger_r",
             "runner_trail_stop_r",
@@ -236,8 +242,9 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             config_dict[f"{prefix}_commission_per_contract"] = exec_inst["commission"]
 
     for session_name, overrides in exec_config.lsi_session_overrides.items():
-        merged = {**LSI_SESSION_CONFIGS.get(session_name, {}), **overrides}
-        prefix = session_name.lower()
+        base_session = _base_session_name(session_name, overrides)
+        merged = {**LSI_SESSION_CONFIGS.get(base_session, {}), **overrides}
+        prefix = session_name.lower().replace("-", "_")
         regime_gates = normalize_regime_gates(
             merged.get("regime_gate"),
             merged.get("regime_gates"),
@@ -273,6 +280,7 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "htf_n_left",
             "htf_trade_max_per_session",
             "max_fvg_to_inversion_bars",
+            "base_session",
         ):
             if key in merged:
                 config_dict[f"{prefix}_{key}"] = merged[key]
@@ -783,16 +791,22 @@ async def run_profile_backtest(
     replay_end_date = datetime.fromisoformat(end_date).date()
 
     atr_by_symbol: dict[str, dict[int, ATRCalculator]] = {}
+    rolling_atr_pct_by_symbol: dict[str, dict[int, RollingATRPctCalculator]] = {}
     daily_history_by_symbol: dict[str, DailyHistoryTracker] = {}
     events: list[tuple[datetime, str, int, Bar]] = []
     atr_update_minutes: dict[str, int] = {}
     for symbol, lengths in atr_lengths.items():
         atr_by_symbol[symbol] = {length: ATRCalculator(length=length) for length in lengths}
+        rolling_atr_pct_by_symbol[symbol] = {
+            length: RollingATRPctCalculator(length=length) for length in lengths
+        }
         seed_daily = _seed_daily_bars(symbol.split(".")[0], replay_start)
         tracker = DailyHistoryTracker()
         tracker.seed_daily(seed_daily)
         daily_history_by_symbol[symbol] = tracker
         for calc in atr_by_symbol[symbol].values():
+            calc.seed_daily(seed_daily)
+        for calc in rolling_atr_pct_by_symbol[symbol].values():
             calc.seed_daily(seed_daily)
 
         ath_seed = _seed_ath_high(symbol.split(".")[0], replay_start)
@@ -853,12 +867,22 @@ async def run_profile_backtest(
                     daily_history_by_symbol[symbol].on_5m_bar(bar)
                     for calc in atr_by_symbol[symbol].values():
                         calc.on_5m_bar(bar)
+                    for calc in rolling_atr_pct_by_symbol[symbol].values():
+                        calc.on_5m_bar(bar)
                 daily_atrs = {
                     length: calc.value for length, calc in atr_by_symbol[symbol].items()
                 }
+                rolling_atr_pcts = {
+                    length: calc.value for length, calc in rolling_atr_pct_by_symbol[symbol].items()
+                }
                 for engine in symbol_map[symbol]:
                     if _engine_bar_minutes(engine) == bar_minutes:
-                        await engine.on_bar(bar, daily_atrs.get(getattr(engine, "atr_length", 14), 0.0))
+                        atr_length = getattr(engine, "atr_length", 14)
+                        if hasattr(engine, "set_context_gate_values"):
+                            engine.set_context_gate_values(
+                                prior_rolling_atr_pct=rolling_atr_pcts.get(atr_length)
+                            )
+                        await engine.on_bar(bar, daily_atrs.get(atr_length, 0.0))
                 idx += 1
 
             current_time = event_time

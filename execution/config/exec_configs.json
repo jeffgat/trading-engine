@@ -1,4 +1,75 @@
 {
+  "NQ_NY_ORB_NEUTRAL_ROLLING_GATE": {
+    "enabled": false,
+    "max_open_contracts": 999,
+    "webhooks": [],
+    "sessions": {
+      "NQ_NY": {
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "13:00",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "stop_basis": "atr",
+        "gap_filter_basis": "atr",
+        "stop_atr_pct": 10.0,
+        "min_gap_atr_pct": 2.0,
+        "atr_length": 14,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "exit_mode": "single_target",
+        "risk_usd": 5000,
+        "max_single_risk_usd": 7500,
+        "long_only": true,
+        "short_only": false,
+        "excluded_dow": null,
+        "continuation_fvg_selection": "first",
+        "orb_trade_max_per_session": 1,
+        "max_prior_rolling_atr_pct": 1.6228084238855573,
+        "max_orb_range_pct": 0.4657663656763981,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0
+      }
+    },
+    "lsi_sessions": {}
+  },
+  "ALPHA_V2": {
+    "enabled": true,
+    "max_open_contracts": 20,
+    "webhooks": [],
+    "sessions": {
+      "NQ_NY-RR2": {
+        "base_session": "NQ_NY",
+        "orb_start": "09:30",
+        "orb_end": "09:45",
+        "entry_start": "09:45",
+        "entry_end": "13:00",
+        "flat_start": "15:50",
+        "flat_end": "16:00",
+        "stop_basis": "atr",
+        "gap_filter_basis": "atr",
+        "stop_atr_pct": 10.0,
+        "min_gap_atr_pct": 2.0,
+        "atr_length": 14,
+        "rr": 2.0,
+        "tp1_ratio": 1.0,
+        "exit_mode": "single_target",
+        "risk_usd": 250,
+        "max_single_risk_usd": 375,
+        "long_only": true,
+        "short_only": false,
+        "excluded_dow": null,
+        "continuation_fvg_selection": "first",
+        "orb_trade_max_per_session": 1,
+        "max_prior_rolling_atr_pct": 1.6228084238855573,
+        "max_orb_range_pct": 0.4657663656763981,
+        "min_stop_pts": 0.0,
+        "min_tp1_pts": 0.0
+      }
+    },
+    "lsi_sessions": {}
+  },
   "ALPHA_V1-A": {
     "enabled": false,
     "max_open_contracts": 20,

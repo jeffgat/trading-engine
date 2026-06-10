@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def load_backtesting_env() -> Path:
-    """Load backtesting/.env when present and return its path."""
+    """Load backtesting/.env when present and return its path.
+
+    Local data scripts should prefer the repo-local key over stale keys that
+    may be exported in an interactive shell.
+    """
     env_path = ROOT / ".env"
     if not env_path.exists():
         return env_path
@@ -24,8 +28,8 @@ def load_backtesting_env() -> Path:
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, value = line.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+                os.environ[key.strip()] = value.strip().strip("\"'")
     else:
-        load_dotenv(env_path)
+        load_dotenv(env_path, override=True)
 
     return env_path

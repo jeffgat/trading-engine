@@ -124,6 +124,87 @@ def test_build_engines_applies_exit_mode_override():
     assert engine.tp1_ratio == 1.0
 
 
+def test_neutral_rolling_gate_profile_builds_context_gates():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+    profile = configs["NQ_NY_ORB_NEUTRAL_ROLLING_GATE"]
+
+    assert profile.enabled is False
+    assert set(profile.session_overrides) == {"NQ_NY"}
+    override = profile.session_overrides["NQ_NY"]
+    assert override["excluded_dow"] is None
+    assert override["max_prior_rolling_atr_pct"] == pytest.approx(1.6228084238855573)
+    assert override["max_orb_range_pct"] == pytest.approx(0.4657663656763981)
+
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {"half_days": [], "excluded": []},
+        "sessions": {},
+    }
+
+    engines, symbol_map, atr_lengths = build_engines(
+        config,
+        broker,
+        config_name=profile.name,
+        session_list=["NQ_NY"],
+        exec_overrides=profile.session_overrides,
+    )
+
+    engine = engines[0]
+    assert engine.excluded_dow is None
+    assert engine.max_prior_rolling_atr_pct == pytest.approx(1.6228084238855573)
+    assert engine.max_orb_range_pct == pytest.approx(0.4657663656763981)
+    assert symbol_map["NQ.FUT"] == [engine]
+    assert atr_lengths["NQ.FUT"] == {14}
+
+
+def test_alpha_v2_rr2_alias_builds_nq_ny_dry_run_engine():
+    configs = {cfg.name: cfg for cfg in load_exec_configs()}
+    profile = configs["ALPHA_V2"]
+
+    assert profile.enabled is True
+    assert profile.webhooks == []
+    assert set(profile.session_overrides) == {"NQ_NY-RR2"}
+    override = profile.session_overrides["NQ_NY-RR2"]
+    assert override["base_session"] == "NQ_NY"
+    assert override["rr"] == 2.0
+    assert override["tp1_ratio"] == 1.0
+    assert override["exit_mode"] == "single_target"
+    assert override["risk_usd"] == 250
+    assert override["excluded_dow"] is None
+    assert override["max_prior_rolling_atr_pct"] == pytest.approx(1.6228084238855573)
+    assert override["max_orb_range_pct"] == pytest.approx(0.4657663656763981)
+
+    broker = MagicMock()
+    config = {
+        "risk": {"risk_usd": 250, "min_qty": 1.0, "qty_step": 1.0, "be_offset_ticks": 0},
+        "dates": {"half_days": [], "excluded": []},
+        "sessions": {},
+    }
+
+    engines, symbol_map, atr_lengths = build_engines(
+        config,
+        broker,
+        config_name=profile.name,
+        session_list=list(profile.session_overrides),
+        exec_overrides=profile.session_overrides,
+    )
+
+    assert len(engines) == 1
+    engine = engines[0]
+    assert engine.name == "NQ_NY-RR2"
+    assert engine.config_name == "ALPHA_V2"
+    assert engine.exec_ticker == "MNQ"
+    assert engine.exit_mode == "single_target"
+    assert engine.tp1_ratio == 1.0
+    assert engine.risk_usd == 250
+    assert engine.max_single_risk_usd == 375
+    assert engine.max_prior_rolling_atr_pct == pytest.approx(1.6228084238855573)
+    assert engine.max_orb_range_pct == pytest.approx(0.4657663656763981)
+    assert symbol_map["NQ.FUT"] == [engine]
+    assert atr_lengths["NQ.FUT"] == {14}
+
+
 def test_build_lsi_engines_applies_session_date_overrides():
     broker = MagicMock()
     config = {

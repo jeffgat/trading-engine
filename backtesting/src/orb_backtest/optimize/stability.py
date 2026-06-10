@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 from .walkforward import WalkForwardResult
 
@@ -12,12 +13,12 @@ from .walkforward import WalkForwardResult
 class ParamStability:
     """Stability metrics for a single parameter across WF folds."""
     name: str
-    values: list[float]
-    mode: float
+    values: list[Any]
+    mode: Any
     mode_frequency: int
     stability_score: float  # fraction of folds within ±1 step of mode
     unique_values: int
-    value_range: tuple[float, float]
+    value_range: tuple[Any, Any]
 
 
 @dataclass
@@ -64,10 +65,11 @@ def analyze_parameter_stability(
         counter = Counter(values)
         mode_val, mode_freq = counter.most_common(1)[0]
 
-        # Compute step size from param_ranges if available
+        # Compute step size from param_ranges if available. Numeric params use
+        # ±1 grid step fuzzy matching; categorical params use exact agreement.
         step = None
         if param_ranges and name in param_ranges:
-            sorted_vals = sorted(set(param_ranges[name]))
+            sorted_vals = sorted(set(param_ranges[name])) if _all_numeric(param_ranges[name]) else []
             if len(sorted_vals) >= 2:
                 diffs = [sorted_vals[i+1] - sorted_vals[i] for i in range(len(sorted_vals) - 1)]
                 step = min(diffs)
@@ -80,6 +82,7 @@ def analyze_parameter_stability(
             within = mode_freq
 
         score = within / n_folds if n_folds > 0 else 0.0
+        value_range = (min(values), max(values)) if _all_numeric(values) else (mode_val, mode_val)
 
         param_stabilities.append(ParamStability(
             name=name,
@@ -88,7 +91,7 @@ def analyze_parameter_stability(
             mode_frequency=mode_freq,
             stability_score=round(score, 4),
             unique_values=len(set(values)),
-            value_range=(min(values), max(values)),
+            value_range=value_range,
         ))
 
     overall = (
@@ -110,3 +113,8 @@ def analyze_parameter_stability(
         n_folds=n_folds,
         interpretation=interpretation,
     )
+
+
+def _all_numeric(values: list[Any]) -> bool:
+    """Return true when all values can be compared with numeric distance."""
+    return all(isinstance(value, int | float) and not isinstance(value, bool) for value in values)

@@ -25,6 +25,9 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
                 "entry_end": "23:00",
                 "flat_start": "23:55",
                 "flat_end": "04:00",
+                "max_prior_rolling_atr_pct": 1.62,
+                "max_orb_range_pct": 0.46,
+                "excluded_dow": None,
                 "regime_gate": "bull_no_low_confidence",
                 "regime_gates": ["block_full_medium_vol"],
             }
@@ -50,6 +53,9 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
 
     assert config["risk_usd"] == BACKTEST_REPORTING_RISK_USD
     assert config["nq_asia_risk_usd"] == 400
+    assert config["nq_asia_max_prior_rolling_atr_pct"] == 1.62
+    assert config["nq_asia_max_orb_range_pct"] == 0.46
+    assert config["nq_asia_excluded_dow"] is None
     assert config["nq_asia_lsi_risk_usd"] == 400
     assert config["nq_asia_regime_gates"] == ["bull_no_low_confidence", "block_full_medium_vol"]
     assert "nq_asia_regime_gate" not in config
@@ -60,6 +66,39 @@ def test_build_config_dict_uses_backtest_reporting_risk() -> None:
     assert config["nq_asia_lsi_lsi_stop_mode"] == "atr_pct"
     assert config["nq_asia_lsi_stop_atr_pct"] == 15.0
     assert config["nq_asia_lsi_base_bar_minutes"] == 1
+
+
+def test_build_config_dict_resolves_aliased_session_defaults() -> None:
+    exec_config = ExecutionConfig(
+        name="ALPHA_V2",
+        session_overrides={
+            "NQ_NY-RR2": {
+                "base_session": "NQ_NY",
+                "risk_usd": 250,
+                "rr": 2.0,
+                "tp1_ratio": 1.0,
+                "exit_mode": "single_target",
+                "max_prior_rolling_atr_pct": 1.6228,
+                "max_orb_range_pct": 0.4658,
+                "excluded_dow": None,
+            }
+        },
+    )
+
+    config = _build_config_dict("ALPHA_V2", exec_config)
+
+    assert config["nq_ny_rr2_base_session"] == "NQ_NY"
+    assert config["nq_ny_rr2_orb_window"] == "09:30-09:45"
+    assert config["nq_ny_rr2_entry_window"] == "09:45-12:00"
+    assert config["nq_ny_rr2_flat_window"] == "15:30-16:00"
+    assert config["nq_ny_rr2_risk_usd"] == 250
+    assert config["nq_ny_rr2_rr"] == 2.0
+    assert config["nq_ny_rr2_tp1_ratio"] == 1.0
+    assert config["nq_ny_rr2_exit_mode"] == "single_target"
+    assert config["nq_ny_rr2_max_prior_rolling_atr_pct"] == 1.6228
+    assert config["nq_ny_rr2_max_orb_range_pct"] == 0.4658
+    assert config["nq_ny_rr2_excluded_dow"] is None
+    assert config["nq_ny_rr2_exec_ticker"] == "MNQ"
 
 
 def test_timeframe_for_minutes_supports_3m_lsi_probe() -> None:

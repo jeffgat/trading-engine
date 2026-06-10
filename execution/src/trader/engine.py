@@ -240,6 +240,11 @@ class ORBEngine:
     ath_block_min_pct: float = 0.0
     ath_block_max_pct: float = 0.0
 
+    # Optional pre-trade context gates, checked after ORB completion before
+    # scanning for FVG setups. Disabled at 0.
+    max_prior_rolling_atr_pct: float = 0.0
+    max_orb_range_pct: float = 0.0
+
     # Day-of-week exclusion (0=Mon..6=Sun, None=no exclusion)
     excluded_dow: int | list[int] | None = None
 
@@ -315,6 +320,8 @@ class ORBEngine:
     _ath_last_check: dict | None = field(default=None, init=False)
     _ath_last_block: dict | None = field(default=None, init=False)
     _daily_atr: float = field(default=0.0, init=False)
+    _prior_rolling_atr_pct: float = field(default=float("nan"), init=False)
+    _orb_open: float = field(default=float("nan"), init=False)
     _asset_tag: str = field(default="", init=False)
     _exit_type: str | None = field(default=None, init=False)
     _r_result: float | None = field(default=None, init=False)
@@ -450,6 +457,19 @@ class ORBEngine:
                 "ath_block_max_pct must be > ath_block_min_pct when enabled "
                 f"(got min={self.ath_block_min_pct!r}, max={self.ath_block_max_pct!r})"
             )
+        if self.max_prior_rolling_atr_pct < 0.0:
+            raise ValueError("max_prior_rolling_atr_pct must be >= 0")
+        if self.max_orb_range_pct < 0.0:
+            raise ValueError("max_orb_range_pct must be >= 0")
+
+    def set_context_gate_values(
+        self,
+        *,
+        prior_rolling_atr_pct: float | None = None,
+    ) -> None:
+        """Update pre-trade context values computed by the feed/replay path."""
+        if prior_rolling_atr_pct is not None:
+            self._prior_rolling_atr_pct = float(prior_rolling_atr_pct)
 
     @property
     def _should_send(self) -> bool:
@@ -1258,6 +1278,7 @@ class ORBEngine:
         self._state = State.IDLE
         self._orb_high = float("nan")
         self._orb_low = float("nan")
+        self._orb_open = float("nan")
         self._bars.clear()
         self._session_bars.clear()
         self._levels = None
@@ -1335,6 +1356,7 @@ class ORBEngine:
 
         self._orb_high = max(b.high for b in orb_bars)
         self._orb_low = min(b.low for b in orb_bars)
+        self._orb_open = float(orb_bars[0].open)
         self._session_bars = list(session_bars)
         self._bars = session_bars[-10:]
         self._bar_count = len(session_bars)
@@ -1358,6 +1380,8 @@ class ORBEngine:
             )
         elif self._in_entry(now_t):
             if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
+                self._state = State.FLAT
+            elif self._context_gate_block_reason() is not None:
                 self._state = State.FLAT
             else:
                 blocking_gate = self._blocking_regime_gate_name(self._current_date)
@@ -1399,6 +1423,28 @@ class ORBEngine:
         if self._orb_high != self._orb_high or self._orb_low != self._orb_low:
             return 0.0  # NaN check
         return self._orb_high - self._orb_low
+
+    def _context_gate_block_reason(self) -> str | None:
+        if self.max_prior_rolling_atr_pct > 0.0:
+            if not math.isfinite(self._prior_rolling_atr_pct):
+                return "missing_prior_rolling_atr_pct"
+            if self._prior_rolling_atr_pct > self.max_prior_rolling_atr_pct:
+                return (
+                    "prior_rolling_atr_pct=%.4f max=%.4f"
+                    % (self._prior_rolling_atr_pct, self.max_prior_rolling_atr_pct)
+                )
+
+        if self.max_orb_range_pct > 0.0:
+            if not math.isfinite(self._orb_open) or self._orb_open <= 0.0 or self._orb_range <= 0.0:
+                return "missing_orb_range_pct"
+            orb_range_pct = self._orb_range / self._orb_open * 100.0
+            if orb_range_pct > self.max_orb_range_pct:
+                return (
+                    "orb_range_pct=%.4f max=%.4f open=%.2f range=%.2f"
+                    % (orb_range_pct, self.max_orb_range_pct, self._orb_open, self._orb_range)
+                )
+
+        return None
 
     def _arm_order(self, signal_bar: Bar) -> None:
         """Activate a setup only after the signal bar has fully closed."""
@@ -1609,6 +1655,7 @@ class ORBEngine:
         if self._in_orb(bar_time):
             self._state = State.ORB_BUILDING
             self._request_checkpoint()
+            self._orb_open = bar.open
             self._orb_high = bar.high
             self._orb_low = bar.low
             logger.info(
@@ -1628,6 +1675,8 @@ class ORBEngine:
     async def _handle_orb_building(self, bar: Bar, bar_time: time) -> None:
         """Accumulating ORB high/low."""
         if self._in_orb(bar_time):
+            if not math.isfinite(self._orb_open):
+                self._orb_open = bar.open
             if bar.high > self._orb_high:
                 self._orb_high = bar.high
             if bar.low < self._orb_low:
@@ -1641,6 +1690,13 @@ class ORBEngine:
             # ORB window closed — check gates before scanning
             if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
                 self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
+                self._state = State.FLAT
+                self._request_checkpoint()
+                self._notify_state_change()
+                return
+            context_block_reason = self._context_gate_block_reason()
+            if context_block_reason is not None:
+                self._log_trade("CONTEXT_GATE_BLOCKED", context_block_reason)
                 self._state = State.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -2450,9 +2506,24 @@ class ORBEngine:
             "date": self._current_date,
             "orb_high": self._orb_high if self._orb_high == self._orb_high else None,
             "orb_low": self._orb_low if self._orb_low == self._orb_low else None,
+            "orb_open": self._orb_open if math.isfinite(self._orb_open) else None,
             "orb_range": self._orb_range if self._orb_range > 0 else None,
             "daily_atr": self._daily_atr,
             "atr_length": self.atr_length,
+            "context_gates": {
+                "max_prior_rolling_atr_pct": self.max_prior_rolling_atr_pct,
+                "prior_rolling_atr_pct": (
+                    self._prior_rolling_atr_pct
+                    if math.isfinite(self._prior_rolling_atr_pct)
+                    else None
+                ),
+                "max_orb_range_pct": self.max_orb_range_pct,
+                "orb_range_pct": (
+                    self._orb_range / self._orb_open * 100.0
+                    if math.isfinite(self._orb_open) and self._orb_open > 0.0 and self._orb_range > 0.0
+                    else None
+                ),
+            },
             "levels": {
                 "entry": self._levels.entry,
                 "stop": self._levels.stop,

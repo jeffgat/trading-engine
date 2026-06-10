@@ -1146,6 +1146,13 @@ def save_exec_configs(configs: list[ExecutionConfig]) -> None:
         f.write("\n")
 
 
+def _base_session_name(session_name: str, overrides: dict | None = None) -> str:
+    base_session = (overrides or {}).get("base_session")
+    if isinstance(base_session, str) and base_session:
+        return base_session
+    return session_name
+
+
 def _required_regime_daily_symbols(engines: list) -> list[str]:
     """Collect extra daily-history symbols required by configured regime gates."""
     from .gates import required_daily_history_symbols_for_regime_gates
@@ -1275,24 +1282,40 @@ def build_engines(
     atr_lengths: dict[str, set[int]] = {}
 
     for sess_name in sessions_enabled:
-        sess_cfg = SESSION_CONFIGS.get(sess_name)
+        sess_exec_overrides = exec_overrides.get(sess_name, {})
+        base_sess_name = _base_session_name(sess_name, sess_exec_overrides)
+        sess_cfg = SESSION_CONFIGS.get(base_sess_name)
         if sess_cfg is None:
-            logger.warning("Unknown session '%s', skipping", sess_name)
+            logger.warning(
+                "Unknown session '%s' (base_session=%s), skipping",
+                sess_name,
+                base_sess_name,
+            )
             continue
 
         # Allow per-session overrides from TOML (keyed by lowercase name).
         # TOML [sessions.gc.ny] creates nested dicts, so traverse the path.
-        toml_key = sess_name.lower().replace("_", ".")
-        toml_overrides: dict = session_overrides
-        for part in toml_key.split("."):
-            if isinstance(toml_overrides, dict):
-                toml_overrides = toml_overrides.get(part, {})
-            else:
-                toml_overrides = {}
-                break
-        if not isinstance(toml_overrides, dict):
-            toml_overrides = {}
-        merged = {**sess_cfg, **toml_overrides, **runtime_overrides.get(sess_name, {}), **exec_overrides.get(sess_name, {})}
+        def _toml_overrides_for(session_key: str) -> dict:
+            toml_key = session_key.lower().replace("_", ".")
+            toml_overrides: dict = session_overrides
+            for part in toml_key.split("."):
+                if isinstance(toml_overrides, dict):
+                    toml_overrides = toml_overrides.get(part, {})
+                else:
+                    toml_overrides = {}
+                    break
+            return toml_overrides if isinstance(toml_overrides, dict) else {}
+
+        toml_overrides = _toml_overrides_for(sess_name)
+        if not toml_overrides and base_sess_name != sess_name:
+            toml_overrides = _toml_overrides_for(base_sess_name)
+        merged = {
+            **sess_cfg,
+            **toml_overrides,
+            **runtime_overrides.get(base_sess_name, {}),
+            **runtime_overrides.get(sess_name, {}),
+            **sess_exec_overrides,
+        }
         half_days = tuple(merged.get("half_days", default_half_days))
         excluded_dates = tuple(merged.get("excluded_dates", default_excluded_dates))
         regime_gates = normalize_regime_gates(
@@ -1367,6 +1390,8 @@ def build_engines(
             runner_trail_atr_pct=merged.get("runner_trail_atr_pct", 0.0),
             ath_block_min_pct=merged.get("ath_block_min_pct", 0.0),
             ath_block_max_pct=merged.get("ath_block_max_pct", 0.0),
+            max_prior_rolling_atr_pct=merged.get("max_prior_rolling_atr_pct", 0.0),
+            max_orb_range_pct=merged.get("max_orb_range_pct", 0.0),
             excluded_dow=merged.get("excluded_dow"),
             fomc_exclusion=merged.get("fomc_exclusion", False),
             regime_gate=regime_gates[0] if len(regime_gates) == 1 else None,
@@ -1881,8 +1906,14 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
     # Bar callback — route 5m bars to engines for signal detection (ORB, FVG)
     async def on_bar(symbol: str, bar, daily_atrs: dict[int, float]):
         target_engines = global_symbol_map.get(symbol, [])
+        rolling_atr_pcts = getattr(daily_atrs, "rolling_atr_pct_by_length", {})
         for engine in target_engines:
-            daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
+            atr_length = getattr(engine, "atr_length", 14)
+            daily_atr = daily_atrs.get(atr_length, 0.0)
+            if hasattr(engine, "set_context_gate_values"):
+                engine.set_context_gate_values(
+                    prior_rolling_atr_pct=rolling_atr_pcts.get(atr_length)
+                )
             try:
                 await engine.on_bar(bar, daily_atr)
             except Exception:
@@ -2185,8 +2216,14 @@ async def run_replay(config: dict, csv_path: str, start: str | None, end: str | 
     }) or [14]
 
     async def on_bar(bar, daily_atrs: dict[int, float]):
+        rolling_atr_pcts = getattr(daily_atrs, "rolling_atr_pct_by_length", {})
         for engine in engines:
-            daily_atr = daily_atrs.get(getattr(engine, "atr_length", 14), 0.0)
+            atr_length = getattr(engine, "atr_length", 14)
+            daily_atr = daily_atrs.get(atr_length, 0.0)
+            if hasattr(engine, "set_context_gate_values"):
+                engine.set_context_gate_values(
+                    prior_rolling_atr_pct=rolling_atr_pcts.get(atr_length)
+                )
             await engine.on_bar(bar, daily_atr)
 
     feed = ReplayFeed(

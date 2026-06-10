@@ -117,10 +117,13 @@ class SessionConfig:
     stop_atr_pct: float = 0.0  # stop distance as % of daily ATR
     min_gap_atr_pct: float = 0.0  # min FVG size as % of daily ATR
     qualifying_move_atr_pct: float = 0.0  # min upward extension as % of ATR for inversion shorts (0 = disabled)
+    max_prior_atr_pct: float = 0.0  # max previous completed daily ATR% allowed before arming entries (0 = disabled)
+    max_prior_rolling_atr_pct: float = 0.0  # max previous completed rolling TR ATR% allowed before arming entries (0 = disabled)
 
     # ORB-based parameters (override ATR-based when > 0)
     stop_orb_pct: float = 0.0  # stop distance as % of ORB range (0 = use ATR-based stop)
     min_gap_orb_pct: float = 0.0  # min FVG size as % of ORB range (0 = use ATR-based)
+    max_orb_range_pct: float = 0.0  # max completed ORB range% allowed before arming entries (0 = disabled)
 
     # Minimum stop floor in points (0 = disabled). When > 0, stop_dist = max(computed, min_stop_points).
     min_stop_points: float = 0.0

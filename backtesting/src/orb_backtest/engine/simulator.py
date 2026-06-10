@@ -31,9 +31,13 @@ from ..config import (
     DATA_REF_LSI_LEVELS,
 )
 from ..signals.session import compute_session_masks, compute_trading_days, compute_session_days, compute_date_strings
-from ..signals.daily_atr import compute_daily_atr
+from ..signals.daily_atr import (
+    compute_daily_atr,
+    compute_previous_daily_close,
+    compute_previous_daily_rolling_atr_pct,
+)
 from ..signals.equal_levels import compute_equal_htf_levels
-from ..signals.orb import compute_orb_levels
+from ..signals.orb import compute_orb_levels, compute_orb_open
 from ..signals.fvg import detect_fvg
 from ..signals.cisd import detect_internal_cisd
 from ..signals.htf_levels import compute_htf_unswept_levels
@@ -3094,6 +3098,51 @@ def _compute_structure_vwap_gate_masks(
     return long_ok, short_ok
 
 
+def _compute_session_context_gate_mask(
+    session: SessionConfig,
+    daily_atr: np.ndarray,
+    previous_daily_close: np.ndarray,
+    prior_rolling_atr_pct: np.ndarray,
+    orb_high: np.ndarray,
+    orb_low: np.ndarray,
+    orb_open: np.ndarray,
+) -> np.ndarray:
+    """Return causal pre-trade ATR/ORB context gate mask for a session."""
+    n = len(daily_atr)
+    ok = np.ones(n, dtype=bool)
+
+    max_prior_atr_pct = float(getattr(session, "max_prior_atr_pct", 0.0) or 0.0)
+    if max_prior_atr_pct > 0.0:
+        valid_atr = (
+            np.isfinite(daily_atr)
+            & np.isfinite(previous_daily_close)
+            & (previous_daily_close > 0.0)
+        )
+        prior_atr_pct = np.full(n, np.nan, dtype=np.float64)
+        prior_atr_pct[valid_atr] = daily_atr[valid_atr] / previous_daily_close[valid_atr] * 100.0
+        ok &= valid_atr & (prior_atr_pct <= max_prior_atr_pct)
+
+    max_prior_rolling_atr_pct = float(getattr(session, "max_prior_rolling_atr_pct", 0.0) or 0.0)
+    if max_prior_rolling_atr_pct > 0.0:
+        valid_rolling_atr = np.isfinite(prior_rolling_atr_pct)
+        ok &= valid_rolling_atr & (prior_rolling_atr_pct <= max_prior_rolling_atr_pct)
+
+    max_orb_range_pct = float(getattr(session, "max_orb_range_pct", 0.0) or 0.0)
+    if max_orb_range_pct > 0.0:
+        orb_range = orb_high - orb_low
+        valid_orb = (
+            np.isfinite(orb_range)
+            & np.isfinite(orb_open)
+            & (orb_open > 0.0)
+            & (orb_range >= 0.0)
+        )
+        orb_range_pct = np.full(n, np.nan, dtype=np.float64)
+        orb_range_pct[valid_orb] = orb_range[valid_orb] / orb_open[valid_orb] * 100.0
+        ok &= valid_orb & (orb_range_pct <= max_orb_range_pct)
+
+    return ok
+
+
 def _extract_setup_candidates(
     df: pd.DataFrame,
     session: SessionConfig,
@@ -3127,9 +3176,18 @@ def _extract_setup_candidates(
         orb_high    = sc["orb_high"]
         orb_low     = sc["orb_low"]
         orb_ready   = sc["orb_ready"]
+        orb_open    = sc.get("orb_open")
+        if orb_open is None:
+            orb_open = compute_orb_open(df, masks["in_orb"], masks["in_rth"], new_session_day)
         date_strs   = sc["date_strs"]
         vwap        = sc["vwap"]
         daily_atr   = _signal_cache["atr"][config.atr_length]
+        previous_daily_close = _signal_cache.get("previous_daily_close")
+        if previous_daily_close is None:
+            previous_daily_close = compute_previous_daily_close(df)
+        prior_rolling_atr_pct = _signal_cache.get("prior_rolling_atr_pct", {}).get(config.atr_length)
+        if prior_rolling_atr_pct is None:
+            prior_rolling_atr_pct = compute_previous_daily_rolling_atr_pct(df, config.atr_length)
         fvg         = _signal_cache["fvg"][fkey]
     else:
         # Slow path: compute signals fresh (correct for single-backtest calls).
@@ -3141,11 +3199,14 @@ def _extract_setup_candidates(
 
         # Daily ATR
         daily_atr = compute_daily_atr(df, config.atr_length)
+        previous_daily_close = compute_previous_daily_close(df)
+        prior_rolling_atr_pct = compute_previous_daily_rolling_atr_pct(df, config.atr_length)
 
         # ORB levels — use session day boundaries so ORB isn't reset at midnight
         orb_high, orb_low, orb_ready = compute_orb_levels(
             df, masks["in_orb"], masks["in_rth"], new_session_day
         )
+        orb_open = compute_orb_open(df, masks["in_orb"], masks["in_rth"], new_session_day)
         vwap = compute_session_vwap(
             df["high"].values,
             df["low"].values,
@@ -3199,6 +3260,23 @@ def _extract_setup_candidates(
         & masks["in_rth"]
         & orb_ready
     )
+
+    if config.strategy in {"continuation", "reversal"} and (
+        float(getattr(session, "max_prior_atr_pct", 0.0) or 0.0) > 0.0
+        or float(getattr(session, "max_prior_rolling_atr_pct", 0.0) or 0.0) > 0.0
+        or float(getattr(session, "max_orb_range_pct", 0.0) or 0.0) > 0.0
+    ):
+        context_gate_ok = _compute_session_context_gate_mask(
+            session,
+            daily_atr,
+            previous_daily_close,
+            prior_rolling_atr_pct,
+            orb_high,
+            orb_low,
+            orb_open,
+        )
+        valid_long &= context_gate_ok
+        valid_short &= context_gate_ok
 
     if config.strategy in {"continuation", "reversal"} and (
         config.min_vwap_distance_atr_pct > 0.0 or config.vwap_slope_lookback > 0
@@ -6358,7 +6436,9 @@ def build_signal_cache(
     Groups configs by their signal-determining keys and computes each unique
     combination exactly once:
 
-    - ``cache["atr"][atr_length]``       → daily ATR array
+    - ``cache["atr"][atr_length]``        → daily ATR array
+    - ``cache["previous_daily_close"]``   → previous completed daily close array
+    - ``cache["prior_rolling_atr_pct"]``  → previous completed rolling ATR% arrays
     - ``cache["session"][session_key]``   → masks, day IDs, ORB levels, date strings
     - ``cache["fvg"][fvg_key]``           → FVG signal arrays
 
@@ -6372,6 +6452,8 @@ def build_signal_cache(
     """
     cache: dict = {
         "atr": {},
+        "prior_rolling_atr_pct": {},
+        "previous_daily_close": None,
         "session": {},
         "fvg": {},
         "fvg_no_orb": {},
@@ -6382,6 +6464,7 @@ def build_signal_cache(
 
     # --- Date strings: config-independent, computed exactly once ---
     date_strs = compute_date_strings(timestamps)
+    cache["previous_daily_close"] = compute_previous_daily_close(df)
 
     needs_reference_levels = any(
         c.strategy == "reference_lsi" or (c.strategy == "htf_lsi" and bool(c.htf_lsi_reference_levels))
@@ -6469,7 +6552,11 @@ def build_signal_cache(
     # --- Batch 1: ATR + session computations in parallel ---
     # NumPy/Numba release the GIL, so threads achieve real parallelism.
     def _compute_atr(atr_length):
-        return atr_length, compute_daily_atr(df, atr_length)
+        return (
+            atr_length,
+            compute_daily_atr(df, atr_length),
+            compute_previous_daily_rolling_atr_pct(df, atr_length),
+        )
 
     def _compute_session(skey, session):
         masks = compute_session_masks(timestamps, session)
@@ -6477,6 +6564,7 @@ def build_signal_cache(
         orb_high, orb_low, orb_ready = compute_orb_levels(
             df, masks["in_orb"], masks["in_rth"], new_session_day
         )
+        orb_open = compute_orb_open(df, masks["in_orb"], masks["in_rth"], new_session_day)
         vwap = compute_session_vwap(
             df["high"].values,
             df["low"].values,
@@ -6497,6 +6585,7 @@ def build_signal_cache(
             "orb_high": orb_high,
             "orb_low": orb_low,
             "orb_ready": orb_ready,
+            "orb_open": orb_open,
             "vwap": vwap,
             "date_strs": date_strs,
             "day_bounds_default": day_bounds_default,
@@ -6513,14 +6602,16 @@ def build_signal_cache(
                 for skey, session in unique_sessions.items()
             ]
             for f in atr_futures:
-                atr_length, atr_arr = f.result()
+                atr_length, atr_arr, prior_rolling_atr_pct = f.result()
                 cache["atr"][atr_length] = atr_arr
+                cache["prior_rolling_atr_pct"][atr_length] = prior_rolling_atr_pct
             for f in session_futures:
                 skey, session_data = f.result()
                 cache["session"][skey] = session_data
     else:
         for atr_length in atr_lengths:
             cache["atr"][atr_length] = compute_daily_atr(df, atr_length)
+            cache["prior_rolling_atr_pct"][atr_length] = compute_previous_daily_rolling_atr_pct(df, atr_length)
         for skey, session in unique_sessions.items():
             _, session_data = _compute_session(skey, session)
             cache["session"][skey] = session_data
