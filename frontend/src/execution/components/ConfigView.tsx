@@ -1444,8 +1444,9 @@ export function ConfigView({
 
     if (!config) {
         return (
-            <div className="flex items-center justify-center py-20 text-text-muted">
-                Could not load configuration
+            <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
+                <p className="text-text-muted">Could not load configuration</p>
+                {error && <p className="max-w-lg text-sm text-loss">{error}</p>}
             </div>
         );
     }

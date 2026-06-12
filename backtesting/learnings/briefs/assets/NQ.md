@@ -12,7 +12,7 @@ This is the short entrypoint for agent and LLM context loading.
 ## Coverage
 - Strategy sections indexed: 45
 - Related reports indexed: 117
-- Related result directories indexed: 140
+- Related result directories indexed: 145
 - Status mix: CONDITIONAL: 12, GO: 3, INVALIDATED_OR_CORRUPT: 3, NO-GO: 5, OPTIMIZATION_COMPLETE: 1, SUPERSEDED: 2, UNSPECIFIED: 19
 
 ## Strategy Snapshot

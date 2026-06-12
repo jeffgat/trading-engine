@@ -795,7 +795,7 @@ class LSIEngine:
         )
 
     def _schedule_post_exit_cleanup(self, *, reason: str, delay_s: float | None = None) -> None:
-        """Cancel stale orders and flatten residual position after a resting exit should have filled."""
+        """Flatten residual position, then cancel stale orders after an exit trigger."""
         if not self._should_send:
             self._release_position_cap()
             return
@@ -809,10 +809,10 @@ class LSIEngine:
             try:
                 if cleanup_delay > 0:
                     await asyncio.sleep(cleanup_delay)
-                await self.broker.send_cancel(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 if self.post_exit_cancel_settle_delay_s > 0:
                     await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_cancel(ticker=self.exec_ticker)
             except Exception:
                 logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
             finally:

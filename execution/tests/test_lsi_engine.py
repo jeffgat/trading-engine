@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import math
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -35,6 +35,12 @@ if not hasattr(LSIState, "WAITING_FOR_SWEEP"):
 
 async def _flush_cleanup_tasks() -> None:
     await asyncio.sleep(0)
+
+
+def _track_broker_cleanup_order(broker) -> None:
+    broker.attach_mock(broker.send_flatten, "send_flatten")
+    broker.attach_mock(broker.send_cancel, "send_cancel")
+    broker.mock_calls.clear()
 
 
 # =============================================================================
@@ -899,6 +905,24 @@ class TestManagingExits:
         broker.send_cancel.assert_called()
         broker.send_flatten.assert_called()
         assert eng._state == LSIState.FLAT
+
+    async def test_sl_cleanup_flattens_before_cancel(self):
+        eng = make_lsi_engine()
+        eng, entry_price = await _advance_to_managing(eng)
+        if eng is None:
+            pytest.skip("Could not reach MANAGING")
+        broker = eng.broker
+        stop = eng._levels.stop
+        _track_broker_cleanup_order(broker)
+
+        bar = make_bar("2025-01-15 10:05", stop + 5, stop + 10, stop - 5, stop + 3)
+        await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+
+        assert broker.mock_calls[:2] == [
+            call.send_flatten(ticker="MNQ"),
+            call.send_cancel(ticker="MNQ"),
+        ]
 
     async def test_tp1_hit_multi_contract(self):
         eng = make_lsi_engine(risk_usd=5000)

@@ -62,6 +62,29 @@ MFE read: pre-holdout median MFE was `1.37R`, 38.41% reached `2R`; 2025 holdout 
 
 Operating rule: dry-run fill monitoring must show observed slippage comfortably inside the 2 ticks/side envelope before any live webhook or risk increase.
 
+### MBP1 Order Book Feature Read
+
+First order-book pass scored all 197 exact NQ_NY-RR2 trades against MBP1 windows around gap creation, gap revisit/pre-entry, and post-entry follow-through. The screen froze quartile thresholds on 2021-2024 and applied those unchanged to 2025 and 2026 inspection slices.
+
+Baseline for the scored sample matched the exact replay: 2021-2024 produced 151 trades, +31.74R gross, 41.06% win rate, 1.37 PF, and -10.03R max DD; 2025 produced 32 trades, +10.38R gross, 50.00% win rate, 1.65 PF, and -3.00R max DD; 2026 YTD produced 14 trades, +4.00R gross, 42.86% win rate, 1.50 PF, and -3.00R max DD.
+
+The best causal signals did not confirm a simple "buying pressure at revisit" thesis. The strongest read was quieter, cleaner gap creation: low `gap_create_5m_mid_range_ticks` had 38 development trades, +0.78R/trade, 63.16% win rate, 3.58 PF, and -2.00R max DD, then stayed positive in 2025 but had no 2026 coverage. Low `gap_create_5m_update_rate_per_sec` had 38 development trades, +0.57R/trade, 55.26% win rate, 2.61 PF, and stayed positive in both inspection slices.
+
+The revisit/pre-entry read currently looks more like an avoidance filter than a confirmation filter. Low `pre_entry_10s_l1_imbalance_mean` and low `pre_entry_10s_bid_dominance_pct` were strong in 2021-2024 and 2026, but 2025 was mixed enough that these should remain shadow gates until combined-gate testing proves they add value without overfitting.
+
+Post-entry velocity and imbalance were useful diagnostics, not entry filters. Strong post-entry 30s/60s velocity separated winners from losers, but those features occur after entry and should only be considered for future management/scratch research.
+
+Combined frozen shadow-gate pass (2026-06-10): the best practical forward-tagging candidate was `gap_any_top3_q1__AND__pre10_imbalance_not_q4`, using thresholds fit only on 2021-2024. Rule: pass when any of low gap-creation 5m mid range, low gap-creation 5m update rate, or low gap-creation 5m price volume is true, and pre-entry 10s L1 imbalance is not in the highest development quartile. It retained 34/151 development trades at +27.41R gross, +0.81R/trade, 61.76% win rate, 3.45 PF, and -3.01R max DD; 2025 retained 15/32 trades at +7.00R, +0.47R/trade, 2.17 PF, and -2.53R max DD; 2026 YTD retained 5/14 trades at +4.00R, +0.80R/trade, 3.00 PF, and -1.00R max DD. This is a shadow-tagging candidate only; it should be forward-observed before any live native gate is added.
+
+Evidence artifacts:
+
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_feature_lab_20260610_scored/summary.md`
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_feature_lab_20260610_scored/trade_orderbook_gap_features.csv`
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_bucket_screen_20260610/report.md`
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_bucket_screen_20260610/candidate_bucket_filters.csv`
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_combined_shadow_gates_20260610/report.md`
+- `backtesting/data/results/nq_ny_orb_gap_orderbook_combined_shadow_gates_20260610/ranked_shadow_gates.csv`
+
 ### Why This Belongs In ALPHA_V2
 
 This leg is intentionally different from the high-frequency ALPHA_V1 stack. It is a selective NY-only ORB sleeve, long-only, single-exit, and gated by native pre-trade volatility/range context. The research search did not freely optimize the whole strategy; it fixed the neutral ORB recipe first, then selected only the causal gating layer and direction using survivability-first criteria.

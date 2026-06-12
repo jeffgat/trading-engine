@@ -31,11 +31,15 @@ export function useConfig(
     if (!enabled) return;
     try {
       const r = await fetch("/exec-api/config");
-      if (!r.ok) return;
+      if (!r.ok) {
+        throw new Error(await readErrorMessage(r, "Failed to load configuration"));
+      }
       const data: ConfigResponse = await r.json();
       setConfig(data);
-    } catch {
-      // ignore fetch errors
+      setError(null);
+    } catch (e) {
+      setConfig(null);
+      setError(e instanceof Error ? e.message : "Failed to load configuration");
     }
   }, [enabled]);
 
@@ -78,14 +82,7 @@ export function useConfig(
           body: JSON.stringify({ overrides }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          const msg =
-            typeof err.detail === "string"
-              ? err.detail
-              : Array.isArray(err.detail)
-                ? err.detail.join("; ")
-                : JSON.stringify(err.detail);
-          throw new Error(msg);
+          throw new Error(await readErrorMessage(r, "Failed to save"));
         }
         await fetchConfig();
       } catch (e) {
@@ -108,12 +105,7 @@ export function useConfig(
           method: "DELETE",
         });
         if (!r.ok) {
-          const err = await r.json();
-          const msg =
-            typeof err.detail === "string"
-              ? err.detail
-              : JSON.stringify(err.detail);
-          throw new Error(msg);
+          throw new Error(await readErrorMessage(r, "Failed to reset"));
         }
         await fetchConfig();
       } catch (e) {
@@ -138,12 +130,7 @@ export function useConfig(
           body: JSON.stringify({ webhooks }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          const msg =
-            typeof err.detail === "string"
-              ? err.detail
-              : JSON.stringify(err.detail);
-          throw new Error(msg);
+          throw new Error(await readErrorMessage(r, "Failed to save webhooks"));
         }
         await fetchConfig();
       } catch (e) {
@@ -168,8 +155,7 @@ export function useConfig(
           body: JSON.stringify({ paused: true }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          throw new Error(await readErrorMessage(r, "Failed to pause"));
         }
         await fetchConfig();
       } catch (e) {
@@ -193,8 +179,7 @@ export function useConfig(
           body: JSON.stringify({ paused: false }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          throw new Error(await readErrorMessage(r, "Failed to resume"));
         }
         await fetchConfig();
       } catch (e) {
@@ -218,8 +203,7 @@ export function useConfig(
           body: JSON.stringify({ multiplier }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          throw new Error(await readErrorMessage(r, "Failed to update multiplier"));
         }
         await fetchConfig();
       } catch (e) {
@@ -241,8 +225,7 @@ export function useConfig(
           method: "POST",
         });
         if (!r.ok) {
-          const err = await r.json();
-          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          throw new Error(await readErrorMessage(r, "Failed to flatten"));
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to flatten");
@@ -304,8 +287,7 @@ export function useConfig(
           body: JSON.stringify({ enabled }),
         });
         if (!r.ok) {
-          const err = await r.json();
-          throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
+          throw new Error(await readErrorMessage(r, "Failed to toggle enabled"));
         }
         await fetchConfig();
       } catch (e) {

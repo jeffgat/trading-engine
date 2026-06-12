@@ -600,7 +600,8 @@ def run(args: argparse.Namespace) -> int:
     needed_windows: list[dict[str, Any]] = []
     book_cache: dict[Path, pd.DataFrame] = {}
 
-    for _, trade in trades.iterrows():
+    total_trades = len(trades)
+    for trade_idx, (_, trade) in enumerate(trades.iterrows(), start=1):
         setup = reconstruct_gap_setup(trade, Path(args.bars_5m))
         entry_dt = trade["entry_dt"]
         end_needed = max(entry_dt + timedelta(minutes=5), et_datetime(str(trade["date"]), "10:30"))
@@ -643,7 +644,19 @@ def run(args: argparse.Namespace) -> int:
             continue
 
         if ob_file.path not in book_cache:
+            if not args.quiet:
+                print(
+                    f"[{trade_idx}/{total_trades}] loading {ob_file.path.name} "
+                    f"for {trade['date']} entry={entry_dt.isoformat()}",
+                    flush=True,
+                )
             book_cache[ob_file.path] = load_top_of_book(ob_file.path, start=ob_file.start_et, end=ob_file.end_et)
+        elif not args.quiet:
+            print(
+                f"[{trade_idx}/{total_trades}] reusing {ob_file.path.name} "
+                f"for {trade['date']} entry={entry_dt.isoformat()}",
+                flush=True,
+            )
         book = book_cache[ob_file.path]
 
         price_start = setup.gap_bar_time
@@ -710,6 +723,7 @@ def main() -> int:
     parser.add_argument("--start-date", default=None, help="Inclusive ET date YYYY-MM-DD.")
     parser.add_argument("--end-date", default=None, help="Exclusive ET date YYYY-MM-DD.")
     parser.add_argument("--max-trades", type=int, default=None)
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-DBN progress logs.")
     return run(parser.parse_args())
 
 

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-09T22:47:52.623096Z",
+  "generated_at": "2026-06-10T13:49:30.773342Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -9,7 +9,7 @@
   "overview": {
     "asset_histories": 8,
     "report_files": 239,
-    "result_directories": 382,
+    "result_directories": 387,
     "result_loose_files": 45
   },
   "assets": {
@@ -4576,6 +4576,83 @@
           ]
         },
         {
+          "name": "nq_ny_orb_gap_orderbook_bucket_screen_20260610",
+          "path": "backtesting/data/results/nq_ny_orb_gap_orderbook_bucket_screen_20260610",
+          "mtime_utc": "2026-06-10T12:57:27.010635Z",
+          "file_count": 7,
+          "primary_files": [
+            "summary.json",
+            "baseline_period_metrics.csv",
+            "candidate_bucket_filters.csv",
+            "feature_bucket_contrasts.csv",
+            "feature_bucket_summary.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_orb_gap_orderbook_combined_shadow_gates_20260610",
+          "path": "backtesting/data/results/nq_ny_orb_gap_orderbook_combined_shadow_gates_20260610",
+          "mtime_utc": "2026-06-10T13:48:20.889050Z",
+          "file_count": 8,
+          "primary_files": [
+            "summary.json",
+            "baseline_period_metrics.csv",
+            "ranked_shadow_gates.csv",
+            "report.md",
+            "shadow_gate_period_metrics.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_orb_gap_orderbook_feature_lab_20260609",
+          "path": "backtesting/data/results/nq_ny_orb_gap_orderbook_feature_lab_20260609",
+          "mtime_utc": "2026-06-09T23:28:29.085294Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "summary.json",
+            "missing_orderbook_windows.csv",
+            "trade_orderbook_gap_features.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_orb_gap_orderbook_feature_lab_20260609_smoke",
+          "path": "backtesting/data/results/nq_ny_orb_gap_orderbook_feature_lab_20260609_smoke",
+          "mtime_utc": "2026-06-09T23:23:46.585271Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "summary.json",
+            "missing_orderbook_windows.csv",
+            "trade_orderbook_gap_features.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_orb_gap_orderbook_feature_lab_20260610_scored",
+          "path": "backtesting/data/results/nq_ny_orb_gap_orderbook_feature_lab_20260610_scored",
+          "mtime_utc": "2026-06-10T03:40:58.610821Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.md",
+            "summary.json",
+            "missing_orderbook_windows.csv",
+            "trade_orderbook_gap_features.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
           "name": "nq_ny_reference_lsi_3m_failure_analysis",
           "path": "backtesting/data/results/nq_ny_reference_lsi_3m_failure_analysis",
           "mtime_utc": "2026-04-09T00:09:36.208814Z",
@@ -7936,7 +8013,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-06-08T18:13:18.826092Z"
+        "mtime_utc": "2026-06-10T12:23:23.349978Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",

@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/clerk-react";
-import { useEffect, type ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { setApiTokenProvider, shouldAuthorizeApiUrl } from "@/auth/apiAuth";
 
 function resolveFetchUrl(input: RequestInfo | URL) {
@@ -11,7 +11,7 @@ function resolveFetchUrl(input: RequestInfo | URL) {
 export function AuthenticatedApiBridge({ children }: { children: ReactNode }) {
   const { getToken } = useAuth();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setApiTokenProvider(() => getToken());
 
     const originalFetch = window.fetch.bind(window);

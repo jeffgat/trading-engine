@@ -31,6 +31,12 @@ async def _flush_cleanup_tasks() -> None:
     await asyncio.sleep(0)
 
 
+def _track_broker_cleanup_order(broker) -> None:
+    broker.attach_mock(broker.send_flatten, "send_flatten")
+    broker.attach_mock(broker.send_cancel, "send_cancel")
+    broker.mock_calls.clear()
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -533,6 +539,20 @@ class TestManagingExits5m:
         broker.send_cancel.assert_called_once()
         broker.send_flatten.assert_called_once()
         assert eng._state == State.FLAT
+
+    async def test_sl_cleanup_flattens_before_cancel(self, engine, broker):
+        eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
+        stop = eng._levels.stop
+        _track_broker_cleanup_order(broker)
+
+        bar = make_bar("2025-01-15 10:05", stop + 10, stop + 15, stop - 5, stop + 8)
+        await eng.on_bar(bar, 300.0)
+        await _flush_cleanup_tasks()
+
+        assert broker.mock_calls[:2] == [
+            call.send_flatten(ticker="MNQ"),
+            call.send_cancel(ticker="MNQ"),
+        ]
 
     async def test_sl_emits_trade_record(self, engine, broker):
         records = []

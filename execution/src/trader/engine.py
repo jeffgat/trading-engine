@@ -732,12 +732,14 @@ class ORBEngine:
         )
 
     def _schedule_post_exit_cleanup(self, *, reason: str, delay_s: float | None = None) -> None:
-        """Cancel stale orders and flatten residual position after a resting exit should have filled.
+        """Flatten residual position and then sweep stale orders after an exit trigger.
 
         This is used for exits where a live broker-side stop/limit is already expected
         to do the real work (initial stop, BE stop, or TP2 limit). We wait a short
-        grace period so that resting order can complete, then send a cleanup
-        cancel+flatten sequence as a belt-and-suspenders sweep.
+        grace period so that resting order can complete, then send a cleanup sweep.
+        Flatten must happen before cancel: if strategy data marked a limit as filled
+        but the broker still has only resting orders, cancel-first can remove the
+        protective orders and leave the subsequent exit with no broker position.
         """
         if not self._should_send:
             self._release_position_cap()
@@ -752,10 +754,10 @@ class ORBEngine:
             try:
                 if cleanup_delay > 0:
                     await asyncio.sleep(cleanup_delay)
-                await self.broker.send_cancel(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=self.exec_ticker)
                 if self.post_exit_cancel_settle_delay_s > 0:
                     await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_cancel(ticker=self.exec_ticker)
             except Exception:
                 logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
             finally:
