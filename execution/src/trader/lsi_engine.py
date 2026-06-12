@@ -170,6 +170,7 @@ class LSIEngine:
         config_name: str = "",
         post_exit_cleanup_delay_s: float = 6.0,
         post_exit_cancel_settle_delay_s: float = 0.25,
+        contract_routing_required: bool = False,
     ) -> None:
         self.name = name
         self.broker = broker
@@ -179,6 +180,12 @@ class LSIEngine:
         self.paused: bool = False
         self.post_exit_cleanup_delay_s = post_exit_cleanup_delay_s
         self.post_exit_cancel_settle_delay_s = post_exit_cancel_settle_delay_s
+        self.contract_routing_required = contract_routing_required
+        self._signal_contract: str = ""
+        self._exec_contract: str = ""
+        self._trade_signal_contract: str = ""
+        self._trade_exec_contract: str = ""
+        self._contract_routing_error: str = ""
 
         # Time windows
         self.entry_start = entry_start
@@ -433,6 +440,7 @@ class LSIEngine:
 
     def _reset_active_setup(self) -> None:
         """Drop the current sweep/gap chain while preserving session counters."""
+        self._clear_trade_contract()
         self._active_sweep = None
         self._active_gap = None
         self._active_sweep_instance_id = -1
@@ -804,15 +812,16 @@ class LSIEngine:
             return
 
         cleanup_delay = self.post_exit_cleanup_delay_s if delay_s is None else delay_s
+        cleanup_ticker = self.broker_ticker
 
         async def _runner() -> None:
             try:
                 if cleanup_delay > 0:
                     await asyncio.sleep(cleanup_delay)
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=cleanup_ticker)
                 if self.post_exit_cancel_settle_delay_s > 0:
                     await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
-                await self.broker.send_cancel(ticker=self.exec_ticker)
+                await self.broker.send_cancel(ticker=cleanup_ticker)
             except Exception:
                 logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
             finally:
@@ -962,7 +971,7 @@ class LSIEngine:
         self._set_trade_overlap(False, notify=False)
         self._release_position_cap()
         if self._should_send:
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            await self.broker.send_flatten(ticker=self.broker_ticker)
         self._emit_trade_record(
             "tp1_eod" if self._tp1_hit else "eod",
             exit_price=previous_bar.close,
@@ -1137,6 +1146,64 @@ class LSIEngine:
         if self.on_state_change:
             self.on_state_change(self.status_dict())
 
+    @property
+    def broker_ticker(self) -> str:
+        return self._trade_exec_contract or self._exec_contract or self.exec_ticker
+
+    def set_contract_context(
+        self,
+        *,
+        signal_contract: str | None,
+        exec_contract: str | None,
+        error: str | None = None,
+    ) -> None:
+        old_pair = (self._signal_contract, self._exec_contract, self._contract_routing_error)
+        self._signal_contract = signal_contract or ""
+        self._exec_contract = exec_contract or ""
+        self._contract_routing_error = error or ""
+        new_pair = (self._signal_contract, self._exec_contract, self._contract_routing_error)
+        if old_pair == new_pair:
+            return
+        if self._contract_routing_error:
+            self._log_trade(
+                "CONTRACT_ROUTE_ERROR",
+                "signal_contract=%s exec_root=%s error=%s"
+                % (self._signal_contract or "-", self.exec_ticker, self._contract_routing_error),
+            )
+        else:
+            self._log_trade(
+                "CONTRACT_ROUTE",
+                "signal_contract=%s exec_contract=%s"
+                % (self._signal_contract or "-", self._exec_contract or self.exec_ticker),
+            )
+        self._request_checkpoint()
+        self._notify_state_change()
+
+    def _contract_ready_for_entry(self, timestamp: datetime | None = None) -> bool:
+        if self._contract_routing_error:
+            self._log_trade(
+                "ENTRY_SKIPPED_CONTRACT",
+                "time=%s error=%s"
+                % (timestamp.isoformat() if timestamp else "-", self._contract_routing_error),
+            )
+            return False
+        if self.contract_routing_required and not self._exec_contract:
+            self._log_trade(
+                "ENTRY_SKIPPED_CONTRACT",
+                "time=%s reason=missing_explicit_contract exec_root=%s"
+                % (timestamp.isoformat() if timestamp else "-", self.exec_ticker),
+            )
+            return False
+        return True
+
+    def _lock_trade_contract(self) -> None:
+        self._trade_signal_contract = self._signal_contract
+        self._trade_exec_contract = self._exec_contract
+
+    def _clear_trade_contract(self) -> None:
+        self._trade_signal_contract = ""
+        self._trade_exec_contract = ""
+
     def _emit_trade_record(
         self,
         exit_type: str,
@@ -1165,7 +1232,7 @@ class LSIEngine:
             **self._trade_accounting_fields(),
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
             ticker=self._asset_tag.upper(),
-            exec_ticker=self.exec_ticker,
+            exec_ticker=self.broker_ticker,
             leg=self.name,
             entry_context=dict(self._entry_context),
         )
@@ -1480,6 +1547,7 @@ class LSIEngine:
                 self._fill_timestamp = None
                 self._exit_type = None
                 self._r_result = None
+                self._clear_trade_contract()
                 self._clear_dashboard_overlay()
                 self._request_checkpoint()
 
@@ -1798,6 +1866,9 @@ class LSIEngine:
             if not self._in_entry(bar_time):
                 self._log_trade("LIMIT_CANCELLED", "entry window closed")
                 self._set_trade_overlap(False, notify=False)
+                if self._should_send:
+                    await self.broker.send_cancel(ticker=self.broker_ticker)
+                self._reset_active_setup()
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -2117,6 +2188,13 @@ class LSIEngine:
                 self._notify_state_change()
                 return
 
+        if not self._contract_ready_for_entry(bar.timestamp):
+            self._state = LSIState.SCANNING
+            self._reset_active_setup()
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
         base_qty = qty
         dynamic_decision = self._dynamic_sizing_decision(
             bar=signal_bar or bar,
@@ -2215,6 +2293,7 @@ class LSIEngine:
         self._set_gap_overlay(gap)
 
         self._set_trade_overlap(False, notify=False)
+        self._lock_trade_contract()
         self._tp1_hit = False
         self._tp1_bar_count = -1
         self._fill_bar_count = self._bar_count
@@ -2240,7 +2319,7 @@ class LSIEngine:
                 price=self._levels.entry,
                 tp2=self._levels.tp2,
                 stop=self._levels.stop,
-                ticker=self.exec_ticker,
+                ticker=self.broker_ticker,
             )
         self._notify_state_change()
 
@@ -2314,7 +2393,7 @@ class LSIEngine:
                 if self._should_send:
                     await self.broker.send_tp1_multi(
                         direction=dir_str, total_qty=levels.qty, exit_qty=levels.half_qty, be_price=levels.be,
-                        tp2=levels.tp2, ticker=self.exec_ticker)
+                        tp2=levels.tp2, ticker=self.broker_ticker)
                 self._notify_state_change()
                 return
 
@@ -2345,7 +2424,7 @@ class LSIEngine:
         if exit_type in {"eod", "tp1_eod", "tp1_single"}:
             self._release_position_cap()
             if self._should_send:
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=self.broker_ticker)
             if exit_type == "tp1_single":
                 self._schedule_post_exit_cleanup(
                     reason="tp1_single_hit_5m",
@@ -2384,6 +2463,9 @@ class LSIEngine:
             if not self._in_entry(tick.timestamp.time()):
                 self._log_trade("LIMIT_CANCELLED", "entry window closed (1s)")
                 self._set_trade_overlap(False, notify=False)
+                if self._should_send:
+                    await self.broker.send_cancel(ticker=self.broker_ticker)
+                self._reset_active_setup()
                 self._state = LSIState.FLAT
                 self._request_checkpoint()
                 self._notify_state_change()
@@ -2421,7 +2503,7 @@ class LSIEngine:
             self._set_trade_overlap(False, notify=False)
             self._release_position_cap()
             if self._should_send:
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=self.broker_ticker)
             self._emit_trade_record(
                 "tp1_eod" if self._tp1_hit else "eod",
                 exit_price=tick.close,
@@ -2508,7 +2590,7 @@ class LSIEngine:
                         exit_qty=levels.half_qty,
                         be_price=levels.be,
                         tp2=levels.tp2,
-                        ticker=self.exec_ticker,
+                        ticker=self.broker_ticker,
                     )
                 self._notify_state_change()
                 return
@@ -2581,7 +2663,14 @@ class LSIEngine:
             "config_name": self.config_name,
             "session": self.name,
             "signal_ticker": self._asset_tag.upper(),
-            "exec_ticker": self.exec_ticker,
+            "exec_ticker": self.broker_ticker,
+            "exec_root_ticker": self.exec_ticker,
+            "signal_contract": self._signal_contract or None,
+            "exec_contract": self._exec_contract or None,
+            "trade_signal_contract": self._trade_signal_contract or None,
+            "trade_exec_contract": self._trade_exec_contract or None,
+            "contract_routing_required": self.contract_routing_required,
+            "contract_routing_error": self._contract_routing_error or None,
             "state": self._display_state(),
             "raw_state": self._state.value,
             "type": "lsi",

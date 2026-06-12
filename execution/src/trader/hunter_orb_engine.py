@@ -355,6 +355,13 @@ class HunterORBEngine(ORBEngine):
             self._notify_state_change()
             return False
 
+        if not self._contract_ready_for_entry(fill_timestamp):
+            self._levels = None
+            self._state = State.WAITING_FOR_GAP if self._in_entry(fill_timestamp.time()) else State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return False
+
         capped_levels = self._apply_position_cap(levels)
         if capped_levels is None:
             self._levels = None
@@ -364,6 +371,7 @@ class HunterORBEngine(ORBEngine):
             return False
 
         self._levels = capped_levels
+        self._lock_trade_contract()
         self._tp1_hit = False
         self._fill_bar_idx = self._bar_count
         self._fill_timestamp = fill_timestamp
@@ -415,7 +423,7 @@ class HunterORBEngine(ORBEngine):
                 price=capped_levels.entry,
                 tp2=capped_levels.tp2,
                 stop=capped_levels.stop,
-                ticker=self.exec_ticker,
+                ticker=self.broker_ticker,
             )
         return True
 
@@ -475,6 +483,7 @@ class HunterORBEngine(ORBEngine):
             self._schedule_post_exit_cleanup(reason=f"{event.lower()}_{resolution}")
         self._emit_trade_record(exit_type, exit_price=exit_price, exit_timestamp=exit_timestamp)
         self._remember_hunter_outcome(exit_timestamp, self._price_to_r(exit_price), exit_type)
+        self._clear_trade_contract()
 
         if self._should_continue_scanning(exit_timestamp):
             self._state = State.WAITING_FOR_GAP

@@ -1670,6 +1670,7 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
 
     from .api import DashboardState, LogTailer, create_app
     from .broker import TradersPostClient
+    from .contracts import explicit_traderspost_contract
     from .feed import ET, DataBentoFeed
     from .gates import set_daily_history_provider
     from .orderbook_features import OrderbookFeatureCache, OrderbookVelocityTierSizer
@@ -1832,6 +1833,9 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
     if not all_engines:
         logger.error("No session engines configured across any execution config")
         sys.exit(1)
+    for engine in all_engines:
+        if hasattr(engine, "contract_routing_required"):
+            engine.contract_routing_required = True
 
     # Dashboard API — pass engines grouped by config
     has_live = any(not b.dry_run for b in brokers)
@@ -1934,6 +1938,88 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
             orderbook_cache.add_sample(sample)
             dashboard.orderbook_status = _orderbook_status_snapshot()
 
+    ACTIVE_BROKER_STATES = {"armed_limit", "filled", "managing"}
+
+    def _active_trade_signal_contract(engine) -> str:
+        state = getattr(getattr(engine, "_state", None), "value", "")
+        if state not in ACTIVE_BROKER_STATES:
+            return ""
+        return str(getattr(engine, "_trade_signal_contract", "") or "")
+
+    def allow_contract_roll(
+        symbol: str,
+        current_raw: str | None,
+        candidate_raw: str,
+        timestamp: datetime,
+    ) -> bool:
+        blockers = []
+        for engine in global_symbol_map.get(symbol, []):
+            active_signal = _active_trade_signal_contract(engine)
+            if active_signal and active_signal != candidate_raw:
+                blockers.append(
+                    "%s/%s active=%s broker=%s"
+                    % (
+                        getattr(engine, "config_name", ""),
+                        getattr(engine, "name", "?"),
+                        active_signal,
+                        getattr(engine, "broker_ticker", getattr(engine, "exec_ticker", "")),
+                    )
+                )
+        if blockers:
+            logger.warning(
+                "Contract roll blocked for %s: %s → %s at %s; active trades pinned: %s",
+                symbol,
+                current_raw or "-",
+                candidate_raw,
+                timestamp.isoformat(),
+                "; ".join(blockers),
+            )
+            return False
+        return True
+
+    async def on_contract(symbol: str, raw_contract: str, timestamp: datetime):
+        target_engines = global_symbol_map.get(symbol, [])
+        for engine in target_engines:
+            exec_root = str(getattr(engine, "exec_ticker", "") or "")
+            try:
+                exec_contract = explicit_traderspost_contract(
+                    signal_contract=raw_contract,
+                    exec_root=exec_root,
+                    as_of=timestamp,
+                )
+                error = None
+            except Exception as exc:
+                exec_contract = None
+                error = str(exc)
+                logger.error(
+                    "[%s] Contract routing failed: feed=%s raw=%s exec_root=%s error=%s",
+                    getattr(engine, "name", "?"),
+                    symbol,
+                    raw_contract,
+                    exec_root,
+                    error,
+                )
+
+            active_signal = getattr(engine, "_trade_signal_contract", "")
+            state = getattr(getattr(engine, "_state", None), "value", "")
+            if active_signal and active_signal != raw_contract and state in {"armed_limit", "filled", "managing"}:
+                logger.warning(
+                    "[%s] Feed contract rolled while engine active: active=%s new=%s state=%s broker_ticker=%s",
+                    getattr(engine, "name", "?"),
+                    active_signal,
+                    raw_contract,
+                    state,
+                    getattr(engine, "broker_ticker", exec_root),
+                )
+                continue
+
+            if hasattr(engine, "set_contract_context"):
+                engine.set_contract_context(
+                    signal_contract=raw_contract,
+                    exec_contract=exec_contract,
+                    error=error,
+                )
+
     # DataBento feed — subscribe to all symbols needed by active engines
     api_key = _env_or_key(db_cfg, "api_key", allow_config_value=False)
     if not api_key:
@@ -1954,8 +2040,12 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
         on_bar=on_bar,
         on_tick=on_tick,
         on_orderbook=on_orderbook if orderbook_mbp10_enabled else None,
+        on_contract=on_contract,
+        on_contract_roll_check=allow_contract_roll,
         enable_mbp10=orderbook_mbp10_enabled,
         atr_lengths_by_symbol=global_atr_lengths,
+        front_month_roll_min_volume=int(db_cfg.get("front_month_roll_min_volume", 100)),
+        front_month_roll_ratio=float(db_cfg.get("front_month_roll_ratio", 1.10)),
     )
     if daily_only_symbols:
         logger.info("Daily-history-only symbols added for regime gates: %s", daily_only_symbols)
@@ -2038,6 +2128,15 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
     else:
         intraday_5m = feed.preload_intraday_5m(lookback_hours=18)
     now_et = datetime.now(tz=ET)
+    for symbol, raw_contract in feed.get_preload_contracts().items():
+        if allow_contract_roll(symbol, None, raw_contract, now_et):
+            await on_contract(symbol, raw_contract, now_et)
+        else:
+            logger.warning(
+                "Preload contract context held for %s: candidate=%s active trade is pinned",
+                symbol,
+                raw_contract,
+            )
 
     def _startup_recovery_skip_reason(engine) -> str | None:
         state = getattr(engine, "_state", None)
@@ -2145,11 +2244,15 @@ async def run_live(config: dict, api_host: str = "127.0.0.1", api_port: int = 80
                 state_val = engine._state.value if hasattr(engine._state, "value") else str(engine._state)
                 if state_val == "armed_limit":
                     logger.info("[%s] Shutdown: cancelling pending order", engine.name)
-                    await engine.broker.send_cancel(ticker=engine.exec_ticker)
+                    await engine.broker.send_cancel(
+                        ticker=getattr(engine, "broker_ticker", engine.exec_ticker)
+                    )
                     _checkpoint_shutdown_flat(engine)
                 elif state_val == "managing":
                     logger.info("[%s] Shutdown: flattening open position", engine.name)
-                    await engine.broker.send_flatten(ticker=engine.exec_ticker)
+                    await engine.broker.send_flatten(
+                        ticker=getattr(engine, "broker_ticker", engine.exec_ticker)
+                    )
                     _checkpoint_shutdown_flat(engine)
             except Exception:
                 logger.exception("[%s] Error during shutdown cleanup", engine.name)

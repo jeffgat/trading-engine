@@ -11,6 +11,7 @@ sizing, but it is disabled by default.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import math
 from collections import deque
@@ -19,6 +20,7 @@ from datetime import datetime, time, timedelta, date
 from typing import Awaitable, Callable
 from zoneinfo import ZoneInfo
 
+from .contracts import contract_order_key, parse_contract
 from .engine import Bar
 from .orderbook_features import TopOfBookSample
 
@@ -398,6 +400,15 @@ OnSymbolTickCallback = Callable[[str, Bar, ATRValuesByLength], Awaitable[None]]
 OnSymbolOrderbookCallback = Callable[[TopOfBookSample], Awaitable[None]]
 # Signature: async def on_orderbook(sample: TopOfBookSample) -> None
 
+OnSymbolContractCallback = Callable[[str, str, datetime], Awaitable[None]]
+# Signature: async def on_contract(symbol: str, raw_contract: str, timestamp: datetime) -> None
+
+OnSymbolContractRollCheck = Callable[
+    [str, str | None, str, datetime],
+    bool | Awaitable[bool],
+]
+# Signature: def allow_contract_roll(symbol, current_raw, candidate_raw, timestamp) -> bool
+
 
 # ---------------------------------------------------------------------------
 # DataBento live feed (multi-symbol)
@@ -431,9 +442,14 @@ class DataBentoFeed:
         on_bar: OnSymbolBarCallback | None = None,
         on_tick: OnSymbolTickCallback | None = None,
         on_orderbook: OnSymbolOrderbookCallback | None = None,
+        on_contract: OnSymbolContractCallback | None = None,
+        on_contract_roll_check: OnSymbolContractRollCheck | None = None,
         enable_mbp10: bool = False,
         atr_length: int = 14,
         atr_lengths_by_symbol: dict[str, list[int] | set[int] | tuple[int, ...]] | None = None,
+        front_month_volume_window_minutes: int = 60,
+        front_month_roll_min_volume: int = 100,
+        front_month_roll_ratio: float = 1.10,
         reconnect_delay: float = 1.0,
         max_reconnect_delay: float = 60.0,
         # Legacy single-symbol support
@@ -457,8 +473,13 @@ class DataBentoFeed:
         self.on_bar = on_bar
         self.on_tick = on_tick
         self.on_orderbook = on_orderbook
+        self.on_contract = on_contract
+        self.on_contract_roll_check = on_contract_roll_check
         self.enable_mbp10 = enable_mbp10
         self.atr_length = atr_length
+        self.front_month_volume_window = timedelta(minutes=max(1, int(front_month_volume_window_minutes)))
+        self.front_month_roll_min_volume = max(0, int(front_month_roll_min_volume))
+        self.front_month_roll_ratio = max(1.0, float(front_month_roll_ratio))
         self.reconnect_delay = reconnect_delay
         self.max_reconnect_delay = max_reconnect_delay
 
@@ -487,10 +508,123 @@ class DataBentoFeed:
         self._id_to_symbol: dict[int, str] = {}
         # Maps instrument_id to raw contract name (e.g. 42002475 → "NQH6")
         self._id_to_raw: dict[int, str] = {}
-        # Front-month selection: cumulative volume per (parent, instrument_id)
-        # and the currently elected front-month id per parent symbol
+        # Front-month selection: recent rolling volume per instrument id and the
+        # currently elected front-month id per parent symbol. Recent volume avoids
+        # stale cumulative leads across CME roll week.
         self._id_volumes: dict[int, int] = {}  # instrument_id → cumulative volume
+        self._id_recent_volumes: dict[int, deque[tuple[datetime, int]]] = {}
         self._front_month: dict[str, int] = {}  # parent symbol → instrument_id
+        self._preload_front_contracts: dict[str, str] = {}
+
+    def get_front_contract(self, symbol: str) -> str | None:
+        """Return the current raw front contract for a parent symbol, if known."""
+        front_id = self._front_month.get(symbol)
+        if front_id is None:
+            return self._preload_front_contracts.get(symbol)
+        return self._id_to_raw.get(front_id)
+
+    def get_preload_contracts(self) -> dict[str, str]:
+        """Return contracts selected by the most recent intraday preload."""
+        return dict(self._preload_front_contracts)
+
+    def _record_recent_volume(self, iid: int, ts: datetime, volume: int) -> int:
+        window = self._id_recent_volumes.setdefault(iid, deque())
+        window.append((ts, int(volume or 0)))
+        return self._recent_volume(iid, ts)
+
+    def _recent_volume(self, iid: int, ts: datetime) -> int:
+        window = self._id_recent_volumes.setdefault(iid, deque())
+        cutoff = ts - self.front_month_volume_window
+        while window and window[0][0] < cutoff:
+            window.popleft()
+        return sum(volume for _ts, volume in window)
+
+    def _roll_candidate_is_stronger(self, *, current_iid: int, candidate_iid: int, ts: datetime) -> bool:
+        candidate_recent = self._recent_volume(candidate_iid, ts)
+        current_recent = self._recent_volume(current_iid, ts)
+        if candidate_recent < self.front_month_roll_min_volume:
+            return False
+        if current_recent <= 0:
+            return True
+        return candidate_recent >= current_recent * self.front_month_roll_ratio
+
+    async def _contract_roll_allowed(
+        self,
+        *,
+        symbol: str,
+        previous_iid: int | None,
+        candidate_iid: int,
+        ts: datetime,
+    ) -> bool:
+        if self.on_contract_roll_check is None:
+            return True
+        candidate_raw = self._id_to_raw.get(candidate_iid)
+        if not candidate_raw:
+            return True
+        current_raw = self._id_to_raw.get(previous_iid)
+        allowed = self.on_contract_roll_check(symbol, current_raw, candidate_raw, ts)
+        if inspect.isawaitable(allowed):
+            allowed = await allowed
+        return bool(allowed)
+
+    async def _set_front_month(
+        self,
+        *,
+        symbol: str,
+        iid: int,
+        ts: datetime,
+        reason: str,
+    ) -> bool:
+        previous = self._front_month.get(symbol)
+        if previous == iid:
+            return True
+
+        if not await self._contract_roll_allowed(
+            symbol=symbol,
+            previous_iid=previous,
+            candidate_iid=iid,
+            ts=ts,
+        ):
+            logger.warning(
+                "Front-month roll held for %s: %s → %s denied by active-trade guard (reason=%s)",
+                symbol,
+                self._id_to_raw.get(previous, "?"),
+                self._id_to_raw.get(iid, "?"),
+                reason,
+            )
+            return False
+
+        raw = self._id_to_raw.get(iid, "?")
+        recent = self._recent_volume(iid, ts)
+        if previous is None:
+            logger.info(
+                "Front-month elected for %s: %s (id=%d recent_vol=%d reason=%s)",
+                symbol,
+                raw,
+                iid,
+                recent,
+                reason,
+            )
+        else:
+            old_raw = self._id_to_raw.get(previous, "?")
+            old_recent = self._recent_volume(previous, ts)
+            logger.info(
+                "Front-month rolled for %s: %s → %s (recent_vol %d > %d reason=%s)",
+                symbol,
+                old_raw,
+                raw,
+                recent,
+                old_recent,
+                reason,
+            )
+            self._aggregators[symbol] = BarAggregator()
+
+        self._front_month[symbol] = iid
+        if raw != "?":
+            self._preload_front_contracts[symbol] = raw
+        if self.on_contract is not None and raw != "?":
+            await self.on_contract(symbol, raw, ts)
+        return True
 
     def _ingest_1m_bar(
         self,
@@ -758,6 +892,49 @@ class DataBentoFeed:
             return []
         return tracker.snapshot(include_current=include_current)
 
+    @staticmethod
+    def _raw_contract_from_symbol(value, *, as_of: datetime | date | None = None) -> str:
+        raw = str(value or "").strip().upper()
+        if not raw or "-" in raw:
+            return ""
+        try:
+            parse_contract(raw, as_of=as_of)
+        except ValueError:
+            return ""
+        return raw
+
+    def _select_preload_front_contracts(self, df, *, as_of: datetime) -> dict[str, str]:
+        """Pick one raw contract per parent symbol for intraday recovery."""
+        if "raw_symbol" not in df.columns or "volume" not in df.columns:
+            return {}
+        valid = df[df["raw_symbol"].astype(str) != ""].copy()
+        if valid.empty:
+            return {}
+
+        latest_ts = valid["ts_event"].max()
+        cutoff = latest_ts - self.front_month_volume_window
+        recent = valid[valid["ts_event"] >= cutoff]
+        if recent.empty:
+            recent = valid
+
+        grouped = (
+            recent.groupby(["parent_symbol", "raw_symbol"], as_index=False)["volume"]
+            .sum()
+        )
+        selected: dict[str, str] = {}
+        for parent_symbol, group in grouped.groupby("parent_symbol"):
+            candidates = []
+            for _, row in group.iterrows():
+                raw = str(row["raw_symbol"])
+                try:
+                    order_key = contract_order_key(raw, as_of=as_of)
+                except ValueError:
+                    order_key = (0, 0, raw)
+                candidates.append((int(row["volume"] or 0), order_key, raw))
+            if candidates:
+                selected[str(parent_symbol)] = max(candidates, key=lambda item: (item[0], item[1]))[2]
+        return selected
+
     def preload_intraday_5m(self, lookback_hours: int = 18) -> dict[str, list[Bar]]:
         """load recent 1m history and build 5m bars for restart recovery."""
         import databento as db
@@ -827,7 +1004,31 @@ class DataBentoFeed:
                 logger.warning("Skipping intraday preload: no matching symbols")
                 return bars_by_symbol
 
-            # pick the highest-volume contract each minute for each parent symbol.
+            self._preload_front_contracts = {}
+            if "symbol" in df.columns:
+                df["raw_symbol"] = df["symbol"].map(
+                    lambda value: self._raw_contract_from_symbol(value, as_of=end_dt)
+                )
+            else:
+                df["raw_symbol"] = ""
+
+            selected_contracts = self._select_preload_front_contracts(df, as_of=end_dt)
+            if selected_contracts:
+                self._preload_front_contracts.update(selected_contracts)
+                selected_for_row = df["parent_symbol"].map(selected_contracts)
+                selected_mask = selected_for_row.notna()
+                keep_mask = ~selected_mask | (df["raw_symbol"] == selected_for_row)
+                dropped = int(len(df) - keep_mask.sum())
+                df = df[keep_mask]
+                logger.info(
+                    "Intraday preload selected contracts: %s dropped_mixed_contract_rows=%d",
+                    selected_contracts,
+                    dropped,
+                )
+
+            # With raw contracts available, keep one selected contract per
+            # parent. If historical metadata lacks raw contracts, retain the
+            # legacy per-minute highest-volume fallback for that symbol.
             df = (
                 df.sort_values(["parent_symbol", "ts_event", "volume"], ascending=[True, True, False])
                 .groupby(["parent_symbol", "ts_event"], as_index=False)
@@ -915,6 +1116,7 @@ class DataBentoFeed:
                 self._id_to_symbol.clear()
                 self._id_to_raw.clear()
                 self._id_volumes.clear()
+                self._id_recent_volumes.clear()
                 self._front_month.clear()
 
                 from databento_dbn import MBP10Msg, RType
@@ -934,6 +1136,7 @@ class DataBentoFeed:
                             self._id_to_symbol[iid] = parent
                             self._id_to_raw[iid] = raw
                             self._id_volumes[iid] = 0
+                            self._id_recent_volumes[iid] = deque()
                             logger.debug(
                                 "Symbol mapped: %s (id=%d) → %s",
                                 raw, iid, parent,
@@ -962,31 +1165,37 @@ class DataBentoFeed:
             return  # spread or unknown instrument, skip
 
         v = record.volume
+        ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
 
-        # Track cumulative volume to elect front-month contract
+        # Track cumulative volume for diagnostics, but elect front-month on
+        # recent rolling volume so a contract cannot keep a stale lead after roll.
         self._id_volumes[iid] = self._id_volumes.get(iid, 0) + v
+        self._record_recent_volume(iid, ts_dt, v)
 
         current_front = self._front_month.get(symbol)
         if current_front is None:
-            # First bar for this symbol — elect this contract
-            self._front_month[symbol] = iid
-            current_front = iid
-            raw = self._id_to_raw.get(iid, "?")
-            logger.info("Front-month elected for %s: %s (id=%d)", symbol, raw, iid)
+            if await self._set_front_month(
+                symbol=symbol,
+                iid=iid,
+                ts=ts_dt,
+                reason="first_volume",
+            ):
+                current_front = self._front_month.get(symbol)
         elif iid != current_front:
-            # Check if this contract has overtaken the current front-month
-            if self._id_volumes[iid] > self._id_volumes.get(current_front, 0):
-                old_raw = self._id_to_raw.get(current_front, "?")
-                new_raw = self._id_to_raw.get(iid, "?")
-                logger.info(
-                    "Front-month rolled for %s: %s → %s (vol %d > %d)",
-                    symbol, old_raw, new_raw,
-                    self._id_volumes[iid], self._id_volumes.get(current_front, 0),
-                )
-                self._front_month[symbol] = iid
-                current_front = iid
-                # Reset aggregator on roll — partial bucket from old contract is stale
-                self._aggregators[symbol] = BarAggregator()
+            if self._roll_candidate_is_stronger(
+                current_iid=current_front,
+                candidate_iid=iid,
+                ts=ts_dt,
+            ):
+                if await self._set_front_month(
+                    symbol=symbol,
+                    iid=iid,
+                    ts=ts_dt,
+                    reason="recent_volume",
+                ):
+                    current_front = self._front_month.get(symbol)
+        else:
+            current_front = self._front_month.get(symbol)
 
         # Only process bars from the front-month contract
         if iid != current_front:
@@ -1000,7 +1209,6 @@ class DataBentoFeed:
 
         # Convert timestamp to Eastern and aggregate through the canonical
         # 1m->5m path shared with preload recovery.
-        ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
         bar_5m = self._ingest_1m_bar(
             symbol=symbol,
             ts_event=ts_dt,
@@ -1088,10 +1296,14 @@ class DataBentoFeed:
 
         current_front = self._front_month.get(symbol)
         if current_front is None:
-            self._front_month[symbol] = iid
-            current_front = iid
-            raw = self._id_to_raw.get(iid, "?")
-            logger.info("Front-month orderbook elected for %s: %s (id=%d)", symbol, raw, iid)
+            ts_dt = datetime.fromtimestamp(record.ts_event / 1e9, tz=ET)
+            if await self._set_front_month(
+                symbol=symbol,
+                iid=iid,
+                ts=ts_dt,
+                reason="orderbook_first",
+            ):
+                current_front = iid
         elif iid != current_front:
             return
 

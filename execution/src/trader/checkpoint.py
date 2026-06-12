@@ -209,6 +209,11 @@ def serialize_orb_engine(engine: Any) -> dict:
         "paused": engine.paused,
         "exit_type": engine._exit_type,
         "r_result": engine._r_result,
+        "signal_contract": getattr(engine, "_signal_contract", ""),
+        "exec_contract": getattr(engine, "_exec_contract", ""),
+        "trade_signal_contract": getattr(engine, "_trade_signal_contract", ""),
+        "trade_exec_contract": getattr(engine, "_trade_exec_contract", ""),
+        "contract_routing_error": getattr(engine, "_contract_routing_error", ""),
     }
     if engine_type == "gold_x":
         data.update({
@@ -322,6 +327,20 @@ def restore_orb_engine(engine: Any, data: dict) -> bool:
     engine.paused = data.get("paused", False)
     engine._exit_type = data.get("exit_type")
     engine._r_result = data.get("r_result")
+    engine._signal_contract = data.get("signal_contract", getattr(engine, "_signal_contract", ""))
+    engine._exec_contract = data.get("exec_contract", getattr(engine, "_exec_contract", ""))
+    engine._trade_signal_contract = data.get(
+        "trade_signal_contract",
+        getattr(engine, "_trade_signal_contract", ""),
+    )
+    engine._trade_exec_contract = data.get(
+        "trade_exec_contract",
+        getattr(engine, "_trade_exec_contract", ""),
+    )
+    engine._contract_routing_error = data.get(
+        "contract_routing_error",
+        getattr(engine, "_contract_routing_error", ""),
+    )
     if getattr(engine, "engine_type", None) == "gold_x":
         engine._goldx_active_family = data.get("goldx_active_family")
         goldx_max_hold_at = data.get("goldx_max_hold_at")
@@ -457,6 +476,11 @@ def serialize_lsi_engine(engine: Any) -> dict:
         "regime_gate_status": getattr(engine, "_regime_gate_status", None),
         "fvg_to_inversion_bars": engine._fvg_to_inversion_bars,
         "sweep_to_inversion_bars": engine._sweep_to_inversion_bars,
+        "signal_contract": getattr(engine, "_signal_contract", ""),
+        "exec_contract": getattr(engine, "_exec_contract", ""),
+        "trade_signal_contract": getattr(engine, "_trade_signal_contract", ""),
+        "trade_exec_contract": getattr(engine, "_trade_exec_contract", ""),
+        "contract_routing_error": getattr(engine, "_contract_routing_error", ""),
     }
 
 
@@ -533,6 +557,20 @@ def restore_lsi_engine(engine: Any, data: dict) -> bool:
     engine._skip_reason = data.get("skip_reason", getattr(engine, "_skip_reason", None))
     engine._blocking_gate = data.get("blocking_gate", getattr(engine, "_blocking_gate", None))
     engine._regime_gate_status = data.get("regime_gate_status", getattr(engine, "_regime_gate_status", None))
+    engine._signal_contract = data.get("signal_contract", getattr(engine, "_signal_contract", ""))
+    engine._exec_contract = data.get("exec_contract", getattr(engine, "_exec_contract", ""))
+    engine._trade_signal_contract = data.get(
+        "trade_signal_contract",
+        getattr(engine, "_trade_signal_contract", ""),
+    )
+    engine._trade_exec_contract = data.get(
+        "trade_exec_contract",
+        getattr(engine, "_trade_exec_contract", ""),
+    )
+    engine._contract_routing_error = data.get(
+        "contract_routing_error",
+        getattr(engine, "_contract_routing_error", ""),
+    )
     engine._fvg_to_inversion_bars = data.get("fvg_to_inversion_bars")
     engine._sweep_to_inversion_bars = data.get("sweep_to_inversion_bars")
 

@@ -300,9 +300,13 @@ class TestDataBentoFeedIngestion:
 
     async def test_mbp10_record_emits_top_of_book_sample(self):
         samples = []
+        contract_events = []
 
         async def on_orderbook(sample):
             samples.append(sample)
+
+        async def on_contract(symbol, raw_contract, timestamp):
+            contract_events.append((symbol, raw_contract, timestamp))
 
         class Level:
             bid_px = 19500.25 * 1e9
@@ -317,6 +321,7 @@ class TestDataBentoFeedIngestion:
             symbols=["NQ.FUT"],
             enable_mbp10=True,
             on_orderbook=on_orderbook,
+            on_contract=on_contract,
         )
         feed._id_to_symbol[123] = "NQ.FUT"
         feed._id_to_raw[123] = "NQH5"
@@ -329,6 +334,7 @@ class TestDataBentoFeedIngestion:
         assert samples[0].bid == pytest.approx(19500.25)
         assert samples[0].ask == pytest.approx(19500.50)
         assert feed._front_month["NQ.FUT"] == 123
+        assert [event[1] for event in contract_events] == ["NQH5"]
 
     async def test_mbp10_record_skips_non_front_contract(self):
         samples = []
@@ -357,6 +363,111 @@ class TestDataBentoFeedIngestion:
         await feed._handle_mbp10(Record())
 
         assert samples == []
+
+    async def test_front_contract_rolls_on_recent_volume_not_stale_cumulative_volume(self):
+        contract_events = []
+
+        async def on_contract(symbol, raw_contract, timestamp):
+            contract_events.append((symbol, raw_contract, timestamp))
+
+        def record(iid: int, ts: datetime, volume: int):
+            return type("Record", (), {
+                "instrument_id": iid,
+                "ts_event": int(ts.timestamp() * 1e9),
+                "open": 19500.0 * 1e9,
+                "high": 19510.0 * 1e9,
+                "low": 19490.0 * 1e9,
+                "close": 19505.0 * 1e9,
+                "volume": volume,
+            })()
+
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            on_contract=on_contract,
+            front_month_volume_window_minutes=30,
+        )
+        feed._id_to_symbol[1] = "NQ.FUT"
+        feed._id_to_raw[1] = "NQM6"
+        feed._id_to_symbol[2] = "NQ.FUT"
+        feed._id_to_raw[2] = "NQU6"
+
+        await feed._handle_ohlcv(record(1, make_dt("2026-06-11", "09:00"), 10_000))
+        assert feed.get_front_contract("NQ.FUT") == "NQM6"
+
+        await feed._handle_ohlcv(record(2, make_dt("2026-06-11", "10:00"), 1))
+        assert feed.get_front_contract("NQ.FUT") == "NQM6"
+
+        await feed._handle_ohlcv(record(2, make_dt("2026-06-11", "10:01"), 1_000))
+
+        assert feed.get_front_contract("NQ.FUT") == "NQU6"
+        assert [event[1] for event in contract_events] == ["NQM6", "NQU6"]
+
+    async def test_contract_roll_guard_can_pin_active_trade_contract(self):
+        contract_events = []
+
+        async def on_contract(symbol, raw_contract, timestamp):
+            contract_events.append((symbol, raw_contract, timestamp))
+
+        def roll_guard(symbol, current_raw, candidate_raw, timestamp):
+            return candidate_raw == "NQM6"
+
+        def record(iid: int, ts: datetime, volume: int):
+            return type("Record", (), {
+                "instrument_id": iid,
+                "ts_event": int(ts.timestamp() * 1e9),
+                "open": 19500.0 * 1e9,
+                "high": 19510.0 * 1e9,
+                "low": 19490.0 * 1e9,
+                "close": 19505.0 * 1e9,
+                "volume": volume,
+            })()
+
+        feed = DataBentoFeed(
+            symbols=["NQ.FUT"],
+            on_contract=on_contract,
+            on_contract_roll_check=roll_guard,
+            front_month_roll_min_volume=100,
+        )
+        feed._id_to_symbol[1] = "NQ.FUT"
+        feed._id_to_raw[1] = "NQM6"
+        feed._id_to_symbol[2] = "NQ.FUT"
+        feed._id_to_raw[2] = "NQU6"
+
+        await feed._handle_ohlcv(record(2, make_dt("2026-06-11", "10:00"), 10_000))
+        assert feed.get_front_contract("NQ.FUT") is None
+
+        await feed._handle_ohlcv(record(1, make_dt("2026-06-11", "10:01"), 100))
+        assert feed.get_front_contract("NQ.FUT") == "NQM6"
+
+        await feed._handle_ohlcv(record(2, make_dt("2026-06-11", "10:02"), 20_000))
+        assert feed.get_front_contract("NQ.FUT") == "NQM6"
+        assert [event[1] for event in contract_events] == ["NQM6"]
+
+    def test_preload_selects_one_contract_per_parent_symbol(self):
+        feed = DataBentoFeed(symbols=["ES.FUT"], front_month_volume_window_minutes=60)
+        df = pd.DataFrame(
+            [
+                {
+                    "parent_symbol": "ES.FUT",
+                    "raw_symbol": "ESM6",
+                    "ts_event": pd.Timestamp("2026-06-12T13:00:00Z"),
+                    "volume": 10_000,
+                },
+                {
+                    "parent_symbol": "ES.FUT",
+                    "raw_symbol": "ESU6",
+                    "ts_event": pd.Timestamp("2026-06-12T15:50:00Z"),
+                    "volume": 1_500,
+                },
+            ]
+        )
+
+        selected = feed._select_preload_front_contracts(
+            df,
+            as_of=make_dt("2026-06-12", "11:55"),
+        )
+
+        assert selected == {"ES.FUT": "ESU6"}
 
 
 # =============================================================================

@@ -189,7 +189,10 @@ class GoldXEngine(ORBEngine):
                 return
             levels = self._select_fvg_levels(bar)
             if levels is not None:
+                if not self._contract_ready_for_entry(bar.timestamp):
+                    return
                 self._levels = levels
+                self._lock_trade_contract()
                 self._goldx_active_family = "fvg"
                 self._tp1_hit = False
                 self._fill_bar_idx = -1
@@ -218,7 +221,7 @@ class GoldXEngine(ORBEngine):
                         price=levels.entry,
                         tp2=levels.tp2,
                         stop=levels.stop,
-                        ticker=self.exec_ticker,
+                        ticker=self.broker_ticker,
                     )
 
     async def _handle_armed(self, bar: Bar, bar_time: time) -> None:
@@ -236,9 +239,10 @@ class GoldXEngine(ORBEngine):
         )
         self._release_position_cap()
         if self._should_send:
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            await self.broker.send_flatten(ticker=self.broker_ticker)
         self._emit_trade_record("eod", exit_price=exit_price, exit_timestamp=bar.timestamp)
         self._remember_goldx_exit(bar.timestamp)
+        self._clear_trade_contract()
         self._state = State.WAITING_FOR_GAP if self._goldx_can_continue(bar.timestamp) else State.FLAT
         self._request_checkpoint()
         self._notify_state_change()
@@ -343,10 +347,13 @@ class GoldXEngine(ORBEngine):
         return None
 
     async def _enter_goldx_market_style(self, bar: Bar, levels: TradeLevels, *, family: str, event: str) -> None:
+        if not self._contract_ready_for_entry(bar.timestamp):
+            return
         capped = self._apply_position_cap(levels)
         if capped is None:
             return
         self._levels = capped
+        self._lock_trade_contract()
         self._goldx_active_family = family
         self._tp1_hit = False
         self._fill_bar_idx = self._bar_count
@@ -377,7 +384,7 @@ class GoldXEngine(ORBEngine):
                 price=capped.entry,
                 tp2=capped.tp2,
                 stop=capped.stop,
-                ticker=self.exec_ticker,
+                ticker=self.broker_ticker,
             )
 
     def _register_fvg_breakouts(self, bar: Bar) -> None:
@@ -606,6 +613,7 @@ class GoldXEngine(ORBEngine):
             self._schedule_post_exit_cleanup(reason=f"{event.lower()}_{resolution}")
         self._emit_trade_record(exit_type, exit_price=exit_price, exit_timestamp=exit_timestamp)
         self._remember_goldx_exit(exit_timestamp)
+        self._clear_trade_contract()
         self._state = State.WAITING_FOR_GAP if self._goldx_can_continue(exit_timestamp) else State.FLAT
         self._request_checkpoint()
         self._notify_state_change()

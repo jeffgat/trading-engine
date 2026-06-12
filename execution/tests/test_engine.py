@@ -86,6 +86,45 @@ class TestIdleState:
         assert engine._orb_high == pytest.approx(19530.0)
         assert engine._orb_low == pytest.approx(19480.0)
 
+
+class TestContractRouting:
+    async def test_entry_routes_to_explicit_contract_from_feed_context(self, broker):
+        eng = _make_orb_engine(broker, contract_routing_required=True)
+        eng.set_contract_context(signal_contract="NQU6", exec_contract="MNQU2026")
+
+        await advance_to_armed(eng)
+
+        broker.send_entry.assert_called_once()
+        assert broker.send_entry.call_args.kwargs["ticker"] == "MNQU2026"
+        assert eng.broker_ticker == "MNQU2026"
+        status = eng.status_dict()
+        assert status["signal_contract"] == "NQU6"
+        assert status["exec_contract"] == "MNQU2026"
+        assert status["trade_exec_contract"] == "MNQU2026"
+
+    async def test_active_trade_keeps_locked_contract_after_feed_rolls(self, broker):
+        eng = _make_orb_engine(broker, contract_routing_required=True)
+        eng.set_contract_context(signal_contract="NQM6", exec_contract="MNQM2026")
+
+        await advance_to_armed(eng)
+        eng.set_contract_context(signal_contract="NQU6", exec_contract="MNQU2026")
+
+        assert eng.broker_ticker == "MNQM2026"
+        await eng._cancel_armed_limit("test cleanup")
+        broker.send_cancel.assert_called_with(ticker="MNQM2026")
+        assert eng.status_dict()["trade_exec_contract"] is None
+        assert eng.broker_ticker == "MNQU2026"
+
+    async def test_required_contract_context_blocks_entry(self, broker):
+        eng = _make_orb_engine(broker, contract_routing_required=True)
+
+        await advance_to_scanning(eng)
+        for bar in build_bullish_fvg_bars("2025-01-15", orb_high=19530.0, gap=10.0):
+            await eng.on_bar(bar, 300.0)
+
+        broker.send_entry.assert_not_called()
+        assert eng.state != State.ARMED_LIMIT
+
     async def test_excluded_date_goes_flat(self, broker):
         eng = _make_orb_engine(broker, excluded_dates=("20250115",))
         bar = make_bar("2025-01-15 09:30", 19500, 19530, 19480, 19510)

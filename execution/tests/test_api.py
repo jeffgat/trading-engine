@@ -4,6 +4,7 @@ import pytest
 
 from trader.api import (
     DashboardState,
+    _broker_cleanup_tickers_from_engine,
     _manual_flatten_engine,
     _public_exec_config_meta,
     _runtime_mode_from_brokers,
@@ -69,6 +70,21 @@ def test_public_exec_config_meta_keeps_live_count_without_webhook_urls():
     assert public_meta["ALPHA_V1-A"]["webhooks"] == [{}]
     assert public_meta["ALPHA_V1-A"]["sessions"] == ["NQ_NY"]
     assert public_meta["SHADOW"]["webhooks"] == []
+
+
+def test_broker_cleanup_tickers_include_rollover_neighbors():
+    engine = SimpleNamespace(
+        exec_ticker="MES",
+        broker_ticker="MESU2026",
+        _exec_contract="MESU2026",
+        _trade_exec_contract="",
+        _signal_contract="ESU6",
+        _trade_signal_contract="",
+    )
+
+    tickers = _broker_cleanup_tickers_from_engine(engine)
+
+    assert tickers[:4] == ["MESU2026", "MESM2026", "MESZ2026", "MES"]
 
 
 def test_parse_trade_log_line_keeps_full_tick_time_and_resolution():

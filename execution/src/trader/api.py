@@ -240,12 +240,12 @@ async def _manual_flatten_engine(engine: Any) -> dict[str, Any]:
     if previous_state == "armed_limit":
         if callable(log_trade):
             log_trade("MANUAL_CANCEL", f"state={previous_state}")
-        await engine.broker.send_cancel(ticker=engine.exec_ticker)
+        await engine.broker.send_cancel(ticker=_broker_ticker_from_engine(engine))
         action = "cancelled_pending_order"
     elif previous_state in {"filled", "managing"}:
         if callable(log_trade):
             log_trade("MANUAL_FLAT", f"state={previous_state}")
-        await engine.broker.send_flatten(ticker=engine.exec_ticker)
+        await engine.broker.send_flatten(ticker=_broker_ticker_from_engine(engine))
         trade_record = _record_manual_flatten(engine)
         action = "flattened_position"
     elif previous_state not in {"", "idle", "flat"}:
@@ -454,6 +454,40 @@ def _signal_ticker_from_engine(engine: Any) -> str:
         "CL": "CL",
     }
     return ticker_map.get(exec_ticker, exec_ticker)
+
+
+def _broker_ticker_from_engine(engine: Any) -> str:
+    return str(getattr(engine, "broker_ticker", getattr(engine, "exec_ticker", "")))
+
+
+def _broker_cleanup_tickers_from_engine(engine: Any) -> list[str]:
+    root = str(getattr(engine, "exec_ticker", "") or "")
+    contracts = [
+        getattr(engine, "broker_ticker", ""),
+        getattr(engine, "_exec_contract", ""),
+        getattr(engine, "_trade_exec_contract", ""),
+        getattr(engine, "_signal_contract", ""),
+        getattr(engine, "_trade_signal_contract", ""),
+    ]
+    try:
+        from .contracts import cleanup_traderspost_contracts
+
+        tickers = cleanup_traderspost_contracts(
+            exec_root=root,
+            contracts=contracts,
+            as_of=datetime.now(),
+        )
+    except Exception:
+        tickers = [_broker_ticker_from_engine(engine)]
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for ticker in tickers:
+        normalized = str(ticker or "").strip().upper()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
+    return result
 
 
 def _enrich_live_trades(trades: list[dict], state: "DashboardState") -> list[dict]:
@@ -1413,15 +1447,26 @@ def create_app(state: DashboardState) -> FastAPI:
 
         broker = multi_broker._brokers[webhook_index]
 
-        # Collect distinct exec tickers from all engines in this config
+        # Collect distinct cleanup tickers from all engines in this config.
+        # Include adjacent rollover contracts so stale old-month positions or
+        # resting orders are not missed during CME roll week.
         cfg_engines = state.engines_by_config.get(config_name, [])
-        tickers = list({e.exec_ticker for e in cfg_engines}) or ["MNQ"]
+        tickers = []
+        seen_tickers: set[str] = set()
+        for engine in cfg_engines:
+            for ticker in _broker_cleanup_tickers_from_engine(engine):
+                if ticker not in seen_tickers:
+                    seen_tickers.add(ticker)
+                    tickers.append(ticker)
+        if not tickers:
+            tickers = ["MNQ"]
 
         for t in tickers:
             await broker.send_flatten(ticker=t)
+            await broker.send_cancel(ticker=t)
 
         label = (state.exec_configs[config_name].get("webhooks", [{}])[webhook_index] or {}).get("label", "")
-        logger.info("[%s] Per-account flatten sent to index=%d label=%s tickers=%s", config_name, webhook_index, label, tickers)
+        logger.info("[%s] Per-account flatten/cancel sent to index=%d label=%s tickers=%s", config_name, webhook_index, label, tickers)
 
         return {"config": config_name, "webhook_index": webhook_index, "tickers": tickers, "status": "sent"}
 
@@ -1501,11 +1546,11 @@ def create_app(state: DashboardState) -> FastAPI:
         action_taken = "none"
 
         if state_val == "armed_limit":
-            await engine.broker.send_cancel(ticker=engine.exec_ticker)
+            await engine.broker.send_cancel(ticker=_broker_ticker_from_engine(engine))
             action_taken = "cancelled"
             logger.info("[%s] Pause: cancelled pending order", engine.name)
         elif state_val in ("managing", "filled"):
-            await engine.broker.send_flatten(ticker=engine.exec_ticker)
+            await engine.broker.send_flatten(ticker=_broker_ticker_from_engine(engine))
             action_taken = "flattened"
             logger.info("[%s] Pause: flattened open position", engine.name)
 
@@ -1788,7 +1833,10 @@ def _session_info(engine) -> dict:
             "min_tick": engine.min_tick,
             "long_only": engine.long_only,
             "excluded_dow": engine.excluded_dow,
-            "exec_ticker": engine.exec_ticker,
+            "exec_ticker": _broker_ticker_from_engine(engine),
+            "exec_root_ticker": getattr(engine, "exec_ticker", ""),
+            "signal_contract": getattr(engine, "_signal_contract", "") or None,
+            "exec_contract": getattr(engine, "_exec_contract", "") or None,
             "signal_ticker": _signal_ticker_from_engine(engine),
             "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
             "regime_gates": regime_gates,
@@ -1827,7 +1875,10 @@ def _session_info(engine) -> dict:
         "fomc_exclusion": engine.fomc_exclusion,
         "min_stop_pts": engine.min_stop_pts,
         "min_tp1_pts": engine.min_tp1_pts,
-        "exec_ticker": engine.exec_ticker,
+        "exec_ticker": _broker_ticker_from_engine(engine),
+        "exec_root_ticker": getattr(engine, "exec_ticker", ""),
+        "signal_contract": getattr(engine, "_signal_contract", "") or None,
+        "exec_contract": getattr(engine, "_exec_contract", "") or None,
         "signal_ticker": _signal_ticker_from_engine(engine),
         "regime_gate": regime_gates[0] if len(regime_gates) == 1 else None,
         "regime_gates": regime_gates,

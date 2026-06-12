@@ -285,6 +285,7 @@ class ORBEngine:
     position_limit_key: str = ""
     post_exit_cleanup_delay_s: float = 6.0
     post_exit_cancel_settle_delay_s: float = 0.25
+    contract_routing_required: bool = False
 
     # Internal state (reset daily)
     _state: State = field(default=State.IDLE, init=False)
@@ -326,6 +327,11 @@ class ORBEngine:
     _exit_type: str | None = field(default=None, init=False)
     _r_result: float | None = field(default=None, init=False)
     _cleanup_task: asyncio.Task | None = field(default=None, init=False, repr=False)
+    _signal_contract: str = field(default="", init=False)
+    _exec_contract: str = field(default="", init=False)
+    _trade_signal_contract: str = field(default="", init=False)
+    _trade_exec_contract: str = field(default="", init=False)
+    _contract_routing_error: str = field(default="", init=False)
 
     # Parsed times (computed on first bar)
     _orb_start_t: time | None = field(default=None, init=False, repr=False)
@@ -749,15 +755,16 @@ class ORBEngine:
             return
 
         cleanup_delay = self.post_exit_cleanup_delay_s if delay_s is None else delay_s
+        cleanup_ticker = self.broker_ticker
 
         async def _runner() -> None:
             try:
                 if cleanup_delay > 0:
                     await asyncio.sleep(cleanup_delay)
-                await self.broker.send_flatten(ticker=self.exec_ticker)
+                await self.broker.send_flatten(ticker=cleanup_ticker)
                 if self.post_exit_cancel_settle_delay_s > 0:
                     await asyncio.sleep(self.post_exit_cancel_settle_delay_s)
-                await self.broker.send_cancel(ticker=self.exec_ticker)
+                await self.broker.send_cancel(ticker=cleanup_ticker)
             except Exception:
                 logger.exception("[%s] post-exit cleanup failed (%s)", self.name, reason)
             finally:
@@ -791,6 +798,67 @@ class ORBEngine:
         if self.on_state_change is not None:
             self.on_state_change(self.status_dict())
 
+    @property
+    def broker_ticker(self) -> str:
+        """Concrete ticker used for broker actions."""
+        return self._trade_exec_contract or self._exec_contract or self.exec_ticker
+
+    def set_contract_context(
+        self,
+        *,
+        signal_contract: str | None,
+        exec_contract: str | None,
+        error: str | None = None,
+    ) -> None:
+        """Update the currently selected feed/broker contract pair."""
+        old_pair = (self._signal_contract, self._exec_contract, self._contract_routing_error)
+        self._signal_contract = signal_contract or ""
+        self._exec_contract = exec_contract or ""
+        self._contract_routing_error = error or ""
+        new_pair = (self._signal_contract, self._exec_contract, self._contract_routing_error)
+        if old_pair == new_pair:
+            return
+        if self._contract_routing_error:
+            self._log_trade(
+                "CONTRACT_ROUTE_ERROR",
+                "signal_contract=%s exec_root=%s error=%s"
+                % (self._signal_contract or "-", self.exec_ticker, self._contract_routing_error),
+            )
+        else:
+            self._log_trade(
+                "CONTRACT_ROUTE",
+                "signal_contract=%s exec_contract=%s"
+                % (self._signal_contract or "-", self._exec_contract or self.exec_ticker),
+            )
+        self._request_checkpoint()
+        self._notify_state_change()
+
+    def _contract_ready_for_entry(self, timestamp: datetime | None = None) -> bool:
+        if self._contract_routing_error:
+            self._log_trade(
+                "ENTRY_SKIPPED_CONTRACT",
+                "time=%s error=%s"
+                % (timestamp.isoformat() if timestamp else "-", self._contract_routing_error),
+            )
+            return False
+        if self.contract_routing_required and not self._exec_contract:
+            self._log_trade(
+                "ENTRY_SKIPPED_CONTRACT",
+                "time=%s reason=missing_explicit_contract exec_root=%s"
+                % (timestamp.isoformat() if timestamp else "-", self.exec_ticker),
+            )
+            return False
+        return True
+
+    def _lock_trade_contract(self) -> None:
+        """Freeze the routed contract for the current order/position lifecycle."""
+        self._trade_signal_contract = self._signal_contract
+        self._trade_exec_contract = self._exec_contract
+
+    def _clear_trade_contract(self) -> None:
+        self._trade_signal_contract = ""
+        self._trade_exec_contract = ""
+
     def _emit_trade_record(
         self,
         exit_type: str,
@@ -820,7 +888,7 @@ class ORBEngine:
             **self._trade_accounting_fields(),
             entry_timestamp=self._fill_timestamp.isoformat() if self._fill_timestamp else "",
             ticker=self._asset_tag.upper(),
-            exec_ticker=self.exec_ticker,
+            exec_ticker=self.broker_ticker,
             leg=self.name,
             entry_context=self._trade_entry_context(),
         )
@@ -851,7 +919,7 @@ class ORBEngine:
             % (direction_str, levels.tp1, levels.qty, exit_timestamp, resolution),
         )
         if self._should_send:
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            await self.broker.send_flatten(ticker=self.broker_ticker)
         self._schedule_post_exit_cleanup(
             reason=f"tp1_single_{resolution}",
             delay_s=self._broker_exit_cleanup_delay(1.0),
@@ -959,7 +1027,7 @@ class ORBEngine:
                 qty=self._remaining_position_qty(),
                 stop_price=self._runner_stop,
                 tp2=levels.tp2,
-                ticker=self.exec_ticker,
+                ticker=self.broker_ticker,
             )
         self._request_checkpoint()
         self._notify_state_change()
@@ -1066,6 +1134,7 @@ class ORBEngine:
         return True
 
     def _set_post_exit_state(self, exit_time: time, exit_type: str) -> None:
+        self._clear_trade_contract()
         cap_allows = (
             self.orb_trade_max_per_session <= 0
             or self._session_filled_trades < self.orb_trade_max_per_session
@@ -1107,7 +1176,8 @@ class ORBEngine:
         self._log_trade("CANCELLED_LIMITS", reason)
         self._release_position_cap()
         if self._should_send:
-            await self.broker.send_cancel(ticker=self.exec_ticker)
+            await self.broker.send_cancel(ticker=self.broker_ticker)
+        self._clear_trade_contract()
         self._state = State.FLAT
         self._request_checkpoint()
         self._notify_state_change()
@@ -1163,14 +1233,14 @@ class ORBEngine:
             ),
         )
         if self._should_send:
-            await self.broker.send_cancel(ticker=self.exec_ticker)
+            await self.broker.send_cancel(ticker=self.broker_ticker)
             await self.broker.send_entry(
                 action=action,
                 qty=capped.qty,
                 price=capped.entry,
                 tp2=capped.tp2,
                 stop=capped.stop,
-                ticker=self.exec_ticker,
+                ticker=self.broker_ticker,
             )
         self._notify_state_change()
         return True
@@ -1185,7 +1255,7 @@ class ORBEngine:
         )
         self._release_position_cap()
         if self._should_send:
-            await self.broker.send_flatten(ticker=self.exec_ticker)
+            await self.broker.send_flatten(ticker=self.broker_ticker)
         self._emit_trade_record(
             "tp1_eod" if self._tp1_hit else "eod",
             exit_price=bar.close,
@@ -1277,6 +1347,7 @@ class ORBEngine:
     def _reset_day(self, date_str: str, notify: bool = True) -> None:
         """Reset all state for a new trading day."""
         self._release_position_cap()
+        self._clear_trade_contract()
         self._state = State.IDLE
         self._orb_high = float("nan")
         self._orb_low = float("nan")
@@ -1450,6 +1521,7 @@ class ORBEngine:
 
     def _arm_order(self, signal_bar: Bar) -> None:
         """Activate a setup only after the signal bar has fully closed."""
+        self._lock_trade_contract()
         self._state = State.ARMED_LIMIT
         self._armed_at = signal_bar.timestamp + timedelta(minutes=5)
         self._request_checkpoint()
@@ -1584,7 +1656,7 @@ class ORBEngine:
                 if self._state == State.ARMED_LIMIT:
                     self._log_trade("CANCEL", f"outside RTH state={self._state.value}")
                     if self._should_send:
-                        await self.broker.send_cancel(ticker=self.exec_ticker)
+                        await self.broker.send_cancel(ticker=self.broker_ticker)
                 elif self._state in (State.FILLED, State.MANAGING):
                     await self._flatten_position(
                         bar,
@@ -1620,7 +1692,7 @@ class ORBEngine:
                     bar_time, self._state.value,
                 )
                 if self._state == State.ARMED_LIMIT and self._should_send:
-                    await self.broker.send_cancel(ticker=self.exec_ticker)
+                    await self.broker.send_cancel(ticker=self.broker_ticker)
                 self._reset_day(date_str)
 
         # Skip excluded dates (DOW, FOMC, static dates)
@@ -1799,6 +1871,8 @@ class ORBEngine:
                         )
                         return
                     self._long_fvg_found = True
+                    if not self._contract_ready_for_entry(bar.timestamp):
+                        return
                     levels = self._compute_setup_levels(entry=entry, direction=1, gap_size=gap_size)
                     if levels is not None:
                         levels = self._apply_position_cap(levels)
@@ -1832,7 +1906,7 @@ class ORBEngine:
                                 price=levels.entry,
                                 tp2=levels.tp2,
                                 stop=levels.stop,
-                                ticker=self.exec_ticker,
+                                ticker=self.broker_ticker,
                             )
                         return
                     else:
@@ -1881,6 +1955,8 @@ class ORBEngine:
                     )
                     return
                 self._short_fvg_found = True
+                if not self._contract_ready_for_entry(bar.timestamp):
+                    return
                 levels = self._compute_setup_levels(entry=entry, direction=-1, gap_size=gap_size)
                 if levels is not None:
                     levels = self._apply_position_cap(levels)
@@ -1915,7 +1991,7 @@ class ORBEngine:
                             price=levels.entry,
                             tp2=levels.tp2,
                             stop=levels.stop,
-                            ticker=self.exec_ticker,
+                            ticker=self.broker_ticker,
                         )
                     return
 
@@ -2096,7 +2172,7 @@ class ORBEngine:
                     exit_qty=levels.half_qty,
                     be_price=levels.be,
                     tp2=levels.tp2,
-                    ticker=self.exec_ticker,
+                    ticker=self.broker_ticker,
                 )
 
             if self._runner_trail_enabled:
@@ -2392,7 +2468,7 @@ class ORBEngine:
                         exit_qty=levels.half_qty,
                         be_price=levels.be,
                         tp2=levels.tp2,
-                        ticker=self.exec_ticker,
+                        ticker=self.broker_ticker,
                     )
                 if self._runner_trail_enabled:
                     await self._update_runner_trail_stop(
@@ -2503,7 +2579,14 @@ class ORBEngine:
             "config_name": self.config_name,
             "session": self.name,
             "signal_ticker": self._asset_tag.upper(),
-            "exec_ticker": self.exec_ticker,
+            "exec_ticker": self.broker_ticker,
+            "exec_root_ticker": self.exec_ticker,
+            "signal_contract": self._signal_contract or None,
+            "exec_contract": self._exec_contract or None,
+            "trade_signal_contract": self._trade_signal_contract or None,
+            "trade_exec_contract": self._trade_exec_contract or None,
+            "contract_routing_required": self.contract_routing_required,
+            "contract_routing_error": self._contract_routing_error or None,
             "state": self._state.value,
             "date": self._current_date,
             "orb_high": self._orb_high if self._orb_high == self._orb_high else None,
