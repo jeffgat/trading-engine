@@ -5,6 +5,9 @@
 - Detailed history: [backtesting/learnings/asset/RTY.md](../../asset/RTY.md)
 
 ## Strategy Sections
+- `Plain LDN ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE` -> `EXACT-REPLAY QUEUE ONLY — RTY LDN plain ORB breakout clusters passed broad-surface promotion gates. RTY NY and RTY Asia remained rejected.`
+- `Plain LDN ORB Breakout Exact Replay (2026-06-18) — MIXED` -> `RTY LDN R1 exact-replay PASS; R2 WATCH; R3 FAIL. Holdout stayed closed.`
+- `Plain LDN ORB Breakout Exact Stress (2026-06-18) — FAIL` -> `FAIL under strict exact cost/slippage stress. Holdout stayed closed.`
 - `1. Asia Continuation Longs — NO-GO` -> `NO-GO (pipeline failed Phase 2 + Phase 3)`
 - `2. NY Continuation Longs — NO-GO` -> `NO-GO (pipeline failed Phase 2 + Phase 3)`
 - `Direction (updated 2026-04)` -> `UNSPECIFIED`

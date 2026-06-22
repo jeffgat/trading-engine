@@ -56,6 +56,26 @@ const MODE_LABEL_STYLES = {
   dryRun: "text-warning bg-warning/10 border-warning/20",
 } as const;
 
+function ConfigOptionLabel({
+  name,
+  live,
+  count,
+}: {
+  name: string;
+  live: boolean;
+  count: number;
+}) {
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      <span className="shrink-0">{name}</span>
+      <span className={`shrink-0 text-[9px] uppercase ${live ? "text-money-positive" : "text-warning"}`}>
+        {live ? "Live" : "Dry-Run"}
+      </span>
+      <span className="shrink-0 text-text-muted">({count})</span>
+    </span>
+  );
+}
+
 export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, onPause, onFlatten, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
   const sessionCfgLookup = buildSessionConfigLookup(config);
@@ -110,7 +130,7 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${modeStyle}`}>
             {selectedConfigMeta.isLive ? "Live" : "Dry-Run"}
           </span>
@@ -118,22 +138,16 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             {selectedConfigMeta.count} strateg{selectedConfigMeta.count !== 1 ? "ies" : "y"}
           </span>
           <Select value={validConfig} onValueChange={setActiveConfig}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
+            <SelectTrigger className="h-10 w-max max-w-[calc(100vw-2rem)] px-3 [&>span]:line-clamp-none [&>span]:overflow-visible [&>span]:whitespace-nowrap">
+              <SelectValue className="whitespace-nowrap" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
               {sortedConfigs.map((name) => {
                 const count = (configEngines[name] ?? []).length;
                 const live = isLiveConfig(name, config, statusExecConfigs);
                 return (
                   <SelectItem key={name} value={name}>
-                    <span className="flex items-center gap-2">
-                      {name}
-                      <span className={`text-[9px] uppercase ${live ? "text-money-positive" : "text-warning"}`}>
-                        {live ? "Live" : "Dry-Run"}
-                      </span>
-                      <span className="text-text-muted">({count})</span>
-                    </span>
+                    <ConfigOptionLabel name={name} live={live} count={count} />
                   </SelectItem>
                 );
               })}

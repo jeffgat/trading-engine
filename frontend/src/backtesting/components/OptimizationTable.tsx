@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import type { BacktestConfig, BacktestSummary } from "@/backtesting/lib/types";
-import { formatNumber, formatPct, pnlColor } from "@/backtesting/lib/utils";
+import { formatNumber, formatPct, moneyColor } from "@/backtesting/lib/utils";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 
 type SortKey = string;
@@ -307,7 +307,7 @@ export function OptimizationTable({ results, sweptParams }: OptimizationTablePro
                     </td>
                     <td
                       className="whitespace-nowrap px-3 py-1.5 text-right font-mono font-semibold"
-                      style={{ color: pnlColor(netR) }}
+                      style={{ color: moneyColor(netR) }}
                     >
                       {netR >= 0 ? "+" : ""}{netR.toFixed(2)}R
                     </td>
@@ -322,7 +322,7 @@ export function OptimizationTable({ results, sweptParams }: OptimizationTablePro
                     </td>
                     <td
                       className="whitespace-nowrap px-3 py-1.5 text-right font-mono"
-                      style={{ color: "var(--color-loss)" }}
+                      style={{ color: moneyColor(ddR) }}
                     >
                       {ddR >= 0 ? "+" : ""}{ddR.toFixed(2)}R
                     </td>

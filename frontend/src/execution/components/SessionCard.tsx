@@ -125,9 +125,7 @@ function getRoundTripCommissionUsd(engine: SessionStatus) {
 }
 
 function rTextClass(value: number) {
-  if (value > 0) return "text-profit";
-  if (value < 0) return "text-loss";
-  return "text-text-muted";
+  return moneyTextClass(value);
 }
 
 function getResultParts(value: number, engine: SessionStatus, sessionConfig?: SessionConfig) {

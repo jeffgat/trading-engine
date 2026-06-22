@@ -220,9 +220,13 @@ def results_to_dict(
         config_dict["direction_filter"] = config.direction_filter
     config_dict["reverse_direction"] = config.reverse_direction
     config_dict["swing_n_bars"] = config.swing_n_bars
-    if config.strategy in {"continuation", "reversal"}:
+    if config.strategy in {"continuation", "reversal", "orb_breakout"}:
         config_dict["orb_trade_max_per_session"] = config.orb_trade_max_per_session
         config_dict["orb_reentry_policy"] = config.orb_reentry_policy
+    if config.strategy == "orb_breakout":
+        config_dict["orb_breakout_trigger"] = config.orb_breakout_trigger
+        config_dict["orb_breakout_buffer_ticks"] = config.orb_breakout_buffer_ticks
+        config_dict["orb_breakout_buffer_atr_pct"] = config.orb_breakout_buffer_atr_pct
     if config.use_bar_magnifier:
         config_dict["bar_magnifier"] = "ON"
     else:

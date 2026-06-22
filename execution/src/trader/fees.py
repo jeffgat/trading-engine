@@ -32,6 +32,7 @@ MICRO_FEE_SCHEDULES: dict[str, FeeSchedule] = {
     "MES": FeeSchedule("MES", 0.50, 0.65, "Slightly slower/cleaner than MNQ"),
     "MGC": FeeSchedule("MGC", 0.75, 0.90, "COMEX fees are higher"),
     "MCL": FeeSchedule("MCL", 0.70, 0.85, "NYMEX fees higher plus thinner liquidity"),
+    "M2K": FeeSchedule("M2K", 0.50, 0.65, "Russell 2000 micro; estimated like equity index micros"),
 }
 
 

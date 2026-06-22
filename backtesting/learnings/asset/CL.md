@@ -18,6 +18,34 @@
 
 ## Strategies Tested
 
+### Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO
+- **Status**: NO-GO — crude-oil plain ORB seed had some positive preholdout cells, but validation and stress rejected them.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618/`.
+- **Scope**: Canonical `strategy="orb_breakout"` seed grid, CL NY only, ORB windows `5/15/30`, train `2021-2023`, validation `2024`, holdout closed from `2025` onward.
+- **Best rejected cell**: `cl__ny__orb5__stop10__gap0__rr2__both__no_thu__low_atr_only__small_orb_only` had 2021-2024 preholdout `+15.00R`, PF `1.13`, DD `-10.00R`, but 2024 validation `-5.00R`, PF `0.91`, cluster score `0.00`, DSR `0.0670`, cost/slippage stress `FAIL`. It passed the no-single-year dependency check only because the weak validation year was included, not because it was promotable.
+- **Conclusion**: Plain CL NY ORB breakout should not advance from seed. Wider stop/threshold-adjusted CL work would need a separate frozen run, not parameter rescue from this failed seed surface.
+
+### Plain LDN ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE
+- **Status**: EXACT-REPLAY QUEUE ONLY — one CL LDN short plain ORB cluster passed broad-surface promotion gates; CL NY and CL Asia remained rejected.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_broad_full_20260618/`.
+- **Top row**: `cl__ldn__orb30__stop12p5__gap0__rr1p5__short__no_thu__low_atr_only__small_orb_only` had 2024 validation `+16.18R`, 2021-2024 preholdout `+35.13R`, stress `+4.13R`, cluster score `1.00`, DSR `0.7695`.
+- **Conclusion**: The LDN short row is a narrow exact-replay candidate, not a live approval. The stress margin is thin compared with NQ/GC/RTY candidates, so exact replay and slippage audit should be especially strict.
+
+### Plain LDN ORB Breakout Exact Replay (2026-06-18) — EXACT-REPLAY PASS
+- **Status**: Exact-replay PASS on pre-holdout/discovery only. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618/`.
+- **Scope**: execution-engine exact replay of `cl__ldn__orb30__stop12p5__gap0__rr1p5__short__no_thu__low_atr_only__small_orb_only` over `2021-01-01` to `2024-12-31`, with 5m signal bars and 1s fill/exit sequencing.
+- **Result**: `177` exact trades, `+33.68` net R, PF `1.38`, max DD `-13.50R`, and `96%` retention versus research preholdout R. Exact year R stayed positive across 2021-2024: `+14.98R`, `+0.50R`, `+13.20R`, `+18.14R`.
+- **Caveat**: The broad-surface stress margin was thin (`+4.13R`), so this should advance only to strict exact stress/replay diagnostics, not holdout or paper. CL stop/order handling must remain conservative because this asset has a long history of stop-distance artifacts.
+- **Conclusion**: CL LDN 30m short is a real pre-holdout survivor after exact replay, but lower priority than GC/NQ/RTY because of stress-margin fragility and drawdown.
+
+### Plain LDN ORB Breakout Exact Stress (2026-06-18) — FAIL
+- **Status**: FAIL under strict exact cost/slippage stress. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618/`.
+- **Stress model**: post-exact-replay accounting on the frozen trade ledger, with `2x` baseline commission plus `2` adverse ticks per side on every filled round trip. Signal/fill path unchanged.
+- **Result**: `cl__ldn__orb30__stop12p5__gap0__rr1p5__short__no_thu__low_atr_only__small_orb_only` fell from exact `+33.68R` to stressed `-13.39R`, PF `0.88`, DD `-19.58R`. Even the slippage-only `2` ticks/side scenario was roughly flat/negative at `-0.25R`.
+- **Conclusion**: Reject the CL plain LDN breakout row for this workflow. The exact replay pass was too dependent on low friction, which matches the earlier broad-stress warning.
+
 ### Continuation Both (bullish FVG → long, bearish FVG → short) — NO-GO (INVALIDATED)
 
 **Scripts**: `run_cl_ny_sweep_r1.py`, `run_cl_ny_variable_sweeps_{2,3,4}.py`, `run_cl_ny_robust_pipeline.py`, `run_cl_ny_low_rr_pipeline.py`

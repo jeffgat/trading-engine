@@ -1,5 +1,5 @@
 import type { BacktestConfig, BacktestSummary } from "@/backtesting/lib/types";
-import { formatNumber, formatPct, pnlColor } from "@/backtesting/lib/utils";
+import { formatNumber, formatPct, moneyColor } from "@/backtesting/lib/utils";
 
 interface BestEntry {
   config: BacktestConfig;
@@ -73,7 +73,7 @@ function BestCard({
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-text-muted">
         <span>{s.total_trades} trades</span>
         <span>{formatPct(s.win_rate)} win</span>
-        <span style={{ color: pnlColor(netR) }}>
+        <span style={{ color: moneyColor(netR) }}>
           {formatR(netR)}
         </span>
         <span>PF {formatNumber(s.profit_factor)}</span>
@@ -99,7 +99,7 @@ export function BestResults({ bestBySharpe, bestByPnl, bestByPf, bestByCalmar, s
         label="Best by R"
         entry={bestByPnl}
         metricLabel={formatR(pnlNetR)}
-        metricColor={pnlColor(pnlNetR)}
+        metricColor={moneyColor(pnlNetR)}
         sweptParams={sweptParams}
       />
       <BestCard

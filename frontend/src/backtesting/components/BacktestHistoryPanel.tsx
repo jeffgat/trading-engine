@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BacktestHistoryItem } from "@/backtesting/lib/types";
-import { formatPct } from "@/backtesting/lib/utils";
+import { formatPct, moneyColor } from "@/backtesting/lib/utils";
 import { CopyIdButton } from './CopyIdButton';
 import { ConfirmDeleteDialog } from './ConfirmDeleteDialog';
 import { SessionTag } from './SessionTag';
@@ -480,7 +480,6 @@ export function BacktestHistoryPanel({
                             const sharpe = Number(item.sharpe_ratio) || 0;
                             const calmar = Number(item.calmar_ratio) || 0;
                             const pf = Number(item.profit_factor) || 0;
-                            const pnlPositive = netR >= 0;
 
                             return (
                                 <tr
@@ -598,11 +597,11 @@ export function BacktestHistoryPanel({
                                             : getSessionParam(item, 'min_gap_atr_pct')?.toFixed(0) ?? '\u2014'}
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-semibold"
-                                        style={{ color: pnlPositive ? 'var(--color-profit)' : 'var(--color-loss)' }}>
+                                        style={{ color: moneyColor(netR) }}>
                                         {formatRValue(netR)}
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-text-secondary"
-                                        style={{ color: rPerYear >= 0 ? 'var(--color-profit)' : 'var(--color-loss)' }}>
+                                        style={{ color: moneyColor(rPerYear) }}>
                                         {rPerYear >= 0 ? '+' : ''}{rPerYear.toFixed(2)}
                                     </td>
                                     <td className="px-3 py-2 text-right text-text-secondary">
@@ -611,7 +610,7 @@ export function BacktestHistoryPanel({
                                     <td className="px-3 py-2 text-right text-text-secondary">
                                         {formatPct(item.win_rate)}
                                     </td>
-                                    <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-loss">
+                                    <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-money-negative">
                                         {ddR.toFixed(2)}R
                                     </td>
                                     <td className="px-3 py-2 text-right text-text-secondary">

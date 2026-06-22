@@ -10,12 +10,13 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 49
+- Strategy sections indexed: 50
 - Related reports indexed: 5
-- Related result directories indexed: 18
-- Status mix: CONDITIONAL: 3, INVALIDATED_OR_CORRUPT: 1, NO-GO: 7, UNSPECIFIED: 38
+- Related result directories indexed: 19
+- Status mix: CONDITIONAL: 3, INVALIDATED_OR_CORRUPT: 1, NO-GO: 8, UNSPECIFIED: 38
 
 ## Strategy Snapshot
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — ES RTH plain ORB seed produced no promotion candidates.`
 - `London ORB Continuation — Both Directions` -> `CONDITIONAL GO (edge confirmed, DD structural but accepted)`
 - `London ORB Continuation — Both Directions (Fresh Full Optimization, 2026-02-22)` -> `NO-GO (2/5 phases passed at best — overfit)`
 - `London ORB Continuation — Long Only (earlier test)` -> `NO-GO`

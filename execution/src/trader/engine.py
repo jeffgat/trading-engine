@@ -223,6 +223,11 @@ class ORBEngine:
     continuation_fvg_selection: str = "first"
     orb_trade_max_per_session: int = 1
     orb_reentry_policy: str = "any_reentry"
+    strategy_type: str = "continuation"
+    orb_breakout_trigger: str = "touch"
+    orb_breakout_buffer_ticks: int = 0
+    orb_breakout_buffer_atr_pct: float = 0.0
+    base_bar_minutes: int = 5
     wide_stop_target_threshold_points: float = 0.0
     wide_stop_target_rr: float = 0.0
     limit_cancel_on_pre_entry_target_touch: str = ""
@@ -305,6 +310,7 @@ class ORBEngine:
     _bar_count: int = field(default=0, init=False)
     _long_fvg_found: bool = field(default=False, init=False)
     _short_fvg_found: bool = field(default=False, init=False)
+    _entry_order_type: str = field(default="limit", init=False)
     _session_filled_trades: int = field(default=0, init=False)
     _current_date: str = field(default="", init=False)
     _skip_reason: str | None = field(default=None, init=False)
@@ -366,6 +372,22 @@ class ORBEngine:
                 "continuation_fvg_selection must be one of 'first' or 'extreme' "
                 f"(got {self.continuation_fvg_selection!r})"
             )
+        if self.strategy_type not in {"continuation", "orb_breakout"}:
+            raise ValueError(
+                "strategy_type must be one of 'continuation' or 'orb_breakout' "
+                f"(got {self.strategy_type!r})"
+            )
+        if self.orb_breakout_trigger not in {"touch", "close"}:
+            raise ValueError(
+                "orb_breakout_trigger must be one of 'touch' or 'close' "
+                f"(got {self.orb_breakout_trigger!r})"
+            )
+        if self.orb_breakout_buffer_ticks < 0:
+            raise ValueError("orb_breakout_buffer_ticks must be >= 0")
+        if self.orb_breakout_buffer_atr_pct < 0.0:
+            raise ValueError("orb_breakout_buffer_atr_pct must be >= 0")
+        if self.base_bar_minutes <= 0:
+            raise ValueError("base_bar_minutes must be > 0")
         if self.orb_trade_max_per_session < 0:
             raise ValueError(
                 "orb_trade_max_per_session must be >= 0 "
@@ -1218,7 +1240,7 @@ class ORBEngine:
         self._levels = capped
         self._runner_stop = None
         self._trade_daily_atr = self._daily_atr
-        self._armed_at = bar.timestamp + timedelta(minutes=5)
+        self._armed_at = bar.timestamp + timedelta(minutes=self.base_bar_minutes)
         self._request_checkpoint()
         self._log_trade(
             "LIMIT_REARMED_EXTREME",
@@ -1366,6 +1388,7 @@ class ORBEngine:
         self._bar_count = 0
         self._long_fvg_found = False
         self._short_fvg_found = False
+        self._entry_order_type = "limit"
         self._session_filled_trades = 0
         self._exit_type = None
         self._r_result = None
@@ -1377,7 +1400,7 @@ class ORBEngine:
         self._request_checkpoint()
 
     def _expected_orb_bar_count(self) -> int:
-        """How many 5m bars should exist in the full ORB window."""
+        """How many base bars should exist in the full ORB window."""
         from datetime import datetime as _dt, timedelta as _td
         # Build datetime objects on a dummy date to compute the span
         base = _dt(2000, 1, 1)
@@ -1386,7 +1409,7 @@ class ORBEngine:
         if end <= start:
             end += _td(days=1)  # cross-midnight
         minutes = (end - start).total_seconds() / 60
-        return max(1, int(minutes // 5))
+        return max(1, int(minutes // self.base_bar_minutes))
 
     def recover_opening_range(self, bars: list[Bar], now: datetime) -> bool:
         """recover opening range/state for current day after restart."""
@@ -1497,6 +1520,16 @@ class ORBEngine:
             return 0.0  # NaN check
         return self._orb_high - self._orb_low
 
+    def _bar_close_timestamp(self, bar: Bar) -> datetime:
+        return bar.timestamp + timedelta(minutes=self.base_bar_minutes)
+
+    def _bar_closes_orb_window(self, bar: Bar) -> bool:
+        """True when this ORB bar closes at/after the configured ORB end."""
+        if not self._in_orb(bar.timestamp.time()):
+            return False
+        close_time = self._bar_close_timestamp(bar).time()
+        return not self._in_orb(close_time)
+
     def _context_gate_block_reason(self) -> str | None:
         if self.max_prior_rolling_atr_pct > 0.0:
             if not math.isfinite(self._prior_rolling_atr_pct):
@@ -1523,8 +1556,151 @@ class ORBEngine:
         """Activate a setup only after the signal bar has fully closed."""
         self._lock_trade_contract()
         self._state = State.ARMED_LIMIT
-        self._armed_at = signal_bar.timestamp + timedelta(minutes=5)
+        self._armed_at = signal_bar.timestamp + timedelta(minutes=self.base_bar_minutes)
+        self._entry_order_type = "limit"
         self._request_checkpoint()
+
+    def _arm_order_at(self, armed_at: datetime) -> None:
+        """Activate an already-known order at a specific timestamp."""
+        self._lock_trade_contract()
+        self._state = State.ARMED_LIMIT
+        self._armed_at = armed_at
+        self._request_checkpoint()
+
+    def _breakout_buffer_points(self) -> float:
+        buffer_points = float(self.orb_breakout_buffer_ticks) * float(self.min_tick)
+        if self.orb_breakout_buffer_atr_pct > 0.0:
+            if self._daily_atr <= 0.0:
+                return float("nan")
+            buffer_points += (self.orb_breakout_buffer_atr_pct / 100.0) * self._daily_atr
+        return buffer_points
+
+    def _entry_fill_touched(self, high_price: float, low_price: float) -> bool:
+        levels = self._levels
+        if levels is None:
+            return False
+        is_long = levels.direction == 1
+        if self._entry_order_type == "stop":
+            return high_price >= levels.entry if is_long else low_price <= levels.entry
+        return low_price <= levels.entry if is_long else high_price >= levels.entry
+
+    async def _arm_orb_breakout(self, bar: Bar, *, armed_at: datetime) -> None:
+        if not self._in_entry(armed_at.time()):
+            self._log_trade("NO_SETUP", "ORB breakout armed outside entry window")
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        buffer_points = self._breakout_buffer_points()
+        if not math.isfinite(buffer_points):
+            self._log_trade("NO_SETUP", "missing ATR for ORB breakout buffer")
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        direction = -1 if self.short_only else 1
+        if self.long_only and not self.short_only:
+            direction = 1
+        elif self.short_only:
+            direction = -1
+        elif not self.long_only:
+            self._log_trade("NO_SETUP", "two-sided ORB breakout requires split one-sided engines")
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        entry = self._orb_high + buffer_points if direction == 1 else self._orb_low - buffer_points
+        levels = self._compute_setup_levels(entry=entry, direction=direction, gap_size=0.0)
+        if levels is not None:
+            levels = self._apply_position_cap(levels)
+        if levels is None:
+            self._log_trade("NO_SETUP", "ORB breakout levels rejected")
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        self._levels = levels
+        self._runner_stop = None
+        self._trade_daily_atr = self._daily_atr
+        self._entry_order_type = "stop"
+        self._arm_order_at(armed_at)
+        self._log_trade(
+            "ORB_BREAKOUT_ARMED",
+            (
+                "dir=%s entry=%.2f stop=%.2f tp1=%.2f tp2=%.2f qty=%.1f "
+                "orb_high=%.2f orb_low=%.2f armed_at=%s"
+            )
+            % (
+                "long" if direction == 1 else "short",
+                levels.entry,
+                levels.stop,
+                levels.tp1,
+                levels.tp2,
+                levels.qty,
+                self._orb_high,
+                self._orb_low,
+                armed_at.isoformat(),
+            ),
+        )
+        self._notify_state_change()
+        if self._should_send:
+            await self.broker.send_entry(
+                action="buy" if direction == 1 else "sell",
+                qty=levels.qty,
+                price=levels.entry,
+                tp2=levels.tp2,
+                stop=levels.stop,
+                ticker=self.broker_ticker,
+            )
+
+    async def _finish_orb_ready(self, bar: Bar, *, armed_at: datetime | None = None) -> None:
+        if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
+            self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+        context_block_reason = self._context_gate_block_reason()
+        if context_block_reason is not None:
+            self._log_trade("CONTEXT_GATE_BLOCKED", context_block_reason)
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+        blocking_gate = self._blocking_regime_gate_name(self._current_date)
+        self._record_regime_gate_status(self._current_date, blocking_gate)
+        if blocking_gate is not None:
+            self._maybe_log_regime_gate_audit()
+            self._state = State.FLAT
+            self._request_checkpoint()
+            self._notify_state_change()
+            return
+
+        self._maybe_log_regime_gate_audit()
+        self._state = State.WAITING_FOR_GAP
+        self._request_checkpoint()
+        self._log_trade(
+            "ORB_READY",
+            "high=%.2f low=%.2f range=%.2f atr=%.2f"
+            % (
+                self._orb_high,
+                self._orb_low,
+                self._orb_range,
+                self._daily_atr,
+            ),
+        )
+        self._notify_state_change()
+        if self.strategy_type == "orb_breakout":
+            await self._arm_orb_breakout(
+                bar,
+                armed_at=armed_at or self._bar_close_timestamp(bar),
+            )
+            return
+        await self._handle_scanning(bar, bar.timestamp.time())
 
     # ------------------------------------------------------------------
     # FVG detection (inline, 3-bar check)
@@ -1760,49 +1936,11 @@ class ORBEngine:
                 self.name, bar.timestamp, bar.high, bar.low,
                 self._orb_high, self._orb_low,
             )
+            if self.strategy_type == "orb_breakout" and self._bar_closes_orb_window(bar):
+                await self._finish_orb_ready(bar, armed_at=self._bar_close_timestamp(bar))
         else:
-            # ORB window closed — check gates before scanning
-            if self.g5_gate_check is not None and self.g5_gate_check(self._current_date):
-                self._log_trade("G5_GATE_BLOCKED", "date=%s" % self._current_date)
-                self._state = State.FLAT
-                self._request_checkpoint()
-                self._notify_state_change()
-                return
-            context_block_reason = self._context_gate_block_reason()
-            if context_block_reason is not None:
-                self._log_trade("CONTEXT_GATE_BLOCKED", context_block_reason)
-                self._state = State.FLAT
-                self._request_checkpoint()
-                self._notify_state_change()
-                return
-            blocking_gate = self._blocking_regime_gate_name(self._current_date)
-            self._record_regime_gate_status(self._current_date, blocking_gate)
-            if blocking_gate is not None:
-                self._maybe_log_regime_gate_audit()
-                self._state = State.FLAT
-                self._request_checkpoint()
-                self._notify_state_change()
-                return
-
-            # Ready to scan
-            self._maybe_log_regime_gate_audit()
-            self._state = State.WAITING_FOR_GAP
-            self._request_checkpoint()
-            self._log_trade(
-                "ORB_READY",
-                "high=%.2f low=%.2f range=%.2f atr=%.2f"
-                % (
-                    self._orb_high,
-                    self._orb_low,
-                    self._orb_range,
-                    self._daily_atr,
-                ),
-            )
-            self._notify_state_change()
-            # The transition bar is already in _bars but never got an FVG
-            # check.  Run scanning immediately so an FVG that completes on
-            # this bar (e.g. ORB bar[0], ORB bar[1], this bar) is detected.
-            await self._handle_scanning(bar, bar_time)
+            # ORB window closed — check gates before scanning/arming.
+            await self._finish_orb_ready(bar, armed_at=self._bar_close_timestamp(bar))
 
     async def _handle_scanning(self, bar: Bar, bar_time: time) -> None:
         """Scanning for first FVG in entry window (long only)."""
@@ -2012,13 +2150,9 @@ class ORBEngine:
             await self._replace_armed_limit_if_extreme(bar)
             return
 
-        # Check for fill: did price touch our limit entry?
+        # Check for fill: limit entries fill on retrace, breakout entries on stop touch.
         is_long = levels.direction == 1
-        filled = False
-        if is_long and bar.low <= levels.entry:
-            filled = True
-        elif not is_long and bar.high >= levels.entry:
-            filled = True
+        filled = self._entry_fill_touched(bar.high, bar.low)
 
         if filled:
             self._fill_bar_idx = self._bar_count
@@ -2311,13 +2445,9 @@ class ORBEngine:
         if self._armed_at is not None and tick.timestamp < self._armed_at:
             return
 
-        # Check fill
+        # Check fill. FVG entries are limit orders; ORB breakouts are stop orders.
         is_long = levels.direction == 1
-        filled = False
-        if is_long and tick.low <= levels.entry:
-            filled = True
-        elif not is_long and tick.high >= levels.entry:
-            filled = True
+        filled = self._entry_fill_touched(tick.high, tick.low)
 
         if filled:
             self._fill_timestamp = tick.timestamp

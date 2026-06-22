@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import type { Trade } from "@/backtesting/lib/types";
-import { formatCurrency, moneyColor, pnlColor } from "@/backtesting/lib/utils";
+import { formatCurrency, moneyColor } from "@/backtesting/lib/utils";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TradeChartModal } from "./TradeChartModal";
 
@@ -417,7 +417,7 @@ export function TradesTable({ trades, riskUsd, instrument }: TradesTableProps) {
               )}
               {sorted.map((t, i) => {
                 const dollarColor = moneyColor(t.pnl_usd);
-                const rColor = pnlColor(Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd);
+                const rColor = moneyColor(Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd);
 
                 return (
                   <tr

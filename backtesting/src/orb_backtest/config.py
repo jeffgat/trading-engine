@@ -48,6 +48,10 @@ ALLOWED_ORB_REENTRY_POLICIES = (
     "after_sl_first",
     "after_full_target_first",
 )
+ALLOWED_ORB_BREAKOUT_TRIGGERS = (
+    "touch",
+    "close",
+)
 ALLOWED_LSI_CONFIRMATION_MODES = (
     "inversion",
     "cisd",
@@ -184,7 +188,7 @@ class StrategyConfig:
     # Excluded weekdays (0=mon ... 4=fri) applied as a post-trade gate.
     excluded_days: tuple[int, ...] = field(default_factory=tuple)
 
-    # Strategy type: "continuation", "reversal", "inversion", "cisd",
+    # Strategy type: "continuation", "reversal", "orb_breakout", "inversion", "cisd",
     # "lsi", "htf_lsi", "reference_lsi", or "ib"
     strategy: str = "continuation"
 
@@ -218,6 +222,13 @@ class StrategyConfig:
     #   "after_sl_first"          -> only re-arm after a stop-loss prior trade
     #   "after_full_target_first" -> only re-arm after a full-target prior trade
     orb_reentry_policy: str = "any_reentry"
+
+    # Plain ORB breakout params. Used only by strategy="orb_breakout".
+    # trigger="touch" models stop-market breakout arming at the OR level plus
+    # buffer; trigger="close" requires a completed bar close beyond the level.
+    orb_breakout_trigger: str = "touch"
+    orb_breakout_buffer_ticks: int = 0
+    orb_breakout_buffer_atr_pct: float = 0.0
 
     # Optional conditional target compression for large realized stops.
     # Disabled when either field is 0. When enabled and computed stop/risk
@@ -408,6 +419,22 @@ class StrategyConfig:
                 "orb_reentry_policy must be one of "
                 f"{list(ALLOWED_ORB_REENTRY_POLICIES)} "
                 f"(got {self.orb_reentry_policy!r})"
+            )
+        if self.orb_breakout_trigger not in ALLOWED_ORB_BREAKOUT_TRIGGERS:
+            raise ValueError(
+                "orb_breakout_trigger must be one of "
+                f"{list(ALLOWED_ORB_BREAKOUT_TRIGGERS)} "
+                f"(got {self.orb_breakout_trigger!r})"
+            )
+        if self.orb_breakout_buffer_ticks < 0:
+            raise ValueError(
+                "orb_breakout_buffer_ticks must be >= 0 "
+                f"(got {self.orb_breakout_buffer_ticks!r})"
+            )
+        if self.orb_breakout_buffer_atr_pct < 0.0:
+            raise ValueError(
+                "orb_breakout_buffer_atr_pct must be >= 0 "
+                f"(got {self.orb_breakout_buffer_atr_pct!r})"
             )
         if self.wide_stop_target_threshold_points < 0:
             raise ValueError(

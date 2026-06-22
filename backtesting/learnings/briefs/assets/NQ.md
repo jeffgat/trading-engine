@@ -10,12 +10,13 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 45
+- Strategy sections indexed: 49
 - Related reports indexed: 117
-- Related result directories indexed: 145
-- Status mix: CONDITIONAL: 12, GO: 3, INVALIDATED_OR_CORRUPT: 3, NO-GO: 5, OPTIMIZATION_COMPLETE: 1, SUPERSEDED: 2, UNSPECIFIED: 19
+- Related result directories indexed: 147
+- Status mix: CONDITIONAL: 12, GO: 3, INVALIDATED_OR_CORRUPT: 3, NO-GO: 6, OPTIMIZATION_COMPLETE: 1, SUPERSEDED: 2, UNSPECIFIED: 22
 
 ## Strategy Snapshot
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — seed grid produced validation-looking winners, but none passed preholdout, cluster, PSR/DSR, or promotion gates.`
 - `Asia Continuation (magnifier) — low R:R / high WR` -> `NO-GO (robust pipeline failed Phases 3 + 5)`
 - `Asia Continuation v2 (10m ORB, no-Thursday, magnifier) — optimized` -> `CONDITIONAL (robust pipeline passed Phases 1, 2, 4; failed Phases 3, 5)`
 - `Asia Continuation v3 — Dual-Model Sweep + Stop Anchor Discovery + Round 11 Grid (SUPERSEDED by R4 Final)` -> `SUPERSEDED — R4 Final (1s magnifier, 2016 start) achieved Calmar 23.85 vs v3's 20.14 (1m magnifier, 2015 start)`
@@ -27,5 +28,4 @@ This is the short entrypoint for agent and LLM context loading.
 - `NY Continuation Short (20m ORB, short-only, 1s magnifier) — NO-GO` -> `NO-GO — best achievable config has 4 negative years, Calmar 1.40, PF 1.10. Edge is marginal and fragile to slippage.`
 - `NY Continuation Short v2 (25m ORB, short-only, 1s magnifier, dual floors) — CONDITIONAL` -> `CONDITIONAL — 4/5 pipeline phases pass. Phase 3 annual R FAIL (12R/yr threshold too aggressive for short-only ~33 trades/yr). All other phases pass strongly.`
 - `NY Continuation R20 (20m ORB, both, 1s magnifier) — CORRUPT (was GO)` -> `CORRUPT — all metrics pre-date TP1+BE same-bar exit bug fix (commit 6079ad4). tp1=0.3 makes this config heavily affected.`
-- `NY Continuation Long 30m ICF — CORRUPT + INVALIDATED` -> `CORRUPT + INVALIDATED — pre-dates TP1+BE bug fix AND original data (2015-2026) no longer available. Rerun on current data (2016-2026) shows degraded performance.`
-- ... plus 33 more entries in the [full NQ index](../../indexes/assets/NQ.md).
+- ... plus 37 more entries in the [full NQ index](../../indexes/assets/NQ.md).

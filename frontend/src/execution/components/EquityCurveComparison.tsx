@@ -24,7 +24,9 @@ interface EquityCurveComparisonProps {
 
 const BACKTEST_LINE_COLOR = "#ccb088";
 const POSITIVE_R_COLOR = "var(--color-money-positive)";
+const NEGATIVE_R_COLOR = "var(--color-money-negative)";
 const POSITIVE_R_BG = "rgba(127, 216, 149, 0.13)";
+const NEGATIVE_R_BG = "rgba(255, 118, 100, 0.12)";
 
 function formatR(v: number): string {
   const sign = v >= 0 ? "+" : "";
@@ -42,12 +44,12 @@ function CustomTooltip({ active, payload, label }: any) {
     <div className="rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-xl">
       <p className="text-xs text-text-muted">{label}</p>
       {backtest?.value != null && (
-        <p className="font-mono text-sm" style={{ color: backtest.value >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)" }}>
+        <p className="font-mono text-sm" style={{ color: backtest.value >= 0 ? POSITIVE_R_COLOR : NEGATIVE_R_COLOR }}>
           Backtest: {formatR(backtest.value)}
         </p>
       )}
       {rawLiveR != null && (
-        <p className="font-mono text-sm font-semibold" style={{ color: rawLiveR >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)" }}>
+        <p className="font-mono text-sm font-semibold" style={{ color: rawLiveR >= 0 ? POSITIVE_R_COLOR : NEGATIVE_R_COLOR }}>
           Live: {formatR(rawLiveR)}
         </p>
       )}
@@ -166,8 +168,8 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             <span
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
-                color: backtestRProp >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)",
-                background: backtestRProp >= 0 ? POSITIVE_R_BG : "rgba(212, 119, 95, 0.12)",
+                color: backtestRProp >= 0 ? POSITIVE_R_COLOR : NEGATIVE_R_COLOR,
+                background: backtestRProp >= 0 ? POSITIVE_R_BG : NEGATIVE_R_BG,
               }}
             >
               BT: {formatR(backtestRProp)}
@@ -177,8 +179,8 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             <span
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
-                color: finalLiveR >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)",
-                background: finalLiveR >= 0 ? POSITIVE_R_BG : "rgba(212, 119, 95, 0.12)",
+                color: finalLiveR >= 0 ? POSITIVE_R_COLOR : NEGATIVE_R_COLOR,
+                background: finalLiveR >= 0 ? POSITIVE_R_BG : NEGATIVE_R_BG,
               }}
             >
               Live: {formatR(finalLiveR)}
@@ -254,7 +256,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
                 fill={
                   (entry.live_r_per_trade ?? 0) >= 0
                     ? POSITIVE_R_COLOR
-                    : "var(--color-loss)"
+                    : NEGATIVE_R_COLOR
                 }
               />
             ))}

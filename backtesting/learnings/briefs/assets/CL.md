@@ -10,12 +10,13 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 7
+- Strategy sections indexed: 11
 - Related reports indexed: 12
-- Related result directories indexed: 13
-- Status mix: CONDITIONAL: 2, UNSPECIFIED: 5
+- Related result directories indexed: 14
+- Status mix: CONDITIONAL: 2, NO-GO: 1, UNSPECIFIED: 8
 
 ## Strategy Snapshot
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — crude-oil plain ORB seed had some positive preholdout cells, but validation and stress rejected them.`
 - `5. 3-Session ORB Continuation Discovery (NY + Asia + LDN) — CONDITIONAL GO (LDN longs)` -> `**CONDITIONAL GO** — LDN longs survive holdout with 49-55% holdout PR; DSR marginal (0.19-0.29)`
 - `6. NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — CONDITIONAL` -> `**CONDITIONAL** — unlike regular CL LSI, the HTF-LSI branch produced a real `1m` pre-holdout family and two downstream candidates with positive funded holdout EV/start, but holdout payout rates are still only moderate.`
-- ... plus 5 more entries in the [full CL index](../../indexes/assets/CL.md).
+- ... plus 8 more entries in the [full CL index](../../indexes/assets/CL.md).

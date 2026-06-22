@@ -226,6 +226,11 @@ def _build_config_dict(profile_name: str, exec_config: Any) -> dict[str, Any]:
             "runner_trail_step_r",
             "runner_trail_gap_r",
             "runner_trail_atr_pct",
+            "strategy_type",
+            "orb_breakout_trigger",
+            "orb_breakout_buffer_ticks",
+            "orb_breakout_buffer_atr_pct",
+            "base_bar_minutes",
             "hunter_entry_basis",
         ):
             if key in merged:

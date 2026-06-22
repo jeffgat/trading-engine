@@ -39,6 +39,7 @@ from ..signals.daily_atr import (
 from ..signals.equal_levels import compute_equal_htf_levels
 from ..signals.orb import compute_orb_levels, compute_orb_open
 from ..signals.fvg import detect_fvg
+from ..signals.orb_breakout import detect_orb_breakouts
 from ..signals.cisd import detect_internal_cisd
 from ..signals.htf_levels import compute_htf_unswept_levels
 from ..signals.reference_levels import compute_reference_levels, compute_data_sweep_levels
@@ -75,6 +76,8 @@ RUNNER_TRAIL_DISABLED = 0
 RUNNER_TRAIL_STEP_R = 1
 RUNNER_TRAIL_RISK = 2
 RUNNER_TRAIL_ATR = 3
+
+ORB_FAMILY_STRATEGIES = {"continuation", "reversal", "orb_breakout"}
 
 
 def _runner_trail_mode_code(mode: str) -> int:
@@ -3188,7 +3191,7 @@ def _extract_setup_candidates(
         prior_rolling_atr_pct = _signal_cache.get("prior_rolling_atr_pct", {}).get(config.atr_length)
         if prior_rolling_atr_pct is None:
             prior_rolling_atr_pct = compute_previous_daily_rolling_atr_pct(df, config.atr_length)
-        fvg         = _signal_cache["fvg"][fkey]
+        fvg = None if config.strategy == "orb_breakout" else _signal_cache["fvg"][fkey]
     else:
         # Slow path: compute signals fresh (correct for single-backtest calls).
         # Session masks
@@ -3215,18 +3218,21 @@ def _extract_setup_candidates(
             session_day_id,
         )
 
-        # FVG detection
-        fvg = detect_fvg(
-            df["high"].values,
-            df["low"].values,
-            daily_atr,
-            orb_high,
-            orb_low,
-            session.min_gap_atr_pct,
-            close=df["close"].values if config.impulse_close_filter else None,
-            impulse_close_filter=config.impulse_close_filter,
-            min_gap_orb_pct=getattr(session, "min_gap_orb_pct", 0.0),
-        )
+        # FVG detection is needed for the FVG-confirmed ORB variants. Plain
+        # ORB breakout uses only completed OR levels and skips this work.
+        fvg = None
+        if config.strategy != "orb_breakout":
+            fvg = detect_fvg(
+                df["high"].values,
+                df["low"].values,
+                daily_atr,
+                orb_high,
+                orb_low,
+                session.min_gap_atr_pct,
+                close=df["close"].values if config.impulse_close_filter else None,
+                impulse_close_filter=config.impulse_close_filter,
+                min_gap_orb_pct=getattr(session, "min_gap_orb_pct", 0.0),
+            )
 
         # Date strings for excluded dates and half-days
         date_strs = compute_date_strings(timestamps)
@@ -3248,20 +3254,42 @@ def _extract_setup_candidates(
     # Filter candidates: must be in entry window, ORB ready, not excluded, bar confirmed
     # Pine uses barstate.isconfirmed — for completed 5m bars, all bars in historical data
     # are confirmed, so we just check the conditions.
-    valid_long = (
-        fvg["long_fvg"]
-        & masks["in_entry"]
-        & masks["in_rth"]
-        & orb_ready
-    )
-    valid_short = (
-        fvg["short_fvg"]
-        & masks["in_entry"]
-        & masks["in_rth"]
-        & orb_ready
-    )
+    breakout = None
+    if config.strategy == "orb_breakout":
+        breakout = detect_orb_breakouts(
+            df["high"].values,
+            df["low"].values,
+            df["close"].values,
+            daily_atr,
+            orb_high,
+            orb_low,
+            orb_ready,
+            masks["in_entry"],
+            masks["in_rth"],
+            session_day_id,
+            buffer_ticks=config.orb_breakout_buffer_ticks,
+            min_tick=config.min_tick,
+            buffer_atr_pct=config.orb_breakout_buffer_atr_pct,
+            trigger=config.orb_breakout_trigger,
+        )
+        valid_long = breakout["long_breakout"]
+        valid_short = breakout["short_breakout"]
+    else:
+        assert fvg is not None
+        valid_long = (
+            fvg["long_fvg"]
+            & masks["in_entry"]
+            & masks["in_rth"]
+            & orb_ready
+        )
+        valid_short = (
+            fvg["short_fvg"]
+            & masks["in_entry"]
+            & masks["in_rth"]
+            & orb_ready
+        )
 
-    if config.strategy in {"continuation", "reversal"} and (
+    if config.strategy in ORB_FAMILY_STRATEGIES and (
         float(getattr(session, "max_prior_atr_pct", 0.0) or 0.0) > 0.0
         or float(getattr(session, "max_prior_rolling_atr_pct", 0.0) or 0.0) > 0.0
         or float(getattr(session, "max_orb_range_pct", 0.0) or 0.0) > 0.0
@@ -3278,7 +3306,7 @@ def _extract_setup_candidates(
         valid_long &= context_gate_ok
         valid_short &= context_gate_ok
 
-    if config.strategy in {"continuation", "reversal"} and (
+    if config.strategy in ORB_FAMILY_STRATEGIES and (
         config.min_vwap_distance_atr_pct > 0.0 or config.vwap_slope_lookback > 0
     ):
         close_arr = df["close"].values
@@ -3293,7 +3321,7 @@ def _extract_setup_candidates(
         valid_long &= vwap_long_ok
         valid_short &= vwap_short_ok
 
-    if config.strategy in {"continuation", "reversal"} and config.structure_vwap_gate:
+    if config.strategy in ORB_FAMILY_STRATEGIES and config.structure_vwap_gate:
         struct_long_ok, struct_short_ok = _compute_structure_vwap_gate_masks(
             df,
             session,
@@ -3555,6 +3583,62 @@ def _extract_setup_candidates(
             min_tick=config.min_tick,
             lrlr_settings=lrlr_settings,
         )
+    elif config.strategy == "orb_breakout":
+        assert breakout is not None
+        take_longs = config.direction_filter in ("both", "long")
+        take_shorts = config.direction_filter in ("both", "short")
+
+        if take_longs:
+            long_entry_price = breakout["long_entry_price"]
+            selected_long_bars = _select_orb_candidate_bars(
+                valid_long,
+                session_day_id,
+                long_entry_price,
+                prefer_highest=True,
+                selection_mode="first",
+                trade_cap=config.orb_trade_max_per_session,
+            )
+            for i in selected_long_bars:
+                signal_bar = int(i) - 1
+                if signal_bar < 0:
+                    continue
+                orb_range = orb_high[i] - orb_low[i]
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=1,
+                    signal_bar=signal_bar,
+                    entry_price=long_entry_price[i],
+                    gap_size=max(0.0, float(long_entry_price[i] - orb_high[i])),
+                    daily_atr=daily_atr[i],
+                    orb_range=orb_range,
+                ))
+
+        if take_shorts:
+            short_entry_price = breakout["short_entry_price"]
+            selected_short_bars = _select_orb_candidate_bars(
+                valid_short,
+                session_day_id,
+                short_entry_price,
+                prefer_highest=False,
+                selection_mode="first",
+                trade_cap=config.orb_trade_max_per_session,
+            )
+            for i in selected_short_bars:
+                signal_bar = int(i) - 1
+                if signal_bar < 0:
+                    continue
+                orb_range = orb_high[i] - orb_low[i]
+                candidates.append(_SetupCandidate(
+                    date_str=str(dates[i]),
+                    session=session.name,
+                    direction=-1,
+                    signal_bar=signal_bar,
+                    entry_price=short_entry_price[i],
+                    gap_size=max(0.0, float(orb_low[i] - short_entry_price[i])),
+                    daily_atr=daily_atr[i],
+                    orb_range=orb_range,
+                ))
     elif config.strategy == "cisd":
         # CISD mode: ORB liquidity sweep + displacement candle reversal.
         # Price breaks beyond ORB (sweep), then a displacement candle reverses
@@ -6623,10 +6707,11 @@ def build_signal_cache(
     seen_no_orb_fvg: set = set()
     for config in configs:
         for session in config.sessions:
-            fkey = _fvg_key(session, config)
-            if fkey not in seen_fvg:
-                seen_fvg.add(fkey)
-                unique_fvg_tasks.append((fkey, session, config))
+            if config.strategy != "orb_breakout":
+                fkey = _fvg_key(session, config)
+                if fkey not in seen_fvg:
+                    seen_fvg.add(fkey)
+                    unique_fvg_tasks.append((fkey, session, config))
             if config.strategy in {"lsi", "htf_lsi", "reference_lsi"}:
                 no_orb_key = _fvg_no_orb_key(session, config)
                 if no_orb_key not in seen_no_orb_fvg:

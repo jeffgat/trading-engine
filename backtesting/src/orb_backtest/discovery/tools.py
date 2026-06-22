@@ -63,6 +63,7 @@ _SESSION_FIELDS = {field.name for field in fields(SessionConfig)}
 _KNOWN_STRATEGIES = {
     "continuation",
     "reversal",
+    "orb_breakout",
     "inversion",
     "cisd",
     "lsi",

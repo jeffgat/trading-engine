@@ -452,8 +452,8 @@ function Pill({
     "ticker-gc": "bg-warning/20 text-warning border-warning/30",
     long: "bg-profit/20 text-profit border-profit/30",
     short: "bg-loss/20 text-loss border-loss/30",
-    rpos: "bg-profit/15 text-profit border-profit/30",
-    rneg: "bg-loss/15 text-loss border-loss/30",
+    rpos: "bg-money-positive/15 text-money-positive border-money-positive/30",
+    rneg: "bg-money-negative/15 text-money-negative border-money-negative/30",
     "session-ny": "bg-sky-400/15 text-sky-300 border-sky-400/30",
     "session-ldn": "bg-profit/10 text-profit border-profit/30",
     "session-asia": "bg-loss/20 text-loss border-loss/30",
@@ -968,7 +968,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
           <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Total R</div>
-          <div className={`text-lg font-mono font-semibold ${totalR > 0 ? "text-profit" : totalR < 0 ? "text-loss" : "text-text-secondary"}`}>
+          <div className={`text-lg font-mono font-semibold ${moneyTextClass(totalR)}`}>
             {totalR > 0 ? "+" : ""}{totalR.toFixed(1)}R
           </div>
         </div>
@@ -992,7 +992,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         </div>
         <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
           <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">Avg R</div>
-          <div className={`text-lg font-mono font-semibold ${totalR > 0 ? "text-profit" : totalR < 0 ? "text-loss" : "text-text-secondary"}`}>
+          <div className={`text-lg font-mono font-semibold ${closedCount > 0 ? moneyTextClass(totalR / closedCount) : "text-text-secondary"}`}>
             {closedCount > 0 ? `${(totalR / closedCount).toFixed(2)}R` : "\u2014"}
           </div>
         </div>

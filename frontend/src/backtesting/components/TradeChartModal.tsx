@@ -12,7 +12,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { Trade, CandleBar } from "@/backtesting/lib/types";
-import { formatCurrency, formatR, moneyColor, pnlColor } from "@/backtesting/lib/utils";
+import { formatCurrency, formatR, moneyColor } from "@/backtesting/lib/utils";
 import { SessionTag } from "./SessionTag";
 import { Skeleton } from "./Skeleton";
 import {
@@ -431,7 +431,7 @@ export function TradeChartModal({
                 </span>
                 <span
                   className="font-mono text-xs"
-                  style={{ color: pnlColor(rMultiple) }}
+                  style={{ color: moneyColor(rMultiple) }}
                 >
                   {formatR(rMultiple)}
                 </span>
