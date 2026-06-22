@@ -71,6 +71,13 @@ INSTRUMENTS = {
     },
     "YM": {"point_value": 5.0, "min_tick": 1.0, "commission": 0.05, "db_symbol": "YM.FUT"},
     "MYM": {"point_value": 0.5, "min_tick": 1.0, "commission": 0.05, "db_symbol": "MYM.FUT"},
+    "RTY": {"point_value": 50.0, "min_tick": 0.10, "commission": 0.05, "db_symbol": "RTY.FUT"},
+    "M2K": {
+        "point_value": 5.0,
+        "min_tick": 0.10,
+        "commission": estimated_commission_per_side("M2K"),
+        "db_symbol": "M2K.FUT",
+    },
     "SI": {"point_value": 5000.0, "min_tick": 0.005, "commission": 0.05, "db_symbol": "SI.FUT"},
     "SIL": {"point_value": 1000.0, "min_tick": 0.005, "commission": 0.05, "db_symbol": "SIL.FUT"},
 }
@@ -84,6 +91,7 @@ SIGNAL_TO_EXEC: dict[str, str] = {
     "GC": "MGC",
     "CL": "MCL",
     "YM": "MYM",
+    "RTY": "M2K",
     "SI": "SIL",
     # Micros map to themselves
     "MNQ": "MNQ",
@@ -91,6 +99,7 @@ SIGNAL_TO_EXEC: dict[str, str] = {
     "MGC": "MGC",
     "MCL": "MCL",
     "MYM": "MYM",
+    "M2K": "M2K",
     "SIL": "SIL",
 }
 
@@ -1379,6 +1388,11 @@ def build_engines(
             continuation_fvg_selection=merged.get("continuation_fvg_selection", "first"),
             orb_trade_max_per_session=merged.get("orb_trade_max_per_session", 1),
             orb_reentry_policy=merged.get("orb_reentry_policy", "any_reentry"),
+            strategy_type=merged.get("strategy_type", "continuation"),
+            orb_breakout_trigger=merged.get("orb_breakout_trigger", "touch"),
+            orb_breakout_buffer_ticks=merged.get("orb_breakout_buffer_ticks", 0),
+            orb_breakout_buffer_atr_pct=merged.get("orb_breakout_buffer_atr_pct", 0.0),
+            base_bar_minutes=merged.get("base_bar_minutes", 5),
             wide_stop_target_threshold_points=merged.get("wide_stop_target_threshold_points", 0.0),
             wide_stop_target_rr=merged.get("wide_stop_target_rr", 0.0),
             limit_cancel_on_pre_entry_target_touch=merged.get("limit_cancel_on_pre_entry_target_touch", ""),

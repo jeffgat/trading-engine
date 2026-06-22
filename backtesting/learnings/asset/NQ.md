@@ -12,6 +12,36 @@
 
 ## Strategies Tested
 
+### Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO
+- **Status**: NO-GO — seed grid produced validation-looking winners, but none passed preholdout, cluster, PSR/DSR, or promotion gates.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_NQ_NY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_seed_nq_ny_20260618/`.
+- **Scope**: New canonical `strategy="orb_breakout"` path, NQ NY seed grid only, train `2021-2023`, validation `2024`, holdout closed from `2025` onward. Search covered 1,458 raw candidates / 42 effective trials.
+- **Best rejected cell**: `nq__ny__orb15__stop10__gap0__rr2__long__no_thu__low_atr_only__small_orb_only` had 2024 validation `+14.20R`, PF `1.32`, but 2021-2024 preholdout `-19.67R`, PF `0.83`, DD `-37.86R`, cluster score `0.00`, PSR `0.1374`, DSR `0.0006`, cost/slippage stress `FAIL`, no-single-year dependency `FAIL`.
+- **Conclusion**: Plain NQ NY ORB breakout does not deserve promotion from the seed surface. The new ORB Futures Surface v1 workflow correctly rejected isolated validation winners before any holdout opening.
+
+### Plain ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE
+- **Status**: EXACT-REPLAY QUEUE ONLY — NQ Asia and NQ LDN plain ORB breakout clusters passed broad-surface promotion gates. NQ NY remained rejected.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_broad_full_20260618/`.
+- **Scope**: `strategy="orb_breakout"` broad grid across all assets/sessions, train `2021-2023`, validation `2024`, holdout closed from `2025` onward. NQ sleeves each covered 9,720 raw candidates.
+- **Top NQ Asia row**: `nq__asia__orb5__stop7p5__gap0__rr1p25__long__no_mon__small_or_mid_orb` had 2024 validation `+34.25R`, 2021-2024 preholdout `+68.91R`, stress `+29.83R`, cluster score `1.00`, DSR `0.8446`.
+- **Top NQ LDN row**: `nq__ldn__orb30__stop12p5__gap0__rr2p5__long__no_tue__small_orb_only` had 2024 validation `+22.21R`, 2021-2024 preholdout `+39.78R`, stress `+29.85R`, cluster score `1.00`, DSR `0.7337`.
+- **Conclusion**: Treat NQ Asia and NQ LDN plain breakout as research candidates for exact replay only. Do not open holdout or paper trade until exact replay confirms fills and no same-bar/magnifier drift.
+
+### Plain ORB Breakout Exact Replay (2026-06-18) — MIXED
+- **Status**: NQ Asia R1 exact-replay PASS; NQ Asia R2/R3 and NQ LDN R1 exact-replay WATCH. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618/`.
+- **Scope**: execution-engine exact replay of one-sided promoted broad-surface rows over `2021-01-01` to `2024-12-31`, using live-style 5m signal bars plus 1s fill/exit sequencing. The replay required adding execution support for `strategy_type="orb_breakout"` stop-style entries.
+- **Pass**: `nq__asia__orb5__stop7p5__gap0__rr1p25__long__no_mon__small_or_mid_orb` produced `450` exact trades, `+76.47` net R, PF `1.36`, max DD `-10.32R`, and retained `111%` of research preholdout R. Exact year R was positive in all years: 2021 `+24.90R`, 2022 `+8.00R`, 2023 `+15.28R`, 2024 `+43.87R`.
+- **Watch**: the nearby NQ Asia ATR-gated rows and NQ LDN long row stayed positive but had large trade-count and R-retention drift: NQ Asia R2 `+8.72R` / `12%` retention, NQ Asia R3 `+11.66R` / `16%` retention, NQ LDN R1 `+8.53R` / `21%` retention.
+- **Conclusion**: Promote only the NQ Asia 5m, no-Monday, small-or-mid-ORB long row to the next pre-holdout robustness step. Keep the other NQ exact rows as diagnostics, not finalists. Still do not open holdout or paper trade until doubled-cost/slippage exact replay and any broker stop-order semantics are locked.
+
+### Plain ORB Breakout Exact Stress (2026-06-18) — WATCH
+- **Status**: WATCH, not promotion. The NQ Asia exact survivor stayed positive under strict cost/slippage stress but failed the all-years-positive requirement. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618/`.
+- **Stress model**: post-exact-replay accounting on the frozen trade ledger, with `2x` baseline commission plus `2` adverse ticks per side on every filled round trip. Signal/fill path unchanged.
+- **Result**: `nq__asia__orb5__stop7p5__gap0__rr1p25__long__no_mon__small_or_mid_orb` fell from exact `+76.47R` to stressed `+33.76R`, PF `1.15`, DD `-17.21R`, retention `44%`. Year split under full stress: 2021 `+8.27R`, 2022 `+2.84R`, 2023 `-3.89R`, 2024 `+26.53R`.
+- **Conclusion**: NQ Asia remains the best plain-breakout survivor after exact stress, but it is not clean enough to open holdout. Treat it as a watchlist candidate for microstructure/slippage diagnosis or a stricter variant, not as a locked finalist.
+
 ### Asia Continuation (magnifier) — low R:R / high WR
 - **Status**: NO-GO (robust pipeline failed Phases 3 + 5)
 - **Config tested**:

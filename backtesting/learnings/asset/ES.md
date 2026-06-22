@@ -9,6 +9,13 @@
 
 ## Strategies Tested
 
+### Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO
+- **Status**: NO-GO — ES RTH plain ORB seed produced no promotion candidates.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618/`.
+- **Scope**: Canonical `strategy="orb_breakout"` seed grid, ES NY only, ORB windows `5/15/30`, train `2021-2023`, validation `2024`, holdout closed from `2025` onward.
+- **Best rejected cell**: `es__ny__orb5__stop10__gap0__rr2__both__no_fri__low_atr_only__small_orb_only` had 2024 validation `-31.26R`, PF `0.62`; 2021-2024 preholdout `-28.52R`, PF `0.83`, DD `-34.26R`, cluster score `0.00`, DSR `0.0003`, cost/slippage stress `FAIL`, no-single-year dependency `FAIL`.
+- **Conclusion**: Plain ES NY ORB breakout is not a viable seed-family lead under the current live-native gates.
+
 ### London ORB Continuation — Both Directions
 - **Status**: CONDITIONAL GO (edge confirmed, DD structural but accepted)
 - **Run 1** — stop=3%, gap=1.25%, rr=2.75, tp1=0.3, be=10 (2026-02-18):

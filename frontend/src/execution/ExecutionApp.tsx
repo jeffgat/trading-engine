@@ -80,7 +80,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     const connectionState: ConnectionState = connected
         ? 'connected'
         : pollingHealthy
-            ? 'connected'
+            ? 'polling'
             : socketStatus;
     const pauseEngineAndRefresh = useCallback(
         async (sessionName: string, configName?: string) => {

@@ -20,6 +20,29 @@ Current data: 714K 5m bars, 3.53M 1m bars, 72.7M 1s bars (2016-01 to 2026-02-19)
 
 ## Strategies Tested
 
+### Plain Asia ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE
+- **Status**: EXACT-REPLAY QUEUE ONLY — GC Asia long plain ORB breakout clusters passed broad-surface promotion gates. GC NY and GC LDN remained rejected.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_broad_full_20260618/`.
+- **Scope**: `strategy="orb_breakout"` broad grid, train `2021-2023`, validation `2024`, holdout closed from `2025` onward.
+- **Top row**: `gc__asia__orb5__stop12p5__gap0__rr2p5__long__no_tue__low_atr_only` had 2024 validation `+25.92R`, 2021-2024 preholdout `+75.24R`, stress `+27.21R`, cluster score `1.00`, DSR `0.9386`.
+- **Nearby cluster**: The top-3 GC Asia rows all promoted, with stress `+27.21R` to `+43.52R` and DSR `0.9386` to `0.9807`.
+- **Conclusion**: GC Asia plain breakout is one of the strongest broad-surface leads. Exact replay must still verify fill sequencing before any holdout or paper-trade step.
+
+### Plain Asia ORB Breakout Exact Replay (2026-06-18) — MIXED
+- **Status**: GC Asia R1 exact-replay PASS; GC Asia R3 WATCH; GC Asia R2 FAIL. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618/`.
+- **Scope**: execution-engine exact replay of one-sided promoted GC Asia broad-surface rows over `2021-01-01` to `2024-12-31`, using 5m signal bars and 1s fill/exit sequencing.
+- **Pass**: `gc__asia__orb5__stop12p5__gap0__rr2p5__long__no_tue__low_atr_only` produced `230` exact trades, `+68.31` net R, PF `1.48`, max DD `-7.57R`, and `91%` retention versus research preholdout R. Exact year R was positive in 2021-2024: `+10.15R`, `+8.00R`, `+32.07R`, `+33.53R`.
+- **Watch/fail**: the Friday-exclusion 5m cousin remained positive but drifted hard (`+23.53R`, `25%` retention, `80` trades). The 15m / small-ORB row failed exact replay with only `1` trade and `-1.09R`.
+- **Conclusion**: Promote only the GC Asia 5m, no-Tuesday, low-ATR long row to the next exact stress step. The cluster is not uniformly portable through execution replay, so do not average the broad-surface top-3 together.
+
+### Plain Asia ORB Breakout Exact Stress (2026-06-18) — WATCH
+- **Status**: WATCH, not promotion. The GC Asia exact survivor stayed positive under strict stress but failed the all-years-positive requirement. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618/`.
+- **Stress model**: post-exact-replay accounting on the frozen trade ledger, with `2x` baseline commission plus `2` adverse ticks per side on every filled round trip. Signal/fill path unchanged.
+- **Result**: `gc__asia__orb5__stop12p5__gap0__rr2p5__long__no_tue__low_atr_only` fell from exact `+68.31R` to stressed `+15.45R`, PF `1.09`, DD `-15.58R`, retention `23%`. Year split under full stress: 2021 `-4.81R`, 2022 `-2.88R`, 2023 `+4.85R`, 2024 `+18.28R`.
+- **Conclusion**: GC Asia remains alive as a watchlist idea but is not a clean finalist. It is too sensitive to friction in 2021-2022 to justify opening holdout.
+
 ### TradingView Gold-X Strategy Suite v14.4 Replication — REVERSE-ENGINEERING CHECKPOINT (2026-04-27)
 
 **Status**: In progress. The revised/FVG leg is essentially matched; the remaining parity gap is Classic ORB over-generation.

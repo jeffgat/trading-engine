@@ -12,6 +12,29 @@
 
 ## Strategies Tested
 
+### Plain LDN ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE
+- **Status**: EXACT-REPLAY QUEUE ONLY — RTY LDN plain ORB breakout clusters passed broad-surface promotion gates. RTY NY and RTY Asia remained rejected.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_broad_full_20260618/`.
+- **Scope**: `strategy="orb_breakout"` broad grid, train `2021-2023`, validation `2024`, holdout closed from `2025` onward.
+- **Top row**: `rty__ldn__orb15__stop12p5__gap0__rr2__long__no_tue__small_orb_only` had 2024 validation `+22.03R`, 2021-2024 preholdout `+47.89R`, stress `+21.49R`, cluster score `1.00`, DSR `0.8202`.
+- **Nearby cluster**: The top-3 RTY LDN rows all promoted, including two 30m short variants with validation `+21.31R` / `+19.43R`, stress `+22.17R` / `+22.59R`, and DSR `0.7659` / `0.7785`.
+- **Conclusion**: RTY LDN plain breakout deserves exact replay as a candidate cluster, not a single isolated row. Keep holdout closed until exact replay confirms parity.
+
+### Plain LDN ORB Breakout Exact Replay (2026-06-18) — MIXED
+- **Status**: RTY LDN R1 exact-replay PASS; R2 WATCH; R3 FAIL. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618/`.
+- **Scope**: execution-engine exact replay of one-sided promoted RTY LDN broad-surface rows over `2021-01-01` to `2024-12-31`, using 5m signal bars and 1s fill/exit sequencing.
+- **Pass**: `rty__ldn__orb15__stop12p5__gap0__rr2__long__no_tue__small_orb_only` produced `278` exact trades, `+41.66` net R, PF `1.33`, max DD `-6.95R`, and `87%` retention versus research preholdout R. Exact year R was positive in 2021-2024: `+9.79R`, `+3.50R`, `+17.35R`, `+26.26R`.
+- **Watch/fail**: the Friday-exclusion 30m short remained positive (`+23.98R`, PF `1.48`, `54%` retention) but drifted enough to stay WATCH. The Thursday-exclusion 30m short failed (`13` trades, `-0.97R`).
+- **Conclusion**: Promote the 15m long/no-Tuesday row as the RTY exact-replay survivor. Keep the 30m short/no-Friday row as a challenger only; reject the no-Thursday short row for this workflow.
+
+### Plain LDN ORB Breakout Exact Stress (2026-06-18) — FAIL
+- **Status**: FAIL under strict exact cost/slippage stress. Holdout stayed closed.
+- **Report**: `backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md`; artifacts in `backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618/`.
+- **Stress model**: post-exact-replay accounting on the frozen trade ledger, with `2x` baseline commission plus `2` adverse ticks per side on every filled round trip. Signal/fill path unchanged.
+- **Result**: `rty__ldn__orb15__stop12p5__gap0__rr2__long__no_tue__small_orb_only` fell from exact `+41.66R` to stressed `-0.14R`, PF `1.00`, DD `-20.50R`. Year split under full stress had three negative years: 2021 `-0.11R`, 2022 `-2.26R`, 2023 `-4.06R`, 2024 `+6.29R`.
+- **Conclusion**: Reject the RTY plain LDN breakout row for this workflow. The baseline edge is too thin after realistic adverse slippage and doubled fees.
+
 ### 1. Asia Continuation Longs — NO-GO
 - **Status**: NO-GO (pipeline failed Phase 2 + Phase 3)
 - **Config**: stop=4.0%, rr=2.5, gap=0.9%, tp1=0.3, ATR 14, 15m ORB (20:00-20:15), entry≤23:15, flat=06:45, long-only, excl Tue

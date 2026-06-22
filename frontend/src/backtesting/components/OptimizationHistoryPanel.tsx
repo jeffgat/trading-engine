@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { OptimizationHistoryItem } from "@/backtesting/lib/types";
-import { formatNumber, pnlColor } from "@/backtesting/lib/utils";
+import { formatNumber, moneyColor } from "@/backtesting/lib/utils";
 import { CopyIdButton } from "./CopyIdButton";
 import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 import { SessionTag } from "./SessionTag";
@@ -242,7 +242,7 @@ export function OptimizationHistoryPanel({
                   </td>
                   <td
                     className="px-3 py-2 text-right font-mono font-medium"
-                    style={{ color: pnlColor(item.best_pnl_usd ?? 0) }}
+                    style={{ color: moneyColor(bestR) }}
                   >
                     {bestR >= 0 ? "+" : ""}{bestR.toFixed(2)}R
                   </td>

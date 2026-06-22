@@ -5,6 +5,7 @@
 - Detailed history: [backtesting/learnings/asset/ES.md](../../asset/ES.md)
 
 ## Strategy Sections
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — ES RTH plain ORB seed produced no promotion candidates.`
 - `London ORB Continuation — Both Directions` -> `CONDITIONAL GO (edge confirmed, DD structural but accepted)`
 - `London ORB Continuation — Both Directions (Fresh Full Optimization, 2026-02-22)` -> `NO-GO (2/5 phases passed at best — overfit)`
 - `London ORB Continuation — Long Only (R12 config, direction split)` -> `EXPLORATORY — long side carries 81% of R but ORB%-based sizing underperforms ATR%`
@@ -62,7 +63,7 @@
 - [ES_NY_HTF_LSI_PHASE_ONE.md](../../reports/ES_NY_HTF_LSI_PHASE_ONE.md) -> [es_ny_htf_lsi_phase_one](../../../data/results/es_ny_htf_lsi_phase_one)
 - [ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/ES_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [es_ny_htf_lsi_stitched_followup](../../../data/results/es_ny_htf_lsi_stitched_followup)
 
-## Result Directories (18)
+## Result Directories (19)
 - [alpha_v1_es_asia_b_direct_compare_20260516](../../../data/results/alpha_v1_es_asia_b_direct_compare_20260516) (5 files; primary: summary.json, exact_trades.csv, portfolio_account_outcomes.csv, portfolio_summary.csv, window_metrics.csv)
 - [alpha_v1_es_ny_ath_band_sensitivity_20260505](../../../data/results/alpha_v1_es_ny_ath_band_sensitivity_20260505) (18 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P25_0P75_EXACT_trades.csv, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_raw_result.json, ALPHA_V1_ES_NY_ATH_0P5_0P75_EXACT_trades.csv)
 - [alpha_v1_es_ny_ath_exact_replay_20260505](../../../data/results/alpha_v1_es_ny_ath_exact_replay_20260505) (9 files; primary: summary.json, ALPHA_V1_ES_NY_ATH_0P5_1_EXACT_raw_result.json, ALPHA_V1_ES_NY_BASELINE_EXACT_raw_result.json, added_gated_trades.csv, baseline_trades.csv)
@@ -81,3 +82,4 @@
 - [nq_combo_with_es_candidates](../../../data/results/nq_combo_with_es_candidates) (3 files; primary: summary.md, combo_es_candidate_details.json, combo_es_candidate_ranking.csv)
 - [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505) (8 files; primary: summary.json, leg_stats.csv, pre_best_full_outcomes.csv, pre_best_holdout_outcomes.csv, risk_sweep.csv)
 - [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505) (6 files; primary: summary.json, best_near_intact_by_candidate.csv, near_intact_candidates.csv, ranked_candidates.csv, variant_manifest.csv)
+- [orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618](../../../data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618) (6 files; primary: summary.json, all_candidates.csv, report.md, spec.json, top_candidates.csv)

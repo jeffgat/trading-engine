@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-10T13:49:30.773342Z",
+  "generated_at": "2026-06-18T20:14:36.189743Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 239,
-    "result_directories": 387,
+    "report_files": 252,
+    "result_directories": 399,
     "result_loose_files": 45
   },
   "assets": {
@@ -52,6 +52,26 @@
       "index": "backtesting/learnings/indexes/assets/CL.md",
       "strategy_sections": [
         {
+          "title": "Plain NY ORB Breakout Seed Surface (2026-06-18) \u2014 NO-GO",
+          "status": "NO-GO \u2014 crude-oil plain ORB seed had some positive preholdout cells, but validation and stress rejected them.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Plain LDN ORB Breakout Broad Surface (2026-06-18) \u2014 EXACT-REPLAY QUEUE",
+          "status": "EXACT-REPLAY QUEUE ONLY \u2014 one CL LDN short plain ORB cluster passed broad-surface promotion gates; CL NY and CL Asia remained rejected.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain LDN ORB Breakout Exact Replay (2026-06-18) \u2014 EXACT-REPLAY PASS",
+          "status": "Exact-replay PASS on pre-holdout/discovery only. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain LDN ORB Breakout Exact Stress (2026-06-18) \u2014 FAIL",
+          "status": "FAIL under strict exact cost/slippage stress. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
           "title": "Continuation Both (bullish FVG \u2192 long, bearish FVG \u2192 short) \u2014 NO-GO (INVALIDATED)",
           "status": "UNSPECIFIED",
           "status_bucket": "UNSPECIFIED"
@@ -88,7 +108,8 @@
         }
       ],
       "status_counts": {
-        "UNSPECIFIED": 5,
+        "NO-GO": 1,
+        "UNSPECIFIED": 8,
         "CONDITIONAL": 2
       },
       "reports": [
@@ -343,6 +364,24 @@
           "assets": [
             "CL"
           ]
+        },
+        {
+          "name": "orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "path": "backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "mtime_utc": "2026-06-18T19:03:34.298462Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "all_candidates.csv",
+            "report.md",
+            "spec.json",
+            "top_candidates.csv"
+          ],
+          "assets": [
+            "CL",
+            "ES",
+            "NQ"
+          ]
         }
       ]
     },
@@ -351,6 +390,11 @@
       "detail_history": "backtesting/learnings/asset/ES.md",
       "index": "backtesting/learnings/indexes/assets/ES.md",
       "strategy_sections": [
+        {
+          "title": "Plain NY ORB Breakout Seed Surface (2026-06-18) \u2014 NO-GO",
+          "status": "NO-GO \u2014 ES RTH plain ORB seed produced no promotion candidates.",
+          "status_bucket": "NO-GO"
+        },
         {
           "title": "London ORB Continuation \u2014 Both Directions",
           "status": "CONDITIONAL GO (edge confirmed, DD structural but accepted)",
@@ -598,8 +642,8 @@
         }
       ],
       "status_counts": {
+        "NO-GO": 8,
         "CONDITIONAL": 3,
-        "NO-GO": 7,
         "UNSPECIFIED": 38,
         "INVALIDATED_OR_CORRUPT": 1
       },
@@ -905,6 +949,24 @@
             "ES",
             "NQ"
           ]
+        },
+        {
+          "name": "orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "path": "backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "mtime_utc": "2026-06-18T19:03:34.298462Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "all_candidates.csv",
+            "report.md",
+            "spec.json",
+            "top_candidates.csv"
+          ],
+          "assets": [
+            "CL",
+            "ES",
+            "NQ"
+          ]
         }
       ]
     },
@@ -913,6 +975,21 @@
       "detail_history": "backtesting/learnings/asset/GC.md",
       "index": "backtesting/learnings/indexes/assets/GC.md",
       "strategy_sections": [
+        {
+          "title": "Plain Asia ORB Breakout Broad Surface (2026-06-18) \u2014 EXACT-REPLAY QUEUE",
+          "status": "EXACT-REPLAY QUEUE ONLY \u2014 GC Asia long plain ORB breakout clusters passed broad-surface promotion gates. GC NY and GC LDN remained rejected.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain Asia ORB Breakout Exact Replay (2026-06-18) \u2014 MIXED",
+          "status": "GC Asia R1 exact-replay PASS; GC Asia R3 WATCH; GC Asia R2 FAIL. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain Asia ORB Breakout Exact Stress (2026-06-18) \u2014 WATCH",
+          "status": "WATCH, not promotion. The GC Asia exact survivor stayed positive under strict stress but failed the all-years-positive requirement. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
         {
           "title": "TradingView Gold-X Strategy Suite v14.4 Replication \u2014 REVERSE-ENGINEERING CHECKPOINT (2026-04-27)",
           "status": "UNSPECIFIED",
@@ -1095,7 +1172,7 @@
         }
       ],
       "status_counts": {
-        "UNSPECIFIED": 24,
+        "UNSPECIFIED": 27,
         "INVALIDATED_OR_CORRUPT": 7,
         "NO-GO": 5
       },
@@ -1938,6 +2015,26 @@
       "index": "backtesting/learnings/indexes/assets/NQ.md",
       "strategy_sections": [
         {
+          "title": "Plain NY ORB Breakout Seed Surface (2026-06-18) \u2014 NO-GO",
+          "status": "NO-GO \u2014 seed grid produced validation-looking winners, but none passed preholdout, cluster, PSR/DSR, or promotion gates.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "Plain ORB Breakout Broad Surface (2026-06-18) \u2014 EXACT-REPLAY QUEUE",
+          "status": "EXACT-REPLAY QUEUE ONLY \u2014 NQ Asia and NQ LDN plain ORB breakout clusters passed broad-surface promotion gates. NQ NY remained rejected.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain ORB Breakout Exact Replay (2026-06-18) \u2014 MIXED",
+          "status": "NQ Asia R1 exact-replay PASS; NQ Asia R2/R3 and NQ LDN R1 exact-replay WATCH. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain ORB Breakout Exact Stress (2026-06-18) \u2014 WATCH",
+          "status": "WATCH, not promotion. The NQ Asia exact survivor stayed positive under strict cost/slippage stress but failed the all-years-positive requirement. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
           "title": "Asia Continuation (magnifier) \u2014 low R:R / high WR",
           "status": "NO-GO (robust pipeline failed Phases 3 + 5)",
           "status_bucket": "NO-GO"
@@ -2164,12 +2261,12 @@
         }
       ],
       "status_counts": {
-        "NO-GO": 5,
+        "NO-GO": 6,
+        "UNSPECIFIED": 22,
         "CONDITIONAL": 12,
         "SUPERSEDED": 2,
         "OPTIMIZATION_COMPLETE": 1,
         "GO": 3,
-        "UNSPECIFIED": 19,
         "INVALIDATED_OR_CORRUPT": 3
       },
       "reports": [
@@ -5013,6 +5110,40 @@
           "assets": [
             "NQ"
           ]
+        },
+        {
+          "name": "orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "path": "backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "mtime_utc": "2026-06-18T19:03:34.298462Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "all_candidates.csv",
+            "report.md",
+            "spec.json",
+            "top_candidates.csv"
+          ],
+          "assets": [
+            "CL",
+            "ES",
+            "NQ"
+          ]
+        },
+        {
+          "name": "orb_futures_surface_v1_seed_nq_ny_20260618",
+          "path": "backtesting/data/results/orb_futures_surface_v1_seed_nq_ny_20260618",
+          "mtime_utc": "2026-06-18T19:02:04.905281Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "all_candidates.csv",
+            "report.md",
+            "spec.json",
+            "top_candidates.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
         }
       ]
     },
@@ -5021,6 +5152,21 @@
       "detail_history": "backtesting/learnings/asset/RTY.md",
       "index": "backtesting/learnings/indexes/assets/RTY.md",
       "strategy_sections": [
+        {
+          "title": "Plain LDN ORB Breakout Broad Surface (2026-06-18) \u2014 EXACT-REPLAY QUEUE",
+          "status": "EXACT-REPLAY QUEUE ONLY \u2014 RTY LDN plain ORB breakout clusters passed broad-surface promotion gates. RTY NY and RTY Asia remained rejected.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain LDN ORB Breakout Exact Replay (2026-06-18) \u2014 MIXED",
+          "status": "RTY LDN R1 exact-replay PASS; R2 WATCH; R3 FAIL. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "Plain LDN ORB Breakout Exact Stress (2026-06-18) \u2014 FAIL",
+          "status": "FAIL under strict exact cost/slippage stress. Holdout stayed closed.",
+          "status_bucket": "UNSPECIFIED"
+        },
         {
           "title": "1. Asia Continuation Longs \u2014 NO-GO",
           "status": "NO-GO (pipeline failed Phase 2 + Phase 3)",
@@ -5093,8 +5239,8 @@
         }
       ],
       "status_counts": {
+        "UNSPECIFIED": 12,
         "NO-GO": 4,
-        "UNSPECIFIED": 9,
         "CONDITIONAL": 1
       },
       "reports": [
@@ -5839,6 +5985,27 @@
           "matched_result_directory": "backtesting/data/results/alpha_v1_stop_target_live_engine_replay_20260504"
         },
         {
+          "name": "CROSS_ASSET_ORB_BASE_MATRIX_20260612.md",
+          "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_BASE_MATRIX_20260612.md",
+          "slug": "cross_asset_orb_base_matrix_20260612",
+          "mtime_utc": "2026-06-12T22:42:30.413508Z",
+          "matched_result_directory": "backtesting/data/results/cross_asset_orb_base_matrix_20260612"
+        },
+        {
+          "name": "CROSS_ASSET_ORB_NONREJECT_ADVANCEMENT_20260612.md",
+          "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_NONREJECT_ADVANCEMENT_20260612.md",
+          "slug": "cross_asset_orb_nonreject_advancement_20260612",
+          "mtime_utc": "2026-06-12T22:57:33.699072Z",
+          "matched_result_directory": "backtesting/data/results/cross_asset_orb_nonreject_advancement_20260612"
+        },
+        {
+          "name": "CROSS_ASSET_ORB_NONREJECT_EXACT_REPLAY_20260612.md",
+          "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_NONREJECT_EXACT_REPLAY_20260612.md",
+          "slug": "cross_asset_orb_nonreject_exact_replay_20260612",
+          "mtime_utc": "2026-06-12T23:05:40.594554Z",
+          "matched_result_directory": null
+        },
+        {
           "name": "FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
           "path": "backtesting/learnings/reports/FAST_PHASE1_ROBUST_PIPELINE_REPORT.md",
           "slug": "fast_phase1_robust_pipeline_report",
@@ -5921,6 +6088,76 @@
           "slug": "hot_structural_sequence_20260503",
           "mtime_utc": "2026-05-03T20:04:17.297092Z",
           "matched_result_directory": "backtesting/data/results/hot_structural_sequence_20260503"
+        },
+        {
+          "name": "ORB_AUTORESEARCH_FLOW_20260617.md",
+          "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_20260617.md",
+          "slug": "orb_autoresearch_flow_20260617",
+          "mtime_utc": "2026-06-18T03:12:18.375232Z",
+          "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_20260617"
+        },
+        {
+          "name": "ORB_AUTORESEARCH_FLOW_FULL_20260617.md",
+          "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_FULL_20260617.md",
+          "slug": "orb_autoresearch_flow_full_20260617",
+          "mtime_utc": "2026-06-18T03:54:28.680569Z",
+          "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_full_20260617"
+        },
+        {
+          "name": "ORB_AUTORESEARCH_FLOW_SEED_SMOKE_20260617.md",
+          "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_SEED_SMOKE_20260617.md",
+          "slug": "orb_autoresearch_flow_seed_smoke_20260617",
+          "mtime_utc": "2026-06-18T03:11:52.608046Z",
+          "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_seed_smoke_20260617"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md",
+          "slug": "orb_futures_surface_v1_broad_full_20260618",
+          "mtime_utc": "2026-06-18T19:40:31.194683Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_broad_full_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_BROAD_PLAN_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_PLAN_20260618.md",
+          "slug": "orb_futures_surface_v1_broad_plan_20260618",
+          "mtime_utc": "2026-06-18T19:02:25.678285Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_broad_plan_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md",
+          "slug": "orb_futures_surface_v1_exact_replay_20260618",
+          "mtime_utc": "2026-06-18T20:08:52.020312Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md",
+          "slug": "orb_futures_surface_v1_exact_stress_20260618",
+          "mtime_utc": "2026-06-18T20:14:31.375979Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_PLAN_SMOKE_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_PLAN_SMOKE_20260618.md",
+          "slug": "orb_futures_surface_v1_plan_smoke_20260618",
+          "mtime_utc": "2026-06-18T19:01:33.509907Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_plan_smoke_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md",
+          "slug": "orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
+          "mtime_utc": "2026-06-18T19:03:34.299237Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618"
+        },
+        {
+          "name": "ORB_FUTURES_SURFACE_V1_SEED_NQ_NY_20260618.md",
+          "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_NQ_NY_20260618.md",
+          "slug": "orb_futures_surface_v1_seed_nq_ny_20260618",
+          "mtime_utc": "2026-06-18T19:02:04.906890Z",
+          "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_seed_nq_ny_20260618"
         },
         {
           "name": "ORB_INDICATOR_CONFLUENCE_ENGINE_RERUN.md",
@@ -6703,6 +6940,33 @@
           "exact_trades.csv",
           "ranked_summary.csv",
           "window_metrics.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "cross_asset_orb_base_matrix_20260612",
+        "path": "backtesting/data/results/cross_asset_orb_base_matrix_20260612",
+        "mtime_utc": "2026-06-12T22:39:48.570616Z",
+        "file_count": 4,
+        "primary_files": [
+          "summary.json",
+          "all_candidates.csv",
+          "report.md",
+          "top3_candidates.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "cross_asset_orb_nonreject_advancement_20260612",
+        "path": "backtesting/data/results/cross_asset_orb_nonreject_advancement_20260612",
+        "mtime_utc": "2026-06-12T23:05:40.593569Z",
+        "file_count": 8,
+        "primary_files": [
+          "candidate_exec_profiles.json",
+          "exact_replay_payload.json",
+          "exact_replay_report.md",
+          "exact_replay_summary.csv",
+          "exact_replay_trades.csv"
         ],
         "assets": []
       },
@@ -7741,6 +8005,110 @@
         "primary_files": [
           "ub_filter_fit_top100.csv",
           "ub_filter_fit_top100.json"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_autoresearch_flow_20260617",
+        "path": "backtesting/data/results/orb_autoresearch_flow_20260617",
+        "mtime_utc": "2026-06-18T03:12:18.368935Z",
+        "file_count": 3,
+        "primary_files": [
+          "report.md",
+          "spec.json",
+          "trial_plan.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_autoresearch_flow_full_20260617",
+        "path": "backtesting/data/results/orb_autoresearch_flow_full_20260617",
+        "mtime_utc": "2026-06-18T03:53:51.638072Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "all_candidates.csv",
+          "report.md",
+          "spec.json",
+          "top_candidates.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_autoresearch_flow_seed_smoke_20260617",
+        "path": "backtesting/data/results/orb_autoresearch_flow_seed_smoke_20260617",
+        "mtime_utc": "2026-06-18T03:11:52.603717Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "all_candidates.csv",
+          "report.md",
+          "spec.json",
+          "top_candidates.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_futures_surface_v1_broad_full_20260618",
+        "path": "backtesting/data/results/orb_futures_surface_v1_broad_full_20260618",
+        "mtime_utc": "2026-06-18T19:40:31.191920Z",
+        "file_count": 6,
+        "primary_files": [
+          "summary.json",
+          "all_candidates.csv",
+          "report.md",
+          "spec.json",
+          "top_candidates.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_futures_surface_v1_broad_plan_20260618",
+        "path": "backtesting/data/results/orb_futures_surface_v1_broad_plan_20260618",
+        "mtime_utc": "2026-06-18T19:02:25.678160Z",
+        "file_count": 3,
+        "primary_files": [
+          "report.md",
+          "spec.json",
+          "trial_plan.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_futures_surface_v1_exact_replay_20260618",
+        "path": "backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618",
+        "mtime_utc": "2026-06-18T20:05:44.165681Z",
+        "file_count": 4,
+        "primary_files": [
+          "exact_replay_payload.json",
+          "exact_replay_report.md",
+          "exact_replay_summary.csv",
+          "exact_replay_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_futures_surface_v1_exact_stress_20260618",
+        "path": "backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618",
+        "mtime_utc": "2026-06-18T20:13:06.625717Z",
+        "file_count": 4,
+        "primary_files": [
+          "exact_stress_payload.json",
+          "exact_stress_report.md",
+          "exact_stress_summary.csv",
+          "exact_stress_trades.csv"
+        ],
+        "assets": []
+      },
+      {
+        "name": "orb_futures_surface_v1_plan_smoke_20260618",
+        "path": "backtesting/data/results/orb_futures_surface_v1_plan_smoke_20260618",
+        "mtime_utc": "2026-06-18T18:56:42.854230Z",
+        "file_count": 3,
+        "primary_files": [
+          "report.md",
+          "spec.json",
+          "trial_plan.csv"
         ],
         "assets": []
       },

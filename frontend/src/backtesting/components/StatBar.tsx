@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { BacktestSummary, Trade } from "@/backtesting/lib/types";
-import { formatCurrency, formatPct, formatNumber, pnlColor } from "@/backtesting/lib/utils";
+import { formatCurrency, formatPct, formatNumber, moneyColor } from "@/backtesting/lib/utils";
 import { StatCard } from "./StatCard";
 
 function formatR(r: number): string {
@@ -41,8 +41,6 @@ interface StatBarProps {
 }
 
 export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
-  const ddColor = "var(--color-loss)";
-
   const netR = Number.isFinite(summary.total_r) ? summary.total_r : summary.total_pnl_usd / riskUsd;
   const ddR = Number.isFinite(summary.max_drawdown_r) ? summary.max_drawdown_r : summary.max_drawdown_usd / riskUsd;
   const avgR = Number.isFinite(summary.avg_r) ? summary.avg_r : summary.avg_pnl_usd / riskUsd;
@@ -58,14 +56,14 @@ export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
           value={formatR(netR)}
           subValue={`Avg ${formatR(avgR)}/trade`}
           tooltip={`Total P&L in risk units (1R = ${formatCurrency(riskUsd)})`}
-          color={pnlColor(netR)}
+          color={moneyColor(netR)}
         />
         <StatCard
           label="Max DD (R)"
           value={formatR(ddR)}
           subValue={`${formatNumber(summary.max_drawdown_pct)}%`}
           tooltip="Max drawdown in risk units"
-          color={ddColor}
+          color={moneyColor(ddR)}
         />
         <StatCard
           label="Total Trades"
@@ -96,14 +94,14 @@ export function StatBar({ summary, trades, riskUsd }: StatBarProps) {
           value={formatR(maxWinStreakR)}
           subValue={`${summary.max_consecutive_wins} consecutive wins`}
           tooltip="Total R earned during longest winning streak"
-          color="var(--color-profit)"
+          color={moneyColor(maxWinStreakR)}
         />
         <StatCard
           label="Worst Streak (R)"
           value={formatR(maxLossStreakR)}
           subValue={`${summary.max_consecutive_losses} consecutive losses`}
           tooltip="Total R lost during longest losing streak"
-          color="var(--color-loss)"
+          color={moneyColor(maxLossStreakR)}
         />
         <StatCard
           label="Sharpe / Sortino"

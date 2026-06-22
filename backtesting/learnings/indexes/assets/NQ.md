@@ -5,6 +5,10 @@
 - Detailed history: [backtesting/learnings/asset/NQ.md](../../asset/NQ.md)
 
 ## Strategy Sections
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — seed grid produced validation-looking winners, but none passed preholdout, cluster, PSR/DSR, or promotion gates.`
+- `Plain ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE` -> `EXACT-REPLAY QUEUE ONLY — NQ Asia and NQ LDN plain ORB breakout clusters passed broad-surface promotion gates. NQ NY remained rejected.`
+- `Plain ORB Breakout Exact Replay (2026-06-18) — MIXED` -> `NQ Asia R1 exact-replay PASS; NQ Asia R2/R3 and NQ LDN R1 exact-replay WATCH. Holdout stayed closed.`
+- `Plain ORB Breakout Exact Stress (2026-06-18) — WATCH` -> `WATCH, not promotion. The NQ Asia exact survivor stayed positive under strict cost/slippage stress but failed the all-years-positive requirement. Holdout stayed closed.`
 - `Asia Continuation (magnifier) — low R:R / high WR` -> `NO-GO (robust pipeline failed Phases 3 + 5)`
 - `Asia Continuation v2 (10m ORB, no-Thursday, magnifier) — optimized` -> `CONDITIONAL (robust pipeline passed Phases 1, 2, 4; failed Phases 3, 5)`
 - `Asia Continuation v3 — Dual-Model Sweep + Stop Anchor Discovery + Round 11 Grid (SUPERSEDED by R4 Final)` -> `SUPERSEDED — R4 Final (1s magnifier, 2016 start) achieved Calmar 23.85 vs v3's 20.14 (1m magnifier, 2015 start)`
@@ -170,7 +174,7 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
 
-## Result Directories (145)
+## Result Directories (147)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
@@ -316,3 +320,5 @@
 - [nq_prop_regime_specialists_round2](../../../data/results/nq_prop_regime_specialists_round2) (10 files; primary: summary.md, confusion_log.csv, low_confidence_policy_summary.csv, paper_trade_shortlist.csv, prop_scorecards.json)
 - [nq_regime_challengers](../../../data/results/nq_regime_challengers) (26 files; primary: challenger_registry.json, downstream/baseline_v1.json, downstream/vol_atr20_pct.json, downstream_finalists.json, finalist_memo.md)
 - [nq_regime_research](../../../data/results/nq_regime_research) (22 files; primary: attribution_lsi_close_both.csv, attribution_lsi_close_long.csv, attribution_lsi_close_short.csv, attribution_lsi_fvg_limit_both.csv, attribution_lsi_fvg_limit_long.csv)
+- [orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618](../../../data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618) (6 files; primary: summary.json, all_candidates.csv, report.md, spec.json, top_candidates.csv)
+- [orb_futures_surface_v1_seed_nq_ny_20260618](../../../data/results/orb_futures_surface_v1_seed_nq_ny_20260618) (6 files; primary: summary.json, all_candidates.csv, report.md, spec.json, top_candidates.csv)

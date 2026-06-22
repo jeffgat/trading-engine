@@ -521,6 +521,92 @@ class TestArmedToManaging:
         eng, entry_price = await advance_to_managing(engine, orb_high=19530.0)
         assert eng._state == State.MANAGING
 
+    async def test_orb_breakout_long_uses_stop_fill_semantics(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            strategy_type="orb_breakout",
+            exit_mode="single_target",
+            tp1_ratio=1.0,
+            rr=2.0,
+        )
+        for bar in [
+            make_bar("2025-01-15 09:30", 19500, 19530, 19480, 19510),
+            make_bar("2025-01-15 09:35", 19510, 19528, 19482, 19505),
+            make_bar("2025-01-15 09:40", 19505, 19529, 19485, 19520),
+        ]:
+            await eng.on_bar(bar, 100.0)
+
+        assert eng._state == State.ARMED_LIMIT
+        assert eng._entry_order_type == "stop"
+        assert eng._levels is not None
+        entry_price = eng._levels.entry
+
+        limit_side_touch = make_bar(
+            "2025-01-15 09:45",
+            entry_price - 2,
+            entry_price - 0.25,
+            entry_price - 4,
+            entry_price - 1,
+        )
+        await eng.on_tick(limit_side_touch, 100.0)
+        assert eng._state == State.ARMED_LIMIT
+        assert eng._fill_timestamp is None
+
+        stop_side_touch = make_bar(
+            "2025-01-15 09:46",
+            entry_price - 1,
+            entry_price + 0.25,
+            entry_price - 2,
+            entry_price,
+        )
+        await eng.on_tick(stop_side_touch, 100.0)
+        assert eng._state == State.MANAGING
+        assert eng._fill_timestamp == stop_side_touch.timestamp
+
+    async def test_orb_breakout_short_uses_stop_fill_semantics(self, broker):
+        eng = _make_orb_engine(
+            broker,
+            strategy_type="orb_breakout",
+            long_only=False,
+            short_only=True,
+            exit_mode="single_target",
+            tp1_ratio=1.0,
+            rr=2.0,
+        )
+        for bar in [
+            make_bar("2025-01-15 09:30", 19500, 19530, 19480, 19510),
+            make_bar("2025-01-15 09:35", 19510, 19528, 19482, 19505),
+            make_bar("2025-01-15 09:40", 19505, 19529, 19485, 19520),
+        ]:
+            await eng.on_bar(bar, 100.0)
+
+        assert eng._state == State.ARMED_LIMIT
+        assert eng._entry_order_type == "stop"
+        assert eng._levels is not None
+        entry_price = eng._levels.entry
+
+        limit_side_touch = make_bar(
+            "2025-01-15 09:45",
+            entry_price + 1,
+            entry_price + 4,
+            entry_price + 0.25,
+            entry_price + 2,
+        )
+        await eng.on_tick(limit_side_touch, 100.0)
+        assert eng._state == State.ARMED_LIMIT
+        assert eng._fill_timestamp is None
+
+        stop_side_touch = make_bar(
+            "2025-01-15 09:46",
+            entry_price + 1,
+            entry_price + 2,
+            entry_price - 0.25,
+            entry_price,
+        )
+        await eng.on_tick(stop_side_touch, 100.0)
+        assert eng._state == State.MANAGING
+        assert eng._fill_timestamp == stop_side_touch.timestamp
+
     async def test_5m_fill_can_be_disabled_for_live_mode(self, broker):
         eng = _make_orb_engine(broker, allow_5m_fill_detection=False)
         await advance_to_armed(eng, orb_high=19530.0)

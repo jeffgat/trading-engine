@@ -5,6 +5,9 @@
 - Detailed history: [backtesting/learnings/asset/GC.md](../../asset/GC.md)
 
 ## Strategy Sections
+- `Plain Asia ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE` -> `EXACT-REPLAY QUEUE ONLY — GC Asia long plain ORB breakout clusters passed broad-surface promotion gates. GC NY and GC LDN remained rejected.`
+- `Plain Asia ORB Breakout Exact Replay (2026-06-18) — MIXED` -> `GC Asia R1 exact-replay PASS; GC Asia R3 WATCH; GC Asia R2 FAIL. Holdout stayed closed.`
+- `Plain Asia ORB Breakout Exact Stress (2026-06-18) — WATCH` -> `WATCH, not promotion. The GC Asia exact survivor stayed positive under strict stress but failed the all-years-positive requirement. Holdout stayed closed.`
 - `TradingView Gold-X Strategy Suite v14.4 Replication — REVERSE-ENGINEERING CHECKPOINT (2026-04-27)` -> `UNSPECIFIED`
 - `Continuation Longs (bullish FVG → long) ✅ GO — Pipeline validated 2026-02-22` -> `UNSPECIFIED`
 - `Reversal (bullish FVG -> short, bearish FVG -> long)` -> `INVALIDATED — prior results tested without liquidity sweep gate. Needs re-testing with sweep-gated reversal definition.`

@@ -5,6 +5,10 @@
 - Detailed history: [backtesting/learnings/asset/CL.md](../../asset/CL.md)
 
 ## Strategy Sections
+- `Plain NY ORB Breakout Seed Surface (2026-06-18) — NO-GO` -> `NO-GO — crude-oil plain ORB seed had some positive preholdout cells, but validation and stress rejected them.`
+- `Plain LDN ORB Breakout Broad Surface (2026-06-18) — EXACT-REPLAY QUEUE` -> `EXACT-REPLAY QUEUE ONLY — one CL LDN short plain ORB cluster passed broad-surface promotion gates; CL NY and CL Asia remained rejected.`
+- `Plain LDN ORB Breakout Exact Replay (2026-06-18) — EXACT-REPLAY PASS` -> `Exact-replay PASS on pre-holdout/discovery only. Holdout stayed closed.`
+- `Plain LDN ORB Breakout Exact Stress (2026-06-18) — FAIL` -> `FAIL under strict exact cost/slippage stress. Holdout stayed closed.`
 - `Continuation Both (bullish FVG → long, bearish FVG → short) — NO-GO (INVALIDATED)` -> `UNSPECIFIED`
 - `VWAP Reversion Shorts — NO-GO` -> `UNSPECIFIED`
 - `LSI (Liquidity Sweep Inversion) Both — NO-GO` -> `UNSPECIFIED`
@@ -27,7 +31,7 @@
 - [CL_NY_HTF_LSI_PHASE_ONE.md](../../reports/CL_NY_HTF_LSI_PHASE_ONE.md) -> [cl_ny_htf_lsi_phase_one](../../../data/results/cl_ny_htf_lsi_phase_one)
 - [CL_NY_HTF_LSI_STITCHED_FOLLOWUP.md](../../reports/CL_NY_HTF_LSI_STITCHED_FOLLOWUP.md) -> [cl_ny_htf_lsi_stitched_followup](../../../data/results/cl_ny_htf_lsi_stitched_followup)
 
-## Result Directories (13)
+## Result Directories (14)
 - [cl_ny_htf_lsi_anchor_explore](../../../data/results/cl_ny_htf_lsi_anchor_explore) (1 files; primary: summary.json)
 - [cl_ny_htf_lsi_broad_discovery](../../../data/results/cl_ny_htf_lsi_broad_discovery) (3 files; primary: stage_a_structural.json, stage_b_trade_cap.json, stage_c_oat.json)
 - [cl_ny_htf_lsi_exact_replay](../../../data/results/cl_ny_htf_lsi_exact_replay) (1 files; primary: exact_replay_compare.json)
@@ -41,3 +45,4 @@
 - [cl_orb_discovery_3session](../../../data/results/cl_orb_discovery_3session) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [cl_orb_discovery_pipeline](../../../data/results/cl_orb_discovery_pipeline) (1 files; primary: pipeline_results.json)
 - [cl_orb_phase_one](../../../data/results/cl_orb_phase_one) (1 files; primary: phase_one_results.json)
+- [orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618](../../../data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618) (6 files; primary: summary.json, all_candidates.csv, report.md, spec.json, top_candidates.csv)

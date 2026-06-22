@@ -10,10 +10,10 @@ This is the short entrypoint for agent and LLM context loading.
 4. Open individual reports or result artifacts only when the brief or index points you there.
 
 ## Coverage
-- Strategy sections indexed: 14
+- Strategy sections indexed: 17
 - Related reports indexed: 4
 - Related result directories indexed: 7
-- Status mix: CONDITIONAL: 1, NO-GO: 4, UNSPECIFIED: 9
+- Status mix: CONDITIONAL: 1, NO-GO: 4, UNSPECIFIED: 12
 
 ## Strategy Snapshot
 - `1. Asia Continuation Longs — NO-GO` -> `NO-GO (pipeline failed Phase 2 + Phase 3)`
@@ -21,4 +21,4 @@ This is the short entrypoint for agent and LLM context loading.
 - `3. NY LSI (Liquidity Sweep Inversion) — Both Directions — NO-GO` -> `**NO-GO** (definitive — losing strategy, no edge)`
 - `4. 3-Session ORB Continuation Discovery (NY + Asia + LDN) — GO (NY-4 STRONG, NY-1/NY-2 CONDITIONAL)` -> `**GO** — multiple NY configs pass phase-one with STRONG/CONDITIONAL verdicts`
 - `5. NY HTF-LSI (Higher-Timeframe Liquidity Sweep Inversion) — NO-GO` -> `**NO-GO** (pre-holdout family was alive, but the opened funded holdout failed across the frozen shortlist)`
-- ... plus 9 more entries in the [full RTY index](../../indexes/assets/RTY.md).
+- ... plus 12 more entries in the [full RTY index](../../indexes/assets/RTY.md).

@@ -7,27 +7,27 @@ interface ConnectionStatusProps {
 const STATUS_DISPLAY: Record<ConnectionState, { label: string; tone: string; title: string }> = {
   connected: {
     label: "Connected",
-    tone: "text-profit",
+    tone: "text-money-positive",
     title: "Dashboard connection healthy.",
   },
   polling: {
     label: "Polling",
-    tone: "text-warning",
+    tone: "text-money-negative",
     title: "REST API is reachable; WebSocket stream is unavailable.",
   },
   connecting: {
     label: "Connecting...",
-    tone: "text-warning",
+    tone: "text-money-negative",
     title: "Opening WebSocket stream.",
   },
   reconnecting: {
     label: "Reconnecting...",
-    tone: "text-loss",
+    tone: "text-money-negative",
     title: "WebSocket stream is reconnecting.",
   },
   offline: {
     label: "Offline",
-    tone: "text-loss",
+    tone: "text-money-negative",
     title: "REST API and WebSocket stream are unavailable.",
   },
 };

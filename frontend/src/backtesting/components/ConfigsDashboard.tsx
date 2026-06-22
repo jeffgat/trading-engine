@@ -9,6 +9,7 @@ import { StrategyTag } from "./StrategyTag";
 import { VariablesTested } from "./VariablesTested";
 import { DateRangePicker } from "./DateRangePicker";
 import { Skeleton, SkeletonText } from "@/shared/ui/skeleton";
+import { moneyTextClass } from "@/shared/utils";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-border bg-bg-secondary px-2.5 py-1.5 text-xs text-text-primary outline-none focus:border-accent";
@@ -360,10 +361,10 @@ export function ConfigsDashboard() {
                     <div className="flex items-center gap-4 text-xs">
                       <span className="text-profit font-medium">Backtest complete</span>
                       <span className="text-text-secondary">{btResult.trades} trades</span>
-                      <span className="text-text-secondary">Net R: <span className={btResult.netR >= 0 ? "text-profit" : "text-loss"}>{btResult.netR > 0 ? "+" : ""}{btResult.netR.toFixed(1)}</span></span>
+                      <span className="text-text-secondary">Net R: <span className={moneyTextClass(btResult.netR)}>{btResult.netR > 0 ? "+" : ""}{btResult.netR.toFixed(1)}</span></span>
                       <span className="text-text-secondary">WR: {(btResult.winRate * 100).toFixed(1)}%</span>
                       <span className="text-text-secondary">Sharpe: {btResult.sharpe.toFixed(2)}</span>
-                      <span className="text-text-secondary">Max DD: <span className="text-loss">{btResult.maxDDR.toFixed(2)}R</span></span>
+                      <span className="text-text-secondary">Max DD: <span className="text-money-negative">{btResult.maxDDR.toFixed(2)}R</span></span>
                     </div>
                     <p className="mt-1 text-[10px] text-text-muted">Saved as: {btResult.id}</p>
                   </div>
