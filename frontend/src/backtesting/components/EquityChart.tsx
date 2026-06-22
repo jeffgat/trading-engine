@@ -121,7 +121,7 @@ export function EquityChart({ data, riskUsd, trades = [] }: EquityChartProps) {
           className="rounded-md px-2.5 py-1 font-mono text-sm font-semibold"
           style={{
             color: isPositive ? "var(--color-profit)" : "var(--color-loss)",
-            background: isPositive ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
+            background: isPositive ? "rgba(236, 201, 151, 0.12)" : "rgba(212, 119, 95, 0.12)",
           }}
         >
           {formatR(finalR)}

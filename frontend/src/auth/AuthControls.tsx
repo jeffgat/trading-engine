@@ -36,7 +36,7 @@ function ClerkAuthControls({ state }: { state: OwnerAuthState }) {
 
       <SignedOut>
         <SignInButton mode="modal" appearance={clerkAppearance}>
-          <button className="inline-flex min-h-9 items-center gap-2 rounded-md border border-profit/30 bg-bg-primary/80 px-3 font-mono text-sm font-semibold lowercase text-profit transition-colors hover:bg-profit/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40">
+          <button className="inline-flex min-h-9 items-center gap-2 rounded-md border border-accent/20 bg-bg-card/80 px-3 font-mono text-sm font-semibold lowercase text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/35">
             <LogIn className="h-4 w-4" aria-hidden="true" />
             authenticate
           </button>
@@ -47,7 +47,7 @@ function ClerkAuthControls({ state }: { state: OwnerAuthState }) {
         <UserButton
           appearance={{
             elements: {
-              avatarBox: "h-9 w-9 border border-profit/30 shadow-[0_0_18px_rgba(114,242,95,0.12)]",
+              avatarBox: "h-9 w-9 border border-accent/25 shadow-[0_8px_22px_rgba(236,201,151,0.13)]",
             },
           }}
         />

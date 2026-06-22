@@ -8,6 +8,7 @@ import { BacktestWindowSlider } from "@/execution/components/BacktestWindowSlide
 import { DatePicker } from "@/shared/ui/date-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
+import { moneyTextClass } from "@/shared/utils";
 
 interface PerformanceViewProps {
   entries: TradeLogEntry[];
@@ -446,16 +447,16 @@ function Pill({
   tone?: "neutral" | "long" | "short" | "rpos" | "rneg" | "ticker-nq" | "ticker-es" | "ticker-gc" | "session-ny" | "session-ldn" | "session-asia" | "strat-orb" | "strat-lsi";
 }) {
   const toneClasses: Record<string, string> = {
-    "ticker-nq": "bg-info/20 text-info border-info/30",
+    "ticker-nq": "bg-sky-400/15 text-sky-300 border-sky-400/30",
     "ticker-es": "bg-loss/20 text-loss border-loss/30",
     "ticker-gc": "bg-warning/20 text-warning border-warning/30",
     long: "bg-profit/20 text-profit border-profit/30",
     short: "bg-loss/20 text-loss border-loss/30",
     rpos: "bg-profit/15 text-profit border-profit/30",
     rneg: "bg-loss/15 text-loss border-loss/30",
-    "session-ny": "bg-info/15 text-info border-info/35",
+    "session-ny": "bg-sky-400/15 text-sky-300 border-sky-400/30",
     "session-ldn": "bg-profit/10 text-profit border-profit/30",
-    "session-asia": "bg-gold-400/15 text-gold-300 border-gold-400/30",
+    "session-asia": "bg-loss/20 text-loss border-loss/30",
     "strat-orb": "bg-profit/10 text-profit border-profit/30",
     "strat-lsi": "bg-info/10 text-info border-info/30",
     neutral: "bg-bg-tertiary text-text-secondary border-border",
@@ -868,7 +869,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
                     <td className="px-3 py-2"><Pill label={row.session} tone={
                       row.session === "NY" ? "session-ny"
                         : row.session === "LDN" ? "session-ldn"
-                        : row.session === "ASIA" ? "session-asia"
+                        : row.session.toUpperCase() === "ASIA" ? "session-asia"
                         : "neutral"
                     } /></td>
                     <td className="px-3 py-2">
@@ -881,7 +882,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
                         <Pill label={row.rValue.toFixed(1)} tone={rTone} />
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-text-secondary">
+                    <td className={`px-3 py-2 font-mono font-semibold ${moneyTextClass(row.usdValue)}`}>
                       {formatUsdValue(row.usdValue)}
                     </td>
                     <td className="px-3 py-2"><Pill label={row.strategy} tone={row.strategy === "LSI" ? "strat-lsi" : "strat-orb"} /></td>
@@ -973,7 +974,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
         </div>
         <div className="rounded-md border border-border bg-bg-card px-4 py-3 flex-1">
           <div className="text-[11px] text-text-muted uppercase tracking-wide mb-1">PnL</div>
-          <div className={`text-lg font-mono font-semibold ${totalUsd > 0 ? "text-profit" : totalUsd < 0 ? "text-loss" : "text-text-secondary"}`}>
+          <div className={`text-lg font-mono font-semibold ${moneyTextClass(totalUsd)}`}>
             {totalUsd > 0 ? "+" : ""}{USD_FORMATTER.format(totalUsd)}
           </div>
         </div>

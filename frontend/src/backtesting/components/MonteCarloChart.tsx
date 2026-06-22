@@ -21,8 +21,8 @@ const BAND_OUTER = { fill: "rgba(139, 92, 246, 0.06)", stroke: "rgba(139, 92, 24
 const BAND_INNER = { fill: "rgba(139, 92, 246, 0.12)", stroke: "rgba(139, 92, 246, 0.35)" };
 const MEDIAN_COLOR = "var(--color-accent)";
 const ACTUAL_COLOR = "var(--color-profit)";
-const DD_BAND_OUTER = { fill: "rgba(255, 85, 79, 0.06)", stroke: "rgba(255, 85, 79, 0.15)" };
-const DD_BAND_INNER = { fill: "rgba(255, 85, 79, 0.12)", stroke: "rgba(255, 85, 79, 0.3)" };
+const DD_BAND_OUTER = { fill: "rgba(212, 119, 95, 0.06)", stroke: "rgba(212, 119, 95, 0.15)" };
+const DD_BAND_INNER = { fill: "rgba(212, 119, 95, 0.12)", stroke: "rgba(212, 119, 95, 0.3)" };
 const DD_MEDIAN = "var(--color-loss)";
 
 // ── Helpers ──────────────────────────────────────────────────────

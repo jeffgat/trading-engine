@@ -57,11 +57,11 @@ export const LOG_LEVEL_COLORS: Record<string, string> = {
 };
 
 export const SESSION_COLORS: Record<string, string> = {
-  NQ: "bg-info/20 text-info",
-  ES: "bg-warning/20 text-warning",
+  NQ: "bg-sky-400/15 text-sky-300 border border-sky-400/30",
+  ES: "bg-loss/20 text-loss border border-loss/30",
   GC: "bg-profit/20 text-profit",
-  NY: "bg-info/20 text-info",
-  Asia: "bg-accent/20 text-accent",
+  NY: "bg-sky-400/15 text-sky-300 border border-sky-400/30",
+  Asia: "bg-loss/20 text-loss border border-loss/30",
   LDN: "bg-warning/20 text-warning",
 };
 
@@ -100,7 +100,7 @@ export const SESSION_DISPLAY_NAMES: Record<string, Record<string, string>> = {
 
 export const CONFIG_COLORS: Record<string, string> = {
   ALPHA_V1: "bg-profit/15 text-profit border-profit/35",
-  "ALPHA_V1-A": "bg-profit/15 text-profit border-profit/35",
+  "ALPHA_V1-A": "bg-money-positive/15 text-money-positive border-money-positive/35",
   "ALPHA_V1-C": "bg-info/15 text-info border-info/35",
   ALPHA_V2: "bg-amber-500/20 text-amber-400 border-amber-500/40",
   TESTING: "bg-amber-500/20 text-amber-400 border-amber-500/40",

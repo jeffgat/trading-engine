@@ -78,33 +78,33 @@ export function ExecTradeChartModal({
       width: container.clientWidth,
       height: 500,
       layout: {
-        background: { color: "#050909" },
-        textColor: "#a1adab",
+        background: { color: "#101010" },
+        textColor: "#ccb088",
         fontFamily: '"JetBrains Mono", monospace',
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "#1d3434" },
-        horzLines: { color: "#1d3434" },
+        vertLines: { color: "#3a3026" },
+        horzLines: { color: "#3a3026" },
       },
       crosshair: { mode: CrosshairMode.Normal },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "#1d3434",
+        borderColor: "#3a3026",
       },
       rightPriceScale: {
-        borderColor: "#1d3434",
+        borderColor: "#3a3026",
       },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#72f25f",
-      downColor: "#ff554f",
-      borderUpColor: "#72f25f",
-      borderDownColor: "#ff554f",
-      wickUpColor: "#72f25f",
-      wickDownColor: "#ff554f",
+      upColor: "#ecc997",
+      downColor: "#d4775f",
+      borderUpColor: "#ecc997",
+      borderDownColor: "#d4775f",
+      wickUpColor: "#ecc997",
+      wickDownColor: "#d4775f",
     } satisfies Partial<CandlestickSeriesOptions>);
 
     // Convert ISO timestamps to fake UTC seconds for lightweight-charts
@@ -163,7 +163,7 @@ export function ExecTradeChartModal({
     // Price lines
     series.createPriceLine({
       price: ctx.entry,
-      color: "#35d6e6",
+      color: "#e8c088",
       lineWidth: 1,
       lineStyle: LineStyle.Solid,
       axisLabelVisible: true,
@@ -172,7 +172,7 @@ export function ExecTradeChartModal({
 
     series.createPriceLine({
       price: ctx.stop,
-      color: "#ff554f",
+      color: "#d4775f",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -181,7 +181,7 @@ export function ExecTradeChartModal({
 
     series.createPriceLine({
       price: ctx.tp1,
-      color: "#72f25f",
+      color: "#ecc997",
       lineWidth: 1,
       lineStyle: LineStyle.Dotted,
       axisLabelVisible: true,
@@ -213,7 +213,7 @@ export function ExecTradeChartModal({
         {
           time: entryBarTime,
           position: isLong ? "belowBar" : "aboveBar",
-          color: "#35d6e6",
+          color: "#e8c088",
           shape: isLong ? "arrowUp" : "arrowDown",
           text: isLong ? "Buy" : "Sell",
         },
@@ -329,9 +329,9 @@ export function ExecTradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#35d6e6" }}
+                  style={{ background: "#e8c088" }}
                 />
-                <span style={{ color: "#35d6e6" }}>
+                <span style={{ color: "#e8c088" }}>
                   {ctx.direction === "long" ? "\u25B2" : "\u25BC"}
                 </span>
                 Entry: {fmtPrice(ctx.entry)}
@@ -339,14 +339,14 @@ export function ExecTradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#ff554f" }}
+                  style={{ background: "#d4775f" }}
                 />
                 Stop: {fmtPrice(ctx.stop)}
               </span>
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#72f25f" }}
+                  style={{ background: "#ecc997" }}
                 />
                 TP1: {fmtPrice(ctx.tp1)}
               </span>

@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import type { Trade } from "@/backtesting/lib/types";
-import { formatCurrency } from "@/backtesting/lib/utils";
+import { formatCurrency, moneyColor, pnlColor } from "@/backtesting/lib/utils";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TradeChartModal } from "./TradeChartModal";
 
@@ -416,13 +416,8 @@ export function TradesTable({ trades, riskUsd, instrument }: TradesTableProps) {
                 </tr>
               )}
               {sorted.map((t, i) => {
-                const isWin = t.pnl_usd > 0;
-                const isLoss = t.pnl_usd < 0;
-                const pnlColor = isWin
-                  ? "var(--color-profit)"
-                  : isLoss
-                    ? "var(--color-loss)"
-                    : "var(--color-text-muted)";
+                const dollarColor = moneyColor(t.pnl_usd);
+                const rColor = pnlColor(Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd);
 
                 return (
                   <tr
@@ -469,13 +464,13 @@ export function TradesTable({ trades, riskUsd, instrument }: TradesTableProps) {
                     </td>
                     <td
                       className="whitespace-nowrap px-4 py-1.5 text-right font-mono font-semibold"
-                      style={{ color: pnlColor }}
+                      style={{ color: dollarColor }}
                     >
                       {formatCurrency(t.pnl_usd)}
                     </td>
                     <td
                       className="whitespace-nowrap px-4 py-1.5 text-right font-mono"
-                      style={{ color: pnlColor }}
+                      style={{ color: rColor }}
                     >
                       {formatR(Number.isFinite(t.r_multiple) ? t.r_multiple : t.pnl_usd / riskUsd)}
                     </td>

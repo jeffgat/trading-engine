@@ -39,16 +39,16 @@ function AppShell({ authState }: { authState: OwnerAuthState }) {
     return (
         <div className="app-shell min-h-screen">
             {/* Top-level section nav */}
-            <nav className="border-b border-border bg-bg-secondary/70 backdrop-blur-sm">
+            <nav className="gc-top-nav">
                 <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
                     <div className="flex min-w-0 flex-wrap items-center gap-3 sm:gap-6">
-                        <span className="font-brand inline-flex items-center gap-2 rounded-md border border-profit/30 bg-bg-primary/80 px-3 py-2 text-lg font-semibold tracking-normal text-profit shadow-[0_0_18px_rgba(114,242,95,0.12)]">
-                            <img src="/gat-cap-logo.png" alt="Gat Capital logo" className="h-5 w-5 object-contain" />
+                        <span className="gc-brand">
+                            <img src="/gat-cap-logo-champagne.png" alt="Gat Capital logo" className="gc-brand-logo" />
                             <span>
-                                gat<span className="text-info">.</span>capital
+                                gat<span>.</span>capital
                             </span>
                         </span>
-                        <div className="flex gap-1 rounded-lg border border-border bg-bg-primary/70 p-1">
+                        <div className="gc-section-switch">
                             {isDeployedPublic ? (
                                 <>
                                     <TopNavLink to="/" active={!isPerformance}>
@@ -84,11 +84,7 @@ function TopNavLink({ to, active, children }: { to: string; active: boolean; chi
     return (
         <Link
             to={to}
-            className={`rounded-md px-4 py-2 font-mono text-sm font-semibold lowercase transition-colors ${
-                active
-                    ? 'bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]'
-                    : 'text-text-secondary hover:bg-bg-card-hover hover:text-foreground'
-            }`}>
+            className={`gc-nav-link ${active ? 'is-active' : ''}`}>
             {children}
         </Link>
     );

@@ -22,14 +22,9 @@ interface EquityCurveComparisonProps {
   backtestR?: number | null; // Backtest total R for the visible window
 }
 
-const CONFIG_LINE_COLORS: Record<string, string> = {
-  FAST: "#35d6e6",
-  "FAST_V1.1": "#72f25f",
-  FAST_V2: "#f8c159",
-  "FAST_V2.1": "#ff554f",
-  GENERAL_V1: "#f59e0b",
-  SLOW: "#2f9f54",
-};
+const BACKTEST_LINE_COLOR = "#ccb088";
+const POSITIVE_R_COLOR = "var(--color-money-positive)";
+const POSITIVE_R_BG = "rgba(127, 216, 149, 0.13)";
 
 function formatR(v: number): string {
   const sign = v >= 0 ? "+" : "";
@@ -47,12 +42,12 @@ function CustomTooltip({ active, payload, label }: any) {
     <div className="rounded-lg border border-border bg-bg-secondary px-3 py-2 shadow-xl">
       <p className="text-xs text-text-muted">{label}</p>
       {backtest?.value != null && (
-        <p className="font-mono text-sm" style={{ color: "#a1adab" }}>
+        <p className="font-mono text-sm" style={{ color: backtest.value >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)" }}>
           Backtest: {formatR(backtest.value)}
         </p>
       )}
       {rawLiveR != null && (
-        <p className="font-mono text-sm font-semibold" style={{ color: rawLiveR >= 0 ? "var(--color-profit)" : "var(--color-loss)" }}>
+        <p className="font-mono text-sm font-semibold" style={{ color: rawLiveR >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)" }}>
           Live: {formatR(rawLiveR)}
         </p>
       )}
@@ -113,7 +108,7 @@ function addDeployDateAnchor(
 }
 
 export function EquityCurveComparison({ data, deployDate, configName, liveR: liveRProp, backtestR: backtestRProp }: EquityCurveComparisonProps) {
-  const liveColor = CONFIG_LINE_COLORS[configName] ?? "var(--color-profit)";
+  const liveColor = POSITIVE_R_COLOR;
 
   // Thin data for rendering if > 300 points
   const displayData = useMemo(() => {
@@ -160,7 +155,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
         </h2>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
-            <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#a1adab", opacity: 0.7 }} />
+            <span className="inline-block h-0.5 w-4 rounded" style={{ background: BACKTEST_LINE_COLOR, opacity: 0.7 }} />
             Backtest
           </div>
           <div className="flex items-center gap-1.5 text-xs text-text-muted">
@@ -171,8 +166,8 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             <span
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
-                color: backtestRProp >= 0 ? "var(--color-profit)" : "var(--color-loss)",
-                background: backtestRProp >= 0 ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
+                color: backtestRProp >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)",
+                background: backtestRProp >= 0 ? POSITIVE_R_BG : "rgba(212, 119, 95, 0.12)",
               }}
             >
               BT: {formatR(backtestRProp)}
@@ -182,8 +177,8 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             <span
               className="rounded-md px-2 py-0.5 font-mono text-xs font-semibold"
               style={{
-                color: finalLiveR >= 0 ? "var(--color-profit)" : "var(--color-loss)",
-                background: finalLiveR >= 0 ? "rgba(114, 242, 95, 0.12)" : "rgba(255, 85, 79, 0.12)",
+                color: finalLiveR >= 0 ? POSITIVE_R_COLOR : "var(--color-loss)",
+                background: finalLiveR >= 0 ? POSITIVE_R_BG : "rgba(212, 119, 95, 0.12)",
               }}
             >
               Live: {formatR(finalLiveR)}
@@ -258,7 +253,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
                 key={index}
                 fill={
                   (entry.live_r_per_trade ?? 0) >= 0
-                    ? "var(--color-profit)"
+                    ? POSITIVE_R_COLOR
                     : "var(--color-loss)"
                 }
               />
@@ -270,7 +265,7 @@ export function EquityCurveComparison({ data, deployDate, configName, liveR: liv
             yAxisId="equity"
             type="monotone"
             dataKey="backtest_r"
-            stroke="#a1adab"
+            stroke={BACKTEST_LINE_COLOR}
             strokeWidth={1.5}
             strokeDasharray="6 3"
             strokeOpacity={0.7}

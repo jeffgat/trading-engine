@@ -107,20 +107,16 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     return (
         <>
             {/* Execution header */}
-            <header className="sticky top-0 z-10 border-b border-border bg-bg-secondary/70 backdrop-blur-sm">
+            <header className="gc-section-header sticky top-0 z-10">
                 {/* Tab nav */}
                 <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2 sm:px-6">
                     {hideTabNav ? <div /> : (
-                        <nav className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-bg-primary/70 p-1">
+                        <nav className="gc-route-tabs">
                             {TABS.map(({ key, label }) => (
                                 <button
                                     key={key}
                                     onClick={() => setLocalActiveTab(key)}
-                                    className={`min-h-9 shrink-0 rounded-md px-4 font-mono text-sm font-semibold lowercase transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-profit/40 ${
-                                        activeTab === key
-                                            ? 'bg-profit text-bg-primary shadow-[0_0_18px_rgba(114,242,95,0.18)]'
-                                            : 'text-text-secondary hover:bg-bg-card-hover hover:text-foreground'
-                                    }`}>
+                                    className={`gc-tab-button ${activeTab === key ? 'is-active' : ''}`}>
                                     {label}
                                 </button>
                             ))}
@@ -144,7 +140,6 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
                             setActiveConfig={setActiveConfig}
                             config={config}
                             statusExecConfigs={status?.exec_configs}
-                            statusMode={status?.mode}
                             onPause={readOnly ? undefined : pauseEngineAndRefresh}
                             onFlatten={readOnly ? undefined : flattenEngineAndRefresh}
                             onResume={readOnly ? undefined : resumeEngineAndRefresh}

@@ -1,3 +1,5 @@
+export { moneyColor } from "@/shared/utils";
+
 export function formatCurrency(value: number): string {
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : "";
