@@ -79,9 +79,15 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
     }, [configEngines]);
     const connectionState: ConnectionState = connected
         ? 'connected'
-        : pollingHealthy
-            ? 'polling'
-            : socketStatus;
+        : readOnly
+            ? pollingHealthy
+                ? 'connected'
+                : statusLoading
+                    ? 'connecting'
+                    : 'offline'
+            : pollingHealthy
+                ? 'polling'
+                : socketStatus;
     const pauseEngineAndRefresh = useCallback(
         async (sessionName: string, configName?: string) => {
             await pauseEngine(sessionName, configName);

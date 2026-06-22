@@ -75,7 +75,7 @@ function AppShell({ authState }: { authState: OwnerAuthState }) {
             </nav>
 
             {/* Section content */}
-            {isDeployedPublic ? <PublicDeployRoutes /> : <FullAppRoutes />}
+            {isDeployedPublic ? <PublicDeployRoutes /> : <FullAppRoutes authState={authState} />}
         </div>
     );
 }
@@ -90,7 +90,9 @@ function TopNavLink({ to, active, children }: { to: string; active: boolean; chi
     );
 }
 
-function FullAppRoutes() {
+function FullAppRoutes({ authState }: { authState: OwnerAuthState }) {
+    const executionReadOnly = CLERK_ENABLED && !authState.isOwner;
+
     return (
         <Routes>
             <Route
@@ -105,7 +107,7 @@ function FullAppRoutes() {
                 path="/execution/*"
                 element={
                     <Suspense fallback={<RoutePageSkeleton section="execution" />}>
-                        <ExecutionApp />
+                        <ExecutionApp readOnly={executionReadOnly} />
                     </Suspense>
                 }
             />
