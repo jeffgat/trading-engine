@@ -12,7 +12,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { Trade, CandleBar } from "@/backtesting/lib/types";
-import { formatCurrency, formatR, pnlColor } from "@/backtesting/lib/utils";
+import { formatCurrency, formatR, moneyColor, pnlColor } from "@/backtesting/lib/utils";
 import { SessionTag } from "./SessionTag";
 import { Skeleton } from "./Skeleton";
 import {
@@ -99,33 +99,33 @@ export function TradeChartModal({
       width: container.clientWidth,
       height: 500,
       layout: {
-        background: { color: "#050909" },
-        textColor: "#a1adab",
+        background: { color: "#101010" },
+        textColor: "#ccb088",
         fontFamily: '"JetBrains Mono", monospace',
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "#1d3434" },
-        horzLines: { color: "#1d3434" },
+        vertLines: { color: "#3a3026" },
+        horzLines: { color: "#3a3026" },
       },
       crosshair: { mode: CrosshairMode.Normal },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: "#1d3434",
+        borderColor: "#3a3026",
       },
       rightPriceScale: {
-        borderColor: "#1d3434",
+        borderColor: "#3a3026",
       },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#72f25f",
-      downColor: "#ff554f",
-      borderUpColor: "#72f25f",
-      borderDownColor: "#ff554f",
-      wickUpColor: "#72f25f",
-      wickDownColor: "#ff554f",
+      upColor: "#ecc997",
+      downColor: "#d4775f",
+      borderUpColor: "#ecc997",
+      borderDownColor: "#d4775f",
+      wickUpColor: "#ecc997",
+      wickDownColor: "#d4775f",
     } satisfies Partial<CandlestickSeriesOptions>);
 
     // Convert ISO timestamps to Unix seconds for lightweight-charts.
@@ -176,7 +176,7 @@ export function TradeChartModal({
     // Add price lines for trade levels
     series.createPriceLine({
       price: trade.entry_price,
-      color: "#35d6e6",
+      color: "#e8c088",
       lineWidth: 1,
       lineStyle: LineStyle.Solid,
       axisLabelVisible: true,
@@ -185,7 +185,7 @@ export function TradeChartModal({
 
     series.createPriceLine({
       price: trade.stop_price,
-      color: "#ff554f",
+      color: "#d4775f",
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -194,7 +194,7 @@ export function TradeChartModal({
 
     series.createPriceLine({
       price: trade.tp1_price,
-      color: "#72f25f",
+      color: "#ecc997",
       lineWidth: 1,
       lineStyle: LineStyle.Dotted,
       axisLabelVisible: true,
@@ -344,7 +344,7 @@ export function TradeChartModal({
       markers.push({
         time: toFakeUtcSeconds(entryTime) as unknown as Time,
         position: isLong ? "belowBar" : "aboveBar",
-        color: "#35d6e6",
+        color: "#e8c088",
         shape: isLong ? "arrowUp" : "arrowDown",
         text: isLong ? "Buy" : "Sell",
       });
@@ -358,7 +358,7 @@ export function TradeChartModal({
       markers.push({
         time: toFakeUtcSeconds(exitTime) as unknown as Time,
         position: isLong ? "aboveBar" : "belowBar",
-        color: isWin ? "#72f25f" : "#ff554f",
+        color: isWin ? "#ecc997" : "#d4775f",
         shape: isLong ? "arrowDown" : "arrowUp",
         text: exitLabel,
       });
@@ -425,13 +425,13 @@ export function TradeChartModal({
               <div className="flex items-center gap-3">
                 <span
                   className="font-mono text-sm font-semibold"
-                  style={{ color: pnlColor(trade.pnl_usd) }}
+                  style={{ color: moneyColor(trade.pnl_usd) }}
                 >
                   {formatCurrency(trade.pnl_usd)}
                 </span>
                 <span
                   className="font-mono text-xs"
-                  style={{ color: pnlColor(trade.pnl_usd) }}
+                  style={{ color: pnlColor(rMultiple) }}
                 >
                   {formatR(rMultiple)}
                 </span>
@@ -486,9 +486,9 @@ export function TradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#35d6e6" }}
+                  style={{ background: "#e8c088" }}
                 />
-                <span style={{ color: "#35d6e6" }}>
+                <span style={{ color: "#e8c088" }}>
                   {trade.direction === "long" ? "\u25B2" : "\u25BC"}
                 </span>
                 Entry:{" "}
@@ -499,7 +499,7 @@ export function TradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#ff554f" }}
+                  style={{ background: "#d4775f" }}
                 />
                 Stop:{" "}
                 {trade.stop_price.toLocaleString("en-US", {
@@ -509,7 +509,7 @@ export function TradeChartModal({
               <span className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-0.5 w-3"
-                  style={{ background: "#72f25f" }}
+                  style={{ background: "#ecc997" }}
                 />
                 TP1:{" "}
                 {trade.tp1_price.toLocaleString("en-US", {
@@ -530,7 +530,7 @@ export function TradeChartModal({
                 <span className="flex items-center gap-1.5">
                   <span
                     style={{
-                      color: trade.pnl_usd >= 0 ? "#72f25f" : "#ff554f",
+                      color: moneyColor(trade.pnl_usd),
                     }}
                   >
                     {trade.direction === "long" ? "\u25BC" : "\u25B2"}

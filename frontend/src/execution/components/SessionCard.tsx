@@ -13,6 +13,7 @@ import {
 } from "@/shared/ui/alert-dialog";
 import { Badge } from "@/shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { moneyTextClass } from "@/shared/utils";
 import { useState } from "react";
 
 const DOW_NAMES: Record<number, string> = {
@@ -123,12 +124,39 @@ function getRoundTripCommissionUsd(engine: SessionStatus) {
   return Number.isFinite(commission) ? commission : 0;
 }
 
-function formatResult(value: number, engine: SessionStatus, sessionConfig?: SessionConfig) {
+function rTextClass(value: number) {
+  if (value > 0) return "text-profit";
+  if (value < 0) return "text-loss";
+  return "text-text-muted";
+}
+
+function getResultParts(value: number, engine: SessionStatus, sessionConfig?: SessionConfig) {
   const rLabel = `${value > 0 ? "+" : ""}${value.toFixed(2)}R`;
   const riskUsd = getGrossRiskUsd(engine, sessionConfig, sessionConfig?.risk_usd ?? engine.risk_usd);
-  if (riskUsd == null) return rLabel;
+  if (riskUsd == null) return { rLabel, netUsd: null };
   const netUsd = value * riskUsd - getRoundTripCommissionUsd(engine);
-  return `${rLabel} (${USD_FORMATTER.format(netUsd)})`;
+  return { rLabel, netUsd };
+}
+
+function ResultValue({
+  value,
+  engine,
+  sessionConfig,
+}: {
+  value: number;
+  engine: SessionStatus;
+  sessionConfig?: SessionConfig;
+}) {
+  const { rLabel, netUsd } = getResultParts(value, engine, sessionConfig);
+
+  return (
+    <>
+      <span className={rTextClass(value)}>{rLabel}</span>
+      {netUsd != null && (
+        <span className={moneyTextClass(netUsd)}> ({USD_FORMATTER.format(netUsd)})</span>
+      )}
+    </>
+  );
 }
 
 function getTp1HitResult(engine: SessionStatus, sessionConfig?: SessionConfig) {
@@ -163,6 +191,10 @@ function formatPct(value: number | null | undefined) {
 function formatAthTime(value: string | null | undefined) {
   if (!value) return "—";
   return value.length >= 16 ? value.slice(11, 16) : value;
+}
+
+function formatLegTitle(value: string) {
+  return value.replace(/-/g, "_").toUpperCase();
 }
 
 function GateRow({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -262,7 +294,7 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
               const body = slashIdx >= 0 ? displayName.slice(slashIdx + 1) : displayName;
               return (
                 <>
-                  <CardTitle className="text-base font-semibold text-white">{body}</CardTitle>
+                  <CardTitle className="text-base font-semibold text-gold-0">{formatLegTitle(body)}</CardTitle>
                   {prefix && (
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                       isLsiTag(prefix)
@@ -277,7 +309,7 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
             }
             return (
               <>
-                <CardTitle className="text-base font-semibold text-white">{engine.session}</CardTitle>
+                <CardTitle className="text-base font-semibold text-gold-0">{formatLegTitle(engine.session)}</CardTitle>
                 {strategyType && (
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                     isLsi
@@ -525,10 +557,10 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
                 </div>
                 {tp1HitResult != null && (
                   <span
-                    className="font-mono text-xs font-medium text-profit"
+                    className="font-mono text-xs font-medium"
                     title="Estimated net after round-turn fees"
                   >
-                    {formatResult(tp1HitResult, engine, sessionConfig)}
+                    <ResultValue value={tp1HitResult} engine={engine} sessionConfig={sessionConfig} />
                   </span>
                 )}
               </div>
@@ -544,10 +576,10 @@ export function SessionCard({ engine, strategyType, sessionConfig, onPause, onFl
                 </div>
                 {engine.r_result != null && (
                   <span
-                    className={`font-mono text-xs font-medium ${engine.r_result > 0 ? "text-profit" : engine.r_result < 0 ? "text-loss" : "text-text-muted"}`}
+                    className="font-mono text-xs font-medium"
                     title="Estimated net after round-turn fees"
                   >
-                    {formatResult(engine.r_result, engine, sessionConfig)}
+                    <ResultValue value={engine.r_result} engine={engine} sessionConfig={sessionConfig} />
                   </span>
                 )}
               </div>

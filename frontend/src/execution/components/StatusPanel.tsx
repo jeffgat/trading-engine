@@ -13,7 +13,6 @@ interface StatusPanelProps {
   setActiveConfig: (config: string) => void;
   config: ConfigResponse | null;
   statusExecConfigs?: Record<string, ExecConfigMeta>;
-  statusMode?: string;
   onPause?: (sessionName: string, configName?: string) => Promise<void>;
   onFlatten?: (sessionName: string, configName?: string) => Promise<void>;
   onResume?: (sessionName: string, configName?: string) => Promise<void>;
@@ -46,21 +45,25 @@ function isLiveConfig(
   configName: string,
   config: ConfigResponse | null,
   statusExecConfigs?: Record<string, ExecConfigMeta>,
-  statusMode?: string,
 ): boolean {
   const meta = config?.exec_configs?.[configName] ?? statusExecConfigs?.[configName];
-  if (!meta) return statusMode?.toUpperCase().startsWith("LIVE") ?? false;
+  if (!meta) return false;
   return meta.webhooks.length > 0;
 }
 
-export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, statusMode, onPause, onFlatten, onResume }: StatusPanelProps) {
+const MODE_LABEL_STYLES = {
+  live: "text-money-positive bg-money-positive/10 border-money-positive/20",
+  dryRun: "text-warning bg-warning/10 border-warning/20",
+} as const;
+
+export function StatusPanel({ configEngines, engines, uptime, loading, activeConfig, setActiveConfig, config, statusExecConfigs, onPause, onFlatten, onResume }: StatusPanelProps) {
   const stratLookup = buildStrategyLookup(config);
   const sessionCfgLookup = buildSessionConfigLookup(config);
 
   // Compute which configs are live vs dry-run
   const configNames = Object.keys(configEngines);
-  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config, statusExecConfigs, statusMode));
-  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config, statusExecConfigs, statusMode));
+  const liveConfigs = configNames.filter((n) => isLiveConfig(n, config, statusExecConfigs));
+  const dryRunConfigs = configNames.filter((n) => !isLiveConfig(n, config, statusExecConfigs));
 
   // Sort: live first (alphabetical), then dry-run (alphabetical)
   const sortedConfigs = [...liveConfigs.sort(), ...dryRunConfigs.sort()];
@@ -93,9 +96,10 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
 
   const displayEngines = configEngines[validConfig] ?? [];
   const selectedConfigMeta = {
-    isLive: isLiveConfig(validConfig, config, statusExecConfigs, statusMode),
+    isLive: isLiveConfig(validConfig, config, statusExecConfigs),
     count: displayEngines.length,
   };
+  const modeStyle = selectedConfigMeta.isLive ? MODE_LABEL_STYLES.live : MODE_LABEL_STYLES.dryRun;
 
   return (
     <div className="space-y-4">
@@ -107,12 +111,8 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
         </div>
 
         <div className="flex items-center gap-3">
-          <span className={`text-[10px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded ${
-            selectedConfigMeta.isLive
-              ? "text-profit bg-profit/10"
-              : "text-amber-400 bg-amber-400/10"
-          }`}>
-            {selectedConfigMeta.isLive ? "Live" : "Dry Run"}
+          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${modeStyle}`}>
+            {selectedConfigMeta.isLive ? "Live" : "Dry-Run"}
           </span>
           <span className="text-xs text-text-muted">
             {selectedConfigMeta.count} strateg{selectedConfigMeta.count !== 1 ? "ies" : "y"}
@@ -124,13 +124,13 @@ export function StatusPanel({ configEngines, engines, uptime, loading, activeCon
             <SelectContent>
               {sortedConfigs.map((name) => {
                 const count = (configEngines[name] ?? []).length;
-                const live = isLiveConfig(name, config, statusExecConfigs, statusMode);
+                const live = isLiveConfig(name, config, statusExecConfigs);
                 return (
                   <SelectItem key={name} value={name}>
                     <span className="flex items-center gap-2">
                       {name}
-                      <span className={`text-[9px] uppercase ${live ? "text-profit" : "text-amber-400"}`}>
-                        {live ? "Live" : "Dry"}
+                      <span className={`text-[9px] uppercase ${live ? "text-money-positive" : "text-warning"}`}>
+                        {live ? "Live" : "Dry-Run"}
                       </span>
                       <span className="text-text-muted">({count})</span>
                     </span>
