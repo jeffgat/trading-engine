@@ -15,3 +15,10 @@ For scoped work, also read the local `AGENTS.md` in the relevant directory:
 - [execution/AGENTS.md](execution/AGENTS.md)
 - [frontend/AGENTS.md](frontend/AGENTS.md)
 - [pinescript/AGENTS.md](pinescript/AGENTS.md)
+
+Research-memory workflow for strategy/backtesting questions:
+
+- Directly read required briefing files first when the task is strategy work: `backtesting/learnings/README.md`, `backtesting/learnings/briefs/GLOBAL.md`, then `backtesting/learnings/briefs/assets/{SYMBOL}.md`.
+- Use `cd backtesting && uv run python scripts/research_memory.py ask "<question>"` to locate relevant prior work when the exact file/report is unknown.
+- Treat research-memory results as a source map. Before making conclusions, changing direction, or recommending stop/continue, open and read the cited files directly.
+- Use experiment DB queries, saved artifacts, and deterministic replay/stress runs for numeric truth; do not treat retrieval scores or summaries as validation evidence.

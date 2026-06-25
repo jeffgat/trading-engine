@@ -1,3 +1,13 @@
+export const DEFAULT_EXECUTION_CONFIG = "ALPHA_V1-A";
+
+export function sortExecutionConfigNames(names: string[]): string[] {
+  return [...names].sort((a, b) => {
+    if (a === DEFAULT_EXECUTION_CONFIG) return -1;
+    if (b === DEFAULT_EXECUTION_CONFIG) return 1;
+    return a.localeCompare(b);
+  });
+}
+
 export const STATE_COLORS: Record<string, string> = {
   idle: "bg-info/15 text-info",
   orb_building: "bg-info/20 text-info",

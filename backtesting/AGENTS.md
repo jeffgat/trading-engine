@@ -18,7 +18,10 @@ Core map: `config.py` owns `Instrument`, `SessionConfig`, `StrategyConfig`, defa
 
 Research discipline:
 
-- Before strategy work, read `learnings/README.md`, `learnings/briefs/GLOBAL.md`, then `learnings/briefs/assets/{SYMBOL}.md`; open detailed histories/reports only as needed.
+- Before strategy work, read `learnings/README.md`, `learnings/briefs/GLOBAL.md`, then `learnings/briefs/assets/{SYMBOL}.md`.
+- Use `uv run python scripts/research_memory.py ask "<question>"` to locate relevant prior work when the exact learning/report is unknown.
+- Treat research-memory hits as a routing map only. Open and read the cited histories/reports before making conclusions, changing research direction, or recommending stop/continue.
+- Use experiment DB queries, saved result artifacts, and deterministic replay/stress runs for numeric truth; retrieval scores and summaries are not validation evidence.
 - After meaningful conclusions, update detailed learnings with metrics and DB experiment names, then run `uv run python scripts/build_learnings_registry.py`.
 - Always give runs and sweeps a unique descriptive `--name`; dashboard review needs saved results with trades and equity curve.
 - Optimize on Calmar first, report drawdown in R, and use train/validation/test, walk-forward, Monte Carlo/bootstrap, and deployability labels before promotion.

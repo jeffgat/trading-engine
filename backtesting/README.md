@@ -66,6 +66,19 @@ Read before testing:
 2. `learnings/briefs/GLOBAL.md`
 3. `learnings/briefs/assets/{ASSET}.md`
 
+For unknown prior work, build and query the local read-only research memory
+index:
+
+```bash
+uv run python scripts/research_memory.py index
+uv run python scripts/research_memory.py ask "Have we tested NQ Asia ORB strict stress?"
+```
+
+Research memory is the map, not the source of truth. Use it to find the right
+learnings/reports, then open and read the cited files directly before making
+conclusions. Use experiment queries, saved result artifacts, and deterministic
+replay/stress runs for numeric truth.
+
 After meaningful conclusions, update detailed learnings with metrics and DB experiment names, then regenerate:
 
 ```bash

@@ -5,6 +5,7 @@ import { useMainLogs } from '@/execution/hooks/useMainLogs';
 import { useStatus } from '@/execution/hooks/useStatus';
 import { useTradeLogs } from '@/execution/hooks/useTradeLogs';
 import { useWebSocket } from '@/execution/hooks/useWebSocket';
+import { DEFAULT_EXECUTION_CONFIG, sortExecutionConfigNames } from '@/execution/lib/constants';
 import { ExecutionTabSkeleton } from '@/shared/ui/page-skeletons';
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
@@ -43,7 +44,7 @@ interface ExecutionAppProps {
 export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }: ExecutionAppProps) {
     const [localActiveTab, setLocalActiveTab] = useState<ExecutionTab>('status');
     const activeTab = forcedTab ?? localActiveTab;
-    const [activeConfig, setActiveConfig] = useState<string>('ALL');
+    const [activeConfig, setActiveConfig] = useState<string>(DEFAULT_EXECUTION_CONFIG);
     const { connected, status: socketStatus, subscribe } = useWebSocket({ enabled: !readOnly });
     const {
         status,
@@ -75,7 +76,7 @@ export function ExecutionApp({ forcedTab, hideTabNav = false, readOnly = false }
 
     // Derive config names from the status response
     const configNames = useMemo(() => {
-        return Object.keys(configEngines).sort();
+        return sortExecutionConfigNames(Object.keys(configEngines));
     }, [configEngines]);
     const connectionState: ConnectionState = connected
         ? 'connected'

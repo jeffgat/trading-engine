@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import { CONFIG_COLORS } from "@/execution/lib/constants";
+import { CONFIG_COLORS, DEFAULT_EXECUTION_CONFIG } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry, ComparisonCurvePoint, SessionStatus } from "@/execution/lib/types";
 import type { LiveTrade } from "@/execution/hooks/useLiveTrades";
 import { useBacktestComparison } from "@/execution/hooks/useBacktestComparison";
@@ -716,7 +716,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
   }
 
   const hasActiveFilters =
-    activeConfig !== "ALL" || legFilter !== "ALL" || strategyFilter !== "ALL" || sessionFilter !== "ALL" || tickerFilter !== "ALL" || dateFrom !== "" || dateTo !== "";
+    activeConfig !== DEFAULT_EXECUTION_CONFIG || legFilter !== "ALL" || strategyFilter !== "ALL" || sessionFilter !== "ALL" || tickerFilter !== "ALL" || dateFrom !== "" || dateTo !== "";
 
   return (
     <div className="space-y-3">
@@ -782,7 +782,7 @@ export function PerformanceView({ entries, loading, config, activeConfig, config
           {hasActiveFilters && (
             <button
               onClick={() => {
-                setActiveConfig("ALL");
+                setActiveConfig(DEFAULT_EXECUTION_CONFIG);
                 setLegFilter("ALL");
                 setStrategyFilter("ALL");
                 setSessionFilter("ALL");

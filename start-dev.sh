@@ -44,6 +44,12 @@ trap 'cleanup 130' INT
 trap 'cleanup 143' TERM
 
 if [ "$USE_LOCAL_BACKTESTING" = "1" ]; then
+  echo "Ensuring local default execution backtests exist"
+  (
+    cd "$ROOT_DIR/backtesting"
+    uv run python scripts/seed_execution_default_backtests.py
+  )
+
   echo "Starting backtesting API on http://127.0.0.1:${BACKTEST_API_PORT}"
   (
     cd "$ROOT_DIR/backtesting"

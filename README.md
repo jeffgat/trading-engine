@@ -70,11 +70,25 @@ bash execution/deploy/deploy.sh
 
 ## Research Memory
 
-Before strategy work, start with:
+Before strategy work, always load the required briefing layer directly:
 
 1. `backtesting/learnings/README.md`
 2. `backtesting/learnings/briefs/GLOBAL.md`
 3. `backtesting/learnings/briefs/assets/{SYMBOL}.md`
+
+Use local research memory as the routing layer when prior work is unknown, for
+example "have we tested this?" or "which report covers this gate?":
+
+```bash
+cd backtesting
+uv run python scripts/research_memory.py index
+uv run python scripts/research_memory.py ask "Have we tested NQ Asia ORB strict stress?"
+```
+
+Treat retrieved chunks as a map, not the final source of truth. Open and read
+the cited learnings/reports before making a conclusion. Use experiment queries,
+saved result artifacts, and deterministic replay/stress runs for metrics and
+promotion decisions.
 
 After updating detailed learnings or adding reports:
 

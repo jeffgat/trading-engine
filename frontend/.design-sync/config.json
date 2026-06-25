@@ -1,0 +1,23 @@
+{
+  "pkg": "orb-dashboard",
+  "globalName": "OrbDashboard",
+  "shape": "package",
+  "srcDir": "src/shared/ui",
+  "tsconfig": "tsconfig.app.json",
+  "cssEntry": ".design-sync/compiled.css",
+  "componentSrcMap": {
+    "Button": "src/shared/ui/button.tsx",
+    "Badge": "src/shared/ui/badge.tsx",
+    "Card": "src/shared/ui/card.tsx",
+    "Input": "src/shared/ui/input.tsx",
+    "Select": "src/shared/ui/select.tsx",
+    "Dialog": "src/shared/ui/dialog.tsx",
+    "AlertDialog": "src/shared/ui/alert-dialog.tsx",
+    "Tabs": "src/shared/ui/tabs.tsx",
+    "Popover": "src/shared/ui/popover.tsx",
+    "DatePicker": "src/shared/ui/date-picker.tsx",
+    "ScrollArea": "src/shared/ui/scroll-area.tsx",
+    "Calendar": "src/shared/ui/calendar.tsx",
+    "Skeleton": "src/shared/ui/skeleton.tsx"
+  }
+}

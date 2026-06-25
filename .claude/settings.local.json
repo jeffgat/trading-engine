@@ -218,7 +218,10 @@
       "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-144421.html)",
       "Bash(open /Users/jeffreygatbonton/Desktop/Code/main_backtests/orb_backtests_chris/backtesting/learnings/reports/council-report-20260403-200758.html)",
       "Bash(backtesting/.venv/bin/python:*)",
-      "Bash(scp /tmp/find_pivot.py root@143.110.148.234:/tmp/find_pivot.py)"
+      "Bash(scp /tmp/find_pivot.py root@143.110.148.234:/tmp/find_pivot.py)",
+      "Bash(npm ci *)",
+      "Bash(node -e ' *)",
+      "Bash(node /tmp/dbg.mjs)"
     ]
   }
 }

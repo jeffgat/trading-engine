@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
 import { TradeEventRow } from "./TradeEventRow";
 import { ExecTradeChartModal } from "./ExecTradeChartModal";
+import { sortExecutionConfigNames } from "@/execution/lib/constants";
 import type { ConfigResponse, TradeLogEntry, ExecTradeContext } from "@/execution/lib/types";
 import { CHARTABLE_EVENTS, resolveTradeContext } from "@/execution/lib/utils";
 
@@ -31,18 +32,19 @@ export function TradeFeed({
   total,
   loading,
   loadMore,
+  activeConfig,
   config,
 }: TradeFeedProps) {
   const stratLookup = buildStrategyLookup(config);
 
-  const [selectedConfig, setSelectedConfig] = useState("ALL");
+  const [selectedConfig, setSelectedConfig] = useState(activeConfig);
 
   const configNames = useMemo(() => {
     const names = new Set<string>();
     for (const e of entries) {
       if (e.config) names.add(e.config);
     }
-    return Array.from(names).sort();
+    return sortExecutionConfigNames(Array.from(names));
   }, [entries]);
 
   const filtered = useMemo(() => {

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Input } from "@/shared/ui/input";
 import { ExecutionTabSkeleton } from "@/shared/ui/page-skeletons";
-import { LOG_LEVEL_COLORS, CONFIG_COLORS } from "@/execution/lib/constants";
+import { LOG_LEVEL_COLORS, CONFIG_COLORS, DEFAULT_EXECUTION_CONFIG, sortExecutionConfigNames } from "@/execution/lib/constants";
 import type { MainLogEntry, TradeLogEntry } from "@/execution/lib/types";
 
 interface LogViewerProps {
@@ -37,18 +37,19 @@ export function LogViewer({
   tradeTotal,
   tradeLoading,
   loadMoreTrade,
+  activeConfig,
 }: LogViewerProps) {
   const [tab, setTab] = useState<"main" | "trade">("main");
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("ALL");
-  const [tradeConfigFilter, setTradeConfigFilter] = useState("ALL");
+  const [tradeConfigFilter, setTradeConfigFilter] = useState(activeConfig || DEFAULT_EXECUTION_CONFIG);
 
   const tradeConfigNames = useMemo(() => {
     const names = new Set<string>();
     for (const e of tradeEntries) {
       if (e.config) names.add(e.config);
     }
-    return Array.from(names).sort();
+    return sortExecutionConfigNames(Array.from(names));
   }, [tradeEntries]);
 
   const filteredMain = useMemo(() => {
