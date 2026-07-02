@@ -37,6 +37,17 @@
 - `NY LSI ALPHA_V1 Sweep-Semantics Retest (Apr 2026)` -> `CONDITIONAL ALTERNATE VARIANT`
 - `NY LSI fvg_limit RR2/TP0.5 + Thu Excl + Medium-Vol Gate — CONDITIONAL (Effective GO)` -> `CONDITIONAL (effective GO) — full 8-step strategy workflow completed. PSR/DSR validated. Phase-one payout economics strong. Holdout 100% payout success rate.`
 - `NY HTF-LSI (Unswept 60m Extremes, Patched Sweep Invalidation) — STRONG Phase One / CONDITIONAL Phase Two` -> `STRONG to first payout, CONDITIONAL as a post-first-payout extractor. The frozen `5m` long-only anchor passed discovery, holdout, and phase one cleanly, but default post-payout operation at `$250/R` was too jagged on stitched OOS continuity risk.`
+- `NY VWAP Reversion Fixed-R Pipeline Start (2026-06-29) — REJECT for $500 risk / $2k account` -> `REJECT for the requested account sizing; `research_only` as a strategy family until live execution support and exact replay exist.`
+- `NY VWAP Reversion Prop-Firm Pipeline Start (2026-06-29) — CONDITIONAL research lead` -> `CONDITIONAL research lead for the custom prop objective; still `research_only` until walk-forward/holdout validation, exact replay parity, and live execution support exist.`
+- `NY Level Mean-Reversion Recent 5-Year Prototype (2026-06-29) — CONDITIONAL frequency thesis` -> `CONDITIONAL frequency thesis; `research_only` prototype only. No live execution support, exact replay, or 1m/1s path validation yet.`
+- `NY Level Mean-Reversion State-Machine Recent 5-Year Pass (2026-06-29) — CONDITIONAL edge anchor, cadence still thin` -> `CONDITIONAL structural research only. Do not push to prop-risk optimization yet; no 1m/1s path validation, train/validation split, exact replay, or live execution support exists for this branch.`
+- `NY Level Mean-Reversion Context-Filter Recent 5-Year Pass (2026-06-29) — CONDITIONAL low-frequency sleeve, daily cadence failed` -> `CONDITIONAL structural research only. This improved the quality of the level-reversion branch, but it did not solve the user-requested one-trade-per-day objective. Still `research_only`: no 1m/1s path validation, train/validation split, exact replay, or live execution support exists.`
+- `NY VWAP Mean-Reversion Validation Packet (2026-06-30) — CONDITIONAL recent-regime sleeve, not live-ready` -> `CONDITIONAL research sleeve. The screenshot row is now the current best **pure VWAP-target** NQ NY VWAP mean-reversion candidate, but validation shows it is recent-regime dependent and still `research_only`.`
+- `NY VWAP Static 1:1.5R Stop Sweep (2026-06-30) — CONDITIONAL cadence improvement, still thin` -> `CONDITIONAL research screen only. Static fixed `1.5R` exits improved the high-cadence VWAP leg versus the dynamic VWAP target, but the daily-cadence edge remains thin and still `research_only`.`
+- `NY VWAP Static 1:1.5R Native Timeframe Sweep (2026-06-30) — CONDITIONAL 3m improvement` -> `CONDITIONAL native-timeframe research screen. The 3m version materially improved the daily-cadence static-RR branch versus 5m, but it is still `research_only` and needs exact replay, train/validation, and prop lifecycle scoring.`
+- `NY VWAP 3m BOS Challenger (2026-06-30) — NO-GO as replacement for sweep/reclaim` -> `NO-GO as a replacement for the current 3m sweep/reclaim signal. BOS-style structure closes can produce positive rows, but they did not improve the daily-cadence or risk-adjusted profile of the current 3m leg.`
+- `NY VWAP BOS Timeframe Challenger (2026-06-30) — NO-GO across 1m/2m/3m/5m` -> `NO-GO as a raw BOS replacement across native timeframes. Testing `1m`, `2m`, `3m`, and `5m` did not find a BOS-close version that beats the current 3m sweep/reclaim leg or solves daily cadence with acceptable risk.`
+- `NY VWAP 3m Sweep + BOS Confirmation (2026-06-30) — NO-GO for cadence, possible sparse micro-sleeve` -> `NO-GO as an upgrade to the current 3m daily-cadence leg. BOS confirmation after the sweep/reclaim improves selectivity on a few tiny samples, but it removes too many trades to solve the 1-3 trades/day objective.`
 - `Summary` -> `UNSPECIFIED`
 - `How it works` -> `UNSPECIFIED`
 - `Timeframe comparison (FAST_V2 NQ_NY, 2021-2026)` -> `UNSPECIFIED`
@@ -55,7 +66,7 @@
 - `ILM/iFVG TradingView Replication Read (2026-04-28)` -> `UNSPECIFIED`
 - `ALPHA_V1 ATH Regime Findings (2026-05-05)` -> `UNSPECIFIED`
 
-## Reports (117)
+## Reports (128)
 - [NQ_ENTRY_MODE_INVERSION_TIMING_READ.md](../../reports/NQ_ENTRY_MODE_INVERSION_TIMING_READ.md) -> [nq_entry_mode_inversion_timing_read](../../../data/results/nq_entry_mode_inversion_timing_read)
 - [NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_PAIR_PHASE_ONE_RISK_SWEEP_20260505.md) -> [nq_es_ny_orb_pair_phase_one_risk_sweep_20260505](../../../data/results/nq_es_ny_orb_pair_phase_one_risk_sweep_20260505)
 - [NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md](../../reports/NQ_ES_NY_ORB_WIDE_STOP_TARGET_SWEEP_20260505.md) -> [nq_es_ny_orb_wide_stop_target_sweep_20260505](../../../data/results/nq_es_ny_orb_wide_stop_target_sweep_20260505)
@@ -122,6 +133,9 @@
 - [NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md](../../reports/NQ_NY_HTF_LSI_PRE_ENTRY_TP2_SWEEP_CANCEL.md)
 - [NQ_NY_HTF_LSI_UNCAPPED_RERUN.md](../../reports/NQ_NY_HTF_LSI_UNCAPPED_RERUN.md)
 - [NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md](../../reports/NQ_NY_HTF_LSI_WINDOW_EXIT_LOCAL_SWEEP.md) -> [nq_ny_htf_lsi_window_exit_local_sweep](../../../data/results/nq_ny_htf_lsi_window_exit_local_sweep)
+- [NQ_NY_LEVEL_REVERSION_CONTEXT_FILTER_RECENT5_20260629.md](../../reports/NQ_NY_LEVEL_REVERSION_CONTEXT_FILTER_RECENT5_20260629.md) -> [nq_ny_level_reversion_context_filter_recent5_20260629](../../../data/results/nq_ny_level_reversion_context_filter_recent5_20260629)
+- [NQ_NY_LEVEL_REVERSION_RECENT5_20260629.md](../../reports/NQ_NY_LEVEL_REVERSION_RECENT5_20260629.md) -> [nq_ny_level_reversion_recent5_20260629](../../../data/results/nq_ny_level_reversion_recent5_20260629)
+- [NQ_NY_LEVEL_REVERSION_STATE_MACHINE_RECENT5_20260629.md](../../reports/NQ_NY_LEVEL_REVERSION_STATE_MACHINE_RECENT5_20260629.md) -> [nq_ny_level_reversion_state_machine_recent5_20260629](../../../data/results/nq_ny_level_reversion_state_machine_recent5_20260629)
 - [NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md](../../reports/NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md)
 - [NQ_NY_LSI_3M_TRAPPED_REVERSAL_STRESS_20260515.md](../../reports/NQ_NY_LSI_3M_TRAPPED_REVERSAL_STRESS_20260515.md) -> [nq_ny_lsi_3m_trapped_reversal_stress_20260515](../../../data/results/nq_ny_lsi_3m_trapped_reversal_stress_20260515)
 - [NQ_NY_LSI_BROAD_DISCRETIONARY_CHALLENGER_MATRIX_20260517.md](../../reports/NQ_NY_LSI_BROAD_DISCRETIONARY_CHALLENGER_MATRIX_20260517.md)
@@ -173,8 +187,16 @@
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP.md) -> [nq_ny_reference_lsi_followup](../../../data/results/nq_ny_reference_lsi_followup)
 - [NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md](../../reports/NQ_NY_REFERENCE_LSI_FOLLOWUP_SPEC.md)
 - [NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md](../../reports/NQ_NY_REFERENCE_LSI_LEVEL_MATRIX.md)
+- [NQ_NY_VWAP_3M_BOS_CHALLENGER_20260630.md](../../reports/NQ_NY_VWAP_3M_BOS_CHALLENGER_20260630.md) -> [nq_ny_vwap_3m_bos_challenger_20260630](../../../data/results/nq_ny_vwap_3m_bos_challenger_20260630)
+- [NQ_NY_VWAP_3M_SWEEP_BOS_CONFIRM_20260630.md](../../reports/NQ_NY_VWAP_3M_SWEEP_BOS_CONFIRM_20260630.md) -> [nq_ny_vwap_3m_sweep_bos_confirm_20260630](../../../data/results/nq_ny_vwap_3m_sweep_bos_confirm_20260630)
+- [NQ_NY_VWAP_BOS_TIMEFRAME_CHALLENGER_20260630.md](../../reports/NQ_NY_VWAP_BOS_TIMEFRAME_CHALLENGER_20260630.md) -> [nq_ny_vwap_bos_timeframe_challenger_20260630](../../../data/results/nq_ny_vwap_bos_timeframe_challenger_20260630)
+- [NQ_NY_VWAP_MEAN_REVERSION_VALIDATION_20260630.md](../../reports/NQ_NY_VWAP_MEAN_REVERSION_VALIDATION_20260630.md) -> [nq_ny_vwap_mean_reversion_validation_20260630](../../../data/results/nq_ny_vwap_mean_reversion_validation_20260630)
+- [NQ_NY_VWAP_PROP_FIRM_PIPELINE_20260629.md](../../reports/NQ_NY_VWAP_PROP_FIRM_PIPELINE_20260629.md) -> [nq_ny_vwap_prop_firm_pipeline_20260629](../../../data/results/nq_ny_vwap_prop_firm_pipeline_20260629)
+- [NQ_NY_VWAP_REVERSION_FIXED_RR_PIPELINE_20260629.md](../../reports/NQ_NY_VWAP_REVERSION_FIXED_RR_PIPELINE_20260629.md) -> [nq_ny_vwap_reversion_fixed_rr_pipeline_20260629](../../../data/results/nq_ny_vwap_reversion_fixed_rr_pipeline_20260629)
+- [NQ_NY_VWAP_STATIC_RR_STOP_SWEEP_20260630.md](../../reports/NQ_NY_VWAP_STATIC_RR_STOP_SWEEP_20260630.md) -> [nq_ny_vwap_static_rr_stop_sweep_20260630](../../../data/results/nq_ny_vwap_static_rr_stop_sweep_20260630)
+- [NQ_NY_VWAP_STATIC_RR_TIMEFRAME_SWEEP_20260630.md](../../reports/NQ_NY_VWAP_STATIC_RR_TIMEFRAME_SWEEP_20260630.md) -> [nq_ny_vwap_static_rr_timeframe_sweep_20260630](../../../data/results/nq_ny_vwap_static_rr_timeframe_sweep_20260630)
 
-## Result Directories (147)
+## Result Directories (158)
 - [alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423](../../../data/results/alpha_v1_nq_ny_htf_lsi_funded_target_compare_20260423) (5 files; primary: summary.json, fixed_profile_scorecards.csv, holdout_frozen_risk_scorecards.csv, metrics_by_window.csv, pre_holdout_risk_sweep.csv)
 - [es_nq_ny_orb_exit_deepdive_20260505](../../../data/results/es_nq_ny_orb_exit_deepdive_20260505) (5 files; primary: summary.json, bucket_diagnostics.csv, policy_metrics.csv, policy_trades.csv, ranked_policies.csv)
 - [hot_regime_v1_nq_es_phase1_payout_risk_20260505](../../../data/results/hot_regime_v1_nq_es_phase1_payout_risk_20260505) (20 files; primary: summary.json, exact_alt_es_ny_lowdd_rr2_tp075.json, exact_combo_all_cleaner_core5.json, exact_constrained_no_nq_orb_no_es_lsi.json, exact_constrained_nq_es_all6.json)
@@ -259,6 +281,9 @@
 - [nq_ny_htf_lsi_tf_transfer](../../../data/results/nq_ny_htf_lsi_tf_transfer) (5 files; primary: 1m_manual.json, 2m_manual.json, 3m_manual.json, 5m_manual.json, summary_manual.json)
 - [nq_ny_htf_lsi_tf_transfer_uncapped](../../../data/results/nq_ny_htf_lsi_tf_transfer_uncapped) (5 files; primary: summary.json, 1m.json, 2m.json, 3m.json, 5m.json)
 - [nq_ny_htf_lsi_window_exit_local_sweep](../../../data/results/nq_ny_htf_lsi_window_exit_local_sweep) (4 files; primary: finalists.json, selected_windows.json, exit_rows.json, window_rows.json)
+- [nq_ny_level_reversion_context_filter_recent5_20260629](../../../data/results/nq_ny_level_reversion_context_filter_recent5_20260629) (4 files; primary: summary.json, baseline_audit.csv, best_context_trades.csv, ranked_context_candidates.csv)
+- [nq_ny_level_reversion_recent5_20260629](../../../data/results/nq_ny_level_reversion_recent5_20260629) (3 files; primary: summary.json, ranked_candidates.csv, top_candidate_trades.csv)
+- [nq_ny_level_reversion_state_machine_recent5_20260629](../../../data/results/nq_ny_level_reversion_state_machine_recent5_20260629) (3 files; primary: summary.json, ranked_candidates.csv, top_candidate_trades.csv)
 - [nq_ny_lsi_3m_trapped_reversal_stress_20260515](../../../data/results/nq_ny_lsi_3m_trapped_reversal_stress_20260515) (8 files; primary: summary.json, account_outcomes.csv, account_summary.csv, bootstrap_summary.csv, monthly_metrics.csv)
 - [nq_ny_lsi_4leg_combo_sweep](../../../data/results/nq_ny_lsi_4leg_combo_sweep) (4 files; primary: summary.md, ny_lsi_combo_details.json, ny_lsi_combo_ranking.csv, ny_lsi_combo_ranking_practical.csv)
 - [nq_ny_lsi_cisd_candidate_validation_20260503](../../../data/results/nq_ny_lsi_cisd_candidate_validation_20260503) (10 files; primary: summary.json, execution_stress.csv, fragility_rows.csv, fragility_summary.csv, frozen_scorecards.csv)
@@ -308,6 +333,14 @@
 - [nq_ny_reference_lsi_discovery_3m_previous_day_asia](../../../data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia) (1 files; primary: discovery_results.json)
 - [nq_ny_reference_lsi_discovery_3m_previous_day_asia_low](../../../data/results/nq_ny_reference_lsi_discovery_3m_previous_day_asia_low) (1 files; primary: baseline_no_go.json)
 - [nq_ny_reference_lsi_followup](../../../data/results/nq_ny_reference_lsi_followup) (1 files; primary: followup_results.json)
+- [nq_ny_vwap_3m_bos_challenger_20260630](../../../data/results/nq_ny_vwap_3m_bos_challenger_20260630) (9 files; primary: summary.json, baseline_sweep_reclaim_controls.csv, baseline_sweep_reclaim_yearly.csv, best_by_consolidation.csv, bos_challenger_results.csv)
+- [nq_ny_vwap_3m_sweep_bos_confirm_20260630](../../../data/results/nq_ny_vwap_3m_sweep_bos_confirm_20260630) (9 files; primary: summary.json, baseline_sweep_reclaim_controls.csv, baseline_sweep_reclaim_yearly.csv, best_by_direction_scope.csv, daily_cadence_rows.csv)
+- [nq_ny_vwap_bos_timeframe_challenger_20260630](../../../data/results/nq_ny_vwap_bos_timeframe_challenger_20260630) (9 files; primary: summary.json, baseline_controls.csv, baseline_controls_yearly.csv, best_by_timeframe.csv, daily_cadence_rows.csv)
+- [nq_ny_vwap_mean_reversion_validation_20260630](../../../data/results/nq_ny_vwap_mean_reversion_validation_20260630) (16 files; primary: summary.json, best_candidate_5m_trades.csv, best_exit_refined_5m_trades.csv, best_prop_account_paths.csv, cold_window_score.csv)
+- [nq_ny_vwap_prop_firm_pipeline_20260629](../../../data/results/nq_ny_vwap_prop_firm_pipeline_20260629) (6 files; primary: summary.json, ranked_candidates.csv, risk_refine_candidates.csv, risk_refine_summary.json, risk_refine_top_account_outcomes.csv)
+- [nq_ny_vwap_reversion_fixed_rr_pipeline_20260629](../../../data/results/nq_ny_vwap_reversion_fixed_rr_pipeline_20260629) (2 files; primary: summary.json, coarse_screen.csv)
+- [nq_ny_vwap_static_rr_stop_sweep_20260630](../../../data/results/nq_ny_vwap_static_rr_stop_sweep_20260630) (4 files; primary: summary.json, sweep_results.csv, top_static_rr_trades.csv, top_static_rr_yearly.csv)
+- [nq_ny_vwap_static_rr_timeframe_sweep_20260630](../../../data/results/nq_ny_vwap_static_rr_timeframe_sweep_20260630) (6 files; primary: summary.json, best_by_timeframe.csv, prior_session_range_pct10_by_timeframe.csv, timeframe_sweep_results.csv, top_timeframe_static_rr_trades.csv)
 - [nq_orb_discovery_3session](../../../data/results/nq_orb_discovery_3session) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [nq_orb_discovery_3session_mag](../../../data/results/nq_orb_discovery_3session_mag) (4 files; primary: discovery_results.json, top50_asia.csv, top50_ldn.csv, top50_ny.csv)
 - [nq_orb_discovery_pipeline](../../../data/results/nq_orb_discovery_pipeline) (2 files; primary: discovery_pipeline_results.json, psr_dsr_validation.json)

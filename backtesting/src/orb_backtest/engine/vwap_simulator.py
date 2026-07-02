@@ -128,7 +128,8 @@ class _VWAPSetupCandidate:
     session: str
     direction: int  # +1 long (fade below VWAP), -1 short (fade above VWAP)
     signal_bar: int  # bar index of the rejection candle
-    entry_price: float  # close of rejection candle (market entry)
+    entry_bar: int  # first executable bar after the rejection candle
+    entry_price: float  # next executable bar open after the rejection candle
     stop_price: float  # candle extreme + optional ATR buffer
     vwap_at_signal: float  # VWAP value at signal bar
     daily_atr: float
@@ -327,18 +328,21 @@ def _extract_vwap_candidates(
         atr = daily_atr[i]
         if np.isnan(atr) or atr <= 0:
             continue
+        entry_bar = i + 1
+        if entry_bar >= len(close) or session_day_id[entry_bar] != session_day_id[i]:
+            continue
 
         # Determine direction from which condition this bar matched
         if valid_long[i]:
             direction = 1
-            entry = close[i]
+            entry = open_[entry_bar]
             stop = low[i]
             # Apply ATR buffer to stop (extend away from entry)
             if session.stop_atr_pct > 0:
                 stop -= (session.stop_atr_pct / 100.0) * atr
         elif valid_short[i]:
             direction = -1
-            entry = close[i]
+            entry = open_[entry_bar]
             stop = high[i]
             # Apply ATR buffer to stop (extend away from entry)
             if session.stop_atr_pct > 0:
@@ -351,6 +355,7 @@ def _extract_vwap_candidates(
             session=session.name,
             direction=direction,
             signal_bar=i,
+            entry_bar=entry_bar,
             entry_price=entry,
             stop_price=stop,
             vwap_at_signal=vwap[i],
@@ -429,6 +434,8 @@ def run_vwap_backtest(
     close = np.ascontiguousarray(df["close"].values, dtype=np.float64)
     timestamps = df.index
     n = len(df)
+    no_pre_entry_new_high_sweep = np.zeros(n, dtype=np.bool_)
+    no_pre_entry_new_low_sweep = np.zeros(n, dtype=np.bool_)
 
     # ------------------------------------------------------------------
     # Bar magnifier setup (identical to ORB engine)
@@ -553,6 +560,11 @@ def run_vwap_backtest(
             direction = cand.direction
             stop = cand.stop_price
 
+            if direction == 1 and stop >= entry:
+                continue
+            if direction == -1 and stop <= entry:
+                continue
+
             # Risk in points
             risk_pts = abs(entry - stop)
 
@@ -573,7 +585,10 @@ def run_vwap_backtest(
             if qty < config.min_qty:
                 continue
 
-            is_single = qty <= config.min_qty
+            # VWAP has no explicit exit_mode. Treat tp1_ratio=1.0 as a
+            # true fixed-R single target, even when risk sizing yields
+            # multiple contracts.
+            is_single = config.tp1_ratio >= 1.0 or qty <= config.min_qty
             if is_single:
                 half_qty = qty
             else:
@@ -616,12 +631,11 @@ def run_vwap_backtest(
             # Look up precomputed boundaries using the signal bar's session day
             sd = session_day_id[cand.signal_bar]
 
-            # VWAP reversion uses MARKET ORDER at signal bar close.
-            # entry_bar_start = signal_bar so the fill scanner finds a fill on
-            # that exact bar (close is always within [low, high]).
-            # entry_bar_end = signal_bar (guaranteed fill on this bar).
-            entry_bar_start = cand.signal_bar
-            entry_bar_end = cand.signal_bar
+            # VWAP reversion confirms at the rejection candle close and enters
+            # on the next executable 5m bar. This avoids using the rejection
+            # bar's earlier high/low as post-entry exit information.
+            entry_bar_start = cand.entry_bar
+            entry_bar_end = cand.entry_bar
 
             bounds = day_bounds.get(sd)
             if bounds is None:
@@ -667,6 +681,7 @@ def run_vwap_backtest(
             sd_groups[pc.sd].append(pc)
 
         def _simulate_and_append(pc: _VWAPPreparedCandidate) -> None:
+            neutral_internal_swing_level = 1e38 if pc.direction == 1 else -1e38
             if use_hierarchical:
                 fill_bar, exit_type, exit_bar, pnl_pts, fill_1m_f, exit_1m_f = (
                     _simulate_single_trade_hierarchical(
@@ -683,6 +698,18 @@ def run_vwap_backtest(
                         pc.is_single, pc.qty, pc.half_qty,
                         config.point_value,
                         config.commission_per_contract,
+                        False,
+                        no_pre_entry_new_high_sweep,
+                        no_pre_entry_new_low_sweep,
+                        0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        neutral_internal_swing_level,
+                        False,
+                        np.nan,
                     )
                 )
             else:
@@ -695,6 +722,18 @@ def run_vwap_backtest(
                     pc.is_single, pc.qty, pc.half_qty,
                     config.point_value,
                     config.commission_per_contract,
+                    False,
+                    no_pre_entry_new_high_sweep,
+                    no_pre_entry_new_low_sweep,
+                    0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    neutral_internal_swing_level,
+                    False,
+                    np.nan,
                 )
                 fill_1m_f = -1.0
                 exit_1m_f = -1.0

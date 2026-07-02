@@ -19,7 +19,7 @@ export const STATE_COLORS: Record<string, string> = {
   armed_limit: "bg-profit/20 text-profit",
   trade_overlap: "bg-loss/20 text-loss",
   filled: "bg-accent/20 text-gold-200",
-  managing: "bg-info/20 text-info",
+  managing: "bg-money-positive/15 text-money-positive",
   flat: "bg-gold-400/15 text-gold-300",
 };
 

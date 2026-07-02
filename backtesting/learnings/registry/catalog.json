@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-18T20:14:36.189743Z",
+  "generated_at": "2026-06-30T15:50:55.374815Z",
   "paths": {
     "readme": "backtesting/learnings/README.md",
     "global_brief": "backtesting/learnings/briefs/GLOBAL.md",
@@ -8,8 +8,8 @@
   },
   "overview": {
     "asset_histories": 8,
-    "report_files": 252,
-    "result_directories": 399,
+    "report_files": 263,
+    "result_directories": 410,
     "result_loose_files": 45
   },
   "assets": {
@@ -2175,6 +2175,61 @@
           "status_bucket": "CONDITIONAL"
         },
         {
+          "title": "NY VWAP Reversion Fixed-R Pipeline Start (2026-06-29) \u2014 REJECT for $500 risk / $2k account",
+          "status": "REJECT for the requested account sizing; `research_only` as a strategy family until live execution support and exact replay exist.",
+          "status_bucket": "UNSPECIFIED"
+        },
+        {
+          "title": "NY VWAP Reversion Prop-Firm Pipeline Start (2026-06-29) \u2014 CONDITIONAL research lead",
+          "status": "CONDITIONAL research lead for the custom prop objective; still `research_only` until walk-forward/holdout validation, exact replay parity, and live execution support exist.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY Level Mean-Reversion Recent 5-Year Prototype (2026-06-29) \u2014 CONDITIONAL frequency thesis",
+          "status": "CONDITIONAL frequency thesis; `research_only` prototype only. No live execution support, exact replay, or 1m/1s path validation yet.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY Level Mean-Reversion State-Machine Recent 5-Year Pass (2026-06-29) \u2014 CONDITIONAL edge anchor, cadence still thin",
+          "status": "CONDITIONAL structural research only. Do not push to prop-risk optimization yet; no 1m/1s path validation, train/validation split, exact replay, or live execution support exists for this branch.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY Level Mean-Reversion Context-Filter Recent 5-Year Pass (2026-06-29) \u2014 CONDITIONAL low-frequency sleeve, daily cadence failed",
+          "status": "CONDITIONAL structural research only. This improved the quality of the level-reversion branch, but it did not solve the user-requested one-trade-per-day objective. Still `research_only`: no 1m/1s path validation, train/validation split, exact replay, or live execution support exists.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY VWAP Mean-Reversion Validation Packet (2026-06-30) \u2014 CONDITIONAL recent-regime sleeve, not live-ready",
+          "status": "CONDITIONAL research sleeve. The screenshot row is now the current best **pure VWAP-target** NQ NY VWAP mean-reversion candidate, but validation shows it is recent-regime dependent and still `research_only`.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY VWAP Static 1:1.5R Stop Sweep (2026-06-30) \u2014 CONDITIONAL cadence improvement, still thin",
+          "status": "CONDITIONAL research screen only. Static fixed `1.5R` exits improved the high-cadence VWAP leg versus the dynamic VWAP target, but the daily-cadence edge remains thin and still `research_only`.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY VWAP Static 1:1.5R Native Timeframe Sweep (2026-06-30) \u2014 CONDITIONAL 3m improvement",
+          "status": "CONDITIONAL native-timeframe research screen. The 3m version materially improved the daily-cadence static-RR branch versus 5m, but it is still `research_only` and needs exact replay, train/validation, and prop lifecycle scoring.",
+          "status_bucket": "CONDITIONAL"
+        },
+        {
+          "title": "NY VWAP 3m BOS Challenger (2026-06-30) \u2014 NO-GO as replacement for sweep/reclaim",
+          "status": "NO-GO as a replacement for the current 3m sweep/reclaim signal. BOS-style structure closes can produce positive rows, but they did not improve the daily-cadence or risk-adjusted profile of the current 3m leg.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY VWAP BOS Timeframe Challenger (2026-06-30) \u2014 NO-GO across 1m/2m/3m/5m",
+          "status": "NO-GO as a raw BOS replacement across native timeframes. Testing `1m`, `2m`, `3m`, and `5m` did not find a BOS-close version that beats the current 3m sweep/reclaim leg or solves daily cadence with acceptable risk.",
+          "status_bucket": "NO-GO"
+        },
+        {
+          "title": "NY VWAP 3m Sweep + BOS Confirmation (2026-06-30) \u2014 NO-GO for cadence, possible sparse micro-sleeve",
+          "status": "NO-GO as an upgrade to the current 3m daily-cadence leg. BOS confirmation after the sweep/reclaim improves selectivity on a few tiny samples, but it removes too many trades to solve the 1-3 trades/day objective.",
+          "status_bucket": "NO-GO"
+        },
+        {
           "title": "Summary",
           "status": "UNSPECIFIED",
           "status_bucket": "UNSPECIFIED"
@@ -2261,9 +2316,9 @@
         }
       ],
       "status_counts": {
-        "NO-GO": 6,
-        "UNSPECIFIED": 22,
-        "CONDITIONAL": 12,
+        "NO-GO": 9,
+        "UNSPECIFIED": 23,
+        "CONDITIONAL": 19,
         "SUPERSEDED": 2,
         "OPTIMIZATION_COMPLETE": 1,
         "GO": 3,
@@ -2733,6 +2788,27 @@
           "matched_result_directory": "backtesting/data/results/nq_ny_htf_lsi_window_exit_local_sweep"
         },
         {
+          "name": "NQ_NY_LEVEL_REVERSION_CONTEXT_FILTER_RECENT5_20260629.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LEVEL_REVERSION_CONTEXT_FILTER_RECENT5_20260629.md",
+          "slug": "nq_ny_level_reversion_context_filter_recent5_20260629",
+          "mtime_utc": "2026-06-29T22:58:26.494318Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_level_reversion_context_filter_recent5_20260629"
+        },
+        {
+          "name": "NQ_NY_LEVEL_REVERSION_RECENT5_20260629.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LEVEL_REVERSION_RECENT5_20260629.md",
+          "slug": "nq_ny_level_reversion_recent5_20260629",
+          "mtime_utc": "2026-06-29T20:48:52.838220Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_level_reversion_recent5_20260629"
+        },
+        {
+          "name": "NQ_NY_LEVEL_REVERSION_STATE_MACHINE_RECENT5_20260629.md",
+          "path": "backtesting/learnings/reports/NQ_NY_LEVEL_REVERSION_STATE_MACHINE_RECENT5_20260629.md",
+          "slug": "nq_ny_level_reversion_state_machine_recent5_20260629",
+          "mtime_utc": "2026-06-29T21:35:35.775406Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_level_reversion_state_machine_recent5_20260629"
+        },
+        {
           "name": "NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md",
           "path": "backtesting/learnings/reports/NQ_NY_LSI_3M_TRAPPED_REVERSAL_EXACT_PROBE_20260517.md",
           "slug": "nq_ny_lsi_3m_trapped_reversal_exact_probe_20260517",
@@ -3088,6 +3164,62 @@
           "slug": "nq_ny_reference_lsi_level_matrix",
           "mtime_utc": "2026-04-09T02:52:12.131352Z",
           "matched_result_directory": null
+        },
+        {
+          "name": "NQ_NY_VWAP_3M_BOS_CHALLENGER_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_3M_BOS_CHALLENGER_20260630.md",
+          "slug": "nq_ny_vwap_3m_bos_challenger_20260630",
+          "mtime_utc": "2026-06-30T15:23:33.160398Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_3m_bos_challenger_20260630"
+        },
+        {
+          "name": "NQ_NY_VWAP_3M_SWEEP_BOS_CONFIRM_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_3M_SWEEP_BOS_CONFIRM_20260630.md",
+          "slug": "nq_ny_vwap_3m_sweep_bos_confirm_20260630",
+          "mtime_utc": "2026-06-30T15:41:48.231440Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_3m_sweep_bos_confirm_20260630"
+        },
+        {
+          "name": "NQ_NY_VWAP_BOS_TIMEFRAME_CHALLENGER_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_BOS_TIMEFRAME_CHALLENGER_20260630.md",
+          "slug": "nq_ny_vwap_bos_timeframe_challenger_20260630",
+          "mtime_utc": "2026-06-30T15:48:38.593388Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_bos_timeframe_challenger_20260630"
+        },
+        {
+          "name": "NQ_NY_VWAP_MEAN_REVERSION_VALIDATION_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_MEAN_REVERSION_VALIDATION_20260630.md",
+          "slug": "nq_ny_vwap_mean_reversion_validation_20260630",
+          "mtime_utc": "2026-06-30T14:17:55.427869Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_mean_reversion_validation_20260630"
+        },
+        {
+          "name": "NQ_NY_VWAP_PROP_FIRM_PIPELINE_20260629.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_PROP_FIRM_PIPELINE_20260629.md",
+          "slug": "nq_ny_vwap_prop_firm_pipeline_20260629",
+          "mtime_utc": "2026-06-29T20:04:50.190440Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_prop_firm_pipeline_20260629"
+        },
+        {
+          "name": "NQ_NY_VWAP_REVERSION_FIXED_RR_PIPELINE_20260629.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_REVERSION_FIXED_RR_PIPELINE_20260629.md",
+          "slug": "nq_ny_vwap_reversion_fixed_rr_pipeline_20260629",
+          "mtime_utc": "2026-06-29T19:01:30.898564Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_reversion_fixed_rr_pipeline_20260629"
+        },
+        {
+          "name": "NQ_NY_VWAP_STATIC_RR_STOP_SWEEP_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_STATIC_RR_STOP_SWEEP_20260630.md",
+          "slug": "nq_ny_vwap_static_rr_stop_sweep_20260630",
+          "mtime_utc": "2026-06-30T14:57:14.911860Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_static_rr_stop_sweep_20260630"
+        },
+        {
+          "name": "NQ_NY_VWAP_STATIC_RR_TIMEFRAME_SWEEP_20260630.md",
+          "path": "backtesting/learnings/reports/NQ_NY_VWAP_STATIC_RR_TIMEFRAME_SWEEP_20260630.md",
+          "slug": "nq_ny_vwap_static_rr_timeframe_sweep_20260630",
+          "mtime_utc": "2026-06-30T15:04:57.658565Z",
+          "matched_result_directory": "backtesting/data/results/nq_ny_vwap_static_rr_timeframe_sweep_20260630"
         }
       ],
       "result_directories": [
@@ -4245,6 +4377,49 @@
           ]
         },
         {
+          "name": "nq_ny_level_reversion_context_filter_recent5_20260629",
+          "path": "backtesting/data/results/nq_ny_level_reversion_context_filter_recent5_20260629",
+          "mtime_utc": "2026-06-29T22:56:06.461391Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.json",
+            "baseline_audit.csv",
+            "best_context_trades.csv",
+            "ranked_context_candidates.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_level_reversion_recent5_20260629",
+          "path": "backtesting/data/results/nq_ny_level_reversion_recent5_20260629",
+          "mtime_utc": "2026-06-29T20:47:35.965841Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "ranked_candidates.csv",
+            "top_candidate_trades.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_level_reversion_state_machine_recent5_20260629",
+          "path": "backtesting/data/results/nq_ny_level_reversion_state_machine_recent5_20260629",
+          "mtime_utc": "2026-06-29T21:34:52.785373Z",
+          "file_count": 3,
+          "primary_files": [
+            "summary.json",
+            "ranked_candidates.csv",
+            "top_candidate_trades.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
           "name": "nq_ny_lsi_3m_trapped_reversal_stress_20260515",
           "path": "backtesting/data/results/nq_ny_lsi_3m_trapped_reversal_stress_20260515",
           "mtime_utc": "2026-05-15T18:32:07.020680Z",
@@ -4926,6 +5101,130 @@
           "file_count": 1,
           "primary_files": [
             "followup_results.json"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_3m_bos_challenger_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_3m_bos_challenger_20260630",
+          "mtime_utc": "2026-06-30T15:23:33.141703Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.json",
+            "baseline_sweep_reclaim_controls.csv",
+            "baseline_sweep_reclaim_yearly.csv",
+            "best_by_consolidation.csv",
+            "bos_challenger_results.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_3m_sweep_bos_confirm_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_3m_sweep_bos_confirm_20260630",
+          "mtime_utc": "2026-06-30T15:41:48.224677Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.json",
+            "baseline_sweep_reclaim_controls.csv",
+            "baseline_sweep_reclaim_yearly.csv",
+            "best_by_direction_scope.csv",
+            "daily_cadence_rows.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_bos_timeframe_challenger_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_bos_timeframe_challenger_20260630",
+          "mtime_utc": "2026-06-30T15:48:38.584397Z",
+          "file_count": 9,
+          "primary_files": [
+            "summary.json",
+            "baseline_controls.csv",
+            "baseline_controls_yearly.csv",
+            "best_by_timeframe.csv",
+            "daily_cadence_rows.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_mean_reversion_validation_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_mean_reversion_validation_20260630",
+          "mtime_utc": "2026-06-30T14:17:14.751420Z",
+          "file_count": 16,
+          "primary_files": [
+            "summary.json",
+            "best_candidate_5m_trades.csv",
+            "best_exit_refined_5m_trades.csv",
+            "best_prop_account_paths.csv",
+            "cold_window_score.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_prop_firm_pipeline_20260629",
+          "path": "backtesting/data/results/nq_ny_vwap_prop_firm_pipeline_20260629",
+          "mtime_utc": "2026-06-29T20:03:39.526636Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "ranked_candidates.csv",
+            "risk_refine_candidates.csv",
+            "risk_refine_summary.json",
+            "risk_refine_top_account_outcomes.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_reversion_fixed_rr_pipeline_20260629",
+          "path": "backtesting/data/results/nq_ny_vwap_reversion_fixed_rr_pipeline_20260629",
+          "mtime_utc": "2026-06-29T18:57:29.261213Z",
+          "file_count": 2,
+          "primary_files": [
+            "summary.json",
+            "coarse_screen.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_static_rr_stop_sweep_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_static_rr_stop_sweep_20260630",
+          "mtime_utc": "2026-06-30T14:57:14.905006Z",
+          "file_count": 4,
+          "primary_files": [
+            "summary.json",
+            "sweep_results.csv",
+            "top_static_rr_trades.csv",
+            "top_static_rr_yearly.csv"
+          ],
+          "assets": [
+            "NQ"
+          ]
+        },
+        {
+          "name": "nq_ny_vwap_static_rr_timeframe_sweep_20260630",
+          "path": "backtesting/data/results/nq_ny_vwap_static_rr_timeframe_sweep_20260630",
+          "mtime_utc": "2026-06-30T15:04:57.650562Z",
+          "file_count": 6,
+          "primary_files": [
+            "summary.json",
+            "best_by_timeframe.csv",
+            "prior_session_range_pct10_by_timeframe.csv",
+            "timeframe_sweep_results.csv",
+            "top_timeframe_static_rr_trades.csv"
           ],
           "assets": [
             "NQ"
@@ -5988,21 +6287,21 @@
           "name": "CROSS_ASSET_ORB_BASE_MATRIX_20260612.md",
           "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_BASE_MATRIX_20260612.md",
           "slug": "cross_asset_orb_base_matrix_20260612",
-          "mtime_utc": "2026-06-12T22:42:30.413508Z",
+          "mtime_utc": "2026-06-22T18:23:45.737890Z",
           "matched_result_directory": "backtesting/data/results/cross_asset_orb_base_matrix_20260612"
         },
         {
           "name": "CROSS_ASSET_ORB_NONREJECT_ADVANCEMENT_20260612.md",
           "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_NONREJECT_ADVANCEMENT_20260612.md",
           "slug": "cross_asset_orb_nonreject_advancement_20260612",
-          "mtime_utc": "2026-06-12T22:57:33.699072Z",
+          "mtime_utc": "2026-06-22T18:23:45.739228Z",
           "matched_result_directory": "backtesting/data/results/cross_asset_orb_nonreject_advancement_20260612"
         },
         {
           "name": "CROSS_ASSET_ORB_NONREJECT_EXACT_REPLAY_20260612.md",
           "path": "backtesting/learnings/reports/CROSS_ASSET_ORB_NONREJECT_EXACT_REPLAY_20260612.md",
           "slug": "cross_asset_orb_nonreject_exact_replay_20260612",
-          "mtime_utc": "2026-06-12T23:05:40.594554Z",
+          "mtime_utc": "2026-06-22T18:23:45.739578Z",
           "matched_result_directory": null
         },
         {
@@ -6093,70 +6392,70 @@
           "name": "ORB_AUTORESEARCH_FLOW_20260617.md",
           "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_20260617.md",
           "slug": "orb_autoresearch_flow_20260617",
-          "mtime_utc": "2026-06-18T03:12:18.375232Z",
+          "mtime_utc": "2026-06-22T18:23:45.740287Z",
           "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_20260617"
         },
         {
           "name": "ORB_AUTORESEARCH_FLOW_FULL_20260617.md",
           "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_FULL_20260617.md",
           "slug": "orb_autoresearch_flow_full_20260617",
-          "mtime_utc": "2026-06-18T03:54:28.680569Z",
+          "mtime_utc": "2026-06-22T18:23:45.740831Z",
           "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_full_20260617"
         },
         {
           "name": "ORB_AUTORESEARCH_FLOW_SEED_SMOKE_20260617.md",
           "path": "backtesting/learnings/reports/ORB_AUTORESEARCH_FLOW_SEED_SMOKE_20260617.md",
           "slug": "orb_autoresearch_flow_seed_smoke_20260617",
-          "mtime_utc": "2026-06-18T03:11:52.608046Z",
+          "mtime_utc": "2026-06-22T18:23:45.744574Z",
           "matched_result_directory": "backtesting/data/results/orb_autoresearch_flow_seed_smoke_20260617"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_FULL_20260618.md",
           "slug": "orb_futures_surface_v1_broad_full_20260618",
-          "mtime_utc": "2026-06-18T19:40:31.194683Z",
+          "mtime_utc": "2026-06-22T18:23:45.748426Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_broad_full_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_BROAD_PLAN_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_BROAD_PLAN_20260618.md",
           "slug": "orb_futures_surface_v1_broad_plan_20260618",
-          "mtime_utc": "2026-06-18T19:02:25.678285Z",
+          "mtime_utc": "2026-06-22T18:23:45.748892Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_broad_plan_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_REPLAY_20260618.md",
           "slug": "orb_futures_surface_v1_exact_replay_20260618",
-          "mtime_utc": "2026-06-18T20:08:52.020312Z",
+          "mtime_utc": "2026-06-22T18:23:45.749360Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_exact_replay_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_EXACT_STRESS_20260618.md",
           "slug": "orb_futures_surface_v1_exact_stress_20260618",
-          "mtime_utc": "2026-06-18T20:14:31.375979Z",
+          "mtime_utc": "2026-06-22T18:23:45.749774Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_exact_stress_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_PLAN_SMOKE_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_PLAN_SMOKE_20260618.md",
           "slug": "orb_futures_surface_v1_plan_smoke_20260618",
-          "mtime_utc": "2026-06-18T19:01:33.509907Z",
+          "mtime_utc": "2026-06-22T18:23:45.750226Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_plan_smoke_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_CORE_NQ_ES_CL_NY_20260618.md",
           "slug": "orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618",
-          "mtime_utc": "2026-06-18T19:03:34.299237Z",
+          "mtime_utc": "2026-06-22T18:23:45.750441Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_seed_core_nq_es_cl_ny_20260618"
         },
         {
           "name": "ORB_FUTURES_SURFACE_V1_SEED_NQ_NY_20260618.md",
           "path": "backtesting/learnings/reports/ORB_FUTURES_SURFACE_V1_SEED_NQ_NY_20260618.md",
           "slug": "orb_futures_surface_v1_seed_nq_ny_20260618",
-          "mtime_utc": "2026-06-18T19:02:04.906890Z",
+          "mtime_utc": "2026-06-22T18:23:45.750871Z",
           "matched_result_directory": "backtesting/data/results/orb_futures_surface_v1_seed_nq_ny_20260618"
         },
         {
@@ -8381,7 +8680,7 @@
       {
         "name": "experiments.db",
         "path": "backtesting/data/results/experiments.db",
-        "mtime_utc": "2026-06-10T12:23:23.349978Z"
+        "mtime_utc": "2026-06-22T22:33:38.665126Z"
       },
       {
         "name": "fast_v2_alpha_beta.png",
